@@ -190,6 +190,11 @@ fn content_json(o: &mut Map<String, Value>, content: &TimelineItemContent, own: 
                 }
                 MsgLikeKind::Redacted => put(o, "type", "redacted"),
                 MsgLikeKind::UnableToDecrypt(_) => put(o, "type", "utd"),
+                MsgLikeKind::LiveLocation(_) => {
+                    put(o, "type", "location");
+                    put(o, "body", "Live location");
+                }
+                _ => put(o, "type", "unknown"),
             }
         }
         TimelineItemContent::MembershipChange(ch) => {

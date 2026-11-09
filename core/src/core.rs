@@ -279,7 +279,7 @@ impl Core {
                 .get_verification_request(&ev.sender, ev.content.transaction_id.as_str())
                 .await
             {
-                crate::core().watch_request(req).await;
+                crate::instance().watch_request(req).await;
             }
         });
         client.add_event_handler(|ev: OriginalSyncRoomMessageEvent, client: Client| async move {
@@ -287,7 +287,7 @@ impl Core {
                 if let Some(req) =
                     client.encryption().get_verification_request(&ev.sender, ev.event_id.as_str()).await
                 {
-                    crate::core().watch_request(req).await;
+                    crate::instance().watch_request(req).await;
                 }
             }
         });
@@ -795,7 +795,7 @@ impl Core {
             let mut builder = client
                 .matrix_auth()
                 .login_sso(|url| async move {
-                    crate::core().emit(json!({"ev": "open_url", "url": url}));
+                    crate::instance().emit(json!({"ev": "open_url", "url": url}));
                     Ok(())
                 })
                 .initial_device_display_name(DEVICE_NAME)

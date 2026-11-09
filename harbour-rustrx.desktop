@@ -5,6 +5,8 @@ Icon=harbour-rustrx
 Exec=harbour-rustrx
 Name=Rustrx
 Comment=A Matrix client
+# one instance: a second launch raises the running window
+X-Nemo-Single-Instance=yes
 
 [X-Sailjail]
 # Internet for the homeserver; Pictures, Documents and Downloads for sending

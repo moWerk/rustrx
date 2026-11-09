@@ -26,6 +26,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaObject>
+#include <QUrl>
 
 static Rustrx *s_instance = nullptr;
 

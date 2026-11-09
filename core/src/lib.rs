@@ -42,7 +42,7 @@ impl Emitter {
 
 static CORE: OnceLock<core::Core> = OnceLock::new();
 
-pub(crate) fn core() -> &'static core::Core {
+pub(crate) fn instance() -> &'static core::Core {
     CORE.get().expect("rustrx_start was called")
 }
 
@@ -80,7 +80,7 @@ pub extern "C" fn rustrx_start(data_dir: *const c_char, cb: EventCallback, ctx: 
     if CORE.set(core).is_err() {
         return 1;
     }
-    core().boot();
+    instance().boot();
     0
 }
 
