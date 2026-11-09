@@ -16,6 +16,7 @@ Requires:   libsailfishapp-launcher
 Requires:   sailfish-components-pickers-qt5
 Requires:   nemo-qml-plugin-notifications-qt5
 Requires:   qt5-qtdeclarative-import-multimedia
+Requires:   qt5-qtdeclarative-import-sensors
 BuildRequires:  pkgconfig(sailfishapp) >= 1.0.2
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5Qml)

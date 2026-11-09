@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 import QtMultimedia 5.6
+import QtSensors 5.2
 
 // Take one photo: continuous autofocus in the viewfinder, a focus lock on
 // the tap, then the shot with Send and Retake. The page closes after Send.
@@ -27,6 +28,21 @@ Page {
 
     property string shotPath
     property bool shotPending
+    property int orientationTag: 270
+
+    OrientationSensor {
+        id: orientationSensor
+        active: shotPath.length === 0
+        onReadingChanged: {
+            switch (reading.orientation) {
+            case OrientationReading.TopUp: orientationTag = 270; break
+            case OrientationReading.TopDown: orientationTag = 90; break
+            case OrientationReading.LeftUp: orientationTag = 180; break
+            case OrientationReading.RightUp: orientationTag = 0; break
+            default: break   // face up or down: keep the last value
+            }
+        }
+    }
 
     function shoot() {
         shotPending = false
@@ -42,8 +58,9 @@ Page {
             focusPointMode: Camera.FocusPointAuto
         }
 
-        // the sensor is mounted landscape; a portrait shot is tagged 90°
-        metaData.orientation: 270
+        // the photo's EXIF orientation follows how the phone is held;
+        // portrait upright is 270 on this sensor (measured)
+        metaData.orientation: page.orientationTag
 
         imageCapture {
             onImageSaved: {
