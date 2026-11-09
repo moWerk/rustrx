@@ -1,0 +1,264 @@
+/*
+ * Copyright (C) 2026 - Timo Könnecke <github.com/moWerk>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+import QtQuick 2.6
+import Sailfish.Silica 1.0
+
+// Account, encryption (verification, recovery), devices, about.
+Page {
+    id: page
+
+    property string displayName
+    property string recoveryResult
+    property string shownKey
+
+    Component.onCompleted: rustrx.command({ cmd: "profile" })
+
+    function verificationText() {
+        switch (rustrx.verificationState) {
+        //% "This device is verified."
+        case "verified": return qsTrId("rustrx-la-device-verified")
+        //% "This device is not verified yet. Verify it from another device you are logged in on, or start the verification here."
+        case "unverified": return qsTrId("rustrx-la-device-unverified")
+        //% "Verification state not known yet."
+        default: return qsTrId("rustrx-la-device-unknown")
+        }
+    }
+
+    function recoveryText() {
+        switch (rustrx.recoveryState) {
+        //% "Key backup is on and this device holds the recovery secrets. Older encrypted messages are restored from the backup."
+        case "enabled": return qsTrId("rustrx-la-recovery-enabled")
+        //% "Key backup exists, but this device lacks the recovery key. Enter it below to read older encrypted messages."
+        case "incomplete": return qsTrId("rustrx-la-recovery-incomplete")
+        //% "Key backup is off. Turn it on to keep encrypted messages readable after a new login."
+        case "disabled": return qsTrId("rustrx-la-recovery-disabled")
+        //% "Backup state not known yet."
+        default: return qsTrId("rustrx-la-recovery-unknown")
+        }
+    }
+
+    SilicaFlickable {
+        anchors.fill: parent
+        contentHeight: column.height
+
+        Column {
+            id: column
+            width: parent.width
+
+            //% "Settings"
+            PageHeader { title: qsTrId("rustrx-he-settings") }
+
+            //% "Account"
+            SectionHeader { text: qsTrId("rustrx-se-account") }
+
+            DetailItem {
+                //% "Matrix ID"
+                label: qsTrId("rustrx-la-matrix-id")
+                value: rustrx.userId
+            }
+            DetailItem {
+                //% "Homeserver"
+                label: qsTrId("rustrx-la-homeserver")
+                value: rustrx.homeserver
+            }
+
+            TextField {
+                id: nameField
+                width: parent.width
+                text: displayName
+                //% "Display name"
+                label: qsTrId("rustrx-la-display-name")
+                placeholderText: label
+                EnterKey.enabled: text.trim().length > 0 && text !== displayName
+                EnterKey.iconSource: "image://theme/icon-m-enter-accept"
+                EnterKey.onClicked: {
+                    rustrx.command({ cmd: "set_display_name", name: text.trim() })
+                    displayName = text.trim()
+                    focus = false
+                }
+            }
+
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                //% "Log out"
+                text: qsTrId("rustrx-bt-log-out")
+                onClicked: {
+                    //% "Logging out"
+                    remorse.execute(qsTrId("rustrx-re-logging-out"), function () {
+                        rustrx.command({ cmd: "logout" })
+                    })
+                }
+            }
+
+            //% "Encryption"
+            SectionHeader { text: qsTrId("rustrx-se-encryption") }
+
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                color: Theme.highlightColor
+                font.pixelSize: Theme.fontSizeSmall
+                text: verificationText()
+            }
+
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: rustrx.verificationState !== "verified"
+                //% "Verify this device"
+                text: qsTrId("rustrx-bt-verify-device")
+                onClicked: {
+                    rustrx.command({ cmd: "verification_request_self" })
+                    pageStack.push(Qt.resolvedUrl("VerificationPage.qml"), { waiting: true })
+                }
+            }
+
+            Item { width: 1; height: Theme.paddingLarge }
+
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                color: Theme.highlightColor
+                font.pixelSize: Theme.fontSizeSmall
+                text: recoveryText()
+            }
+
+            TextField {
+                id: keyField
+                width: parent.width
+                visible: rustrx.recoveryState !== "enabled"
+                //% "Recovery key"
+                label: qsTrId("rustrx-la-recovery-key")
+                //% "Recovery key, like EsTc ... (or your passphrase)"
+                placeholderText: qsTrId("rustrx-ph-recovery-key")
+                inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhSensitiveData
+                EnterKey.enabled: text.trim().length > 0
+                EnterKey.iconSource: "image://theme/icon-m-enter-accept"
+                EnterKey.onClicked: {
+                    //% "Restoring…"
+                    recoveryResult = qsTrId("rustrx-la-restoring")
+                    rustrx.command({ cmd: "recovery_recover", key: text })
+                    focus = false
+                }
+            }
+
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: rustrx.recoveryState !== "enabled"
+                enabled: keyField.text.trim().length > 0
+                //% "Restore encrypted messages"
+                text: qsTrId("rustrx-bt-restore")
+                onClicked: {
+                    recoveryResult = qsTrId("rustrx-la-restoring")
+                    rustrx.command({ cmd: "recovery_recover", key: keyField.text })
+                }
+            }
+
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: rustrx.recoveryState === "disabled"
+                //% "Turn on key backup"
+                text: qsTrId("rustrx-bt-enable-backup")
+                onClicked: {
+                    //% "Setting up the backup…"
+                    recoveryResult = qsTrId("rustrx-la-enabling-backup")
+                    rustrx.command({ cmd: "recovery_enable" })
+                }
+            }
+
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                visible: recoveryResult.length > 0
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.secondaryHighlightColor
+                text: recoveryResult
+            }
+
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                visible: shownKey.length > 0
+                wrapMode: Text.WrapAnywhere
+                font.family: "monospace"
+                color: Theme.primaryColor
+                text: shownKey
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        Clipboard.text = shownKey
+                        //% "Recovery key copied"
+                        Notices.show(qsTrId("rustrx-no-key-copied"))
+                    }
+                }
+            }
+
+            //% "Devices"
+            SectionHeader { text: qsTrId("rustrx-se-devices") }
+
+            BackgroundItem {
+                width: parent.width
+                onClicked: pageStack.push(Qt.resolvedUrl("DevicesPage.qml"))
+                Label {
+                    x: Theme.horizontalPageMargin
+                    anchors.verticalCenter: parent.verticalCenter
+                    //% "Logged-in devices"
+                    text: qsTrId("rustrx-la-devices")
+                    color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
+                }
+            }
+
+            //% "About"
+            SectionHeader { text: qsTrId("rustrx-se-about") }
+
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.secondaryColor
+                //: %1 app version, %2 core version
+                //% "Rustrx %1, core %2. A Matrix client built on matrix-rust-sdk. GPLv3+, github.com/moWerk/rustrx"
+                text: qsTrId("rustrx-la-about").arg(appVersion).arg(rustrx.coreVersion)
+            }
+
+            Item { width: 1; height: Theme.paddingLarge }
+        }
+
+        VerticalScrollDecorator { }
+    }
+
+    RemorsePopup { id: remorse }
+
+    Connections {
+        target: rustrx
+        onProfile: displayName = profile.display_name || ""
+        //% "Encrypted messages restored. Rooms fill in as keys arrive."
+        onRecoveryDone: { recoveryResult = qsTrId("rustrx-la-restored"); keyField.text = "" }
+        onRecoveryKey: {
+            //% "Backup is on. Write this recovery key down and keep it safe; it is shown only now. Tap it to copy."
+            recoveryResult = qsTrId("rustrx-la-key-shown")
+            shownKey = key
+        }
+        onErrorOccurred: {
+            if (cmd === "recovery_recover" || cmd === "recovery_enable" || cmd === "recovery_reset")
+                recoveryResult = message
+        }
+    }
+}

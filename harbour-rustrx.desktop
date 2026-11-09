@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+X-Nemo-Application-Type=silica-qt5
+Icon=harbour-rustrx
+Exec=harbour-rustrx
+Name=Rustrx
+Comment=A Matrix client
+
+[X-Sailjail]
+# Internet for the homeserver; Pictures, Documents and Downloads for sending
+# files from the pickers; Camera for photos taken in the app.
+OrganizationName=net.mowerk
+ApplicationName=harbour-rustrx
+Permissions=Internet;Pictures;Documents;Downloads;Camera
