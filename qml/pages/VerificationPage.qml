@@ -25,11 +25,11 @@ Page {
     property string flowId
     property var info: ({})
     property bool waiting      // we asked for a self-verification and wait for its request
-    property string state: waiting ? "waiting" : (info.state || "")
+    property string phase: waiting ? "waiting" : (info.state || "")
     property var emojis: []
     property var decimals: null
     property string reason
-    property bool finished: state === "done" || state === "cancelled"
+    property bool finished: phase === "done" || phase === "cancelled"
 
     onStatusChanged: {
         if (status === PageStatus.Deactivating && !finished && flowId.length)
@@ -37,7 +37,7 @@ Page {
     }
 
     function stateText() {
-        switch (state) {
+        switch (phase) {
         //% "Waiting for your other device to pick up the request…"
         case "waiting": return qsTrId("rustrx-la-ver-waiting")
         case "created":
@@ -59,7 +59,7 @@ Page {
         case "cancelled": return qsTrId("rustrx-la-ver-cancelled").arg(reason)
         //% "The other device chose a method this app does not support."
         case "unsupported": return qsTrId("rustrx-la-ver-unsupported")
-        default: return state
+        default: return phase
         }
     }
 
@@ -86,12 +86,12 @@ Page {
             BusyIndicator {
                 anchors.horizontalCenter: parent.horizontalCenter
                 size: BusyIndicatorSize.Large
-                running: state === "waiting" || state === "created" || state === "ready" || state === "sas" || state === "confirmed"
+                running: phase === "waiting" || phase === "created" || phase === "ready" || phase === "sas" || phase === "confirmed"
             }
 
             Button {
                 anchors.horizontalCenter: parent.horizontalCenter
-                visible: state === "requested"
+                visible: phase === "requested"
                 //% "Accept"
                 text: qsTrId("rustrx-bt-accept")
                 onClicked: rustrx.command({ cmd: "verification_accept", flow_id: flowId })
@@ -99,7 +99,7 @@ Page {
 
             Button {
                 anchors.horizontalCenter: parent.horizontalCenter
-                visible: state === "ready" && !info.we_started
+                visible: phase === "ready" && !info.we_started
                 //% "Start emoji comparison"
                 text: qsTrId("rustrx-bt-start-sas")
                 onClicked: rustrx.command({ cmd: "verification_start_sas", flow_id: flowId })
@@ -107,7 +107,7 @@ Page {
 
             Grid {
                 anchors.horizontalCenter: parent.horizontalCenter
-                visible: state === "keys_exchanged" && emojis.length > 0
+                visible: phase === "keys_exchanged" && emojis.length > 0
                 columns: 4
                 spacing: Theme.paddingLarge
                 Repeater {
@@ -131,14 +131,14 @@ Page {
 
             Label {
                 anchors.horizontalCenter: parent.horizontalCenter
-                visible: state === "keys_exchanged" && emojis.length === 0 && decimals
+                visible: phase === "keys_exchanged" && emojis.length === 0 && decimals
                 text: decimals ? decimals.join("  ") : ""
                 font.pixelSize: Theme.fontSizeHuge
             }
 
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                visible: state === "keys_exchanged"
+                visible: phase === "keys_exchanged"
                 spacing: Theme.paddingLarge
                 Button {
                     //% "They match"
@@ -172,12 +172,12 @@ Page {
             }
             if (data.flow_id !== flowId) return
             info = data
-            state = data.state
+            phase = data.state
             if (data.state === "cancelled") reason = data.reason || ""
         }
         onSas: {
             if (data.flow_id !== flowId) return
-            state = data.state
+            phase = data.state
             if (data.emojis) emojis = data.emojis
             if (data.decimals) decimals = data.decimals
             if (data.state === "cancelled") reason = data.reason || ""
