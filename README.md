@@ -38,8 +38,15 @@ Jolla Store.
 
 ## Status
 
-Early. Written in one evening for a Jolla Phone 2026 that had no working
-native Matrix client. Tested against one account so far.
+0.2.0, the first release. Written in one evening for a Jolla Phone 2026 that
+had no working native Matrix client, and used on it since. Tested against
+one account on one homeserver so far; SSO login is untested, QR login is
+not in yet, and there are no notifications while the app is closed.
+
+## Install
+
+RPMs are attached to the GitHub releases. Rustrx bundles its core library,
+so it is a Chum or OpenRepos app, not a Jolla Store one.
 
 ## Authorship
 

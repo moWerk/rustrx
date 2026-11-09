@@ -37,6 +37,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     : QObject(parent)
     , m_rooms(new RoomModel(this))
     , m_people(new RoomModel(this))
+    , m_favourites(new RoomModel(this))
     , m_timeline(new TimelineModel(this))
 {
     s_instance = this;
@@ -192,7 +193,7 @@ void Rustrx::setDraft(const QString &roomId, const QString &text)
 
 void Rustrx::distributeRooms(const QVariantList &rooms)
 {
-    QVariantList groups, dms;
+    QVariantList groups, dms, favs;
     int unread = 0, chats = 0;
     m_roomsById.clear();
     for (const QVariant &v : rooms) {
@@ -214,6 +215,12 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
             dms.append(r);
         else
             groups.append(r);
+        if (fav && !invited) {
+            // the Favs tab mixes rooms and people, by activity, no sections
+            QVariantMap f = r;
+            f.insert("section", QString());
+            favs.append(f);
+        }
         // notifications while running: a room other than the open one gained notifications
         const int n = r.value("notifications").toInt();
         const int before = m_notificationCounts.value(id, -1);
@@ -223,6 +230,7 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
     }
     m_rooms->setRooms(groups);
     m_people->setRooms(dms);
+    m_favourites->setRooms(favs);
     if (unread != m_unreadTotal || chats != m_unreadChats) {
         m_unreadTotal = unread;
         m_unreadChats = chats;
@@ -268,6 +276,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_timeline->clear();
         m_rooms->setRooms({});
         m_people->setRooms({});
+        m_favourites->setRooms({});
         m_notificationCounts.clear();
         emit stateChanged();
         emit openRoomChanged();

@@ -44,6 +44,7 @@ class Rustrx : public QObject
     Q_PROPERTY(int unreadChats READ unreadChats NOTIFY unreadChanged)
     Q_PROPERTY(RoomModel *rooms READ rooms CONSTANT)
     Q_PROPERTY(RoomModel *people READ people CONSTANT)
+    Q_PROPERTY(RoomModel *favourites READ favourites CONSTANT)
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
     Q_PROPERTY(QString coreVersion READ coreVersion CONSTANT)
 
@@ -63,6 +64,7 @@ public:
     int unreadChats() const { return m_unreadChats; }
     RoomModel *rooms() const { return m_rooms; }
     RoomModel *people() const { return m_people; }
+    RoomModel *favourites() const { return m_favourites; }
     TimelineModel *timeline() const { return m_timeline; }
     QString coreVersion() const;
 
@@ -132,6 +134,7 @@ private:
     QHash<QString, QVariantMap> m_roomsById;
     RoomModel *m_rooms;
     RoomModel *m_people;
+    RoomModel *m_favourites;
     TimelineModel *m_timeline;
     QElapsedTimer m_since;   // start-up timing in the journal
     bool m_firstRooms = true;

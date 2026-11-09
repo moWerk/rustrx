@@ -130,9 +130,9 @@ ListItem {
             }
             MenuItem {
                 visible: !invited
-                //% "Remove from favourites"
+                //% "Remove from Favs"
                 text: model.is_fav ? qsTrId("rustrx-me-unfavourite")
-                //% "Add to favourites"
+                //% "Add to Favs"
                                    : qsTrId("rustrx-me-favourite")
                 onClicked: rustrx.command({ cmd: "set_favourite", room_id: model.room_id, value: !model.is_fav })
             }

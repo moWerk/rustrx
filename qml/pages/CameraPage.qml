@@ -43,7 +43,7 @@ Page {
         }
 
         // the sensor is mounted landscape; a portrait shot is tagged 90°
-        metaData.orientation: 90
+        metaData.orientation: 270
 
         imageCapture {
             onImageSaved: {

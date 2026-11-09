@@ -30,13 +30,16 @@ Page {
         id: tabModel
         ListElement { kind: "rooms" }
         ListElement { kind: "people" }
+        ListElement { kind: "favs" }
     }
 
     function tabTitle(kind) {
         //% "Rooms"
         if (kind === "rooms") return qsTrId("rustrx-he-rooms")
         //% "People"
-        return qsTrId("rustrx-he-people")
+        if (kind === "people") return qsTrId("rustrx-he-people")
+        //% "Favs"
+        return qsTrId("rustrx-he-favs")
     }
 
     TabView {
@@ -58,12 +61,13 @@ Page {
             flickable: list
 
             readonly property bool isRooms: model.kind === "rooms"
+            readonly property bool isFavs: model.kind === "favs"
 
             SilicaListView {
                 id: list
                 anchors.fill: parent
-                model: isRooms ? rustrx.rooms : rustrx.people
-                section.property: "section"
+                model: isRooms ? rustrx.rooms : isFavs ? rustrx.favourites : rustrx.people
+                section.property: isFavs ? "" : "section"
                 section.delegate: SectionHeader { text: section }
 
                 PullDownMenu {
@@ -89,6 +93,9 @@ Page {
                     hintText: isRooms
                               //% "Rooms you join appear here, favourites on top."
                               ? qsTrId("rustrx-la-empty-rooms-hint")
+                              : isFavs
+                              //% "Long press a room or a person and choose Add to Favs."
+                              ? qsTrId("rustrx-la-empty-favs-hint")
                               //% "Direct chats appear here."
                               : qsTrId("rustrx-la-empty-people-hint")
                 }

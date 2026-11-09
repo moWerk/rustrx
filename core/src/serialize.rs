@@ -51,8 +51,9 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
     })
 }
 
-/// Joined rooms and invitations, invitations first, then favourites, then
-/// by activity. Spaces and left rooms are left out.
+/// Joined rooms and invitations, invitations first, then by activity.
+/// Favourites are not pinned here; the UI has its own tab for them.
+/// Spaces and left rooms are left out.
 pub(crate) async fn rooms_json(client: &Client, avatar_dir: &std::path::Path) -> Value {
     let mut rooms = Vec::new();
     for room in client.rooms() {
@@ -63,11 +64,7 @@ pub(crate) async fn rooms_json(client: &Client, avatar_dir: &std::path::Path) ->
     }
     rooms.sort_by(|a, b| {
         let key = |r: &Value| {
-            (
-                r["state"] != "invited",
-                !r["is_fav"].as_bool().unwrap_or(false),
-                std::cmp::Reverse(r["ts"].as_u64().unwrap_or(0)),
-            )
+            (r["state"] != "invited", std::cmp::Reverse(r["ts"].as_u64().unwrap_or(0)))
         };
         key(a).cmp(&key(b))
     });
