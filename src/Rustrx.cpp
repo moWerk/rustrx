@@ -204,9 +204,7 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
         const bool fav = r.value("is_fav").toBool();
         //: list section for pending invitations
         //% "Invitations"
-        //: list section for favourite rooms, pinned on top
-        //% "Favourites"
-        r.insert("section", invited ? qtTrId("rustrx-se-invitations") : fav ? qtTrId("rustrx-se-favourites") : QString());
+        r.insert("section", invited ? qtTrId("rustrx-se-invitations") : QString());
         m_roomsById.insert(id, r);
         unread += r.value("notifications").toInt();
         if (r.value("notifications").toInt() > 0)
