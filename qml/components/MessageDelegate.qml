@@ -173,6 +173,7 @@ ListItem {
                 Image {
                     anchors.fill: parent
                     asynchronous: true
+                    autoTransform: true
                     fillMode: Image.PreserveAspectFit
                     source: model.thumb_path && model.thumb_path.length ? "file://" + model.thumb_path
                           : model.media_path && model.media_path.length ? "file://" + model.media_path : ""

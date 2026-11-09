@@ -51,6 +51,10 @@ const USER_AGENT: &str = concat!("Rustrx/", env!("CARGO_PKG_VERSION"), " (Sailfi
 struct SavedSession {
     homeserver: String,
     session: MatrixSession,
+    /// whether the server had native sliding sync at login; a restore then
+    /// skips the discovery round trips
+    #[serde(default)]
+    sliding_sync: Option<bool>,
 }
 
 struct OpenRoom {
@@ -128,13 +132,25 @@ impl Core {
             return Ok(false);
         }
         let saved: SavedSession = serde_json::from_slice(&std::fs::read(&path)?)?;
-        let client = self.build_client(&saved.homeserver, true).await?;
+        let t = std::time::Instant::now();
+        let client = match saved.sliding_sync {
+            Some(native) => self.build_client_with(&saved.homeserver, true, Some(native)).await?,
+            None => self.build_client(&saved.homeserver, true).await?,
+        };
+        tracing::info!(ms = t.elapsed().as_millis() as u64, "startup: client built");
         client.restore_session(saved.session).await?;
+        tracing::info!(ms = t.elapsed().as_millis() as u64, "startup: session restored");
         self.after_login(client).await?;
+        tracing::info!(ms = t.elapsed().as_millis() as u64, "startup: sync started");
         Ok(true)
     }
 
     async fn build_client(&self, server: &str, with_store: bool) -> Result<Client> {
+        self.build_client_with(server, with_store, None).await
+    }
+
+    /// `known`: the sync flavour from a previous login, which skips discovery.
+    async fn build_client_with(&self, server: &str, with_store: bool, known: Option<bool>) -> Result<Client> {
         let make = |version: VersionBuilder| {
             let mut b = Client::builder()
                 .sliding_sync_version_builder(version)
@@ -154,6 +170,10 @@ impl Core {
                 b.server_name_or_homeserver_url(server)
             }
         };
+        if let Some(native) = known {
+            let version = if native { VersionBuilder::Native } else { VersionBuilder::None };
+            return make(version).build().await.map_err(|e| anyhow!("{e}"));
+        }
         // Native sliding sync where the server has it, the classic sync otherwise.
         match make(VersionBuilder::DiscoverNative).build().await {
             Ok(c) => Ok(c),
@@ -166,7 +186,11 @@ impl Core {
 
     fn save_session(&self, client: &Client) -> Result<()> {
         let session = client.matrix_auth().session().context("no Matrix session after login")?;
-        let saved = SavedSession { homeserver: client.homeserver().to_string(), session };
+        let saved = SavedSession {
+            homeserver: client.homeserver().to_string(),
+            session,
+            sliding_sync: Some(!matches!(client.sliding_sync_version(), Version::None)),
+        };
         std::fs::write(self.session_path(), serde_json::to_vec(&saved)?)?;
         Ok(())
     }
@@ -187,6 +211,8 @@ impl Core {
             let mut st = self.state.lock().await;
             st.client = Some(client.clone());
         }
+        // the cached room list first, before anything waits for the network
+        self.rt.spawn(self.rooms_task(client.clone()));
         self.start_sync(client).await
     }
 
@@ -222,7 +248,6 @@ impl Core {
             });
             self.state.lock().await.sync_service = Some(service);
         }
-        self.rt.spawn(self.rooms_task(client.clone()));
         self.rt.spawn(self.encryption_task(client));
         Ok(())
     }
@@ -231,7 +256,10 @@ impl Core {
     async fn rooms_task(&'static self, client: Client) {
         let mut rx = client.room_info_notable_update_receiver();
         let avatar_dir = self.data_dir.join("avatars");
-        self.emit(json!({"ev": "rooms", "rooms": rooms_json(&client, &avatar_dir).await}));
+        let t = std::time::Instant::now();
+        let rooms = rooms_json(&client, &avatar_dir).await;
+        tracing::info!(ms = t.elapsed().as_millis() as u64, rooms = rooms.as_array().map(|a| a.len()).unwrap_or(0), "startup: first room list");
+        self.emit(json!({"ev": "rooms", "rooms": rooms}));
         self.fetch_avatars(&client).await;
         loop {
             match rx.recv().await {

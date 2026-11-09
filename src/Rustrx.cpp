@@ -22,6 +22,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -39,10 +40,12 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     , m_timeline(new TimelineModel(this))
 {
     s_instance = this;
+    m_since.start();
     QDir().mkpath(dataDir);
     const int rc = rustrx_start(dataDir.toUtf8().constData(), &Rustrx::eventCallback, this);
     if (rc != 0)
         qWarning() << "rustrx_start failed:" << rc;
+    qWarning().noquote() << "startup: core started after" << m_since.elapsed() << "ms";
 }
 
 QString Rustrx::coreVersion() const
@@ -162,6 +165,15 @@ QString Rustrx::formatDate(const QVariant &ms) const
     return d.toString(Qt::DefaultLocaleLongDate);
 }
 
+QString Rustrx::newestPhotoSince(qint64 sinceMs) const
+{
+    const QDir dir(QStandardPaths::writableLocation(QStandardPaths::PicturesLocation) + QStringLiteral("/Camera"));
+    const QFileInfoList files = dir.entryInfoList({ "*.jpg", "*.jpeg", "*.JPG" }, QDir::Files, QDir::Time);
+    if (files.isEmpty() || files.first().lastModified().toMSecsSinceEpoch() < sinceMs)
+        return QString();
+    return files.first().absoluteFilePath();
+}
+
 QString Rustrx::draft(const QString &roomId) const
 {
     QSettings settings;
@@ -181,7 +193,7 @@ void Rustrx::setDraft(const QString &roomId, const QString &text)
 void Rustrx::distributeRooms(const QVariantList &rooms)
 {
     QVariantList groups, dms;
-    int unread = 0;
+    int unread = 0, chats = 0;
     m_roomsById.clear();
     for (const QVariant &v : rooms) {
         QVariantMap r = v.toMap();
@@ -196,6 +208,8 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
         r.insert("section", invited ? qtTrId("rustrx-se-invitations") : fav ? qtTrId("rustrx-se-favourites") : QString());
         m_roomsById.insert(id, r);
         unread += r.value("notifications").toInt();
+        if (r.value("notifications").toInt() > 0)
+            ++chats;
         if (r.value("is_dm").toBool())
             dms.append(r);
         else
@@ -209,8 +223,9 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
     }
     m_rooms->setRooms(groups);
     m_people->setRooms(dms);
-    if (unread != m_unreadTotal) {
+    if (unread != m_unreadTotal || chats != m_unreadChats) {
         m_unreadTotal = unread;
+        m_unreadChats = chats;
         emit unreadChanged();
     }
 }
@@ -225,6 +240,12 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     }
     if (type == QLatin1String("error"))
         qWarning().noquote() << "core error:" << ev.value("cmd").toString() << ev.value("message").toString();
+    if (type == QLatin1String("ready") || type == QLatin1String("logged_in") || type == QLatin1String("sync_state")
+            || (type == QLatin1String("rooms") && m_firstRooms)) {
+        qWarning().noquote() << "startup:" << type << "after" << m_since.elapsed() << "ms";
+        if (type == QLatin1String("rooms"))
+            m_firstRooms = false;
+    }
     if (type == QLatin1String("ready")) {
         m_ready = true;
         m_loggedIn = ev.value("logged_in").toBool();

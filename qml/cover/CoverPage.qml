@@ -17,44 +17,97 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 
+// The app icon faint in the back; the connection state and the unread
+// count in front.
 CoverBackground {
+    id: cover
+
+    Image {
+        anchors {
+            horizontalCenter: parent.horizontalCenter
+            bottom: parent.bottom
+            bottomMargin: -height / 4
+        }
+        width: parent.width * 0.9
+        height: width
+        source: "/usr/share/icons/hicolor/172x172/apps/harbour-rustrx.png"
+        opacity: 0.15
+        asynchronous: true
+    }
+
     Column {
         anchors {
             left: parent.left
             right: parent.right
-            verticalCenter: parent.verticalCenter
+            top: parent.top
             margins: Theme.paddingLarge
         }
         spacing: Theme.paddingMedium
 
+        // count with its label beside it, as Jolla's own covers do
+        Row {
+            width: parent.width
+            spacing: Theme.paddingMedium
+            visible: rustrx.loggedIn
+            Label {
+                id: countLabel
+                text: rustrx.unreadTotal >= 1000 ? Math.floor(rustrx.unreadTotal / 1000) + "K" : rustrx.unreadTotal
+                font.pixelSize: Theme.fontSizeHuge
+                color: Theme.primaryColor
+            }
+            Label {
+                anchors.verticalCenter: countLabel.verticalCenter
+                width: parent.width - countLabel.width - parent.spacing
+                wrapMode: Text.Wrap
+                //: beside the big count on the cover
+                //% "unread messages"
+                text: qsTrId("rustrx-la-cover-unread-messages")
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.primaryColor
+            }
+        }
+
+        Row {
+            width: parent.width
+            spacing: Theme.paddingMedium
+            visible: rustrx.loggedIn && rustrx.unreadChats > 0
+            Label {
+                id: inLabel
+                anchors.verticalCenter: chatsCount.verticalCenter
+                //% "in"
+                text: qsTrId("rustrx-la-cover-in")
+                font.pixelSize: Theme.fontSizeSmall
+            }
+            Label {
+                id: chatsCount
+                text: rustrx.unreadChats
+                font.pixelSize: Theme.fontSizeHuge
+            }
+            Label {
+                anchors.verticalCenter: chatsCount.verticalCenter
+                //% "chats"
+                text: qsTrId("rustrx-la-cover-chats-word")
+                font.pixelSize: Theme.fontSizeSmall
+            }
+        }
+
         Label {
             width: parent.width
-            horizontalAlignment: Text.AlignHCenter
-            text: "Rustrx"
+            wrapMode: Text.Wrap
             color: Theme.highlightColor
             font.pixelSize: Theme.fontSizeLarge
-        }
-
-        Label {
-            width: parent.width
-            horizontalAlignment: Text.AlignHCenter
-            visible: rustrx.loggedIn
-            text: rustrx.unreadTotal
-            font.pixelSize: Theme.fontSizeHuge
-        }
-
-        Label {
-            width: parent.width
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.Wrap
-            color: Theme.secondaryColor
-            font.pixelSize: Theme.fontSizeSmall
-            //% "Not logged in"
-            text: !rustrx.loggedIn ? qsTrId("rustrx-la-cover-not-logged-in")
-                //% "%n unread"
-                : rustrx.syncState === "running" ? qsTrId("rustrx-la-cover-unread", rustrx.unreadTotal)
+            text: {
+                //% "Not logged in"
+                if (!rustrx.loggedIn) return qsTrId("rustrx-la-cover-not-logged-in")
+                switch (rustrx.syncState) {
+                //% "Connected"
+                case "running": return qsTrId("rustrx-la-cover-connected")
+                //% "Connecting"
+                case "idle": return qsTrId("rustrx-la-cover-connecting")
                 //% "Offline"
-                : qsTrId("rustrx-la-cover-offline")
+                default: return qsTrId("rustrx-la-cover-offline")
+                }
+            }
         }
     }
 }

@@ -20,6 +20,7 @@
 #include <QObject>
 #include <QVariantMap>
 #include <QVariantList>
+#include <QElapsedTimer>
 
 class RoomModel;
 class TimelineModel;
@@ -40,6 +41,7 @@ class Rustrx : public QObject
     Q_PROPERTY(QString recoveryState READ recoveryState NOTIFY encryptionChanged)
     Q_PROPERTY(QString openRoomId READ openRoomId NOTIFY openRoomChanged)
     Q_PROPERTY(int unreadTotal READ unreadTotal NOTIFY unreadChanged)
+    Q_PROPERTY(int unreadChats READ unreadChats NOTIFY unreadChanged)
     Q_PROPERTY(RoomModel *rooms READ rooms CONSTANT)
     Q_PROPERTY(RoomModel *people READ people CONSTANT)
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
@@ -58,6 +60,7 @@ public:
     QString recoveryState() const { return m_recoveryState; }
     QString openRoomId() const { return m_openRoomId; }
     int unreadTotal() const { return m_unreadTotal; }
+    int unreadChats() const { return m_unreadChats; }
     RoomModel *rooms() const { return m_rooms; }
     RoomModel *people() const { return m_people; }
     TimelineModel *timeline() const { return m_timeline; }
@@ -78,6 +81,8 @@ public:
     Q_INVOKABLE QString formatTime(const QVariant &ms) const;
     Q_INVOKABLE QString formatDate(const QVariant &ms) const;
     // unsent text per room, kept across pages and restarts
+    // the newest JPEG the stock camera saved after `sinceMs`, or an empty string
+    Q_INVOKABLE QString newestPhotoSince(qint64 sinceMs) const;
     Q_INVOKABLE QString draft(const QString &roomId) const;
     Q_INVOKABLE void setDraft(const QString &roomId, const QString &text);
 
@@ -122,11 +127,14 @@ private:
     QString m_recoveryState = QStringLiteral("unknown");
     QString m_openRoomId;
     int m_unreadTotal = 0;
+    int m_unreadChats = 0;
     QHash<QString, int> m_notificationCounts;
     QHash<QString, QVariantMap> m_roomsById;
     RoomModel *m_rooms;
     RoomModel *m_people;
     TimelineModel *m_timeline;
+    QElapsedTimer m_since;   // start-up timing in the journal
+    bool m_firstRooms = true;
 };
 
 #endif
