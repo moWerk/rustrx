@@ -40,21 +40,32 @@ ListItem {
     // captured here: inside the Repeater, `model` would name the Repeater's own property
     readonly property var reactionList: model.reactions ? model.reactions : []
 
+    property bool exporting
+
+    // other apps cannot read this app's data folder: a copy goes to Downloads
     function openMedia() {
-        if (model.media_path && model.media_path.length)
-            Qt.openUrlExternally("file://" + model.media_path)
-        else
-            rustrx.getMedia(roomId, model.event_id, false)
+        exporting = true
+        rustrx.exportMedia(roomId, model.event_id)
     }
 
     onClicked: if (isMedia || isFile) openMedia()
 
-    // a media row asks for its thumbnail once it is on screen
+    Connections {
+        target: rustrx
+        onMediaExported: {
+            if (!exporting || eventId !== model.event_id) return
+            exporting = false
+            Qt.openUrlExternally("file://" + path)
+        }
+    }
+
+    // a media row asks for its picture once it is on screen: the thumbnail
+    // where there is one, else the image itself
     Component.onCompleted: {
-        if (isMedia && model.has_thumb && !(model.thumb_path && model.thumb_path.length))
-            rustrx.getMedia(roomId, model.event_id, true)
-        else if (msgType === "sticker" && !(model.media_path && model.media_path.length))
-            rustrx.getMedia(roomId, model.event_id, false)
+        if (!isMedia) return
+        if (model.thumb_path && model.thumb_path.length || model.media_path && model.media_path.length) return
+        if (model.has_thumb) rustrx.getMedia(roomId, model.event_id, true)
+        else if (msgType !== "video") rustrx.getMedia(roomId, model.event_id, false)
     }
 
     Loader {

@@ -18,7 +18,7 @@ use matrix_sdk::encryption::verification::{
     SasState, SasVerification, VerificationRequest, VerificationRequestState,
 };
 use matrix_sdk::encryption::{BackupDownloadStrategy, EncryptionSettings, VerificationState};
-use matrix_sdk::media::{MediaEventContent, MediaThumbnailSettings};
+use matrix_sdk::media::{MediaEventContent, MediaFormat, MediaThumbnailSettings};
 use matrix_sdk::ruma::api::client::session::get_login_types::v3::LoginType;
 use matrix_sdk::ruma::api::client::uiaa::{AuthData, MatrixUserIdentifier, Password, UserIdentifier};
 use matrix_sdk::ruma::events::room::power_levels::UserPowerLevel;
@@ -41,7 +41,7 @@ use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
-use crate::serialize::{items_json, rooms_json};
+use crate::serialize::{avatar_file, items_json, rooms_json};
 use crate::Emitter;
 
 const DEVICE_NAME: &str = "Rustrx (Sailfish OS)";
@@ -67,6 +67,7 @@ struct State {
     open: Option<OpenRoom>,
     requests: HashMap<String, VerificationRequest>,
     sas: HashMap<String, SasVerification>,
+    avatars_tried: std::collections::HashSet<OwnedRoomId>,
 }
 
 pub(crate) struct Core {
@@ -109,6 +110,7 @@ impl Core {
     pub(crate) fn boot(&'static self) {
         self.rt.spawn(async move {
             std::fs::create_dir_all(self.data_dir.join("media")).ok();
+            std::fs::create_dir_all(self.data_dir.join("avatars")).ok();
             match self.restore().await {
                 Ok(true) => {}
                 Ok(false) => self.emit(json!({"ev": "ready", "logged_in": false})),
@@ -228,7 +230,9 @@ impl Core {
     /// Room list snapshots on every notable room change, coalesced.
     async fn rooms_task(&'static self, client: Client) {
         let mut rx = client.room_info_notable_update_receiver();
-        self.emit(json!({"ev": "rooms", "rooms": rooms_json(&client).await}));
+        let avatar_dir = self.data_dir.join("avatars");
+        self.emit(json!({"ev": "rooms", "rooms": rooms_json(&client, &avatar_dir).await}));
+        self.fetch_avatars(&client).await;
         loop {
             match rx.recv().await {
                 Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
@@ -236,7 +240,35 @@ impl Core {
             }
             tokio::time::sleep(Duration::from_millis(150)).await;
             while rx.try_recv().is_ok() {}
-            self.emit(json!({"ev": "rooms", "rooms": rooms_json(&client).await}));
+            self.emit(json!({"ev": "rooms", "rooms": rooms_json(&client, &avatar_dir).await}));
+            self.fetch_avatars(&client).await;
+        }
+    }
+
+    /// Cache the avatars that are missing, once per room, then resend the list.
+    async fn fetch_avatars(&'static self, client: &Client) {
+        let avatar_dir = self.data_dir.join("avatars");
+        let mut fetched = false;
+        for room in client.rooms() {
+            if room.avatar_url().is_none() || avatar_file(&avatar_dir, &room).exists() {
+                continue;
+            }
+            if !self.state.lock().await.avatars_tried.insert(room.room_id().to_owned()) {
+                continue;
+            }
+            let format = MediaFormat::Thumbnail(MediaThumbnailSettings::new(uint!(192), uint!(192)));
+            match room.avatar(format).await {
+                Ok(Some(bytes)) => {
+                    if tokio::fs::write(avatar_file(&avatar_dir, &room), &bytes).await.is_ok() {
+                        fetched = true;
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => tracing::info!(room = %room.room_id(), "avatar: {e}"),
+            }
+        }
+        if fetched {
+            self.emit(json!({"ev": "rooms", "rooms": rooms_json(client, &avatar_dir).await}));
         }
     }
 
@@ -707,7 +739,7 @@ impl Core {
             }
             "refresh_rooms" => {
                 let client = self.client().await?;
-                self.emit(json!({"ev": "rooms", "rooms": rooms_json(&client).await}));
+                self.emit(json!({"ev": "rooms", "rooms": rooms_json(&client, &self.data_dir.join("avatars")).await}));
                 Ok(())
             }
             other => bail!("unknown command {other}"),
@@ -915,11 +947,31 @@ impl Core {
             .and_then(|m| mime_guess::get_mime_extensions_str(m).and_then(|e| e.first().copied()))
             .unwrap_or("bin");
         let safe: String = event_id.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
-        let name = format!("{safe}{}.{ext}", if thumb { "-thumb" } else { "" });
-        let path = self.data_dir.join("media").join(name);
+        // "dest_dir": a copy for other apps (the data dir is private to the sandbox),
+        // named after the file where the message has a name
+        let path = match opt(v, "dest_dir") {
+            Some(dir) => {
+                let original = item
+                    .content()
+                    .as_message()
+                    .map(|m| m.body().to_owned())
+                    .filter(|b| !b.is_empty() && b.len() < 200)
+                    .map(|b| b.chars().map(|c| if c == '/' || c == '\\' || c.is_control() { '_' } else { c }).collect::<String>())
+                    .unwrap_or_else(|| format!("{safe}.{ext}"));
+                let dir = PathBuf::from(dir);
+                tokio::fs::create_dir_all(&dir).await?;
+                let mut path = dir.join(&original);
+                if path.exists() {
+                    path = dir.join(format!("{safe}-{original}"));
+                }
+                path
+            }
+            None => self.data_dir.join("media").join(format!("{safe}{}.{ext}", if thumb { "-thumb" } else { "" })),
+        };
         tokio::fs::write(&path, &bytes).await?;
         self.emit(json!({"ev": "media", "room_id": room.room_id().as_str(), "event_id": event_id,
-                         "thumb": thumb, "path": path.to_string_lossy()}));
+                         "thumb": thumb, "exported": opt(v, "dest_dir").is_some(),
+                         "path": path.to_string_lossy()}));
         Ok(())
     }
 

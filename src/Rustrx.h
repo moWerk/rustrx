@@ -72,6 +72,8 @@ public:
     Q_INVOKABLE void sendText(const QString &roomId, const QString &body, const QString &replyTo);
     Q_INVOKABLE void sendFile(const QString &roomId, const QString &path);
     Q_INVOKABLE void getMedia(const QString &roomId, const QString &eventId, bool thumb);
+    // a copy in Downloads, where other apps may read it; answered by mediaExported
+    Q_INVOKABLE void exportMedia(const QString &roomId, const QString &eventId);
     Q_INVOKABLE QVariantMap roomInfo(const QString &roomId) const;
     Q_INVOKABLE QString formatTime(const QVariant &ms) const;
     Q_INVOKABLE QString formatDate(const QVariant &ms) const;
@@ -100,6 +102,7 @@ signals:
     void dmReady(const QString &roomId, const QString &userId);
     void joined(const QString &roomId);
     void paginated(const QString &roomId, bool atStart);
+    void mediaExported(const QString &eventId, const QString &path);
     void newMessages(const QString &roomId, const QString &roomName, int count);
 
 private slots:

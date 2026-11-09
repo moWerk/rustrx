@@ -33,11 +33,42 @@ ListItem {
         pageStack.push(Qt.resolvedUrl("../pages/RoomPage.qml"), { roomId: model.room_id, roomName: model.name })
     }
 
+    // the room's picture, or its initial where it has none
+    Rectangle {
+        id: avatar
+        x: Theme.horizontalPageMargin
+        anchors.verticalCenter: parent.verticalCenter
+        width: Theme.iconSizeLarge
+        height: width
+        radius: width / 2
+        color: Theme.rgba(item.highlighted ? Theme.highlightColor : Theme.primaryColor, Theme.opacityFaint)
+        clip: true
+
+        Label {
+            anchors.centerIn: parent
+            visible: !picture.visible
+            text: model.name ? model.name.charAt(0).toUpperCase() : "?"
+            font.pixelSize: Theme.fontSizeLarge
+            color: item.highlighted ? Theme.highlightColor : Theme.primaryColor
+        }
+
+        Image {
+            id: picture
+            anchors.fill: parent
+            visible: status === Image.Ready
+            asynchronous: true
+            fillMode: Image.PreserveAspectCrop
+            sourceSize.width: width
+            sourceSize.height: height
+            source: model.avatar ? "file://" + model.avatar : ""
+        }
+    }
+
     Column {
         anchors {
-            left: parent.left
+            left: avatar.right
             right: counter.left
-            leftMargin: Theme.horizontalPageMargin
+            leftMargin: Theme.paddingLarge
             rightMargin: Theme.paddingLarge
             verticalCenter: parent.verticalCenter
         }

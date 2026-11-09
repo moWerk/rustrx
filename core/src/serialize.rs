@@ -16,7 +16,13 @@ fn ms(t: matrix_sdk::ruma::MilliSecondsSinceUnixEpoch) -> u64 {
     u64::from(t.0)
 }
 
-pub(crate) async fn room_json(room: &Room) -> Value {
+/// File name of a room's cached avatar; the UI detects the image format.
+pub(crate) fn avatar_file(dir: &std::path::Path, room: &Room) -> std::path::PathBuf {
+    let safe: String = room.room_id().as_str().chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    dir.join(format!("{safe}.img"))
+}
+
+pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Value {
     let name = match room.cached_display_name() {
         Some(n) => n.to_string(),
         None => match room.display_name().await {
@@ -25,7 +31,10 @@ pub(crate) async fn room_json(room: &Room) -> Value {
         },
     };
     let counts = room.unread_notification_counts();
+    let avatar = avatar_file(avatar_dir, room);
     json!({
+        "has_avatar": room.avatar_url().is_some(),
+        "avatar": if avatar.exists() { Some(avatar.to_string_lossy().into_owned()) } else { None },
         "id": room.room_id().as_str(),
         "name": name,
         "topic": room.topic(),
@@ -44,13 +53,13 @@ pub(crate) async fn room_json(room: &Room) -> Value {
 
 /// Joined rooms and invitations, invitations first, then favourites, then
 /// by activity. Spaces and left rooms are left out.
-pub(crate) async fn rooms_json(client: &Client) -> Value {
+pub(crate) async fn rooms_json(client: &Client, avatar_dir: &std::path::Path) -> Value {
     let mut rooms = Vec::new();
     for room in client.rooms() {
         if !matches!(room.state(), RoomState::Joined | RoomState::Invited) || room.is_space() {
             continue;
         }
-        rooms.push(room_json(&room).await);
+        rooms.push(room_json(&room, avatar_dir).await);
     }
     rooms.sort_by(|a, b| {
         let key = |r: &Value| {

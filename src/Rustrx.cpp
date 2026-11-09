@@ -27,6 +27,7 @@
 #include <QJsonObject>
 #include <QMetaObject>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QUrl>
 
 static Rustrx *s_instance = nullptr;
@@ -129,6 +130,12 @@ void Rustrx::sendFile(const QString &roomId, const QString &path)
 void Rustrx::getMedia(const QString &roomId, const QString &eventId, bool thumb)
 {
     command({{"cmd", "get_media"}, {"room_id", roomId}, {"event_id", eventId}, {"thumb", thumb}});
+}
+
+void Rustrx::exportMedia(const QString &roomId, const QString &eventId)
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation) + QStringLiteral("/Rustrx");
+    command({{"cmd", "get_media"}, {"room_id", roomId}, {"event_id", eventId}, {"thumb", false}, {"dest_dir", dir}});
 }
 
 QVariantMap Rustrx::roomInfo(const QString &roomId) const
@@ -254,8 +261,11 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         if (ev.value("room_id").toString() == m_openRoomId)
             m_timeline->setItems(ev.value("items").toList());
     } else if (type == QLatin1String("media")) {
-        m_timeline->setMediaPath(ev.value("event_id").toString(), ev.value("thumb").toBool(),
-                                 ev.value("path").toString());
+        if (ev.value("exported").toBool())
+            emit mediaExported(ev.value("event_id").toString(), ev.value("path").toString());
+        else
+            m_timeline->setMediaPath(ev.value("event_id").toString(), ev.value("thumb").toBool(),
+                                     ev.value("path").toString());
     } else if (type == QLatin1String("open_url")) {
         emit openUrl(ev.value("url").toString());
     } else if (type == QLatin1String("error")) {
