@@ -388,12 +388,15 @@ impl Core {
         let mut current = Some(sas.state());
         while let Some(state) = current.take() {
             match state {
-                SasState::KeysExchanged { .. } => {
-                    let emojis: Vec<Value> = sas
-                        .emoji()
+                SasState::KeysExchanged { emojis: state_emojis, decimals: state_decimals } => {
+                    // the state carries them; the accessor is only a fallback
+                    let list = state_emojis.map(|e| e.emojis).or_else(|| sas.emoji());
+                    let emojis: Vec<Value> = list
                         .map(|e| e.iter().map(|e| json!({"symbol": e.symbol, "description": e.description})).collect())
                         .unwrap_or_default();
-                    let decimals = sas.decimals().map(|(a, b, c)| vec![a, b, c]);
+                    let (a, b, c) = state_decimals;
+                    let decimals = Some(vec![a, b, c]);
+                    tracing::info!(%flow, emojis = emojis.len(), "sas keys exchanged");
                     self.emit(json!({"ev": "sas", "flow_id": flow, "state": "keys_exchanged",
                                      "emojis": emojis, "decimals": decimals}));
                 }
@@ -429,6 +432,7 @@ impl Core {
 
     pub(crate) fn dispatch(&'static self, v: Value) {
         let cmd = v.get("cmd").and_then(Value::as_str).unwrap_or("").to_owned();
+        tracing::info!(%cmd, "command");
         self.rt.spawn(async move {
             if let Err(e) = self.handle(&cmd, &v).await {
                 self.error(&cmd, &e);

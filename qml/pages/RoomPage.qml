@@ -30,9 +30,16 @@ Page {
     property string replyToId
     property string replyToText
     property bool paginating
+    // the text field lives in the list header, a scope of its own; it registers here
+    property Item inputArea
 
-    Component.onCompleted: rustrx.openRoom(roomId)
-    Component.onDestruction: if (rustrx.openRoomId === roomId) rustrx.closeRoom()
+    Component.onCompleted: {
+        rustrx.openRoom(roomId)
+    }
+    Component.onDestruction: {
+        if (inputArea) rustrx.setDraft(roomId, inputArea.text)
+        if (rustrx.openRoomId === roomId) rustrx.closeRoom()
+    }
 
     onStatusChanged: {
         if (status === PageStatus.Active) markRead()
@@ -44,10 +51,12 @@ Page {
     }
 
     function send() {
-        var text = input.text.trim()
+        if (!inputArea) return
+        var text = inputArea.text.trim()
         if (text.length === 0) return
         rustrx.sendText(roomId, text, replyToId)
-        input.text = ""
+        inputArea.text = ""
+        rustrx.setDraft(roomId, "")
         replyToId = ""
         replyToText = ""
         typingTimer.stop()
@@ -154,7 +163,12 @@ Page {
                     //% "Message"
                     placeholderText: qsTrId("rustrx-ph-message")
                     label: roomName
+                    Component.onCompleted: {
+                        page.inputArea = input
+                        text = rustrx.draft(roomId)
+                    }
                     onTextChanged: {
+                        rustrx.setDraft(roomId, text)
                         if (text.length === 0) return
                         if (!typingTimer.running)
                             rustrx.command({ cmd: "typing", room_id: roomId, typing: true })
@@ -165,16 +179,15 @@ Page {
                 // a text button, as in Jolla's Messages
                 BackgroundItem {
                     id: sendButton
-                    width: sendLabel.implicitWidth + 2 * Theme.paddingLarge
-                    height: input.height
-                    enabled: input.text.trim().length > 0
+                    width: Math.max(Theme.itemSizeLarge, sendLabel.implicitWidth + 2 * Theme.paddingLarge)
+                    height: Math.max(input.height, Theme.itemSizeSmall)
                     onClicked: send()
                     Label {
                         id: sendLabel
                         anchors.centerIn: parent
                         //% "Send"
                         text: qsTrId("rustrx-bt-send")
-                        color: !sendButton.enabled ? Theme.secondaryColor
+                        color: input.text.trim().length === 0 ? Theme.secondaryColor
                              : sendButton.highlighted ? Theme.highlightColor : Theme.primaryColor
                     }
                 }
@@ -186,7 +199,7 @@ Page {
             onReply: {
                 replyToId = eventId
                 replyToText = text
-                input.focus = true
+                if (inputArea) inputArea.focus = true
             }
         }
 

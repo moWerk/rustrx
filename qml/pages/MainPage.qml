@@ -74,7 +74,8 @@ Page {
                     }
                 }
 
-                header: Item { width: 1; height: Theme.paddingMedium }
+                // the tab bar is drawn over the list; content starts below it
+                header: Item { width: 1; height: tabs.tabBarHeight + Theme.paddingMedium }
 
                 delegate: RoomDelegate { }
 

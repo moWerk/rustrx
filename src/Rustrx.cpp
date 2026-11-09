@@ -26,6 +26,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaObject>
+#include <QSettings>
 #include <QUrl>
 
 static Rustrx *s_instance = nullptr;
@@ -63,8 +64,8 @@ void Rustrx::command(const QVariantMap &cmd)
 {
     const QByteArray json = QJsonDocument(QJsonObject::fromVariantMap(cmd)).toJson(QJsonDocument::Compact);
     const int rc = rustrx_command(json.constData());
-    if (rc != 0)
-        qWarning() << "rustrx_command" << cmd.value("cmd").toString() << "rc" << rc;
+    // one line per command in the journal; the password is not part of the message
+    qWarning().noquote() << "command" << cmd.value("cmd").toString() << (rc ? QString("rc %1").arg(rc) : QString());
 }
 
 void Rustrx::loginPassword(const QString &user, const QString &password, const QString &homeserver)
@@ -154,6 +155,22 @@ QString Rustrx::formatDate(const QVariant &ms) const
     return d.toString(Qt::DefaultLocaleLongDate);
 }
 
+QString Rustrx::draft(const QString &roomId) const
+{
+    QSettings settings;
+    return settings.value(QStringLiteral("drafts/") + roomId).toString();
+}
+
+void Rustrx::setDraft(const QString &roomId, const QString &text)
+{
+    QSettings settings;
+    const QString key = QStringLiteral("drafts/") + roomId;
+    if (text.trimmed().isEmpty())
+        settings.remove(key);
+    else
+        settings.setValue(key, text);
+}
+
 void Rustrx::distributeRooms(const QVariantList &rooms)
 {
     QVariantList groups, dms;
@@ -194,6 +211,13 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
 void Rustrx::handleEvent(const QVariantMap &ev)
 {
     const QString type = ev.value("ev").toString();
+    if (type == QLatin1String("log")) {
+        // the core's own log, routed here because the sandbox drops its stderr
+        qWarning().noquote() << "core:" << ev.value("line").toString();
+        return;
+    }
+    if (type == QLatin1String("error"))
+        qWarning().noquote() << "core error:" << ev.value("cmd").toString() << ev.value("message").toString();
     if (type == QLatin1String("ready")) {
         m_ready = true;
         m_loggedIn = ev.value("logged_in").toBool();

@@ -75,6 +75,9 @@ public:
     Q_INVOKABLE QVariantMap roomInfo(const QString &roomId) const;
     Q_INVOKABLE QString formatTime(const QVariant &ms) const;
     Q_INVOKABLE QString formatDate(const QVariant &ms) const;
+    // unsent text per room, kept across pages and restarts
+    Q_INVOKABLE QString draft(const QString &roomId) const;
+    Q_INVOKABLE void setDraft(const QString &roomId, const QString &text);
 
 signals:
     void stateChanged();

@@ -42,6 +42,29 @@ impl Emitter {
 
 static CORE: OnceLock<core::Core> = OnceLock::new();
 
+/// Collects formatted log lines and emits each as `{"ev":"log",...}`.
+#[derive(Default)]
+struct LogWriter(Vec<u8>);
+
+impl std::io::Write for LogWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.extend_from_slice(buf);
+        while let Some(pos) = self.0.iter().position(|&b| b == b'\n') {
+            let line: Vec<u8> = self.0.drain(..=pos).collect();
+            let text = String::from_utf8_lossy(&line).trim_end().to_owned();
+            if let Some(core) = CORE.get() {
+                core.emit(serde_json::json!({"ev": "log", "line": text}));
+            } else {
+                eprintln!("{text}");
+            }
+        }
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 pub(crate) fn instance() -> &'static core::Core {
     CORE.get().expect("rustrx_start was called")
 }
@@ -64,9 +87,16 @@ pub extern "C" fn rustrx_start(data_dir: *const c_char, cb: EventCallback, ctx: 
         return 2;
     }
     let dir = unsafe { CStr::from_ptr(data_dir) }.to_string_lossy().into_owned();
+    // The sandbox drops stderr, so log lines travel as events and the UI
+    // hands them to the journal.
     let filter = tracing_subscriber::EnvFilter::try_from_env("RUSTRX_LOG")
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
-    let _ = tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).try_init();
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,rustrx=info"));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_ansi(false)
+        .without_time()
+        .with_writer(|| LogWriter::default())
+        .try_init();
     let rt = match tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .thread_name("rustrx")
