@@ -1,5 +1,7 @@
 # Rustrx
 
+<img src="icons/rustrx-512.png" alt="Rustrx icon: rainbow traces on the dark Sailfish app shape" width="256" align="right">
+
 A native Matrix client for Sailfish OS: a Silica interface on top of
 [matrix-rust-sdk](https://github.com/matrix-org/matrix-rust-sdk), the library
 behind Element X. The SDK does the protocol work (sync, end-to-end encryption,
