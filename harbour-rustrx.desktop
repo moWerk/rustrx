@@ -10,7 +10,8 @@ X-Nemo-Single-Instance=yes
 
 [X-Sailjail]
 # Internet for the homeserver; Pictures, Documents and Downloads for sending
-# files from the pickers; Camera for photos taken in the app.
+# files from the pickers; MediaIndexing for the gallery picker (it reads the
+# Tracker index); Camera for photos taken in the app.
 OrganizationName=net.mowerk
 ApplicationName=harbour-rustrx
-Permissions=Internet;Pictures;Documents;Downloads;Camera
+Permissions=Internet;Pictures;Documents;Downloads;MediaIndexing;Camera

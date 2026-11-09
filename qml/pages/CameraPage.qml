@@ -48,10 +48,9 @@ Page {
 
     MouseArea {
         anchors.fill: parent
-        onClicked: {
-            var dir = StandardPaths.pictures + "/Rustrx"
-            camera.imageCapture.captureToLocation(dir + "/rustrx-" + Qt.formatDateTime(new Date(), "yyyyMMdd-hhmmss") + ".jpg")
-        }
+        enabled: camera.imageCapture.ready
+        // a directory: the backend names the file and the gallery indexes it
+        onClicked: camera.imageCapture.captureToLocation(StandardPaths.pictures)
     }
 
     Label {
@@ -61,7 +60,9 @@ Page {
             bottomMargin: Theme.paddingLarge * 2
         }
         //% "Tap to take the photo"
-        text: qsTrId("rustrx-la-tap-to-capture")
+        text: camera.imageCapture.ready ? qsTrId("rustrx-la-tap-to-capture")
+                                        //% "Starting the camera…"
+                                        : qsTrId("rustrx-la-camera-starting")
         color: Theme.highlightColor
     }
 }
