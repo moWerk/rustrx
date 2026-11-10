@@ -287,7 +287,16 @@ impl Core {
             // Offline mode: after a network failure the service probes the
             // server and resumes by itself. Without it an error is final and
             // the app silently shows stale rooms (the Wi-Fi drops did that).
-            let service = Arc::new(SyncService::builder(client.clone()).with_offline_mode().build().await?);
+            // 20 events per room instead of 1: the SDK counts unread messages
+            // from the events it has seen, so a fresh login otherwise shows
+            // at most the one event the list sync carried.
+            let service = Arc::new(
+                SyncService::builder(client.clone())
+                    .with_offline_mode()
+                    .with_room_list_timeline_limit(20)
+                    .build()
+                    .await?,
+            );
             // Subscribe before starting and report the current value first:
             // the subscriber only wakes on changes, so a Running set before
             // we listened left the cover on "Connecting" (0.2.0).
@@ -338,9 +347,33 @@ impl Core {
             tokio::time::sleep(Duration::from_millis(150)).await;
             while rx.try_recv().is_ok() {}
             self.emit(json!({"ev": "rooms", "rooms": rooms_json(&client, &avatar_dir).await}));
+            Self::log_counts(&client);
             self.listen_latest(&client).await;
             self.fetch_avatars(&client).await;
         }
+    }
+
+    /// One journal line per room with anything unread: the server's counts
+    /// (nc notifications, hc highlights) next to the SDK's own (nu unread,
+    /// nn notifying), to see which of the two a stale badge comes from.
+    fn log_counts(client: &Client) {
+        let mut parts = Vec::new();
+        for room in client.rooms() {
+            let c = room.unread_notification_counts();
+            let (nu, nn) = (room.num_unread_messages(), room.num_unread_notifications());
+            if c.notification_count > 0 || c.highlight_count > 0 || nu > 0 || nn > 0 {
+                let name = room.cached_display_name().map(|n| n.to_string()).unwrap_or_default();
+                parts.push(format!(
+                    "{}:nc{}/hc{}/nu{}/nn{}",
+                    name.chars().take(12).collect::<String>(),
+                    c.notification_count,
+                    c.highlight_count,
+                    nu,
+                    nn
+                ));
+            }
+        }
+        tracing::info!(rooms = %parts.join(" "), "counts");
     }
 
     /// The latest-event service is lazy: a room's preview is only computed
@@ -631,7 +664,8 @@ impl Core {
 
     pub(crate) fn dispatch(&'static self, v: Value) {
         let cmd = v.get("cmd").and_then(Value::as_str).unwrap_or("").to_owned();
-        tracing::info!(%cmd, "command");
+        let room = v.get("room_id").and_then(Value::as_str).unwrap_or("").to_owned();
+        tracing::info!(%cmd, %room, "command");
         self.rt.spawn(async move {
             if let Err(e) = self.handle(&cmd, &v).await {
                 self.error(&cmd, &e);

@@ -141,9 +141,23 @@ ListItem {
             color: item.highlighted ? Theme.highlightColor : Theme.primaryColor
         }
 
-        // the last message; the topic or the state where there is none yet
-        Label {
+        // the last message, a lock in front of it in encrypted rooms; the
+        // topic or the state where there is no message yet
+        Row {
             width: parent.width
+            spacing: Theme.paddingSmall
+
+            Image {
+                id: lock
+                anchors.verticalCenter: parent.verticalCenter
+                visible: model.encrypted && !invited
+                source: "image://theme/icon-s-secure?" + (item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor)
+                sourceSize.width: Theme.fontSizeSmall * 0.8
+                sourceSize.height: Theme.fontSizeSmall * 0.8
+            }
+
+            Label {
+            width: parent.width - (lock.visible ? lock.width + parent.spacing : 0)
             truncationMode: TruncationMode.Fade
             font.pixelSize: Theme.fontSizeSmall * 0.8
             color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
@@ -163,7 +177,17 @@ ListItem {
                         ? qsTrId("rustrx-la-encrypted")
                         : ""
             }
+            }
         }
+    }
+
+    // favourite: a yellow star under the age
+    Image {
+        anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; top: age.bottom; topMargin: Theme.paddingSmall }
+        visible: model.is_fav && !invited
+        source: "image://theme/icon-s-favorite?#ffd54a"
+        sourceSize.width: Theme.iconSizeExtraSmall
+        sourceSize.height: Theme.iconSizeExtraSmall
     }
 
     // how long ago the last activity was, coarser the older: 1m..59m, 1h..24h, 1d..365d, then years
