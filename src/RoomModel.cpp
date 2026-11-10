@@ -16,6 +16,8 @@
  */
 #include "RoomModel.h"
 
+#include <QSet>
+
 RoomModel::RoomModel(QObject *parent)
     : QAbstractListModel(parent)
 {
@@ -51,19 +53,54 @@ QVariantMap RoomModel::get(int row) const
 
 // Same rows in the same order: update in place, so the list does not jump
 // under the finger. Anything else: reset.
+static QString roomIdOf(const QVariant &v)
+{
+    return v.toMap().value("room_id").toString();
+}
+
+// Removes, inserts and moves instead of a reset, so the list view keeps its
+// place (a reset throws it back to the top, after leaving a room or when a
+// room moves up while the user is reading another one).
 void RoomModel::setRooms(const QVariantList &rooms)
 {
-    bool sameOrder = rooms.size() == m_rooms.size();
-    for (int i = 0; sameOrder && i < rooms.size(); ++i)
-        sameOrder = rooms.at(i).toMap().value("room_id") == m_rooms.at(i).toMap().value("room_id");
-    if (sameOrder) {
-        m_rooms = rooms;
-        if (!rooms.isEmpty())
-            emit dataChanged(index(0), index(rooms.size() - 1));
-        return;
+    const int before = m_rooms.size();
+    QSet<QString> wanted;
+    for (const QVariant &v : rooms)
+        wanted.insert(roomIdOf(v));
+
+    for (int i = m_rooms.size() - 1; i >= 0; --i) {
+        if (!wanted.contains(roomIdOf(m_rooms.at(i)))) {
+            beginRemoveRows(QModelIndex(), i, i);
+            m_rooms.removeAt(i);
+            endRemoveRows();
+        }
     }
-    beginResetModel();
-    m_rooms = rooms;
-    endResetModel();
-    emit countChanged();
+
+    for (int i = 0; i < rooms.size(); ++i) {
+        const QString id = roomIdOf(rooms.at(i));
+        if (i < m_rooms.size() && roomIdOf(m_rooms.at(i)) == id)
+            continue;
+        int j = -1;
+        for (int k = i + 1; k < m_rooms.size(); ++k) {
+            if (roomIdOf(m_rooms.at(k)) == id) {
+                j = k;
+                break;
+            }
+        }
+        if (j < 0) {
+            beginInsertRows(QModelIndex(), i, i);
+            m_rooms.insert(i, rooms.at(i));
+            endInsertRows();
+        } else {
+            beginMoveRows(QModelIndex(), j, j, QModelIndex(), i);
+            m_rooms.move(j, i);
+            endMoveRows();
+        }
+    }
+
+    m_rooms = rooms;   // same order now; take the fresh fields
+    if (!rooms.isEmpty())
+        emit dataChanged(index(0), index(rooms.size() - 1));
+    if (before != rooms.size())
+        emit countChanged();
 }

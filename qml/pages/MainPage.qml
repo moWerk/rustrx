@@ -67,13 +67,17 @@ Page {
                 id: list
                 anchors.fill: parent
                 model: isRooms ? rustrx.rooms : isFavs ? rustrx.favourites : rustrx.people
+                currentIndex: -1
 
-                // the rows' "3m ago" labels follow this clock
-                property real now: Date.now()
-                Timer {
-                    interval: 60000; repeat: true; running: Qt.application.active
-                    onTriggered: list.now = Date.now()
+                // back from a chat: keep the row that was open in view
+                Connections {
+                    target: page
+                    onStatusChanged: {
+                        if (page.status === PageStatus.Active && list.currentIndex >= 0)
+                            list.positionViewAtIndex(list.currentIndex, ListView.Contain)
+                    }
                 }
+
                 section.property: isFavs ? "" : "section"
                 section.delegate: SectionHeader { text: section }
 

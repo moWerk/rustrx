@@ -29,6 +29,10 @@ ApplicationWindow {
     cover: Qt.resolvedUrl("cover/CoverPage.qml")
     allowedOrientations: defaultAllowedOrientations
 
+    // the rows' "3m" age labels follow this clock
+    property real now: Date.now()
+    Timer { interval: 60000; repeat: true; running: Qt.application.active; onTriggered: app.now = Date.now() }
+
     // appearance settings, shared by every page and delegate
     property alias roundAvatars: cfgRoundAvatars.value
     property alias showReadBy: cfgShowReadBy.value

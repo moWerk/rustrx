@@ -35,6 +35,7 @@ ListItem {
 
     onClicked: {
         if (invited) return
+        ListView.view.currentIndex = index   // the list keeps this row in view on return
         pageStack.push(Qt.resolvedUrl("../pages/RoomPage.qml"), { roomId: model.room_id, roomName: model.name })
     }
 
@@ -180,7 +181,7 @@ ListItem {
         color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
         text: {
             if (!model.ts || invited) return ""
-            var s = (item.ListView.view.now - model.ts) / 1000
+            var s = (app.now - model.ts) / 1000
             if (s < 60) return "now"
             if (s < 3600) return Math.floor(s / 60) + "m"
             if (s < 86400) return Math.floor(s / 3600) + "h"
@@ -223,10 +224,11 @@ ListItem {
                 //% "Leave"
                 text: qsTrId("rustrx-me-leave")
                 onClicked: {
-                    var id = model.room_id
+                    // the callback runs after the menu is gone; keep what it needs
+                    var id = model.room_id, core = rustrx
                     //% "Leaving"
                     item.remorseAction(qsTrId("rustrx-re-leaving"), function () {
-                        rustrx.command({ cmd: "leave_room", room_id: id })
+                        core.command({ cmd: "leave_room", room_id: id })
                     })
                 }
             }

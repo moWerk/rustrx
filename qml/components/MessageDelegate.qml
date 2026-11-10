@@ -284,10 +284,10 @@ ListItem {
                 text: qsTrId("rustrx-me-remove")
                 visible: own && msgType !== "redacted"
                 onClicked: {
-                    var id = model.event_id
+                    var id = model.event_id, room = roomId, core = rustrx
                     //% "Removing"
                     item.remorseAction(qsTrId("rustrx-re-removing"), function () {
-                        rustrx.command({ cmd: "redact", room_id: roomId, event_id: id })
+                        core.command({ cmd: "redact", room_id: room, event_id: id })
                     })
                 }
             }
