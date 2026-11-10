@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 import Nemo.Notifications 1.0
+import Nemo.Configuration 1.0
 import "pages"
 
 ApplicationWindow {
@@ -28,19 +29,30 @@ ApplicationWindow {
     cover: Qt.resolvedUrl("cover/CoverPage.qml")
     allowedOrientations: defaultAllowedOrientations
 
+    // appearance settings, shared by every page and delegate
+    property alias roundAvatars: cfgRoundAvatars.value
+    property alias showReadBy: cfgShowReadBy.value
+    ConfigurationValue { id: cfgRoundAvatars; key: "/apps/harbour-rustrx/roundAvatars"; defaultValue: true }
+    ConfigurationValue { id: cfgShowReadBy; key: "/apps/harbour-rustrx/showReadBy"; defaultValue: true }
+
     // flow ids of verifications that already have a page
     property var shownVerifications: ({})
 
     function route() {
         if (!rustrx.ready) return
+        // a page transition in flight swallows the replace; come back to it
+        if (pageStack.busy) { routeRetry.restart(); return }
         var current = pageStack.currentPage ? pageStack.currentPage.objectName : ""
         if (rustrx.loggedIn) {
             if (current !== "main" && (current === "login" || current === "start"))
                 pageStack.replaceAbove(null, Qt.resolvedUrl("pages/MainPage.qml"))
         } else if (current !== "login") {
+            console.log("route: logged out on page", current, "reason", rustrx.logoutReason)
             pageStack.replaceAbove(null, Qt.resolvedUrl("pages/LoginPage.qml"))
         }
     }
+
+    Timer { id: routeRetry; interval: 300; onTriggered: route() }
 
     function showVerification(data) {
         if (shownVerifications[data.flow_id]) return

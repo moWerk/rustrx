@@ -26,6 +26,12 @@ Page {
     property var server: ({ probed: false, password: true, sso: false, idps: [], sliding: false, name: "" })
     property string errorText
 
+    Component.onCompleted: {
+        if (rustrx.logoutReason === "session_expired")
+            //% "The server no longer accepts the saved session. Log in again."
+            errorText = qsTrId("rustrx-la-session-expired")
+    }
+
     function login() {
         errorText = ""
         rustrx.loginPassword(userField.text, passwordField.text, serverField.text)

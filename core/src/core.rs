@@ -18,10 +18,12 @@ use matrix_sdk::encryption::verification::{
     SasState, SasVerification, VerificationRequest, VerificationRequestState,
 };
 use matrix_sdk::encryption::{BackupDownloadStrategy, EncryptionSettings, VerificationState};
-use matrix_sdk::media::{MediaEventContent, MediaFormat, MediaThumbnailSettings};
+use matrix_sdk::media::{MediaEventContent, MediaFormat, MediaRequestParameters, MediaThumbnailSettings};
+use matrix_sdk::ruma::api::client::directory::get_public_rooms_filtered;
 use matrix_sdk::ruma::api::client::session::get_login_types::v3::LoginType;
 use matrix_sdk::ruma::api::client::uiaa::{AuthData, MatrixUserIdentifier, Password, UserIdentifier};
 use matrix_sdk::ruma::events::room::power_levels::UserPowerLevel;
+use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::key::verification::request::ToDeviceKeyVerificationRequestEvent;
 use matrix_sdk::ruma::events::room::message::{
     MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent,
@@ -29,12 +31,14 @@ use matrix_sdk::ruma::events::room::message::{
 };
 use matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType;
 use matrix_sdk::ruma::{
-    uint, EventId, OwnedDeviceId, OwnedRoomId, OwnedUserId, RoomId, RoomOrAliasId, UserId,
+    uint, EventId, OwnedDeviceId, OwnedMxcUri, OwnedRoomId, OwnedUserId, RoomId, RoomOrAliasId, UserId,
 };
 use matrix_sdk::sliding_sync::{Version, VersionBuilder};
-use matrix_sdk::{Client, Room, RoomMemberships};
+use matrix_sdk::{Client, Room, RoomMemberships, RoomState, SessionChange};
 use matrix_sdk_ui::sync_service::{State as SyncState, SyncService};
-use matrix_sdk_ui::timeline::{AttachmentConfig, RoomExt, Timeline, TimelineEventItemId};
+use matrix_sdk_ui::timeline::{
+    AttachmentConfig, RoomExt, Timeline, TimelineEventItemId, TimelineItem, TimelineReadReceiptTracking,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::runtime::Runtime;
@@ -211,17 +215,62 @@ impl Core {
             let mut st = self.state.lock().await;
             st.client = Some(client.clone());
         }
+        self.rt.spawn(self.session_watch(client.clone()));
         // the cached room list first, before anything waits for the network
         self.rt.spawn(self.rooms_task(client.clone()));
         self.start_sync(client).await
+    }
+
+    /// Servers with refresh tokens rotate them while the app runs; the
+    /// rotated pair has to reach session.json or the next start restores a
+    /// dead session ("Invalid refresh token", 0.2.0 after a day).
+    async fn session_watch(&'static self, client: Client) {
+        let mut changes = client.subscribe_to_session_changes();
+        loop {
+            match changes.recv().await {
+                Ok(SessionChange::TokensRefreshed) => match self.save_session(&client) {
+                    Ok(()) => tracing::info!("tokens refreshed, session saved"),
+                    Err(e) => tracing::warn!("saving the refreshed session: {e}"),
+                },
+                Ok(SessionChange::UnknownToken(data)) => self.session_expired(data.soft_logout).await,
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    }
+
+    /// Local side of a logout the server already did: stop syncing, drop
+    /// the saved session, tell the UI. A soft logout keeps the crypto store
+    /// for a new login on the same device.
+    async fn session_expired(&'static self, soft_logout: bool) {
+        let mut st = self.state.lock().await;
+        if st.client.take().is_none() {
+            return; // already handled; every failing request reports it once more
+        }
+        tracing::warn!(soft_logout, "the server no longer accepts this session");
+        if let Some(open) = st.open.take() {
+            open.task.abort();
+        }
+        if let Some(service) = st.sync_service.take() {
+            service.stop().await;
+        }
+        if let Some(task) = st.sync_task.take() {
+            task.abort();
+        }
+        drop(st);
+        std::fs::remove_file(self.session_path()).ok();
+        if !soft_logout {
+            std::fs::remove_dir_all(self.data_dir.join("store")).ok();
+        }
+        self.emit(json!({"ev": "logged_out", "reason": "session_expired", "soft_logout": soft_logout}));
     }
 
     async fn start_sync(&'static self, client: Client) -> Result<()> {
         if matches!(client.sliding_sync_version(), Version::None) {
             let c = client.clone();
             let task = self.rt.spawn(async move {
-                self.emit(json!({"ev": "sync_state", "state": "running"}));
                 loop {
+                    self.emit(json!({"ev": "sync_state", "state": "running"}));
                     if let Err(e) = c.sync(SyncSettings::default()).await {
                         tracing::warn!("sync ended: {e}");
                         self.emit(json!({"ev": "sync_state", "state": "error", "message": e.to_string()}));
@@ -231,11 +280,25 @@ impl Core {
             });
             self.state.lock().await.sync_task = Some(task);
         } else {
-            let service = Arc::new(SyncService::builder(client.clone()).build().await?);
-            service.start().await;
+            // Offline mode: after a network failure the service probes the
+            // server and resumes by itself. Without it an error is final and
+            // the app silently shows stale rooms (the Wi-Fi drops did that).
+            let service = Arc::new(SyncService::builder(client.clone()).with_offline_mode().build().await?);
+            // Subscribe before starting and report the current value first:
+            // the subscriber only wakes on changes, so a Running set before
+            // we listened left the cover on "Connecting" (0.2.0).
             let mut states = service.state();
+            service.start().await;
             self.rt.spawn(async move {
-                while let Some(state) = states.next().await {
+                let mut current = Some(states.get());
+                loop {
+                    let state = match current.take() {
+                        Some(s) => s,
+                        None => match states.next().await {
+                            Some(s) => s,
+                            None => break,
+                        },
+                    };
                     let (name, message) = match &state {
                         SyncState::Idle => ("idle", None),
                         SyncState::Running => ("running", None),
@@ -243,6 +306,7 @@ impl Core {
                         SyncState::Error(e) => ("error", Some(e.to_string())),
                         _ => ("offline", None),
                     };
+                    tracing::info!(state = name, message, "sync service");
                     self.emit(json!({"ev": "sync_state", "state": name, "message": message}));
                 }
             });
@@ -276,27 +340,74 @@ impl Core {
     /// Cache the avatars that are missing, once per room, then resend the list.
     async fn fetch_avatars(&'static self, client: &Client) {
         let avatar_dir = self.data_dir.join("avatars");
+        let own = client.user_id().map(ToOwned::to_owned);
         let mut fetched = false;
         for room in client.rooms() {
-            if room.avatar_url().is_none() || avatar_file(&avatar_dir, &room).exists() {
+            if avatar_file(&avatar_dir, &room).exists() {
                 continue;
             }
+            // Rooms without a known picture are looked at again next time:
+            // a DM's peer may only become known after a later sync.
+            let Some(url) = Self::avatar_source(&room, own.as_deref()).await else { continue };
             if !self.state.lock().await.avatars_tried.insert(room.room_id().to_owned()) {
                 continue;
             }
-            let format = MediaFormat::Thumbnail(MediaThumbnailSettings::new(uint!(192), uint!(192)));
-            match room.avatar(format).await {
-                Ok(Some(bytes)) => {
+            let request = MediaRequestParameters {
+                source: MediaSource::Plain(url),
+                format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(uint!(192), uint!(192))),
+            };
+            match client.media().get_media_content(&request, true).await {
+                Ok(bytes) => {
                     if tokio::fs::write(avatar_file(&avatar_dir, &room), &bytes).await.is_ok() {
                         fetched = true;
                     }
                 }
-                Ok(None) => {}
                 Err(e) => tracing::info!(room = %room.room_id(), "avatar: {e}"),
             }
         }
         if fetched {
             self.emit(json!({"ev": "rooms", "rooms": rooms_json(client, &avatar_dir).await}));
+        }
+    }
+
+    /// The room's own picture, or for a direct chat the other person's.
+    async fn avatar_source(room: &Room, own: Option<&UserId>) -> Option<OwnedMxcUri> {
+        if let Some(url) = room.avatar_url() {
+            return Some(url);
+        }
+        if !room.is_direct().await.unwrap_or(false) {
+            return None;
+        }
+        let hero = room.heroes().await.into_iter().find(|h| Some(h.user_id.as_ref()) != own);
+        if let Some(url) = hero.and_then(|h| h.avatar_url) {
+            return Some(url);
+        }
+        let members = room.members_no_sync(RoomMemberships::ACTIVE).await.ok()?;
+        members
+            .into_iter()
+            .find(|m| Some(m.user_id()) != own)
+            .and_then(|m| m.avatar_url().map(ToOwned::to_owned))
+    }
+
+    /// Display names for the people whose read receipts sit on these items;
+    /// unknown members fall back to the localpart in the UI.
+    async fn receipt_names<'a>(
+        room: &Room,
+        items: impl IntoIterator<Item = &'a Arc<TimelineItem>>,
+        names: &mut HashMap<OwnedUserId, String>,
+    ) {
+        for item in items {
+            let Some(event) = item.as_event() else { continue };
+            for user in event.read_receipts().keys() {
+                if names.contains_key(user) {
+                    continue;
+                }
+                let name = match room.get_member_no_sync(user).await {
+                    Ok(Some(m)) => m.name().to_owned(),
+                    _ => user.localpart().to_owned(),
+                };
+                names.insert(user.clone(), name);
+            }
         }
     }
 
@@ -479,14 +590,19 @@ impl Core {
     }
 
     /// Timeline snapshots for the open room, coalesced per update burst.
-    async fn timeline_task(&'static self, room_id: OwnedRoomId, timeline: Arc<Timeline>, own: OwnedUserId) {
+    async fn timeline_task(&'static self, room: Room, timeline: Arc<Timeline>, own: OwnedUserId) {
+        let room_id = room.room_id().to_owned();
+        let mut names = HashMap::new();
         let (items, mut stream) = timeline.subscribe().await;
-        self.emit(json!({"ev": "timeline", "room_id": room_id.as_str(), "items": items_json(&items, &own)}));
+        let items: Vec<Arc<TimelineItem>> = items.into_iter().collect();
+        Self::receipt_names(&room, &items, &mut names).await;
+        self.emit(json!({"ev": "timeline", "room_id": room_id.as_str(), "items": items_json(&items, &own, &names)}));
         while stream.next().await.is_some() {
             tokio::time::sleep(Duration::from_millis(60)).await;
             while let Some(Some(_)) = stream.next().now_or_never() {}
             let items = timeline.items().await;
-            self.emit(json!({"ev": "timeline", "room_id": room_id.as_str(), "items": items_json(&items, &own)}));
+            Self::receipt_names(&room, &items, &mut names).await;
+            self.emit(json!({"ev": "timeline", "room_id": room_id.as_str(), "items": items_json(&items, &own, &names)}));
         }
     }
 
@@ -614,6 +730,50 @@ impl Core {
             "leave_room" => {
                 let room = self.room(v).await?;
                 room.leave().await?;
+                Ok(())
+            }
+            "search" => {
+                // People from the user directory, rooms from the public
+                // directory of the own server; both are best effort.
+                let client = self.client().await?;
+                let term = s(v, "term")?;
+                let mut req = get_public_rooms_filtered::v3::Request::new();
+                req.limit = Some(uint!(20));
+                req.filter.generic_search_term = Some(term.clone());
+                let (users, rooms) =
+                    tokio::join!(client.search_users(&term, 10), client.public_rooms_filtered(req));
+                let users: Vec<Value> = users
+                    .map(|r| r.results)
+                    .unwrap_or_else(|e| {
+                        tracing::info!("user search: {e}");
+                        Vec::new()
+                    })
+                    .into_iter()
+                    .filter(|u| Some(u.user_id.as_ref()) != client.user_id())
+                    .map(|u| json!({"user_id": u.user_id.as_str(), "name": u.display_name}))
+                    .collect();
+                let rooms: Vec<Value> = rooms
+                    .map(|r| r.chunk)
+                    .unwrap_or_else(|e| {
+                        tracing::info!("room search: {e}");
+                        Vec::new()
+                    })
+                    .into_iter()
+                    .map(|r| {
+                        let joined = client
+                            .get_room(&r.room_id)
+                            .is_some_and(|room| room.state() == RoomState::Joined);
+                        json!({
+                            "room_id": r.room_id.as_str(),
+                            "name": r.name,
+                            "alias": r.canonical_alias.map(|a| a.to_string()),
+                            "topic": r.topic,
+                            "members": r.num_joined_members,
+                            "joined": joined,
+                        })
+                    })
+                    .collect();
+                self.emit(json!({"ev": "search_results", "term": term, "users": users, "rooms": rooms}));
                 Ok(())
             }
             "join_by_id_or_alias" => {
@@ -911,8 +1071,13 @@ impl Core {
         if let Some(service) = self.state.lock().await.sync_service.clone() {
             service.room_list_service().set_room_subscriptions(&[&room_id]).await;
         }
-        let timeline = Arc::new(room.timeline().await?);
-        let task = self.rt.spawn(self.timeline_task(room_id.clone(), timeline.clone(), own));
+        let timeline = Arc::new(
+            room.timeline_builder()
+                .track_read_marker_and_receipts(TimelineReadReceiptTracking::MessageLikeEvents)
+                .build()
+                .await?,
+        );
+        let task = self.rt.spawn(self.timeline_task(room.clone(), timeline.clone(), own));
         let mut st = self.state.lock().await;
         if let Some(previous) = st.open.take() {
             previous.task.abort();

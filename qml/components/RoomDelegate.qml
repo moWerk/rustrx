@@ -22,8 +22,13 @@ import Sailfish.Silica 1.0
 ListItem {
     id: item
     width: ListView.view.width
-    contentHeight: Theme.itemSizeMedium
+    contentHeight: Theme.iconSizeLarge + 2 * rowMargin
     menu: contextMenu
+
+    // Tunables: the air above and below a row (the stock itemSizeMedium gave
+    // half of this), and the name a tad over the standard medium size.
+    readonly property real rowMargin: (Theme.itemSizeMedium - Theme.iconSizeLarge) * 1.5
+    readonly property real nameSize: Theme.fontSizeMedium * 1.1
 
     readonly property bool invited: model.state === "invited"
     readonly property bool hasUnread: model.notifications > 0 || model.unread > 0
@@ -41,8 +46,9 @@ ListItem {
         width: Theme.iconSizeLarge
         height: width
         radius: width / 2
-        color: Theme.rgba(item.highlighted ? Theme.highlightColor : Theme.primaryColor, Theme.opacityFaint)
-        clip: true
+        color: picture.visible && !app.roundAvatars
+               ? "transparent"
+               : Theme.rgba(item.highlighted ? Theme.highlightColor : Theme.primaryColor, Theme.opacityFaint)
 
         Label {
             anchors.centerIn: parent
@@ -61,6 +67,19 @@ ListItem {
             sourceSize.width: width
             sourceSize.height: height
             source: model.avatar ? "file://" + model.avatar : ""
+            // clip: true would cut a square; the circle is a mask
+            layer.enabled: app.roundAvatars
+            layer.effect: ShaderEffect {
+                fragmentShader: "
+                    varying highp vec2 qt_TexCoord0;
+                    uniform sampler2D source;
+                    uniform lowp float qt_Opacity;
+                    void main() {
+                        highp float d = length(qt_TexCoord0 - vec2(0.5));
+                        lowp float a = 1.0 - smoothstep(0.49, 0.5, d);
+                        gl_FragColor = texture2D(source, qt_TexCoord0) * a * qt_Opacity;
+                    }"
+            }
         }
     }
 
@@ -77,6 +96,7 @@ ListItem {
             width: parent.width
             text: model.name
             truncationMode: TruncationMode.Fade
+            font.pixelSize: nameSize
             font.bold: hasUnread
             color: item.highlighted ? Theme.highlightColor : Theme.primaryColor
         }

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! JSON shapes handed to the UI: the room list and timeline items.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use matrix_sdk::ruma::events::room::message::{MessageFormat, MessageType};
-use matrix_sdk::ruma::UserId;
+use matrix_sdk::ruma::{OwnedUserId, UserId};
 use matrix_sdk::{Client, Room, RoomState};
 use matrix_sdk_ui::timeline::{
     EventSendState, MembershipChange, MsgLikeKind, TimelineDetails, TimelineItem, TimelineItemContent,
@@ -33,7 +34,7 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
     let counts = room.unread_notification_counts();
     let avatar = avatar_file(avatar_dir, room);
     json!({
-        "has_avatar": room.avatar_url().is_some(),
+        "has_avatar": avatar.exists(),
         "avatar": if avatar.exists() { Some(avatar.to_string_lossy().into_owned()) } else { None },
         "id": room.room_id().as_str(),
         "name": name,
@@ -227,7 +228,7 @@ fn content_json(o: &mut Map<String, Value>, content: &TimelineItemContent, own: 
     }
 }
 
-pub(crate) fn item_json(item: &Arc<TimelineItem>, own: &UserId) -> Value {
+pub(crate) fn item_json(item: &Arc<TimelineItem>, own: &UserId, names: &HashMap<OwnedUserId, String>) -> Value {
     let mut o = Map::new();
     put(&mut o, "id", item.unique_id().0.as_str());
     match item.kind() {
@@ -249,6 +250,16 @@ pub(crate) fn item_json(item: &Arc<TimelineItem>, own: &UserId) -> Value {
             }
             put(&mut o, "is_own", e.is_own());
             put(&mut o, "ts", ms(e.timestamp()));
+            // who has read up to here (a receipt sits on the last event read)
+            let readers: Vec<&str> = e
+                .read_receipts()
+                .keys()
+                .filter(|u| u.as_str() != own.as_str())
+                .map(|u| names.get(u).map(String::as_str).unwrap_or_else(|| u.localpart()))
+                .collect();
+            if !readers.is_empty() {
+                put(&mut o, "read_by", readers);
+            }
             put(&mut o, "editable", e.is_editable());
             put(&mut o, "highlight", e.is_highlighted());
             put(
@@ -266,6 +277,10 @@ pub(crate) fn item_json(item: &Arc<TimelineItem>, own: &UserId) -> Value {
     Value::Object(o)
 }
 
-pub(crate) fn items_json<'a>(items: impl IntoIterator<Item = &'a Arc<TimelineItem>>, own: &UserId) -> Value {
-    Value::Array(items.into_iter().map(|i| item_json(i, own)).collect())
+pub(crate) fn items_json<'a>(
+    items: impl IntoIterator<Item = &'a Arc<TimelineItem>>,
+    own: &UserId,
+    names: &HashMap<OwnedUserId, String>,
+) -> Value {
+    Value::Array(items.into_iter().map(|i| item_json(i, own, names)).collect())
 }

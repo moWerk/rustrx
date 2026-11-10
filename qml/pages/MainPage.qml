@@ -72,6 +72,11 @@ Page {
 
                 PullDownMenu {
                     MenuItem {
+                        //% "Add Room / Contact"
+                        text: qsTrId("rustrx-me-add")
+                        onClicked: pageStack.push(Qt.resolvedUrl("SearchPage.qml"))
+                    }
+                    MenuItem {
                         //% "Settings"
                         text: qsTrId("rustrx-me-settings")
                         onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
@@ -91,7 +96,7 @@ Page {
                           //% "Not connected"
                           : qsTrId("rustrx-la-not-connected")
                     hintText: isRooms
-                              //% "Rooms you join appear here, favourites on top."
+                              //% "Rooms you join appear here, sorted by activity."
                               ? qsTrId("rustrx-la-empty-rooms-hint")
                               : isFavs
                               //% "Long press a room or a person and choose Add to Favs."

@@ -257,6 +257,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_loggedIn = ev.value("logged_in").toBool();
         emit stateChanged();
     } else if (type == QLatin1String("logged_in")) {
+        m_logoutReason.clear();
         m_ready = true;
         m_loggedIn = true;
         m_loggingIn = false;
@@ -269,6 +270,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit loginError(ev.value("message").toString());
     } else if (type == QLatin1String("logged_out")) {
         m_loggedIn = false;
+        m_logoutReason = ev.value("reason").toString();
         m_userId.clear();
         m_openRoomId.clear();
         m_timeline->clear();
@@ -333,5 +335,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit joined(ev.value("room_id").toString());
     } else if (type == QLatin1String("paginated")) {
         emit paginated(ev.value("room_id").toString(), ev.value("at_start").toBool());
+    } else if (type == QLatin1String("search_results")) {
+        emit searchResults(ev);
     }
 }

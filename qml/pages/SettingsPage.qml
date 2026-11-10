@@ -62,6 +62,27 @@ Page {
             //% "Settings"
             PageHeader { title: qsTrId("rustrx-he-settings") }
 
+            //% "Appearance"
+            SectionHeader { text: qsTrId("rustrx-se-appearance") }
+
+            TextSwitch {
+                //% "Round avatars"
+                text: qsTrId("rustrx-la-round-avatars")
+                //% "Cut room and people pictures to a circle."
+                description: qsTrId("rustrx-la-round-avatars-hint")
+                checked: app.roundAvatars
+                onCheckedChanged: app.roundAvatars = checked
+            }
+
+            TextSwitch {
+                //% "Show who has read a message"
+                text: qsTrId("rustrx-la-show-read-by")
+                //% "Names appear under the last message each person has read."
+                description: qsTrId("rustrx-la-show-read-by-hint")
+                checked: app.showReadBy
+                onCheckedChanged: app.showReadBy = checked
+            }
+
             //% "Account"
             SectionHeader { text: qsTrId("rustrx-se-account") }
 

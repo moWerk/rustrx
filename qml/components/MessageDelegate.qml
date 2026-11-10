@@ -220,6 +220,10 @@ ListItem {
                         //: %1 the quoted text
                         //% "in reply to: %1"
                         t += " · " + qsTrId("rustrx-la-in-reply-to").arg(model.reply_to.body.substr(0, 60))
+                    if (app.showReadBy && model.read_by && model.read_by.length)
+                        //: %1 the names of the people whose read receipt sits on this message
+                        //% "read by %1"
+                        t += " · " + qsTrId("rustrx-la-read-by").arg(model.read_by.join(", "))
                     return t
                 }
             }

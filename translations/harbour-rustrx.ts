@@ -284,7 +284,8 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-empty-rooms-hint">
-        <source>Rooms you join appear here, favourites on top.</source>
+        <source>Rooms you join appear here, sorted by activity.</source>
+        <oldsource>Rooms you join appear here, favourites on top.</oldsource>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-empty-favs-hint">
@@ -489,6 +490,80 @@
     </message>
     <message id="rustrx-bt-done">
         <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-read-by">
+        <source>read by %1</source>
+        <extracomment>%1 the names of the people whose read receipt sits on this message</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-add">
+        <source>Add Room / Contact</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-members">
+        <source>%1 members</source>
+        <extracomment>%1 the number of people in a room</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-add">
+        <source>Add Room / Contact</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-search-placeholder">
+        <source>Room, person or address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-searching">
+        <source>Searching…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-joined">
+        <source>joined</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-opening">
+        <source>opening…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-joining">
+        <source>joining…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-person">
+        <source>Person</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-nothing-found">
+        <source>Nothing found</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-nothing-found-hint">
+        <source>Try an address like #room:server or @user:server.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-appearance">
+        <source>Appearance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-round-avatars">
+        <source>Round avatars</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-round-avatars-hint">
+        <source>Cut room and people pictures to a circle.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-show-read-by">
+        <source>Show who has read a message</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-show-read-by-hint">
+        <source>Names appear under the last message each person has read.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-session-expired">
+        <source>The server no longer accepts the saved session. Log in again.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
