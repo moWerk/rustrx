@@ -155,14 +155,8 @@ QString Rustrx::formatTime(const QVariant &ms) const
 QString Rustrx::formatDate(const QVariant &ms) const
 {
     const QDate d = QDateTime::fromMSecsSinceEpoch(ms.toLongLong()).date();
-    const QDate today = QDate::currentDate();
-    if (d == today)
-        //: date divider in a chat
-        //% "Today"
-        return qtTrId("rustrx-la-today");
-    if (d == today.addDays(-1))
-        //% "Yesterday"
-        return qtTrId("rustrx-la-yesterday");
+    // "Today" and "Yesterday" are QML's (app.dayLabel): qtTrId from here came
+    // back as the raw id on the phone while every QML qsTrId resolved.
     return d.toString(Qt::DefaultLocaleLongDate);
 }
 

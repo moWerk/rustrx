@@ -60,7 +60,7 @@ Page {
                     truncationMode: TruncationMode.Fade
                     font.pixelSize: Theme.fontSizeSmall
                     color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
-                    text: model.device_id + (model.last_seen_ts ? "  " + rustrx.formatDate(model.last_seen_ts) + " " + rustrx.formatTime(model.last_seen_ts) : "")
+                    text: model.device_id + (model.last_seen_ts ? "  " + app.dayLabel(model.last_seen_ts) + " " + rustrx.formatTime(model.last_seen_ts) : "")
                 }
             }
 

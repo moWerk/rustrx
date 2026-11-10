@@ -5,7 +5,6 @@
     <name></name>
     <message id="rustrx-la-today">
         <source>Today</source>
-        <extracomment>date divider in a chat</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-yesterday">
@@ -40,11 +39,6 @@
     </message>
     <message id="rustrx-la-edited">
         <source>edited</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-la-in-reply-to">
-        <source>in reply to: %1</source>
-        <extracomment>%1 the quoted text</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-me-reply">

@@ -84,7 +84,7 @@ ListItem {
             height: Theme.itemSizeExtraSmall
             Label {
                 anchors.centerIn: parent
-                text: rustrx.formatDate(model.ts)
+                text: app.dayLabel(model.ts)
                 color: Theme.secondaryHighlightColor
                 font.pixelSize: Theme.fontSizeExtraSmall
             }
@@ -133,6 +133,32 @@ ListItem {
                 wrapMode: Text.Wrap
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: Theme.secondaryColor
+            }
+
+            // the message this one replies to: who said it and its first lines
+            Row {
+                visible: !!(model.reply_to && model.reply_to.body)
+                x: own ? parent.width - width - sideMargin : sideMargin
+                width: Math.min(quote.implicitWidth + spacing + 2, bubbleWidth)
+                spacing: Theme.paddingSmall
+
+                Rectangle { width: 2; height: quote.height; color: Theme.secondaryHighlightColor }
+
+                Label {
+                    id: quote
+                    width: parent.width - 2 - parent.spacing
+                    wrapMode: Text.Wrap
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    color: Theme.secondaryColor
+                    textFormat: Text.StyledText
+                    text: model.reply_to
+                          ? "<font color=\"" + Theme.secondaryHighlightColor + "\">"
+                            + (model.reply_to.sender_name || model.reply_to.sender || "") + "</font><br>"
+                            + (model.reply_to.body || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>")
+                          : ""
+                }
             }
 
             Label {
@@ -216,10 +242,6 @@ ListItem {
                     if (model.send_state === "failed") t += " · " + qsTrId("rustrx-la-not-sent")
                     //% "edited"
                     if (model.edited) t += " · " + qsTrId("rustrx-la-edited")
-                    if (model.reply_to && model.reply_to.body)
-                        //: %1 the quoted text
-                        //% "in reply to: %1"
-                        t += " · " + qsTrId("rustrx-la-in-reply-to").arg(model.reply_to.body.substr(0, 60))
                     if (app.showReadBy && model.read_by && model.read_by.length)
                         //: %1 the names of the people whose read receipt sits on this message
                         //% "read by %1"

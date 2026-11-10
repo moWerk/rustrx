@@ -54,6 +54,18 @@ ApplicationWindow {
 
     Timer { id: routeRetry; interval: 300; onTriggered: route() }
 
+    // "Today", "Yesterday", else the long local date
+    function dayLabel(ms) {
+        var d = new Date(ms), now = new Date()
+        var day = function (x) { return x.getFullYear() * 400 + x.getMonth() * 32 + x.getDate() }
+        //% "Today"
+        if (day(d) === day(now)) return qsTrId("rustrx-la-today")
+        now.setDate(now.getDate() - 1)
+        //% "Yesterday"
+        if (day(d) === day(now)) return qsTrId("rustrx-la-yesterday")
+        return rustrx.formatDate(ms)
+    }
+
     function showVerification(data) {
         if (shownVerifications[data.flow_id]) return
         shownVerifications[data.flow_id] = true

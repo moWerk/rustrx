@@ -252,6 +252,9 @@ fn content_json(o: &mut Map<String, Value>, content: &TimelineItemContent, own: 
                 put(&mut r, "event_id", reply.event_id.as_str());
                 if let TimelineDetails::Ready(ev) = &reply.event {
                     put(&mut r, "sender", ev.sender.as_str());
+                    if let TimelineDetails::Ready(p) = &ev.sender_profile {
+                        put(&mut r, "sender_name", p.display_name.clone());
+                    }
                     if let Some(msg) = ev.content.as_message() {
                         put(&mut r, "body", msg.body());
                     }
