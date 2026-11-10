@@ -67,6 +67,13 @@ Page {
                 id: list
                 anchors.fill: parent
                 model: isRooms ? rustrx.rooms : isFavs ? rustrx.favourites : rustrx.people
+
+                // the rows' "3m ago" labels follow this clock
+                property real now: Date.now()
+                Timer {
+                    interval: 60000; repeat: true; running: Qt.application.active
+                    onTriggered: list.now = Date.now()
+                }
                 section.property: isFavs ? "" : "section"
                 section.delegate: SectionHeader { text: section }
 
@@ -84,7 +91,33 @@ Page {
                 }
 
                 // the tab bar is drawn over the list; content starts below it
-                header: Item { width: 1; height: tabs.tabBarHeight + Theme.paddingMedium }
+                header: Column {
+                    width: list.width
+
+                    Item { width: 1; height: tabs.tabBarHeight + Theme.paddingMedium }
+
+                    // one line while this device cannot read encrypted rooms
+                    BackgroundItem {
+                        width: parent.width
+                        height: visible ? Theme.itemSizeSmall : 0
+                        visible: rustrx.verificationState === "unverified" || rustrx.recoveryState === "incomplete"
+                        onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
+
+                        Label {
+                            x: Theme.horizontalPageMargin
+                            width: parent.width - 2 * x
+                            anchors.verticalCenter: parent.verticalCenter
+                            truncationMode: TruncationMode.Fade
+                            color: Theme.highlightColor
+                            font.pixelSize: Theme.fontSizeSmall
+                            text: rustrx.verificationState === "unverified"
+                                  //% "This device is not verified. Tap to verify it."
+                                  ? qsTrId("rustrx-la-banner-unverified")
+                                  //% "Older encrypted messages need the recovery key. Tap to enter it."
+                                  : qsTrId("rustrx-la-banner-recovery")
+                        }
+                    }
+                }
 
                 delegate: RoomDelegate { }
 

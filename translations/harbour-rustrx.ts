@@ -566,5 +566,17 @@
         <source>The server no longer accepts the saved session. Log in again.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-password-note">
+        <source>The password goes to the server once and is not kept on the phone; only a session token is.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-banner-unverified">
+        <source>This device is not verified. Tap to verify it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-banner-recovery">
+        <source>Older encrypted messages need the recovery key. Tap to enter it.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

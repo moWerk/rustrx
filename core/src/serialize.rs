@@ -4,7 +4,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use matrix_sdk::latest_events::LatestEventValue;
 use matrix_sdk::ruma::events::room::message::{MessageFormat, MessageType};
+use matrix_sdk::ruma::events::{AnyMessageLikeEventContent, AnySyncTimelineEvent};
 use matrix_sdk::ruma::{OwnedUserId, UserId};
 use matrix_sdk::{Client, Room, RoomState};
 use matrix_sdk_ui::timeline::{
@@ -23,6 +25,77 @@ pub(crate) fn avatar_file(dir: &std::path::Path, room: &Room) -> std::path::Path
     dir.join(format!("{safe}.img"))
 }
 
+/// One line for the room list: what the last message was, and who sent it
+/// in a group (`None` sender for direct chats and own messages say "You").
+async fn preview(room: &Room) -> (Option<String>, Option<String>) {
+    let value = room.latest_event();
+    let (text, sender) = match &value {
+        LatestEventValue::None => return (None, None),
+        LatestEventValue::RemoteInvite { .. } => (Some("Invitation".to_owned()), None),
+        LatestEventValue::Remote(ev) => match ev.raw().deserialize() {
+            Ok(event) => (event_preview(&event), ev.sender()),
+            Err(_) => (None, None),
+        },
+        LatestEventValue::LocalIsSending(local)
+        | LatestEventValue::LocalHasBeenSent { value: local, .. }
+        | LatestEventValue::LocalCannotBeSent(local) => {
+            let text = match local.content.deserialize() {
+                Ok(AnyMessageLikeEventContent::RoomMessage(m)) => Some(message_preview(&m.msgtype)),
+                Ok(_) => None,
+                Err(_) => None,
+            };
+            (text, Some(room.own_user_id().to_owned()))
+        }
+    };
+    let Some(text) = text else { return (None, None) };
+    // the sender only matters in a group
+    if room.is_direct().await.unwrap_or(false) {
+        return (Some(text), None);
+    }
+    let who = match sender {
+        Some(user) if user == room.own_user_id() => Some("You".to_owned()),
+        Some(user) => Some(match room.get_member_no_sync(&user).await {
+            Ok(Some(m)) => m.name().to_owned(),
+            _ => user.localpart().to_owned(),
+        }),
+        None => None,
+    };
+    (Some(text), who)
+}
+
+fn event_preview(event: &AnySyncTimelineEvent) -> Option<String> {
+    use matrix_sdk::ruma::events::{AnySyncMessageLikeEvent as M, AnySyncStateEvent as S, SyncMessageLikeEvent};
+    Some(match event {
+        AnySyncTimelineEvent::MessageLike(M::RoomMessage(SyncMessageLikeEvent::Original(e))) => {
+            message_preview(&e.content.msgtype)
+        }
+        AnySyncTimelineEvent::MessageLike(M::RoomEncrypted(_)) => "Encrypted message".to_owned(),
+        AnySyncTimelineEvent::MessageLike(M::Sticker(_)) => "Sticker".to_owned(),
+        AnySyncTimelineEvent::MessageLike(M::CallInvite(_)) => "Call".to_owned(),
+        AnySyncTimelineEvent::MessageLike(M::PollStart(_)) => "Poll".to_owned(),
+        AnySyncTimelineEvent::State(S::RoomMember(_)) => "Membership changed".to_owned(),
+        AnySyncTimelineEvent::State(S::RoomTopic(_)) => "Topic changed".to_owned(),
+        AnySyncTimelineEvent::State(S::RoomName(_)) => "Room renamed".to_owned(),
+        AnySyncTimelineEvent::State(S::RoomAvatar(_)) => "Picture changed".to_owned(),
+        _ => return None,
+    })
+}
+
+fn message_preview(msg: &MessageType) -> String {
+    let first_line = |s: &str| s.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_owned();
+    match msg {
+        MessageType::Text(t) => first_line(&t.body),
+        MessageType::Notice(t) => first_line(&t.body),
+        MessageType::Emote(t) => format!("* {}", first_line(&t.body)),
+        MessageType::Image(_) => "Photo".to_owned(),
+        MessageType::Video(_) => "Video".to_owned(),
+        MessageType::Audio(_) => "Audio".to_owned(),
+        MessageType::File(f) => format!("File: {}", f.filename.as_deref().unwrap_or(&f.body)),
+        MessageType::Location(_) => "Location".to_owned(),
+        other => first_line(other.body()),
+    }
+}
+
 pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Value {
     let name = match room.cached_display_name() {
         Some(n) => n.to_string(),
@@ -33,11 +106,14 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
     };
     let counts = room.unread_notification_counts();
     let avatar = avatar_file(avatar_dir, room);
+    let (preview, preview_sender) = preview(room).await;
     json!({
         "has_avatar": avatar.exists(),
         "avatar": if avatar.exists() { Some(avatar.to_string_lossy().into_owned()) } else { None },
         "id": room.room_id().as_str(),
         "name": name,
+        "preview": preview,
+        "preview_sender": preview_sender,
         "topic": room.topic(),
         "alias": room.canonical_alias().map(|a| a.to_string()),
         "is_dm": room.is_direct().await.unwrap_or(false),

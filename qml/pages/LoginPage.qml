@@ -93,6 +93,16 @@ Page {
             Label {
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                color: Theme.secondaryColor
+                font.pixelSize: Theme.fontSizeExtraSmall
+                //% "The password goes to the server once and is not kept on the phone; only a session token is."
+                text: qsTrId("rustrx-la-password-note")
+            }
+
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
                 visible: errorText.length > 0
                 text: errorText
                 wrapMode: Text.Wrap

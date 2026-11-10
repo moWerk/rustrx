@@ -81,14 +81,53 @@ ListItem {
                     }"
             }
         }
+
+        // unread badge, top right of the picture
+        Rectangle {
+            id: badge
+            anchors {
+                right: parent.right
+                top: parent.top
+                rightMargin: -Theme.paddingSmall / 2
+                topMargin: -Theme.paddingSmall / 2
+            }
+            visible: !invited && (model.notifications > 0 || model.unread > 0)
+            // grows into a pill towards the left as the number gets wider
+            width: Math.max(height, badgeLabel.implicitWidth + Theme.paddingSmall)
+            // the circle keeps this size; the digits grew into its padding
+            height: Theme.fontSizeExtraSmall * 2 / 3 * 1.1 + Theme.paddingSmall + 10
+            radius: height / 2
+            color: model.highlights > 0 ? Theme.highlightColor : Theme.secondaryHighlightColor
+
+            // a soft shadow under the digits, one label behind the other
+            Label {
+                anchors.centerIn: badgeLabel
+                anchors.horizontalCenterOffset: 1
+                anchors.verticalCenterOffset: 2
+                text: badgeLabel.text
+                font: badgeLabel.font
+                color: Theme.rgba("black", 0.5)
+            }
+
+            Label {
+                id: badgeLabel
+                anchors.centerIn: parent
+                // digits have no descender; the text box's share for it pushes them low
+                anchors.verticalCenterOffset: -Math.round(font.pixelSize * 0.04)
+                text: model.notifications > 0 ? model.notifications : model.unread
+                font.pixelSize: Theme.fontSizeExtraSmall * 2 / 3 * 1.44
+                font.bold: true
+                color: "white"
+            }
+        }
     }
 
     Column {
         anchors {
             left: avatar.right
-            right: counter.left
+            right: age.left
             leftMargin: Theme.paddingLarge
-            rightMargin: Theme.paddingLarge
+            rightMargin: Theme.paddingMedium
             verticalCenter: parent.verticalCenter
         }
 
@@ -101,16 +140,23 @@ ListItem {
             color: item.highlighted ? Theme.highlightColor : Theme.primaryColor
         }
 
+        // the last message; the topic or the state where there is none yet
         Label {
             width: parent.width
             truncationMode: TruncationMode.Fade
-            font.pixelSize: Theme.fontSizeSmall
+            font.pixelSize: Theme.fontSizeSmall * 0.8
             color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
+            textFormat: Text.StyledText
             text: {
                 //% "Invitation. Long press to accept or decline."
                 if (invited) return qsTrId("rustrx-la-invitation")
+                if (model.preview && model.preview.length) {
+                    var who = model.preview_sender
+                              ? "<font color=\"" + (item.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor)
+                                + "\">" + model.preview_sender + ":</font> " : ""
+                    return who + model.preview.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                }
                 if (model.topic && model.topic.length) return model.topic.replace(/\s+/g, " ")
-                if (model.ts) return rustrx.formatDate(model.ts) + " " + rustrx.formatTime(model.ts)
                 return model.encrypted
                         //% "Encrypted"
                         ? qsTrId("rustrx-la-encrypted")
@@ -119,18 +165,28 @@ ListItem {
         }
     }
 
+    // how long ago the last activity was, coarser the older: 1m..59m, 1h..24h, 1d..365d, then years
     Label {
-        id: counter
+        id: age
         anchors {
             right: parent.right
             rightMargin: Theme.horizontalPageMargin
-            verticalCenter: parent.verticalCenter
+            top: parent.top
+            topMargin: rowMargin + Theme.paddingSmall / 2
         }
         width: visible ? implicitWidth : 0
-        visible: model.notifications > 0
-        text: model.notifications
-        color: model.highlights > 0 ? Theme.highlightColor : Theme.secondaryHighlightColor
-        font.pixelSize: Theme.fontSizeMedium
+        visible: text.length > 0
+        font.pixelSize: Theme.fontSizeExtraSmall
+        color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
+        text: {
+            if (!model.ts || invited) return ""
+            var s = (item.ListView.view.now - model.ts) / 1000
+            if (s < 60) return "now"
+            if (s < 3600) return Math.floor(s / 60) + "m"
+            if (s < 86400) return Math.floor(s / 3600) + "h"
+            if (s < 365 * 86400) return Math.floor(s / 86400) + "d"
+            return Math.floor(s / (365 * 86400)) + "y"
+        }
     }
 
     Component {

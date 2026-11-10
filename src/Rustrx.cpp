@@ -206,9 +206,13 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
         //% "Invitations"
         r.insert("section", invited ? qtTrId("rustrx-se-invitations") : QString());
         m_roomsById.insert(id, r);
-        unread += r.value("notifications").toInt();
-        if (r.value("notifications").toInt() > 0)
+        // the same number the row badge shows: notifications, else unread messages
+        const int rowUnread = r.value("notifications").toInt() > 0 ? r.value("notifications").toInt()
+                                                                   : r.value("unread").toInt();
+        if (!invited && rowUnread > 0) {
+            unread += rowUnread;
             ++chats;
+        }
         if (r.value("is_dm").toBool())
             dms.append(r);
         else

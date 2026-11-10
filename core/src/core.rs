@@ -76,6 +76,7 @@ struct State {
     requests: HashMap<String, VerificationRequest>,
     sas: HashMap<String, SasVerification>,
     avatars_tried: std::collections::HashSet<OwnedRoomId>,
+    latest_listened: std::collections::HashSet<OwnedRoomId>,
 }
 
 pub(crate) struct Core {
@@ -216,6 +217,9 @@ impl Core {
             st.client = Some(client.clone());
         }
         self.rt.spawn(self.session_watch(client.clone()));
+        // the previews come from the event cache; the sync service subscribes
+        // it itself, the classic sync loop does not
+        let _ = client.event_cache().subscribe();
         // the cached room list first, before anything waits for the network
         self.rt.spawn(self.rooms_task(client.clone()));
         self.start_sync(client).await
@@ -324,6 +328,7 @@ impl Core {
         let rooms = rooms_json(&client, &avatar_dir).await;
         tracing::info!(ms = t.elapsed().as_millis() as u64, rooms = rooms.as_array().map(|a| a.len()).unwrap_or(0), "startup: first room list");
         self.emit(json!({"ev": "rooms", "rooms": rooms}));
+        self.listen_latest(&client).await;
         self.fetch_avatars(&client).await;
         loop {
             match rx.recv().await {
@@ -333,7 +338,25 @@ impl Core {
             tokio::time::sleep(Duration::from_millis(150)).await;
             while rx.try_recv().is_ok() {}
             self.emit(json!({"ev": "rooms", "rooms": rooms_json(&client, &avatar_dir).await}));
+            self.listen_latest(&client).await;
             self.fetch_avatars(&client).await;
+        }
+    }
+
+    /// The latest-event service is lazy: a room's preview is only computed
+    /// once someone listens for it. Register every joined room, once.
+    async fn listen_latest(&'static self, client: &Client) {
+        let latest = client.latest_events().await;
+        for room in client.rooms() {
+            if room.state() != RoomState::Joined {
+                continue;
+            }
+            if !self.state.lock().await.latest_listened.insert(room.room_id().to_owned()) {
+                continue;
+            }
+            if let Err(e) = latest.listen_to_room(room.room_id()).await {
+                tracing::info!(room = %room.room_id(), "latest event: {e}");
+            }
         }
     }
 
