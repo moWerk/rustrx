@@ -3,7 +3,7 @@
 # /usr/share/harbour-rustrx/lib; this project is the Silica UI around it.
 TARGET = harbour-rustrx
 
-isEmpty(VERSION): VERSION = 0.2.0
+isEmpty(VERSION): VERSION = 0.2.1
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 CONFIG += sailfishapp sailfishapp_i18n sailfishapp_i18n_idbased sailfishapp_i18n_unfinished

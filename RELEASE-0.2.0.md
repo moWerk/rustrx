@@ -1,3 +1,5 @@
+**Superseded by [0.2.1](https://github.com/moWerk/rustrx/releases/tag/v0.2.1)**, which fixes the session loss after a token rotation that this build has.
+
 Rustrx 0.2.0, the first release: a native Matrix client for Sailfish OS on matrix-rust-sdk, the library behind Element X.
 
 **Works**

@@ -40,10 +40,12 @@ Jolla Store.
 
 ## Status
 
-0.2.0, the first release. Written in one evening for a Jolla Phone 2026 that
-had no working native Matrix client, and used on it since. Tested against
-one account on one homeserver so far; SSO login is untested, QR login is
-not in yet, and there are no notifications while the app is closed.
+0.2.1. Written in one evening for a Jolla Phone 2026 that had no working
+native Matrix client, and used on it since; 0.2.1 carries the first day of
+real use (session persistence, self-healing sync, read receipts, search,
+richer rows). Tested against one account on one homeserver so far; SSO
+login is untested, QR login waits for the server side (MSC4108), and there
+are no notifications while the app is closed.
 
 ## Install
 
