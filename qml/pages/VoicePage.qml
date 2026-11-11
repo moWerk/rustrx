@@ -28,7 +28,9 @@ Page {
     // counted from the tap: the recorder reports its duration a few seconds late
     property real startedAt: 0
     property real elapsed: 0
-    readonly property real shownMs: voice.recording ? elapsed : Math.max(voice.duration, elapsed)
+    // this page's recording only: the recorder keeps the previous one's duration
+    property bool recorded
+    readonly property real shownMs: !recorded ? 0 : voice.recording ? elapsed : Math.max(voice.duration, elapsed)
 
     function toggle() {
         if (voice.recording) {
@@ -37,6 +39,7 @@ Page {
         }
         elapsed = 0
         startedAt = Date.now()
+        recorded = true
         voice.start()
     }
 
@@ -67,38 +70,71 @@ Page {
             color: voice.recording ? Theme.highlightColor : Theme.primaryColor
         }
 
-        BackgroundItem {
+        // the record button, with the tuning fork's ripple from Beatfork:
+        // two rings grow out of it and fade, every 1.2 s while recording
+        Item {
+            id: button
             anchors.horizontalCenter: parent.horizontalCenter
             width: Theme.itemSizeHuge
             height: width
-            onClicked: page.toggle()
 
-            // the pulse from Beatfork: a flash that fades, once a second while recording
-            Rectangle {
-                id: pulse
-                anchors.centerIn: parent
-                width: parent.width * 1.3
-                height: width
-                radius: width / 2
-                color: Theme.highlightColor
-                opacity: 0.0
-                SequentialAnimation on opacity {
-                    running: voice.recording
-                    loops: Animation.Infinite
-                    NumberAnimation { to: 0.5; duration: 60; easing.type: Easing.OutQuad }
-                    NumberAnimation { to: 0.0; duration: 140; easing.type: Easing.InQuad }
-                    PauseAnimation { duration: 800 }
-                    onRunningChanged: if (!running) pulse.opacity = 0.0
-                }
+            property int rippleCount: 0
+            Timer {
+                interval: 1200
+                repeat: true
+                running: voice.recording
+                triggeredOnStart: true
+                onTriggered: button.rippleCount++
             }
 
             Rectangle {
+                id: ripple1
                 anchors.centerIn: parent
                 width: parent.width * 0.8
                 height: width
-                radius: voice.recording ? Theme.paddingMedium : width / 2
-                color: voice.recording ? Theme.highlightColor : Theme.rgba(Theme.highlightColor, Theme.opacityLow)
-                Behavior on radius { NumberAnimation { duration: 150 } }
+                radius: width / 2
+                color: "transparent"
+                border.color: Theme.highlightColor
+                border.width: Theme.paddingSmall / 2
+                opacity: 0.0
+                ParallelAnimation {
+                    id: ripple1Anim
+                    NumberAnimation { target: ripple1; property: "scale"; from: 1.0; to: 2.0; duration: 700; easing.type: Easing.OutQuad }
+                    NumberAnimation { target: ripple1; property: "opacity"; from: 0.7; to: 0.0; duration: 700; easing.type: Easing.InQuad }
+                }
+            }
+            Rectangle {
+                id: ripple2
+                anchors.centerIn: parent
+                width: parent.width * 0.8
+                height: width
+                radius: width / 2
+                color: "transparent"
+                border.color: Theme.highlightColor
+                border.width: Theme.paddingSmall / 3
+                opacity: 0.0
+                SequentialAnimation {
+                    id: ripple2Anim
+                    PauseAnimation { duration: 200 }
+                    ParallelAnimation {
+                        NumberAnimation { target: ripple2; property: "scale"; from: 1.0; to: 1.7; duration: 600; easing.type: Easing.OutQuad }
+                        NumberAnimation { target: ripple2; property: "opacity"; from: 0.45; to: 0.0; duration: 600; easing.type: Easing.InQuad }
+                    }
+                }
+            }
+            onRippleCountChanged: if (voice.recording) { ripple1Anim.restart(); ripple2Anim.restart() }
+
+            BackgroundItem {
+                anchors.centerIn: parent
+                width: parent.width * 0.8
+                height: width
+                _showPress: false
+                onClicked: page.toggle()
+                Rectangle {
+                    anchors.fill: parent
+                    radius: width / 2
+                    color: voice.recording || parent.pressed ? Theme.highlightColor : Theme.rgba(Theme.highlightColor, Theme.opacityLow)
+                }
             }
         }
 
@@ -116,11 +152,11 @@ Page {
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Theme.paddingLarge
-            visible: !voice.recording && voice.path.length > 0 && page.shownMs > 0
+            visible: page.recorded && !voice.recording && voice.path.length > 0
             Button {
                 //% "Discard"
                 text: qsTrId("rustrx-bt-discard")
-                onClicked: { voice.discard(); page.elapsed = 0 }
+                onClicked: { voice.discard(); page.elapsed = 0; page.recorded = false }
             }
             Button {
                 //% "Send"
