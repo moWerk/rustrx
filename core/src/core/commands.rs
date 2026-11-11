@@ -8,8 +8,16 @@ impl Core {
         let cmd = v.get("cmd").and_then(Value::as_str).unwrap_or("").to_owned();
         let room = v.get("room_id").and_then(Value::as_str).unwrap_or("").to_owned();
         tracing::info!(%cmd, %room, "command");
+        // the shape is checked before anything runs (protocol.rs)
+        let command: Command = match serde_json::from_value(v) {
+            Ok(c) => c,
+            Err(e) => {
+                self.error(&cmd, &anyhow!("{e}"));
+                return;
+            }
+        };
         self.rt.spawn(async move {
-            if let Err(e) = self.handle(&cmd, &v).await {
+            if let Err(e) = self.handle(command).await {
                 self.error(&cmd, &e);
             }
         });
@@ -19,10 +27,18 @@ impl Core {
         self.state.lock().await.client.clone().context("not logged in")
     }
 
-    pub(crate) async fn room(&self, v: &Value) -> Result<Room> {
-        let id = s(v, "room_id")?;
+    pub(crate) async fn room(&self, id: &str) -> Result<Room> {
         let client = self.client().await?;
-        client.get_room(&RoomId::parse(&id)?).with_context(|| format!("unknown room {id}"))
+        client.get_room(&RoomId::parse(id)?).with_context(|| format!("unknown room {id}"))
+    }
+
+    /// A timeline item by event id, or by transaction id for a local echo.
+    fn item_id(event_id: Option<String>, txn_id: Option<String>) -> Result<TimelineEventItemId> {
+        if let Some(txn) = given(&txn_id) {
+            return Ok(TimelineEventItemId::TransactionId(txn.into()));
+        }
+        let id = given(&event_id).context("missing field `event_id`")?;
+        Ok(TimelineEventItemId::EventId(EventId::parse(id)?))
     }
 
     /// The open room's timeline when it matches, else a throwaway one.
@@ -35,41 +51,41 @@ impl Core {
         Ok(Arc::new(room.timeline().await?))
     }
 
-    pub(crate) async fn handle(&'static self, cmd: &str, v: &Value) -> Result<()> {
-        match cmd {
-            "probe_server" => self.probe_server(v).await,
-            "login_password" => self.login_password(v).await,
-            "login_sso" => self.login_sso(v).await,
-            "logout" => self.logout().await,
-            "open_room" => self.open_room(v).await,
-            "close_room" => {
+    pub(crate) async fn handle(&'static self, command: Command) -> Result<()> {
+        use Command::*;
+        match command {
+            ProbeServer { user, homeserver } => self.probe_server(user, homeserver).await,
+            LoginPassword { user, password, homeserver } => self.login_password(user, password, homeserver).await,
+            LoginSso { user, homeserver, idp } => self.login_sso(user, homeserver, idp).await,
+            Logout => self.logout().await,
+            OpenRoom { room_id } => self.open_room(&room_id).await,
+            CloseRoom => {
                 let mut st = self.state.lock().await;
                 if let Some(open) = st.open.take() {
                     open.task.abort();
                 }
                 Ok(())
             }
-            "paginate_back" => {
-                let room = self.room(v).await?;
-                let n = v.get("count").and_then(Value::as_u64).unwrap_or(30) as u16;
+            PaginateBack { room_id, count } => {
+                let room = self.room(&room_id).await?;
+                let n = count.unwrap_or(30);
                 let tl = self.timeline_for(&room).await?;
                 let more = tl.paginate_backwards(n).await?;
                 self.emit(json!({"ev": "paginated", "room_id": room.room_id().as_str(), "at_start": more}));
                 Ok(())
             }
-            "send_text" => {
-                let room = self.room(v).await?;
-                let body = s(v, "body")?;
+            SendText { room_id, body, reply_to, markdown } => {
+                let room = self.room(&room_id).await?;
                 let tl = self.timeline_for(&room).await?;
-                let content = if v.get("markdown").and_then(Value::as_bool).unwrap_or(true) {
+                let content = if markdown.unwrap_or(true) {
                     RoomMessageEventContent::text_markdown(&body)
                 } else {
                     RoomMessageEventContent::text_plain(&body)
                 };
-                match opt(v, "reply_to") {
+                match given(&reply_to) {
                     Some(reply) => {
                         let without: RoomMessageEventContentWithoutRelation = content.into();
-                        tl.send_reply(without, EventId::parse(&reply)?).await?;
+                        tl.send_reply(without, EventId::parse(reply)?).await?;
                     }
                     None => {
                         tl.send(content.into()).await?;
@@ -77,14 +93,14 @@ impl Core {
                 }
                 Ok(())
             }
-            "send_file" => {
-                let room = self.room(v).await?;
-                let path = PathBuf::from(s(v, "path")?);
+            SendFile { room_id, path, caption, w, h, thumb_path, thumb_w, thumb_h, voice, duration_ms } => {
+                let room = self.room(&room_id).await?;
+                let path = PathBuf::from(path);
                 let mime = mime_guess::from_path(&path).first_or_octet_stream();
                 let tl = self.timeline_for(&room).await?;
-                let dim = |key: &str| v.get(key).and_then(Value::as_u64).and_then(|n| UInt::try_from(n).ok());
+                let dim = |n: Option<u64>| n.and_then(|n| UInt::try_from(n).ok());
                 let mut config = AttachmentConfig::default();
-                if let (Some(w), Some(h)) = (dim("w"), dim("h")) {
+                if let (Some(w), Some(h)) = (dim(w), dim(h)) {
                     let size = std::fs::metadata(&path).ok().and_then(|m| UInt::try_from(m.len()).ok());
                     config.info = Some(AttachmentInfo::Image(BaseImageInfo {
                         width: Some(w),
@@ -93,7 +109,7 @@ impl Core {
                         ..Default::default()
                     }));
                 }
-                if let (Some(tp), Some(w), Some(h)) = (opt(v, "thumb_path"), dim("thumb_w"), dim("thumb_h")) {
+                if let (Some(tp), Some(w), Some(h)) = (thumb_path, dim(thumb_w), dim(thumb_h)) {
                     if let Ok(data) = std::fs::read(&tp) {
                         let size = UInt::try_from(data.len() as u64).unwrap_or_default();
                         config.thumbnail = Some(Thumbnail {
@@ -106,54 +122,48 @@ impl Core {
                     }
                     let _ = std::fs::remove_file(&tp);
                 }
-                if let Some(caption) = opt(v, "caption") {
+                if let Some(caption) = given(&caption) {
                     config.caption = Some(TextMessageEventContent::markdown(caption));
                 }
                 // a voice message: other clients show it as one (a player, not a file)
-                if v.get("voice").and_then(Value::as_bool).unwrap_or(false) {
-                    let duration = v.get("duration_ms").and_then(Value::as_u64).map(Duration::from_millis);
+                if voice.unwrap_or(false) {
+                    let duration = duration_ms.map(Duration::from_millis);
                     let size = std::fs::metadata(&path).ok().and_then(|m| UInt::try_from(m.len()).ok());
                     config.info = Some(AttachmentInfo::Voice(BaseAudioInfo { duration, size, ..Default::default() }));
                 }
                 tl.send_attachment(path, mime, config).await?;
                 Ok(())
             }
-            "react" => {
-                let room = self.room(v).await?;
+            React { room_id, event_id, key } => {
+                let room = self.room(&room_id).await?;
                 let tl = self.timeline_for(&room).await?;
-                let id = TimelineEventItemId::EventId(EventId::parse(s(v, "event_id")?)?);
-                tl.toggle_reaction(&id, &s(v, "key")?).await?;
+                let id = TimelineEventItemId::EventId(EventId::parse(&event_id)?);
+                tl.toggle_reaction(&id, &key).await?;
                 Ok(())
             }
-            "redact" => {
+            Redact { room_id, event_id, txn_id, reason } => {
                 // a sent event is redacted; a local echo (txn_id) is discarded
-                let room = self.room(v).await?;
+                let room = self.room(&room_id).await?;
                 let tl = self.timeline_for(&room).await?;
-                tl.redact(&Self::item_id(v)?, opt(v, "reason").as_deref()).await?;
+                tl.redact(&Self::item_id(event_id, txn_id)?, given(&reason)).await?;
                 Ok(())
             }
-            "edit" => {
-                let room = self.room(v).await?;
+            Edit { room_id, event_id, txn_id, body } => {
+                let room = self.room(&room_id).await?;
                 let tl = self.timeline_for(&room).await?;
-                let body = s(v, "body")?;
                 let content: RoomMessageEventContentWithoutRelation =
                     RoomMessageEventContent::text_markdown(&body).into();
-                tl.edit(&Self::item_id(v)?, EditedContent::RoomMessage(content)).await?;
+                tl.edit(&Self::item_id(event_id, txn_id)?, EditedContent::RoomMessage(content)).await?;
                 Ok(())
             }
-            "poll_vote" => {
-                let room = self.room(v).await?;
-                let poll = EventId::parse(s(v, "event_id")?)?;
-                let answers: Vec<String> = v
-                    .get("answers")
-                    .and_then(Value::as_array)
-                    .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect())
-                    .unwrap_or_default();
+            PollVote { room_id, event_id, answers } => {
+                let room = self.room(&room_id).await?;
+                let poll = EventId::parse(&event_id)?;
                 room.send(UnstablePollResponseEventContent::new(answers, poll)).await?;
                 Ok(())
             }
-            "storage_info" => self.storage_info().await,
-            "clear_media" => {
+            StorageInfo => self.storage_info().await,
+            ClearMedia => {
                 // the decrypted copies this app keeps, and the SDK's media cache
                 for dir in ["media"] {
                     std::fs::remove_dir_all(self.data_dir.join(dir)).ok();
@@ -163,21 +173,21 @@ impl Core {
                 client.media().clean().await?;
                 self.storage_info().await
             }
-            "report" => {
-                let room = self.room(v).await?;
-                let event_id = EventId::parse(s(v, "event_id")?)?;
-                room.report_content(event_id, opt(v, "reason")).await?;
+            Report { room_id, event_id, reason } => {
+                let room = self.room(&room_id).await?;
+                let event_id = EventId::parse(&event_id)?;
+                room.report_content(event_id, given(&reason).map(str::to_owned)).await?;
                 Ok(())
             }
-            "get_notification_mode" => {
-                let room = self.room(v).await?;
+            GetNotificationMode { room_id } => {
+                let room = self.room(&room_id).await?;
                 self.notification_mode(&room).await
             }
-            "set_notification_mode" => {
-                let room = self.room(v).await?;
+            SetNotificationMode { room_id, mode } => {
+                let room = self.room(&room_id).await?;
                 let client = self.client().await?;
                 let settings = client.notification_settings().await;
-                match s(v, "mode")?.as_str() {
+                match mode.as_str() {
                     "all" => settings.set_room_notification_mode(room.room_id(), RoomNotificationMode::AllMessages).await?,
                     "mentions" => settings
                         .set_room_notification_mode(room.room_id(), RoomNotificationMode::MentionsAndKeywordsOnly)
@@ -187,34 +197,34 @@ impl Core {
                 }
                 self.notification_mode(&room).await
             }
-            "export_keys" => {
+            ExportKeys { path, passphrase } => {
                 let client = self.client().await?;
-                let path = PathBuf::from(s(v, "path")?);
-                client.encryption().export_room_keys(path.clone(), &s(v, "passphrase")?, |_| true).await?;
+                let path = PathBuf::from(path);
+                client.encryption().export_room_keys(path.clone(), &passphrase, |_| true).await?;
                 self.emit(json!({"ev": "keys_exported", "path": path.to_string_lossy()}));
                 Ok(())
             }
-            "import_keys" => {
+            ImportKeys { path, passphrase } => {
                 let client = self.client().await?;
                 let result = client
                     .encryption()
-                    .import_room_keys(PathBuf::from(s(v, "path")?), &s(v, "passphrase")?)
+                    .import_room_keys(PathBuf::from(path), &passphrase)
                     .await?;
                 self.emit(json!({"ev": "keys_imported", "imported": result.imported_count, "total": result.total_count}));
                 Ok(())
             }
-            "create_room" => {
+            CreateRoom { name, topic, public, alias, encrypted } => {
                 let client = self.client().await?;
                 let mut req = create_room::v3::Request::new();
-                req.name = opt(v, "name");
-                req.topic = opt(v, "topic");
-                let public = v.get("public").and_then(Value::as_bool).unwrap_or(false);
+                req.name = given(&name).map(str::to_owned);
+                req.topic = given(&topic).map(str::to_owned);
+                let public = public.unwrap_or(false);
                 req.preset = Some(if public { create_room::v3::RoomPreset::PublicChat } else { create_room::v3::RoomPreset::PrivateChat });
                 if public {
                     req.visibility = Visibility::Public;
-                    req.room_alias_name = opt(v, "alias");
+                    req.room_alias_name = given(&alias).map(str::to_owned);
                 }
-                if v.get("encrypted").and_then(Value::as_bool).unwrap_or(!public) {
+                if encrypted.unwrap_or(!public) {
                     let content = RoomEncryptionEventContent::with_recommended_defaults();
                     req.initial_state = vec![InitialStateEvent::with_empty_state_key(content).to_raw_any()];
                 }
@@ -222,8 +232,8 @@ impl Core {
                 self.emit(json!({"ev": "joined", "room_id": room.room_id().as_str()}));
                 Ok(())
             }
-            "mark_read" => {
-                let room = self.room(v).await?;
+            MarkRead { room_id, private } => {
+                let room = self.room(&room_id).await?;
                 // the open room's timeline knows its newest item; any other room
                 // gets the receipt on its latest event (a throwaway timeline is
                 // empty and marked nothing, so "Mark as read" in the list did nothing)
@@ -232,7 +242,7 @@ impl Core {
                     st.open.as_ref().map(|o| o.room_id == room.room_id()).unwrap_or(false)
                 };
                 // a private receipt moves our marker without telling the room
-                let kind = if v.get("private").and_then(Value::as_bool).unwrap_or(false) {
+                let kind = if private.unwrap_or(false) {
                     ReceiptType::ReadPrivate
                 } else {
                     ReceiptType::Read
@@ -246,37 +256,38 @@ impl Core {
                 let _ = room.set_unread_flag(false).await;
                 Ok(())
             }
-            "typing" => {
-                let room = self.room(v).await?;
-                room.typing_notice(v.get("typing").and_then(Value::as_bool).unwrap_or(false)).await?;
+            Typing { room_id, typing } => {
+                let room = self.room(&room_id).await?;
+                room.typing_notice(typing.unwrap_or(false)).await?;
                 Ok(())
             }
-            "get_media" => self.get_media(v).await,
-            "set_favourite" => {
-                let room = self.room(v).await?;
-                room.set_is_favourite(v.get("value").and_then(Value::as_bool).unwrap_or(true), None).await?;
+            GetMedia { room_id, event_id, thumb, dest_dir } => {
+                self.get_media(&room_id, &event_id, thumb.unwrap_or(false), dest_dir).await
+            }
+            SetFavourite { room_id, value } => {
+                let room = self.room(&room_id).await?;
+                room.set_is_favourite(value.unwrap_or(true), None).await?;
                 Ok(())
             }
-            "set_low_priority" => {
-                let room = self.room(v).await?;
-                room.set_is_low_priority(v.get("value").and_then(Value::as_bool).unwrap_or(true), None).await?;
+            SetLowPriority { room_id, value } => {
+                let room = self.room(&room_id).await?;
+                room.set_is_low_priority(value.unwrap_or(true), None).await?;
                 Ok(())
             }
-            "join_room" => {
-                let room = self.room(v).await?;
+            JoinRoom { room_id } => {
+                let room = self.room(&room_id).await?;
                 room.join().await?;
                 Ok(())
             }
-            "leave_room" => {
-                let room = self.room(v).await?;
+            LeaveRoom { room_id } => {
+                let room = self.room(&room_id).await?;
                 room.leave().await?;
                 Ok(())
             }
-            "search" => {
+            Search { term } => {
                 // People from the user directory, rooms from the public
                 // directory of the own server; both are best effort.
                 let client = self.client().await?;
-                let term = s(v, "term")?;
                 let mut req = get_public_rooms_filtered::v3::Request::new();
                 req.limit = Some(uint!(20));
                 req.filter.generic_search_term = Some(term.clone());
@@ -316,16 +327,16 @@ impl Core {
                 self.emit(json!({"ev": "search_results", "term": term, "users": users, "rooms": rooms}));
                 Ok(())
             }
-            "join_by_id_or_alias" => {
+            JoinByIdOrAlias { id } => {
                 let client = self.client().await?;
-                let id = RoomOrAliasId::parse(s(v, "id")?)?;
+                let id = RoomOrAliasId::parse(id.trim())?;
                 let room = client.join_room_by_id_or_alias(&id, &[]).await?;
                 self.emit(json!({"ev": "joined", "room_id": room.room_id().as_str()}));
                 Ok(())
             }
-            "create_dm" => {
+            CreateDm { user_id } => {
                 let client = self.client().await?;
-                let user = UserId::parse(s(v, "user_id")?)?;
+                let user = UserId::parse(user_id.trim())?;
                 let room = match client.get_dm_room(&user) {
                     Some(r) => r,
                     None => client.create_dm(&user).await?,
@@ -333,8 +344,8 @@ impl Core {
                 self.emit(json!({"ev": "dm_ready", "room_id": room.room_id().as_str(), "user_id": user.as_str()}));
                 Ok(())
             }
-            "room_members" => {
-                let room = self.room(v).await?;
+            RoomMembers { room_id } => {
+                let room = self.room(&room_id).await?;
                 let members: Vec<Value> = room
                     .members(RoomMemberships::ACTIVE)
                     .await?
@@ -351,22 +362,22 @@ impl Core {
                 self.emit(json!({"ev": "members", "room_id": room.room_id().as_str(), "members": members}));
                 Ok(())
             }
-            "set_room_name" => {
-                let room = self.room(v).await?;
-                room.set_name(s(v, "name")?).await?;
+            SetRoomName { room_id, name } => {
+                let room = self.room(&room_id).await?;
+                room.set_name(name).await?;
                 Ok(())
             }
-            "set_room_topic" => {
-                let room = self.room(v).await?;
-                room.set_room_topic(&s(v, "topic")?).await?;
+            SetRoomTopic { room_id, topic } => {
+                let room = self.room(&room_id).await?;
+                room.set_room_topic(&topic).await?;
                 Ok(())
             }
-            "invite" => {
-                let room = self.room(v).await?;
-                room.invite_user_by_id(&UserId::parse(s(v, "user_id")?)?).await?;
+            Invite { room_id, user_id } => {
+                let room = self.room(&room_id).await?;
+                room.invite_user_by_id(&UserId::parse(user_id.trim())?).await?;
                 Ok(())
             }
-            "verification_request_self" => {
+            VerificationRequestSelf => {
                 let client = self.client().await?;
                 let own = client.user_id().context("no user id")?.to_owned();
                 let identity = client
@@ -378,50 +389,50 @@ impl Core {
                 self.rt.spawn(self.watch_request(req));
                 Ok(())
             }
-            "verification_accept" => {
-                let req = self.request(v).await?;
+            VerificationAccept { flow_id } => {
+                let req = self.request(&flow_id).await?;
                 req.accept().await?;
                 Ok(())
             }
-            "verification_start_sas" => {
-                let req = self.request(v).await?;
+            VerificationStartSas { flow_id } => {
+                let req = self.request(&flow_id).await?;
                 req.start_sas().await?;
                 Ok(())
             }
-            "verification_confirm" => {
-                let sas = self.sas(v).await?;
+            VerificationConfirm { flow_id } => {
+                let sas = self.sas(&flow_id).await?;
                 sas.confirm().await?;
                 Ok(())
             }
-            "verification_mismatch" => {
-                let sas = self.sas(v).await?;
+            VerificationMismatch { flow_id } => {
+                let sas = self.sas(&flow_id).await?;
                 sas.mismatch().await?;
                 Ok(())
             }
-            "verification_cancel" => {
-                let req = self.request(v).await?;
+            VerificationCancel { flow_id } => {
+                let req = self.request(&flow_id).await?;
                 req.cancel().await?;
                 Ok(())
             }
-            "recovery_recover" => {
+            RecoveryRecover { key } => {
                 let client = self.client().await?;
-                client.encryption().recovery().recover(s(v, "key")?.trim()).await?;
+                client.encryption().recovery().recover(key.trim()).await?;
                 self.emit(json!({"ev": "recovery_done"}));
                 Ok(())
             }
-            "recovery_enable" => {
+            RecoveryEnable => {
                 let client = self.client().await?;
                 let key = client.encryption().recovery().enable().wait_for_backups_to_upload().await?;
                 self.emit(json!({"ev": "recovery_key", "key": key}));
                 Ok(())
             }
-            "recovery_reset" => {
+            RecoveryReset => {
                 let client = self.client().await?;
                 let key = client.encryption().recovery().reset_key().await?;
                 self.emit(json!({"ev": "recovery_key", "key": key}));
                 Ok(())
             }
-            "devices" => {
+            Devices => {
                 let client = self.client().await?;
                 let own = client.device_id().map(|d| d.to_string());
                 let devices: Vec<Value> = client
@@ -442,30 +453,30 @@ impl Core {
                 self.emit(json!({"ev": "devices", "devices": devices}));
                 Ok(())
             }
-            "delete_device" => self.delete_device(v).await,
-            "profile" => {
+            DeleteDevice { device_id, password } => self.delete_device(device_id, password).await,
+            Profile => {
                 let client = self.client().await?;
                 let name = client.account().get_display_name().await?;
                 self.emit(json!({"ev": "profile", "display_name": name,
                                  "user_id": client.user_id().map(|u| u.to_string())}));
                 Ok(())
             }
-            "set_display_name" => {
+            SetDisplayName { name } => {
                 let client = self.client().await?;
-                client.account().set_display_name(Some(&s(v, "name")?)).await?;
+                client.account().set_display_name(Some(&name)).await?;
                 Ok(())
             }
-            "ignore_user" => {
+            IgnoreUser { user_id } => {
                 let client = self.client().await?;
-                client.account().ignore_user(&UserId::parse(s(v, "user_id")?)?).await?;
+                client.account().ignore_user(&UserId::parse(user_id.trim())?).await?;
                 Ok(())
             }
-            "unignore_user" => {
+            UnignoreUser { user_id } => {
                 let client = self.client().await?;
-                client.account().unignore_user(&UserId::parse(s(v, "user_id")?)?).await?;
+                client.account().unignore_user(&UserId::parse(user_id.trim())?).await?;
                 Ok(())
             }
-            "refresh_rooms" => {
+            RefreshRooms => {
                 let client = self.client().await?;
                 let dir = self.data_dir.join("avatars");
                 let mut rooms = Vec::new();
@@ -475,7 +486,6 @@ impl Core {
                 self.emit(json!({"ev": "rooms", "rooms": sorted_rooms(rooms)}));
                 Ok(())
             }
-            other => bail!("unknown command {other}"),
         }
     }
 }

@@ -119,7 +119,7 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
     json!({
         "has_avatar": avatar.exists(),
         "avatar": if avatar.exists() { Some(avatar.to_string_lossy().into_owned()) } else { None },
-        "id": room.room_id().as_str(),
+        "room_id": room.room_id().as_str(),
         "name": name,
         "preview": preview,
         "preview_sender": preview_sender,
@@ -153,7 +153,7 @@ pub(crate) fn sorted_rooms(mut rooms: Vec<Value>) -> Value {
             (
                 r["state"] != "invited",
                 std::cmp::Reverse(r["ts"].as_u64().unwrap_or(0)),
-                r["id"].as_str().unwrap_or("").to_owned(),
+                r["room_id"].as_str().unwrap_or("").to_owned(),
             )
         };
         key(a).cmp(&key(b))

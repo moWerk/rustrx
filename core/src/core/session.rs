@@ -15,10 +15,10 @@ impl Core {
             std::fs::create_dir_all(self.data_dir.join("avatars")).ok();
             match self.restore().await {
                 Ok(true) => {}
-                Ok(false) => self.emit(json!({"ev": "ready", "logged_in": false})),
+                Ok(false) => self.emit(json!({"ev": "ready", "logged_in": false, "proto": PROTO})),
                 Err(e) => {
                     self.error("restore", &e);
-                    self.emit(json!({"ev": "ready", "logged_in": false}));
+                    self.emit(json!({"ev": "ready", "logged_in": false, "proto": PROTO}));
                 }
             }
         });
@@ -115,6 +115,7 @@ impl Core {
         let device_id = client.device_id().map(|d| d.to_string());
         self.emit(json!({
             "ev": "logged_in",
+            "proto": PROTO,
             "user_id": user_id,
             "device_id": device_id,
             "homeserver": client.homeserver().to_string(),
@@ -193,20 +194,19 @@ impl Core {
     }
 
     /// Server from a full user id, or the homeserver field.
-    pub(crate) fn server_of(v: &Value) -> Result<String> {
-        if let Some(h) = opt(v, "homeserver").filter(|h| !h.trim().is_empty()) {
-            return Ok(h.trim().to_owned());
+    pub(crate) fn server_of(user: Option<&str>, homeserver: &Option<String>) -> Result<String> {
+        if let Some(h) = given(homeserver) {
+            return Ok(h.to_owned());
         }
-        let user = s(v, "user")?;
-        let user = user.trim();
+        let user = user.unwrap_or("").trim();
         match user.strip_prefix('@').and_then(|u| u.split_once(':')) {
             Some((_, server)) if !server.is_empty() => Ok(server.to_owned()),
             _ => bail!("enter the full Matrix ID, like @name:server.org, or a homeserver"),
         }
     }
 
-    pub(crate) async fn probe_server(&'static self, v: &Value) -> Result<()> {
-        let server = Self::server_of(v)?;
+    pub(crate) async fn probe_server(&'static self, user: Option<String>, homeserver: Option<String>) -> Result<()> {
+        let server = Self::server_of(user.as_deref(), &homeserver)?;
         let client = self.build_client(&server, false).await.map_err(|e| anyhow!("{server}: {e}"))?;
         let flows = client.matrix_auth().get_login_types().await?.flows;
         let mut password = false;
@@ -243,14 +243,12 @@ impl Core {
         Ok(())
     }
 
-    pub(crate) async fn login_password(&'static self, v: &Value) -> Result<()> {
+    pub(crate) async fn login_password(&'static self, user: String, password: String, homeserver: Option<String>) -> Result<()> {
         if self.state.lock().await.client.is_some() {
             bail!("already logged in");
         }
         let result: Result<Client> = async {
-            let server = Self::server_of(v)?;
-            let user = s(v, "user")?;
-            let password = s(v, "password")?;
+            let server = Self::server_of(Some(&user), &homeserver)?;
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
             // after a soft logout: the same device again, so the kept crypto store fits
             let device = std::fs::read_to_string(self.data_dir.join("device_id")).ok();
@@ -276,12 +274,12 @@ impl Core {
         }
     }
 
-    pub(crate) async fn login_sso(&'static self, v: &Value) -> Result<()> {
+    pub(crate) async fn login_sso(&'static self, user: Option<String>, homeserver: Option<String>, idp: Option<String>) -> Result<()> {
         if self.state.lock().await.client.is_some() {
             bail!("already logged in");
         }
         let result: Result<Client> = async {
-            let server = Self::server_of(v)?;
+            let server = Self::server_of(user.as_deref(), &homeserver)?;
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
             let mut builder = client
                 .matrix_auth()
@@ -291,8 +289,8 @@ impl Core {
                 })
                 .initial_device_display_name(DEVICE_NAME)
                 .request_refresh_token();
-            if let Some(idp) = opt(v, "idp") {
-                builder = builder.identity_provider_id(&idp);
+            if let Some(idp) = given(&idp) {
+                builder = builder.identity_provider_id(idp);
             }
             builder.send().await.map_err(|e| anyhow!("{e}"))?;
             Ok(client)

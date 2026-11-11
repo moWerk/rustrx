@@ -43,6 +43,9 @@
 
 // The core's tokio threads call eventCallback until the process ends; the
 // lock and the pointer keep them away from a Rustrx that is being destroyed.
+// the JSON protocol this UI speaks, see docs/PROTOCOL.md (core: PROTO in core.rs)
+static const int kProto = 1;
+
 static QMutex s_lock;
 
 // org.sailfishos.share on /share: the system share sheet calls share(a{sv})
@@ -397,8 +400,7 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
     m_roomsById.clear();
     for (const QVariant &v : rooms) {
         QVariantMap r = v.toMap();
-        const QString id = r.value("room_id", r.value("id")).toString();
-        r.insert("room_id", id);
+        const QString id = r.value("room_id").toString();
         const bool invited = r.value("state").toString() == QLatin1String("invited");
         const bool fav = r.value("is_fav").toBool();
         //: list section for pending invitations
@@ -460,6 +462,9 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         if (type == QLatin1String("rooms"))
             m_firstRooms = false;
     }
+    if ((type == QLatin1String("ready") || type == QLatin1String("logged_in"))
+            && ev.value("proto").toInt() != kProto)
+        qWarning() << "core speaks protocol" << ev.value("proto").toInt() << "the UI expects" << kProto;
     if (type == QLatin1String("ready")) {
         m_ready = true;
         m_loggedIn = ev.value("logged_in").toBool();

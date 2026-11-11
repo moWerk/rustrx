@@ -152,20 +152,17 @@ impl Core {
         }
     }
 
-    pub(crate) async fn request(&self, v: &Value) -> Result<VerificationRequest> {
-        let flow = s(v, "flow_id")?;
-        self.state.lock().await.requests.get(&flow).cloned().context("no such verification")
+    pub(crate) async fn request(&self, flow: &str) -> Result<VerificationRequest> {
+        self.state.lock().await.requests.get(flow).cloned().context("no such verification")
     }
 
-    pub(crate) async fn sas(&self, v: &Value) -> Result<SasVerification> {
-        let flow = s(v, "flow_id")?;
-        self.state.lock().await.sas.get(&flow).cloned().context("no emoji verification in progress")
+    pub(crate) async fn sas(&self, flow: &str) -> Result<SasVerification> {
+        self.state.lock().await.sas.get(flow).cloned().context("no emoji verification in progress")
     }
 
-    pub(crate) async fn delete_device(&'static self, v: &Value) -> Result<()> {
+    pub(crate) async fn delete_device(&'static self, device_id: String, password: String) -> Result<()> {
         let client = self.client().await?;
-        let id: OwnedDeviceId = s(v, "device_id")?.into();
-        let password = s(v, "password")?;
+        let id: OwnedDeviceId = device_id.into();
         let ids = [id];
         if let Err(e) = client.delete_devices(&ids, None).await {
             let info = e.as_uiaa_response().context(format!("{e}"))?;

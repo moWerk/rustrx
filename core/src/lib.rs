@@ -14,6 +14,7 @@
 #![recursion_limit = "256"]
 
 mod core;
+mod protocol;
 mod serialize;
 
 use std::ffi::{c_char, c_void, CStr, CString};

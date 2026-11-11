@@ -65,13 +65,6 @@ impl Core {
         }
     }
 
-    /// A timeline item by event id, or by transaction id for a local echo.
-    pub(crate) fn item_id(v: &Value) -> Result<TimelineEventItemId> {
-        if let Some(txn) = opt(v, "txn_id") {
-            return Ok(TimelineEventItemId::TransactionId(txn.into()));
-        }
-        Ok(TimelineEventItemId::EventId(EventId::parse(s(v, "event_id")?)?))
-    }
 
     pub(crate) async fn notification_mode(&self, room: &Room) -> Result<()> {
         let client = self.client().await?;
@@ -86,8 +79,8 @@ impl Core {
         Ok(())
     }
 
-    pub(crate) async fn open_room(&'static self, v: &Value) -> Result<()> {
-        let room = self.room(v).await?;
+    pub(crate) async fn open_room(&'static self, room_id: &str) -> Result<()> {
+        let room = self.room(room_id).await?;
         let client = self.client().await?;
         let own = client.user_id().context("no user id")?.to_owned();
         let room_id = room.room_id().to_owned();
@@ -128,11 +121,9 @@ impl Core {
         }
     }
 
-    pub(crate) async fn get_media(&'static self, v: &Value) -> Result<()> {
-        let room = self.room(v).await?;
+    pub(crate) async fn get_media(&'static self, room_id: &str, event_id: &str, thumb: bool, dest_dir: Option<String>) -> Result<()> {
+        let room = self.room(room_id).await?;
         let client = self.client().await?;
-        let event_id = s(v, "event_id")?;
-        let thumb = v.get("thumb").and_then(Value::as_bool).unwrap_or(false);
         let tl = self.timeline_for(&room).await?;
         let item = tl.item_by_event_id(&EventId::parse(&event_id)?).await.context("event not in timeline")?;
         let (bytes, mime) = match item.content().as_message().map(|m| m.msgtype()) {
@@ -165,7 +156,8 @@ impl Core {
         let safe: String = event_id.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
         // "dest_dir": a copy for other apps (the data dir is private to the sandbox),
         // named after the file where the message has a name
-        let path = match opt(v, "dest_dir") {
+        let exported = dest_dir.is_some();
+        let path = match dest_dir {
             Some(dir) => {
                 let original = item
                     .content()
@@ -186,7 +178,7 @@ impl Core {
         };
         tokio::fs::write(&path, &bytes).await?;
         self.emit(json!({"ev": "media", "room_id": room.room_id().as_str(), "event_id": event_id,
-                         "thumb": thumb, "exported": opt(v, "dest_dir").is_some(),
+                         "thumb": thumb, "exported": exported,
                          "path": path.to_string_lossy()}));
         Ok(())
     }

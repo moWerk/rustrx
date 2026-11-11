@@ -54,7 +54,12 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use crate::serialize::{avatar_file, items_json, room_json, sorted_rooms};
+use crate::protocol::{given, Command};
 use crate::Emitter;
+
+/// The version of the JSON protocol between the core and the UI (docs/PROTOCOL.md),
+/// sent with "ready" and "logged_in".
+pub(crate) const PROTO: u32 = 1;
 
 const DEVICE_NAME: &str = "Rustrx (Sailfish OS)";
 const USER_AGENT: &str = concat!("Rustrx/", env!("CARGO_PKG_VERSION"), " (Sailfish OS)");
@@ -133,16 +138,7 @@ pub(crate) struct Core {
     state: Mutex<State>,
 }
 
-fn s(v: &Value, key: &str) -> Result<String> {
-    v.get(key)
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .ok_or_else(|| anyhow!("missing \"{key}\""))
-}
 
-fn opt(v: &Value, key: &str) -> Option<String> {
-    v.get(key).and_then(Value::as_str).map(str::to_owned)
-}
 
 mod commands;
 mod session;
