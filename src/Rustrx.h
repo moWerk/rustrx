@@ -83,6 +83,7 @@ public:
     Q_INVOKABLE void closeRoom();
     Q_INVOKABLE void sendText(const QString &roomId, const QString &body, const QString &replyTo);
     Q_INVOKABLE void sendFile(const QString &roomId, const QString &path, const QString &caption = QString());
+    Q_INVOKABLE void sendVoice(const QString &roomId, const QString &path, qint64 durationMs);
     Q_INVOKABLE void getMedia(const QString &roomId, const QString &eventId, bool thumb);
     // a copy in Downloads, where other apps may read it; answered by mediaExported
     Q_INVOKABLE void exportMedia(const QString &roomId, const QString &eventId);

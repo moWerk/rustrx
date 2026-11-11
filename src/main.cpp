@@ -25,6 +25,7 @@
 #include "Rustrx.h"
 #include "RoomModel.h"
 #include "TimelineModel.h"
+#include "VoiceRecorder.h"
 
 int main(int argc, char *argv[])
 {
@@ -38,9 +39,12 @@ int main(int argc, char *argv[])
     // ~/.local/share/harbour-rustrx/harbour-rustrx: session, store, media
     const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     Rustrx rustrx(dataDir);
+    // before the view, so it outlives the QML that uses it
+    VoiceRecorder voice;
 
     QScopedPointer<QQuickView> view(SailfishApp::createView());
     view->rootContext()->setContextProperty(QStringLiteral("rustrx"), &rustrx);
+    view->rootContext()->setContextProperty(QStringLiteral("voice"), &voice);
     view->rootContext()->setContextProperty(QStringLiteral("appVersion"), QStringLiteral(APP_VERSION));
     view->setSource(SailfishApp::pathToMainQml());
     view->show();

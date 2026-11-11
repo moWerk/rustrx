@@ -319,6 +319,11 @@ void Rustrx::sendFile(const QString &roomId, const QString &path, const QString 
     command(cmd);
 }
 
+void Rustrx::sendVoice(const QString &roomId, const QString &path, qint64 durationMs)
+{
+    command({{"cmd", "send_file"}, {"room_id", roomId}, {"path", path}, {"voice", true}, {"duration_ms", durationMs}});
+}
+
 void Rustrx::getMedia(const QString &roomId, const QString &eventId, bool thumb)
 {
     command({{"cmd", "get_media"}, {"room_id", roomId}, {"event_id", eventId}, {"thumb", thumb}});

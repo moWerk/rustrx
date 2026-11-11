@@ -925,5 +925,21 @@
         <source>They are fetched again when a room shows them.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-me-record-voice">
+        <source>Record a voice message</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-voice-recording">
+        <source>Recording, tap to stop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-voice-tap">
+        <source>Tap to record</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-discard">
+        <source>Discard</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

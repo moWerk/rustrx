@@ -6,18 +6,20 @@ TARGET = harbour-rustrx
 isEmpty(VERSION): VERSION = 0.3.0
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
-QT += dbus
+QT += dbus multimedia
 
 CONFIG += sailfishapp sailfishapp_i18n sailfishapp_i18n_idbased sailfishapp_i18n_unfinished
 
 SOURCES += src/main.cpp \
     src/Rustrx.cpp \
     src/RoomModel.cpp \
-    src/TimelineModel.cpp
+    src/TimelineModel.cpp \
+    src/VoiceRecorder.cpp
 
 HEADERS += src/Rustrx.h \
     src/RoomModel.h \
     src/TimelineModel.h \
+    src/VoiceRecorder.h \
     src/rustrx_core.h
 
 # the prebuilt core: lib/librustrx.so at build time, next to the data at run time

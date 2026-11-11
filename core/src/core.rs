@@ -12,7 +12,7 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{FutureExt, StreamExt};
 use matrix_sdk::authentication::matrix::MatrixSession;
-use matrix_sdk::attachment::{AttachmentInfo, BaseImageInfo, Thumbnail};
+use matrix_sdk::attachment::{AttachmentInfo, BaseAudioInfo, BaseImageInfo, Thumbnail};
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::encryption::recovery::RecoveryState;
 use matrix_sdk::encryption::verification::{
@@ -959,6 +959,12 @@ impl Core {
                 }
                 if let Some(caption) = opt(v, "caption") {
                     config.caption = Some(TextMessageEventContent::markdown(caption));
+                }
+                // a voice message: other clients show it as one (a player, not a file)
+                if v.get("voice").and_then(Value::as_bool).unwrap_or(false) {
+                    let duration = v.get("duration_ms").and_then(Value::as_u64).map(Duration::from_millis);
+                    let size = std::fs::metadata(&path).ok().and_then(|m| UInt::try_from(m.len()).ok());
+                    config.info = Some(AttachmentInfo::Voice(BaseAudioInfo { duration, size, ..Default::default() }));
                 }
                 tl.send_attachment(path, mime, config).await?;
                 Ok(())

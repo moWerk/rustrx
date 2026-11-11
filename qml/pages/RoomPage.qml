@@ -193,6 +193,11 @@ Page {
                 }
             }
             MenuItem {
+                //% "Record a voice message"
+                text: qsTrId("rustrx-me-record-voice")
+                onClicked: pageStack.push(Qt.resolvedUrl("VoicePage.qml"), { roomId: roomId })
+            }
+            MenuItem {
                 //% "Send an image"
                 text: qsTrId("rustrx-me-send-image")
                 onClicked: {
