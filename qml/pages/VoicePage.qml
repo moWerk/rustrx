@@ -28,25 +28,30 @@ Page {
     // counted from the tap: the recorder reports its duration a few seconds late
     property real startedAt: 0
     property real elapsed: 0
-    // this page's recording only: the recorder keeps the previous one's duration
+    // the page's own state from the tap: the recorder reports "recording" a
+    // second or two late and keeps the previous recording's duration until
+    // then, so neither is shown
     property bool recorded
-    readonly property real shownMs: !recorded ? 0 : voice.recording ? elapsed : Math.max(voice.duration, elapsed)
+    property bool active
+    readonly property real shownMs: elapsed
 
     function toggle() {
-        if (voice.recording) {
+        if (active) {
+            active = false
             voice.stop()
             return
         }
         elapsed = 0
         startedAt = Date.now()
         recorded = true
+        active = true
         voice.start()
     }
 
     Timer {
         interval: 100
         repeat: true
-        running: voice.recording
+        running: page.active
         onTriggered: page.elapsed = Date.now() - page.startedAt
     }
 
@@ -56,7 +61,7 @@ Page {
     ConfigurationValue { id: debugRecord; key: "/apps/harbour-rustrx/debugRecord"; defaultValue: false }
     Timer { running: debugRecord.value === true; interval: 500; onTriggered: { page.toggle(); debugShot.start() } }
     Timer { id: debugShot; interval: 1500; onTriggered: debugStop.start() }
-    Timer { id: debugStop; interval: 1500; onTriggered: voice.stop() }
+    Timer { id: debugStop; interval: 1500; onTriggered: page.toggle() }
 
     Column {
         anchors.centerIn: parent
@@ -67,7 +72,7 @@ Page {
             anchors.horizontalCenter: parent.horizontalCenter
             text: Format.formatDuration(page.shownMs / 1000, Formatter.DurationShort)
             font.pixelSize: Theme.fontSizeHuge
-            color: voice.recording ? Theme.highlightColor : Theme.primaryColor
+            color: page.active ? Theme.highlightColor : Theme.primaryColor
         }
 
         // the record button, with the tuning fork's ripple from Beatfork:
@@ -82,7 +87,7 @@ Page {
             Timer {
                 interval: 1200
                 repeat: true
-                running: voice.recording
+                running: page.active
                 triggeredOnStart: true
                 onTriggered: button.rippleCount++
             }
@@ -122,7 +127,7 @@ Page {
                     }
                 }
             }
-            onRippleCountChanged: if (voice.recording) { ripple1Anim.restart(); ripple2Anim.restart() }
+            onRippleCountChanged: if (page.active) { ripple1Anim.restart(); ripple2Anim.restart() }
 
             BackgroundItem {
                 anchors.centerIn: parent
@@ -133,7 +138,7 @@ Page {
                 Rectangle {
                     anchors.fill: parent
                     radius: width / 2
-                    color: voice.recording || parent.pressed ? Theme.highlightColor : Theme.rgba(Theme.highlightColor, Theme.opacityLow)
+                    color: page.active || parent.pressed ? Theme.highlightColor : Theme.rgba(Theme.highlightColor, Theme.opacityLow)
                 }
             }
         }
@@ -144,7 +149,7 @@ Page {
             font.pixelSize: Theme.fontSizeSmall
             text: voice.error.length ? voice.error
                   //% "Recording, tap to stop"
-                  : voice.recording ? qsTrId("rustrx-la-voice-recording")
+                  : page.active ? qsTrId("rustrx-la-voice-recording")
                   //% "Tap to record"
                   : qsTrId("rustrx-la-voice-tap")
         }
@@ -152,7 +157,7 @@ Page {
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Theme.paddingLarge
-            visible: page.recorded && !voice.recording && voice.path.length > 0
+            visible: page.recorded && !page.active && !voice.recording && voice.path.length > 0
             Button {
                 //% "Discard"
                 text: qsTrId("rustrx-bt-discard")
@@ -162,7 +167,7 @@ Page {
                 //% "Send"
                 text: qsTrId("rustrx-bt-send")
                 onClicked: {
-                    rustrx.sendVoice(page.roomId, voice.path, voice.duration > 0 ? voice.duration : page.shownMs)
+                    rustrx.sendVoice(page.roomId, voice.path, page.elapsed)
                     page.sent = true
                     pageStack.pop()
                 }
