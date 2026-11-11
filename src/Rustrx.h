@@ -51,10 +51,11 @@ class Rustrx : public QObject
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
     Q_PROPERTY(QString coreVersion READ coreVersion CONSTANT)
     Q_PROPERTY(bool downscaleImages READ downscaleImages WRITE setDownscaleImages NOTIFY settingsChanged)
-    // keep running with the window closed, start with the session, wake every few minutes
+    // notifications with the app closed: a stand-in, started with the session
+    // and when the app is closed, wakes every few minutes
     Q_PROPERTY(bool background READ background WRITE setBackground NOTIFY settingsChanged)
-    // started by the session (autostart), no window shown yet
-    Q_PROPERTY(bool startedHidden READ startedHidden CONSTANT)
+    // this process is the stand-in: no window, ever
+    Q_PROPERTY(bool standIn READ standIn CONSTANT)
 
 public:
     explicit Rustrx(const QString &dataDir, QObject *parent = nullptr);
@@ -81,10 +82,15 @@ public:
     void setDownscaleImages(bool on);
     bool background() const;
     void setBackground(bool on);
-    bool startedHidden() const { return m_startedHidden; }
-    void setStartedHidden(bool hidden) { m_startedHidden = hidden; }
-    // the file the autostart unit looks for (in the sandbox's own config folder)
+    bool standIn() const { return m_standIn; }
+    void setStandIn(bool on) { m_standIn = on; }
+    // the file the stand-in's unit looks for (in the sandbox's own config folder)
     static QString backgroundFlagPath();
+    // a user unit: the stand-in (harbour-rustrx.service) or the app for it to
+    // hand over to (harbour-rustrx-open.service)
+    static bool startUnit(const QString &unit);
+    // what the stand-in passed on: the room, link or share to show
+    void takeHandover();
 
     Q_INVOKABLE void command(const QVariantMap &cmd);
     Q_INVOKABLE void loginPassword(const QString &user, const QString &password, const QString &homeserver);
@@ -146,11 +152,10 @@ signals:
     void openRoomRequested(const QString &roomId);
     // show the window (a second launch, a notification, a link, a share)
     void activateRequested();
-    // hide the window as a close does in background mode (debug and tests)
-    void hideRequested();
-    // the window went away (background mode) / came back
-    void windowHidden();
-    void windowShown();
+    // close the window as the tile's close does (debug and tests)
+    void closeRequested();
+    // the process is about to end for good: the stand-in's line goes
+    void quitRequested();
     // a matrix: or matrix.to link to follow
     void matrixUriRequested(const QString &uri);
     // the share sheet hands over files (local paths) and/or a text
@@ -159,15 +164,25 @@ signals:
 public slots:
     // D-Bus net.mowerk.harbour_rustrx.openRoom, the notifications' action
     // kept until QML takes it: a cold start delivers the call before QML is loaded
-    Q_SCRIPTABLE void openRoomFromNotification(const QString &roomId) { m_pendingRoom = roomId; emit activateRequested(); emit openRoomRequested(roomId); }
-    // a second launch while this one runs in the background
-    Q_SCRIPTABLE void activate() { emit activateRequested(); }
-    // the background notification's Quit button
-    Q_SCRIPTABLE void quit() { QCoreApplication::quit(); }
+    Q_SCRIPTABLE void openRoomFromNotification(const QString &roomId)
+    {
+        m_pendingRoom = roomId;
+        if (handOver())
+            return;
+        emit activateRequested();
+        emit openRoomRequested(roomId);
+    }
+    // a second launch: true when this is the stand-in, which leaves at once,
+    // and the caller waits for the name to go and becomes the app
+    Q_SCRIPTABLE bool activate();
+    // the stand-in's notification: open the app
+    Q_SCRIPTABLE void open() { if (!handOver()) emit activateRequested(); }
+    // the stand-in's notification: Quit (after QML has closed that notification)
+    Q_SCRIPTABLE void quit();
 public:
+    Q_INVOKABLE void closeWindow() { emit closeRequested(); }
     Q_INVOKABLE QString takePendingRoom() { const QString r = m_pendingRoom; m_pendingRoom.clear(); return r; }
     // a link or a share that arrived before QML was loaded
-    Q_INVOKABLE void hideWindow() { emit hideRequested(); }
     Q_INVOKABLE QString takePendingUri() { const QString r = m_pendingUri; m_pendingUri.clear(); return r; }
     Q_INVOKABLE QVariantMap takePendingShare() { const QVariantMap r = m_pendingShare; m_pendingShare.clear(); return r; }
     // called by the share adaptor
@@ -179,6 +194,8 @@ public slots:
         if (urls.isEmpty())
             return;
         m_pendingUri = urls.first();
+        if (handOver())
+            return;
         emit activateRequested();
         emit matrixUriRequested(m_pendingUri);
     }
@@ -189,6 +206,8 @@ private slots:
 private:
     static void eventCallback(void *ctx, const char *json);
     void distributeRooms(const QVariantList &rooms);
+    // the stand-in: pass what was asked for to a new app process and leave
+    bool handOver();
 
     bool m_ready = false;
     bool m_loggedIn = false;
@@ -201,7 +220,7 @@ private:
     QString m_recoveryState = QStringLiteral("unknown");
     QString m_openRoomId;
     QString m_pendingRoom;
-    bool m_startedHidden = false;
+    bool m_standIn = false;
     QString m_pendingUri;
     QVariantMap m_pendingShare;
     int m_unreadTotal = 0;

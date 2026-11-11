@@ -26,34 +26,31 @@
 #include <QDBusMessage>
 #include <QEvent>
 #include <QFile>
+#include <QQmlComponent>
+#include <QQmlEngine>
+#include <QElapsedTimer>
+#include <QThread>
 
 #include "Rustrx.h"
 #include "RoomModel.h"
 #include "TimelineModel.h"
 #include "VoiceRecorder.h"
 
-// In background mode closing the app (from its cover or by the top swipe)
-// hides the window instead of ending the process: the home screen drops the
-// tile at once, notifications go on, and the launcher brings the window back.
-class CloseToHidden : public QObject
+static const QString kService = QStringLiteral("net.mowerk.harbour-rustrx");
+
+// the earlier process leaves (the stand-in after a handover, the app after a
+// close in background mode): its store is free once its bus name is gone
+static bool waitForNameToGo(QDBusConnection &bus)
 {
-public:
-    explicit CloseToHidden(Rustrx *rustrx, QWindow *window) : m_rustrx(rustrx), m_window(window) {}
-protected:
-    bool eventFilter(QObject *obj, QEvent *event) override
-    {
-        if (event->type() == QEvent::Close && m_rustrx->background()) {
-            event->ignore();
-            m_window->hide();
-            emit m_rustrx->windowHidden();
-            return true;
-        }
-        return QObject::eventFilter(obj, event);
+    QElapsedTimer t;
+    t.start();
+    while (bus.interface()->isServiceRegistered(kService)) {
+        if (t.elapsed() > 10000)
+            return false;
+        QThread::msleep(100);
     }
-private:
-    Rustrx *m_rustrx;
-    QWindow *m_window;
-};
+    return true;
+}
 
 int main(int argc, char *argv[])
 {
@@ -64,32 +61,57 @@ int main(int argc, char *argv[])
     qmlRegisterUncreatableType<RoomModel>("Rustrx", 1, 0, "RoomModel", "owned by rustrx");
     qmlRegisterUncreatableType<TimelineModel>("Rustrx", 1, 0, "TimelineModel", "owned by rustrx");
 
-    // One process: a second launch (the launcher, after the window was closed
-    // in background mode) hands over to the running one and leaves.
+    // the stand-in: started by the user unit, with the session or when the
+    // app is closed in background mode; it never has a window
+    const bool standIn = qgetenv("RUSTRX_BACKGROUND") == "1";
+    if (standIn && !QFile::exists(Rustrx::backgroundFlagPath()))
+        return 0;
+
+    // One process at a time, and the bus name is the lock (taken before
+    // the store is opened): a second launch asks the running one to show its
+    // window and leaves, unless that one is the stand-in, which leaves
+    // instead; the stand-in itself waits for a closing app to be gone.
     QDBusConnection bus = QDBusConnection::sessionBus();
-    if (bus.interface() && bus.interface()->isServiceRegistered(QStringLiteral("net.mowerk.harbour-rustrx"))) {
-        QDBusMessage call = QDBusMessage::createMethodCall(QStringLiteral("net.mowerk.harbour-rustrx"),
-                QStringLiteral("/net/mowerk/harbour_rustrx"), QStringLiteral("net.mowerk.harbour_rustrx"),
-                QStringLiteral("activate"));
-        bus.call(call, QDBus::Block, 3000);
-        return 0;
+    if (!bus.registerService(kService)) {
+        bool takeOver = standIn;
+        if (!standIn) {
+            QDBusMessage call = QDBusMessage::createMethodCall(kService, QStringLiteral("/net/mowerk/harbour_rustrx"),
+                    QStringLiteral("net.mowerk.harbour_rustrx"), QStringLiteral("activate"));
+            const QDBusMessage reply = bus.call(call, QDBus::Block, 3000);
+            // no answer: the stand-in was leaving already
+            takeOver = reply.type() == QDBusMessage::ErrorMessage
+                    || (!reply.arguments().isEmpty() && reply.arguments().first().toBool());
+        }
+        if (!takeOver || !waitForNameToGo(bus) || !bus.registerService(kService))
+            return 0;
     }
-    // started by the session: only when background mode is on, and without a window
-    const bool hidden = qgetenv("RUSTRX_BACKGROUND") == "1";
-    if (hidden && !QFile::exists(Rustrx::backgroundFlagPath()))
-        return 0;
 
     // ~/.local/share/harbour-rustrx/harbour-rustrx: session, store, media
     const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     Rustrx rustrx(dataDir);
-    rustrx.setStartedHidden(hidden);
-    QGuiApplication::setQuitOnLastWindowClosed(!rustrx.background());
-    // before the view, so it outlives the QML that uses it
+    rustrx.setStandIn(standIn);
+    if (!standIn)
+        rustrx.takeHandover();
+    // before the window, so it outlives the QML that uses it
     VoiceRecorder voice;
 
+    // notifications and the wake job, for the life of the process
+    QQmlEngine serviceEngine;
+    serviceEngine.rootContext()->setContextProperty(QStringLiteral("rustrx"), &rustrx);
+    QQmlComponent serviceComponent(&serviceEngine, QUrl::fromLocalFile(
+            SailfishApp::pathTo(QStringLiteral("qml/Service.qml")).toLocalFile()));
+    QScopedPointer<QObject> service(serviceComponent.create());
+    if (!service)
+        qWarning() << "Service.qml:" << serviceComponent.errors();
+
+    if (standIn)
+        return app->exec();
+
+    // the window lives as long as the process (see Service.qml)
     QScopedPointer<QQuickView> view(SailfishApp::createView());
     view->rootContext()->setContextProperty(QStringLiteral("rustrx"), &rustrx);
     view->rootContext()->setContextProperty(QStringLiteral("voice"), &voice);
+    view->rootContext()->setContextProperty(QStringLiteral("service"), service.data());
     view->rootContext()->setContextProperty(QStringLiteral("appVersion"), QStringLiteral(APP_VERSION));
     view->setSource(SailfishApp::pathToMainQml());
     QObject::connect(&rustrx, &Rustrx::activateRequested, view.data(), [&view]() {
@@ -97,18 +119,12 @@ int main(int argc, char *argv[])
         view->raise();
         view->requestActivate();
     });
-    // every way back (the launcher raises the window itself, not through us)
-    QObject::connect(view.data(), &QWindow::visibleChanged, &rustrx, [&rustrx](bool visible) {
-        if (visible)
-            emit rustrx.windowShown();
-    });
-    CloseToHidden closer(&rustrx, view.data());
-    view->installEventFilter(&closer);
-    QObject::connect(&rustrx, &Rustrx::hideRequested, view.data(), [&view, &rustrx]() {
-        view->hide();
-        emit rustrx.windowHidden();
-    });
-    // a session start opens minimised to the cover (QML), so the launcher can raise it
+    QObject::connect(&rustrx, &Rustrx::closeRequested, view.data(), &QWindow::close);
     view->show();
-    return app->exec();
+    const int rc = app->exec();
+    // closed in background mode: the stand-in takes over (it waits for this
+    // process to be gone)
+    if (rustrx.background())
+        Rustrx::startUnit(QStringLiteral("harbour-rustrx.service"));
+    return rc;
 }

@@ -1,0 +1,9 @@
+# Rustrx opened from its stand-in (a tapped notification, a link, a share):
+# the stand-in has no window and cannot get one, so it starts the app through
+# this unit and leaves; the app waits for it to be gone, then opens the store.
+[Unit]
+Description=Rustrx Matrix client (opened from the background)
+
+[Service]
+ExecStart=/usr/bin/invoker --type=silica-qt5 --id=harbour-rustrx harbour-rustrx
+Restart=no

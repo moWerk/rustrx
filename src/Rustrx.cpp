@@ -31,10 +31,12 @@
 #include <QMetaObject>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QTimer>
 #include <QUrl>
 
 #include <QDBusArgument>
 #include <QDBusConnection>
+#include <QDBusMessage>
 #include <QDBusVariant>
 #include <QFile>
 #include <QDBusError>
@@ -183,8 +185,80 @@ Rustrx::~Rustrx()
 void Rustrx::receiveShare(const QStringList &files, const QString &text)
 {
     m_pendingShare = QVariantMap{{"files", files}, {"text", text}};
+    if (handOver())
+        return;
     emit activateRequested();
     emit shareRequested(files, text);
+}
+
+static QString handoverPath()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QStringLiteral("/handover.json");
+}
+
+bool Rustrx::startUnit(const QString &unit)
+{
+    QDBusMessage call = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.systemd1"),
+            QStringLiteral("/org/freedesktop/systemd1"), QStringLiteral("org.freedesktop.systemd1.Manager"),
+            QStringLiteral("StartUnit"));
+    call << unit << QStringLiteral("replace");
+    const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::Block, 5000);
+    if (reply.type() == QDBusMessage::ErrorMessage) {
+        qWarning() << "starting" << unit << "failed:" << reply.errorMessage();
+        return false;
+    }
+    return true;
+}
+
+void Rustrx::quit()
+{
+    emit quitRequested();
+    // time for the close to reach the notification server
+    QTimer::singleShot(300, qApp, &QCoreApplication::quit);
+}
+
+bool Rustrx::activate()
+{
+    if (!m_standIn) {
+        emit activateRequested();
+        return false;
+    }
+    qInfo() << "stand-in: the app is starting, leaving";
+    QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+    return true;
+}
+
+// The new process opens the store only when this one is gone (it waits for
+// the bus name), so what it should show goes through a file.
+bool Rustrx::handOver()
+{
+    if (!m_standIn)
+        return false;
+    QJsonObject o;
+    o.insert("room", m_pendingRoom);
+    o.insert("uri", m_pendingUri);
+    o.insert("share", QJsonObject::fromVariantMap(m_pendingShare));
+    QFile f(handoverPath());
+    if (f.open(QIODevice::WriteOnly))
+        f.write(QJsonDocument(o).toJson(QJsonDocument::Compact));
+    f.close();
+    qInfo() << "stand-in: handing over to the app";
+    startUnit(QStringLiteral("harbour-rustrx-open.service"));
+    QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+    return true;
+}
+
+void Rustrx::takeHandover()
+{
+    QFile f(handoverPath());
+    if (!f.open(QIODevice::ReadOnly))
+        return;
+    const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
+    f.close();
+    f.remove();
+    m_pendingRoom = o.value("room").toString();
+    m_pendingUri = o.value("uri").toString();
+    m_pendingShare = o.value("share").toObject().toVariantMap();
 }
 
 QString Rustrx::backgroundFlagPath()
@@ -208,7 +282,6 @@ void Rustrx::setBackground(bool on)
     } else {
         QFile::remove(backgroundFlagPath());
     }
-    QGuiApplication::setQuitOnLastWindowClosed(!on);
     emit settingsChanged();
 }
 

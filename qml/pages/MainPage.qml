@@ -27,13 +27,6 @@ Page {
     id: page
     objectName: "main"
 
-    ListModel {
-        id: tabModel
-        ListElement { kind: "rooms" }
-        ListElement { kind: "people" }
-        ListElement { kind: "favs" }
-    }
-
     function tabTitle(kind) {
         //% "Rooms"
         if (kind === "rooms") return qsTrId("rustrx-he-rooms")
@@ -149,13 +142,6 @@ Page {
                         text: qsTrId("rustrx-me-settings")
                         onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
                     }
-                    // closing the window does not end the app in background mode
-                    MenuItem {
-                        visible: rustrx.background
-                        //% "Quit"
-                        text: qsTrId("rustrx-me-quit")
-                        onClicked: Qt.quit()
-                    }
                 }
 
                 // the tab bar is drawn over the list; content starts below it
@@ -217,5 +203,15 @@ Page {
                 VerticalScrollDecorator { }
             }
         }
+    }
+
+    // after the TabView: children go in the order they were made, and the
+    // TabView must go before its model (else it reaches into a dead context
+    // when the window is deleted in background mode)
+    ListModel {
+        id: tabModel
+        ListElement { kind: "rooms" }
+        ListElement { kind: "people" }
+        ListElement { kind: "favs" }
     }
 }

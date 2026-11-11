@@ -24,7 +24,7 @@ X-Share-Methods=room;
 # Microphone to record voice messages.
 OrganizationName=net.mowerk
 ApplicationName=harbour-rustrx
-Permissions=Internet;Pictures;Videos;Music;Documents;Downloads;MediaIndexing;Camera;Audio;Microphone
+Permissions=Internet;Pictures;Videos;Music;Documents;Downloads;MediaIndexing;Camera;Audio;Microphone;AppLaunch
 
 [X-Share Method room]
 Description=Send to a room

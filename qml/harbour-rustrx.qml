@@ -16,9 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
-import Nemo.Notifications 1.0
 import Nemo.Configuration 1.0
-import Nemo.KeepAlive 1.2
 import "pages"
 
 ApplicationWindow {
@@ -40,9 +38,6 @@ ApplicationWindow {
     // privacy: what others learn from us
     property alias sendReceipts: cfgSendReceipts.value
     property alias sendTyping: cfgSendTyping.value
-    // whether a notification shows the message itself or only a count
-    property alias notifyText: cfgNotifyText.value
-    ConfigurationValue { id: cfgNotifyText; key: "/apps/harbour-rustrx/notifyText"; defaultValue: true }
     ConfigurationValue { id: cfgRoundAvatars; key: "/apps/harbour-rustrx/roundAvatars"; defaultValue: true }
     ConfigurationValue { id: cfgShowReadBy; key: "/apps/harbour-rustrx/showReadBy"; defaultValue: true }
     ConfigurationValue { id: cfgSendReceipts; key: "/apps/harbour-rustrx/sendReceipts"; defaultValue: true }
@@ -123,50 +118,21 @@ ApplicationWindow {
             //% "%1 failed: %2"
             Notices.show(qsTrId("rustrx-no-command-failed").arg(cmd).arg(message), Notice.Long)
         }
-        onNewMessages: {
-            if (Qt.application.state === Qt.ApplicationActive) return
-            app.notify(roomId, roomName, count)
-        }
         // a tapped notification: bring the window up and show the room
+        // (on a cold start route() has taken it already)
         onOpenRoomRequested: {
-            rustrx.takePendingRoom()
+            if (!rustrx.takePendingRoom().length) return
             app.activate()
-            app.closeNotification(roomId)
+            service.closeNotification(roomId)
             app.showRoom(roomId)
         }
-        onOpenRoomChanged: if (rustrx.openRoomId.length) app.closeNotification(rustrx.openRoomId)
-        onMatrixUriRequested: { rustrx.takePendingUri(); app.activate(); app.openMatrixUri(uri) }
-        onShareRequested: { rustrx.takePendingShare(); app.activate(); app.showShare(files, text) }
+        onMatrixUriRequested: if (rustrx.takePendingUri().length) { app.activate(); app.openMatrixUri(uri) }
+        onShareRequested: {
+            var shared = rustrx.takePendingShare()
+            if (shared.files || shared.text) { app.activate(); app.showShare(files, text) }
+        }
     }
 
-    // one notification per room, updated in place: the events view keeps a
-    // line per room, the banner shows the latest message
-    property var roomNotifications: ({})
-    function notify(roomId, roomName, count) {
-        var n = roomNotifications[roomId]
-        if (!n) {
-            n = notificationComponent.createObject(app, { roomId: roomId })
-            roomNotifications[roomId] = n
-        }
-        var info = rustrx.roomInfo(roomId)
-        var last = (info.preview_sender ? info.preview_sender + ": " : "") + (info.preview || "")
-        n.pending += count
-        n.summary = roomName
-        n.previewSummary = roomName
-        //: notification body, %n new messages
-        //% "%n new messages"
-        n.body = last.length && notifyText ? last : qsTrId("rustrx-no-new-messages", n.pending)
-        n.previewBody = n.body
-        n.itemCount = n.pending
-        n.publish()
-    }
-    function closeNotification(roomId) {
-        var n = roomNotifications[roomId]
-        if (!n) return
-        n.close()
-        n.destroy()
-        delete roomNotifications[roomId]
-    }
     // matrix:r/alias:server, matrix:roomid/id:server, matrix:u/user:server
     // (MSC2312) and https://matrix.to/#/<id or alias>; false when it is neither
     function openMatrixUri(uri) {
@@ -221,106 +187,14 @@ ApplicationWindow {
                        { roomId: roomId, roomName: rustrx.roomInfo(roomId).name || "" }, PageStackAction.Immediate)
     }
 
-    Component {
-        id: notificationComponent
-        Notification {
-            property string roomId
-            property int pending
-            appName: "Rustrx"
-            appIcon: "harbour-rustrx"
-            category: "x-nemo.messaging.im"
-            urgency: Notification.Normal
-            remoteActions: [{
-                "name": "default",
-                "service": "net.mowerk.harbour-rustrx",
-                "path": "/net/mowerk/harbour_rustrx",
-                "iface": "net.mowerk.harbour_rustrx",
-                "method": "openRoomFromNotification",
-                "arguments": [ roomId ]
-            }]
-            onClosed: pending = 0
-        }
-    }
-
-    // Background mode: while the phone sleeps the sync is frozen; every five
-    // minutes (in the system's shared wake slot) the job wakes it and keeps it
-    // awake for a short while, so new messages arrive and notify.
-    BackgroundJob {
-        id: wakeJob
-        enabled: rustrx.background && rustrx.loggedIn
-        frequency: BackgroundJob.FiveMinutes
-        onTriggered: { console.log("background: woken"); wakeHold.restart() }
-    }
-    Timer { id: wakeHold; interval: 20000; onTriggered: wakeJob.finished() }
-
-    // A window that comes back after a hide gets a fresh tile on the home
-    // screen, which waits for the cover; Silica thinks it delivered it
-    // already, so the cover is set again (else: a spinner, then no tile).
     property var coverSource: Qt.resolvedUrl("cover/CoverPage.qml")
-    Timer { id: recover; interval: 300; onTriggered: app.cover = app.coverSource }
-    Connections {
-        target: rustrx
-        onWindowShown: { backgroundNote.close(); app.cover = null; recover.restart() }
-        onWindowHidden: if (app.showBackgroundNote) backgroundNote.publish()
-    }
 
-    // while the window is hidden in background mode: a quiet line in the
-    // events view, tap opens Rustrx, Quit ends it
-    property alias showBackgroundNote: cfgBackgroundNote.value
-    ConfigurationValue { id: cfgBackgroundNote; key: "/apps/harbour-rustrx/backgroundNote"; defaultValue: true }
-    Notification {
-        id: backgroundNote
-        appName: "Rustrx"
-        appIcon: "harbour-rustrx"
-        //% "Rustrx matrix client is running in the background"
-        summary: qsTrId("rustrx-no-background")
-        //% "Notifications keep coming. Tap to open."
-        body: qsTrId("rustrx-no-background-body")
-        urgency: Notification.Low
-        isTransient: false
-        remoteActions: [{
-            "name": "default",
-            "service": "net.mowerk.harbour-rustrx",
-            "path": "/net/mowerk/harbour_rustrx",
-            "iface": "net.mowerk.harbour_rustrx",
-            "method": "activate"
-        }, {
-            "name": "quit",
-            //% "Quit"
-            "displayName": qsTrId("rustrx-me-quit"),
-            "service": "net.mowerk.harbour-rustrx",
-            "path": "/net/mowerk/harbour_rustrx",
-            "iface": "net.mowerk.harbour_rustrx",
-            "method": "quit"
-        }]
-    }
-
-    // debug: hide the window like a close in background mode does
-    ConfigurationValue { id: debugHide; key: "/apps/harbour-rustrx/debugHide"; defaultValue: false }
-    Timer { running: debugHide.value === true; interval: 4000; onTriggered: rustrx.hideWindow() }
+    // debug: close the app as the tile's close does
+    ConfigurationValue { id: debugClose; key: "/apps/harbour-rustrx/debugClose"; defaultValue: false }
+    Connections { target: debugClose; onValueChanged: if (debugClose.value === true) rustrx.closeWindow() }
     // debug: back to the home screen (to look at the tile)
     ConfigurationValue { id: debugMinimize; key: "/apps/harbour-rustrx/debugMinimize"; defaultValue: false }
     Connections { target: debugMinimize; onValueChanged: if (debugMinimize.value === true) app.deactivate() }
 
-    // started with the session: to the cover once the window is up (before
-    // it is mapped the call does nothing); retried until the app is inactive
-    Timer {
-        id: toCover
-        interval: 400
-        repeat: true
-        running: rustrx.startedHidden
-        property int tries
-        onTriggered: {
-            if (Qt.application.state !== Qt.ApplicationActive || ++tries > 15) { stop(); return }
-            app.deactivate()
-        }
-    }
-
-    Component.onCompleted: {
-        // notifications an earlier run left behind (killed, crashed) cannot be
-        // updated or closed through new objects; start clean
-        var stale = backgroundNote.notifications()
-        for (var i = 0; i < stale.length; i++) stale[i].close()
-        route()
-    }
+    Component.onCompleted: route()
 }
