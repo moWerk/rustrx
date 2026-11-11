@@ -291,9 +291,27 @@ fn content_json(o: &mut Map<String, Value>, content: &TimelineItemContent, own: 
                     put(o, "type", "sticker");
                     put(o, "body", s.content().body.as_str());
                 }
-                MsgLikeKind::Poll(_) => {
+                MsgLikeKind::Poll(poll) => {
+                    // question, answers with their votes, whether we voted, whether it ended
+                    let r = poll.results();
                     put(o, "type", "poll");
-                    put(o, "body", "Poll");
+                    put(o, "body", r.question.as_str());
+                    let answers: Vec<Value> = r
+                        .answers
+                        .iter()
+                        .map(|a| {
+                            let voters = r.votes.get(&a.id).cloned().unwrap_or_default();
+                            json!({
+                                "id": a.id,
+                                "text": a.text,
+                                "count": voters.len(),
+                                "mine": voters.iter().any(|v| v == own.as_str()),
+                            })
+                        })
+                        .collect();
+                    put(o, "answers", answers);
+                    put(o, "max_selections", r.max_selections);
+                    put(o, "ended", r.end_time.is_some());
                 }
                 MsgLikeKind::Redacted => put(o, "type", "redacted"),
                 MsgLikeKind::UnableToDecrypt(_) => put(o, "type", "utd"),

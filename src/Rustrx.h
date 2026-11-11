@@ -128,6 +128,8 @@ signals:
     void notificationMode(const QString &roomId, const QString &mode);
     void keysExported(const QString &path);
     void keysImported(int imported, int total);
+    // sizes in bytes: store, media_files, and the SDK's per-store sizes
+    void storageInfo(const QVariantMap &info);
     // a notification was tapped: show this room
     void openRoomRequested(const QString &roomId);
     // a matrix: or matrix.to link to follow

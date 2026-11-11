@@ -25,7 +25,7 @@ TimelineModel::TimelineModel(QObject *parent)
                             "editable", "highlight", "send_state", "type", "body", "html", "edited",
                             "reactions", "reply_to", "thread_root", "mime", "size", "w", "h", "has_thumb",
                             "filename", "duration", "geo_uri", "media_path", "thumb_path", "read_by",
-                            "caption", "shield" };
+                            "caption", "shield", "answers", "max_selections", "ended" };
     int role = Qt::UserRole + 1;
     for (const char *n : names)
         m_roles.insert(role++, QByteArray(n));

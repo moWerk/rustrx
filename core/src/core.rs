@@ -25,6 +25,7 @@ use matrix_sdk::room::edit::EditedContent;
 use matrix_sdk::ruma::api::client::directory::get_public_rooms_filtered;
 use matrix_sdk::ruma::api::client::room::{create_room, Visibility};
 use matrix_sdk::ruma::events::room::encryption::RoomEncryptionEventContent;
+use matrix_sdk::ruma::events::poll::unstable_response::UnstablePollResponseEventContent;
 use matrix_sdk::ruma::events::InitialStateEvent;
 use matrix_sdk::ruma::api::client::session::get_login_types::v3::LoginType;
 use matrix_sdk::ruma::api::client::uiaa::{AuthData, MatrixUserIdentifier, Password, UserIdentifier};
@@ -813,6 +814,34 @@ impl Core {
         Ok(TimelineEventItemId::EventId(EventId::parse(s(v, "event_id")?)?))
     }
 
+    async fn storage_info(&self) -> Result<()> {
+        fn dir_size(p: &std::path::Path) -> u64 {
+            std::fs::read_dir(p)
+                .map(|rd| {
+                    rd.filter_map(|e| e.ok())
+                        .map(|e| match e.metadata() {
+                            Ok(m) if m.is_dir() => dir_size(&e.path()),
+                            Ok(m) => m.len(),
+                            Err(_) => 0,
+                        })
+                        .sum()
+                })
+                .unwrap_or(0)
+        }
+        let client = self.client().await?;
+        let sizes = client.get_store_sizes().await?;
+        self.emit(json!({
+            "ev": "storage",
+            "store": dir_size(&self.data_dir.join("store")),
+            "media_files": dir_size(&self.data_dir.join("media")) + dir_size(&self.data_dir.join("avatars")),
+            "crypto": sizes.crypto_store,
+            "state": sizes.state_store,
+            "event_cache": sizes.event_cache_store,
+            "media_cache": sizes.media_store,
+        }));
+        Ok(())
+    }
+
     async fn notification_mode(&self, room: &Room) -> Result<()> {
         let client = self.client().await?;
         let settings = client.notification_settings().await;
@@ -956,6 +985,28 @@ impl Core {
                     RoomMessageEventContent::text_markdown(&body).into();
                 tl.edit(&Self::item_id(v)?, EditedContent::RoomMessage(content)).await?;
                 Ok(())
+            }
+            "poll_vote" => {
+                let room = self.room(v).await?;
+                let poll = EventId::parse(s(v, "event_id")?)?;
+                let answers: Vec<String> = v
+                    .get("answers")
+                    .and_then(Value::as_array)
+                    .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect())
+                    .unwrap_or_default();
+                room.send(UnstablePollResponseEventContent::new(answers, poll)).await?;
+                Ok(())
+            }
+            "storage_info" => self.storage_info().await,
+            "clear_media" => {
+                // the decrypted copies this app keeps, and the SDK's media cache
+                for dir in ["media"] {
+                    std::fs::remove_dir_all(self.data_dir.join(dir)).ok();
+                    std::fs::create_dir_all(self.data_dir.join(dir)).ok();
+                }
+                let client = self.client().await?;
+                client.media().clean().await?;
+                self.storage_info().await
             }
             "report" => {
                 let room = self.room(v).await?;

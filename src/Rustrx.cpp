@@ -561,6 +561,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit notificationMode(ev.value("room_id").toString(), ev.value("mode").toString());
     } else if (type == QLatin1String("keys_exported")) {
         emit keysExported(ev.value("path").toString());
+    } else if (type == QLatin1String("storage")) {
+        emit storageInfo(ev);
     } else if (type == QLatin1String("keys_imported")) {
         emit keysImported(ev.value("imported").toInt(), ev.value("total").toInt());
     }

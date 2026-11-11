@@ -46,6 +46,14 @@ ListItem {
     readonly property var reactionList: model.reactions ? model.reactions : []
     readonly property string eventId: model.event_id || ""
     readonly property bool failed: model.send_state === "failed"
+    // captured here for the same reason as reactionList
+    readonly property var pollAnswers: model.answers ? model.answers : []
+    readonly property bool pollEnded: model.ended === true
+    readonly property int pollTotal: {
+        var t = 0
+        for (var i = 0; i < pollAnswers.length; i++) t += pollAnswers[i].count
+        return t
+    }
     readonly property bool canAct: isEvent && msgType !== "membership" && msgType !== "state" && msgType !== "redacted"
     // the reactions offered in the menu; the first stays where it always was
     readonly property var quickReactions: ["👍", "❤️", "😂", "😮", "😢", "🎉"]
@@ -86,6 +94,8 @@ ListItem {
             if (player.source.toString().length) { player.play(); return }
             wantPlay = true
             rustrx.getMedia(roomId, eventId, false)
+        } else if (msgType === "location" && model.geo_uri) {
+            Qt.openUrlExternally(model.geo_uri)   // a maps app (Pure Maps) takes geo:
         } else if (msgType === "video") {
             pageStack.push(Qt.resolvedUrl("../pages/VideoPage.qml"), { roomId: roomId, eventId: eventId,
                            source: model.media_path || "" })
@@ -240,7 +250,9 @@ ListItem {
                         var size = model.size ? " (" + Format.formatFileSize(model.size) + ")" : ""
                         return (model.filename || model.body || "") + size
                     }
-                    if (msgType === "location") return (model.body || "") + "\n" + (model.geo_uri || "")
+                    //: a shared location, tap opens it in a maps app
+                    //% "Location (tap to open)"
+                    if (msgType === "location") return (model.body || "") + "\n" + qsTrId("rustrx-la-location-open")
                     //% "Verification request"
                     if (msgType === "verification") return qsTrId("rustrx-la-verification-request")
                     if (msgType === "emote") return (model.sender_name || model.sender) + " " + (model.body || "")
@@ -273,6 +285,52 @@ ListItem {
                     text: model.body || ""
                     color: dimColor
                     font.pixelSize: Theme.fontSizeSmall
+                }
+            }
+
+            // a poll: the question above, one line per answer with its votes;
+            // a tap votes (or changes the vote) while it is open
+            Column {
+                visible: msgType === "poll"
+                x: own ? parent.width - width - sideMargin : sideMargin
+                width: bubbleWidth
+                Repeater {
+                    model: msgType === "poll" && msg.pollAnswers ? msg.pollAnswers : []
+                    BackgroundItem {
+                        width: parent.width
+                        height: Theme.itemSizeExtraSmall
+                        enabled: !msg.pollEnded
+                        onClicked: rustrx.command({ cmd: "poll_vote", room_id: roomId, event_id: msg.eventId, answers: [modelData.id] })
+                        Rectangle {
+                            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                            height: parent.height - Theme.paddingSmall
+                            width: parent.width * (msg.pollTotal > 0 ? modelData.count / msg.pollTotal : 0)
+                            radius: Theme.paddingSmall
+                            color: Theme.rgba(modelData.mine ? Theme.highlightColor : Theme.primaryColor, Theme.opacityFaint)
+                        }
+                        Label {
+                            anchors { left: parent.left; leftMargin: Theme.paddingSmall; verticalCenter: parent.verticalCenter }
+                            width: parent.width - countLabel.width - 2 * Theme.paddingSmall
+                            truncationMode: TruncationMode.Fade
+                            text: (modelData.mine ? "✓ " : "") + modelData.text
+                            color: modelData.mine ? Theme.highlightColor : Theme.primaryColor
+                            font.pixelSize: Theme.fontSizeSmall
+                        }
+                        Label {
+                            id: countLabel
+                            anchors { right: parent.right; rightMargin: Theme.paddingSmall; verticalCenter: parent.verticalCenter }
+                            text: modelData.count
+                            color: Theme.secondaryColor
+                            font.pixelSize: Theme.fontSizeSmall
+                        }
+                    }
+                }
+                Label {
+                    visible: msg.pollEnded
+                    //% "The poll has ended"
+                    text: qsTrId("rustrx-la-poll-ended")
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    color: dimColor
                 }
             }
 

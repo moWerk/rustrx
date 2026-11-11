@@ -892,5 +892,38 @@
             <numerusform></numerusform>
         </translation>
     </message>
+    <message id="rustrx-la-location-open">
+        <source>Location (tap to open)</source>
+        <extracomment>a shared location, tap opens it in a maps app</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-poll-ended">
+        <source>The poll has ended</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-storage">
+        <source>Storage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-storage-store">
+        <source>Messages and keys</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-storage-media">
+        <source>Pictures and files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-clear-media">
+        <source>Clear pictures and files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-re-clear-media">
+        <source>Clearing the cached pictures and files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-clear-media-hint">
+        <source>They are fetched again when a room shows them.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

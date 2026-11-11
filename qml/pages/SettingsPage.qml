@@ -25,7 +25,10 @@ Page {
     property string recoveryResult
     property string shownKey
 
-    Component.onCompleted: rustrx.command({ cmd: "profile" })
+    Component.onCompleted: {
+        rustrx.command({ cmd: "profile" })
+        rustrx.command({ cmd: "storage_info" })
+    }
 
     function verificationText() {
         switch (rustrx.verificationState) {
@@ -283,6 +286,40 @@ Page {
                 }
             }
 
+            //% "Storage"
+            SectionHeader { text: qsTrId("rustrx-se-storage") }
+
+            DetailItem {
+                //% "Messages and keys"
+                label: qsTrId("rustrx-la-storage-store")
+                value: storage.store !== undefined ? Format.formatFileSize(storage.store) : "…"
+            }
+            DetailItem {
+                //% "Pictures and files"
+                label: qsTrId("rustrx-la-storage-media")
+                value: storage.media_files !== undefined
+                       ? Format.formatFileSize(storage.media_files + (storage.media_cache || 0)) : "…"
+            }
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                //% "Clear pictures and files"
+                text: qsTrId("rustrx-bt-clear-media")
+                onClicked: {
+                    var core = rustrx
+                    //% "Clearing the cached pictures and files"
+                    clearRemorse.execute(qsTrId("rustrx-re-clear-media"), function () { core.command({ cmd: "clear_media" }) })
+                }
+            }
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                //% "They are fetched again when a room shows them."
+                text: qsTrId("rustrx-la-clear-media-hint")
+            }
+
             //% "Devices"
             SectionHeader { text: qsTrId("rustrx-se-devices") }
 
@@ -320,8 +357,12 @@ Page {
 
     RemorsePopup { id: remorse }
 
+    property var storage: ({})
+    RemorsePopup { id: clearRemorse }
+
     Connections {
         target: rustrx
+        onStorageInfo: page.storage = info
         onProfile: displayName = profile.display_name || ""
         //% "Encrypted messages restored. Rooms fill in as keys arrive."
         onRecoveryDone: { recoveryResult = qsTrId("rustrx-la-restored"); keyField.text = "" }
