@@ -83,6 +83,25 @@ Page {
                 onCheckedChanged: app.showReadBy = checked
             }
 
+            //% "Privacy"
+            SectionHeader { text: qsTrId("rustrx-se-privacy") }
+
+            TextSwitch {
+                //% "Send read receipts"
+                text: qsTrId("rustrx-la-send-receipts")
+                //% "Others see how far you have read. When off, only your own devices know."
+                description: qsTrId("rustrx-la-send-receipts-hint")
+                checked: app.sendReceipts
+                onCheckedChanged: app.sendReceipts = checked
+            }
+
+            TextSwitch {
+                //% "Show that I am typing"
+                text: qsTrId("rustrx-la-send-typing")
+                checked: app.sendTyping
+                onCheckedChanged: app.sendTyping = checked
+            }
+
             //% "Account"
             SectionHeader { text: qsTrId("rustrx-se-account") }
 
@@ -227,6 +246,19 @@ Page {
                         //% "Recovery key copied"
                         Notices.show(qsTrId("rustrx-no-key-copied"))
                     }
+                }
+            }
+
+            // room keys to and from a file, for another client or a backup of one's own
+            BackgroundItem {
+                width: parent.width
+                onClicked: pageStack.push(Qt.resolvedUrl("KeysPage.qml"))
+                Label {
+                    x: Theme.horizontalPageMargin
+                    anchors.verticalCenter: parent.verticalCenter
+                    //% "Export or import room keys"
+                    text: qsTrId("rustrx-la-keys-file")
+                    color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
                 }
             }
 

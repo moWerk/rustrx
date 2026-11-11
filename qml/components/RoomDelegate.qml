@@ -251,7 +251,7 @@ ListItem {
                 visible: !invited && hasUnread
                 //% "Mark as read"
                 text: qsTrId("rustrx-me-mark-read")
-                onClicked: rustrx.command({ cmd: "mark_read", room_id: model.room_id })
+                onClicked: app.markRead(model.room_id)
             }
             MenuItem {
                 visible: !invited

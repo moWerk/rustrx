@@ -41,9 +41,12 @@ public:
     void setMediaPath(const QString &eventId, bool thumb, const QString &path);
     void clear();
     Q_INVOKABLE QVariantMap get(int row) const;
+    // the cached full file for an event, or an empty string
+    Q_INVOKABLE QString mediaPath(const QString &eventId) const { return m_media.value(eventId); }
 
 signals:
     void countChanged();
+    void mediaChanged(const QString &eventId);
 
 private:
     QVariantMap withMedia(QVariantMap item) const;

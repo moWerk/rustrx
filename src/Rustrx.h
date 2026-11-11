@@ -115,6 +115,12 @@ signals:
     void paginated(const QString &roomId, bool atStart);
     void mediaExported(const QString &eventId, const QString &path);
     void newMessages(const QString &roomId, const QString &roomName, int count);
+    // who is typing in the open room, the own user left out
+    void typing(const QString &roomId, const QStringList &names);
+    // "all", "mentions", "mute" or "default" (the account's rule)
+    void notificationMode(const QString &roomId, const QString &mode);
+    void keysExported(const QString &path);
+    void keysImported(int imported, int total);
 
 private slots:
     void handleEvent(const QVariantMap &ev);

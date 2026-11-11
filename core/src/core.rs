@@ -19,7 +19,12 @@ use matrix_sdk::encryption::verification::{
 };
 use matrix_sdk::encryption::{BackupDownloadStrategy, EncryptionSettings, VerificationState};
 use matrix_sdk::media::{MediaEventContent, MediaFormat, MediaRequestParameters, MediaThumbnailSettings};
+use matrix_sdk::notification_settings::RoomNotificationMode;
+use matrix_sdk::room::edit::EditedContent;
 use matrix_sdk::ruma::api::client::directory::get_public_rooms_filtered;
+use matrix_sdk::ruma::api::client::room::{create_room, Visibility};
+use matrix_sdk::ruma::events::room::encryption::RoomEncryptionEventContent;
+use matrix_sdk::ruma::events::InitialStateEvent;
 use matrix_sdk::ruma::api::client::session::get_login_types::v3::LoginType;
 use matrix_sdk::ruma::api::client::uiaa::{AuthData, MatrixUserIdentifier, Password, UserIdentifier};
 use matrix_sdk::ruma::events::room::power_levels::UserPowerLevel;
@@ -664,7 +669,8 @@ impl Core {
         }
     }
 
-    /// Timeline snapshots for the open room, coalesced per update burst.
+    /// Timeline snapshots for the open room, coalesced per update burst, and
+    /// who is typing there (the own user left out).
     async fn timeline_task(&'static self, room: Room, timeline: Arc<Timeline>, own: OwnedUserId) {
         let room_id = room.room_id().to_owned();
         let mut names = HashMap::new();
@@ -672,13 +678,55 @@ impl Core {
         let items: Vec<Arc<TimelineItem>> = items.into_iter().collect();
         Self::receipt_names(&room, &items, &mut names).await;
         self.emit(json!({"ev": "timeline", "room_id": room_id.as_str(), "items": items_json(&items, &own, &names)}));
-        while stream.next().await.is_some() {
-            tokio::time::sleep(Duration::from_millis(60)).await;
-            while let Some(Some(_)) = stream.next().now_or_never() {}
-            let items = timeline.items().await;
-            Self::receipt_names(&room, &items, &mut names).await;
-            self.emit(json!({"ev": "timeline", "room_id": room_id.as_str(), "items": items_json(&items, &own, &names)}));
+        // the guard keeps the typing handler registered while this task lives
+        let (_typing_guard, mut typing) = room.subscribe_to_typing_notifications();
+        loop {
+            tokio::select! {
+                update = stream.next() => {
+                    if update.is_none() {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(60)).await;
+                    while let Some(Some(_)) = stream.next().now_or_never() {}
+                    let items = timeline.items().await;
+                    Self::receipt_names(&room, &items, &mut names).await;
+                    self.emit(json!({"ev": "timeline", "room_id": room_id.as_str(), "items": items_json(&items, &own, &names)}));
+                }
+                users = typing.recv() => {
+                    let Ok(users) = users else { continue };
+                    let mut who = Vec::new();
+                    for u in users.iter().filter(|u| **u != own) {
+                        let name = match room.get_member_no_sync(u).await {
+                            Ok(Some(m)) => m.name().to_owned(),
+                            _ => u.localpart().to_owned(),
+                        };
+                        who.push(name);
+                    }
+                    self.emit(json!({"ev": "typing", "room_id": room_id.as_str(), "names": who}));
+                }
+            }
         }
+    }
+
+    /// A timeline item by event id, or by transaction id for a local echo.
+    fn item_id(v: &Value) -> Result<TimelineEventItemId> {
+        if let Some(txn) = opt(v, "txn_id") {
+            return Ok(TimelineEventItemId::TransactionId(txn.into()));
+        }
+        Ok(TimelineEventItemId::EventId(EventId::parse(s(v, "event_id")?)?))
+    }
+
+    async fn notification_mode(&self, room: &Room) -> Result<()> {
+        let client = self.client().await?;
+        let settings = client.notification_settings().await;
+        let mode = match settings.get_user_defined_room_notification_mode(room.room_id()).await {
+            Some(RoomNotificationMode::AllMessages) => "all",
+            Some(RoomNotificationMode::MentionsAndKeywordsOnly) => "mentions",
+            Some(RoomNotificationMode::Mute) => "mute",
+            None => "default",
+        };
+        self.emit(json!({"ev": "notification_mode", "room_id": room.room_id().as_str(), "mode": mode}));
+        Ok(())
     }
 
     pub(crate) fn dispatch(&'static self, v: Value) {
@@ -770,10 +818,78 @@ impl Core {
                 Ok(())
             }
             "redact" => {
+                // a sent event is redacted; a local echo (txn_id) is discarded
                 let room = self.room(v).await?;
                 let tl = self.timeline_for(&room).await?;
-                let id = TimelineEventItemId::EventId(EventId::parse(s(v, "event_id")?)?);
-                tl.redact(&id, opt(v, "reason").as_deref()).await?;
+                tl.redact(&Self::item_id(v)?, opt(v, "reason").as_deref()).await?;
+                Ok(())
+            }
+            "edit" => {
+                let room = self.room(v).await?;
+                let tl = self.timeline_for(&room).await?;
+                let body = s(v, "body")?;
+                let content: RoomMessageEventContentWithoutRelation =
+                    RoomMessageEventContent::text_markdown(&body).into();
+                tl.edit(&Self::item_id(v)?, EditedContent::RoomMessage(content)).await?;
+                Ok(())
+            }
+            "report" => {
+                let room = self.room(v).await?;
+                let event_id = EventId::parse(s(v, "event_id")?)?;
+                room.report_content(event_id, opt(v, "reason")).await?;
+                Ok(())
+            }
+            "get_notification_mode" => {
+                let room = self.room(v).await?;
+                self.notification_mode(&room).await
+            }
+            "set_notification_mode" => {
+                let room = self.room(v).await?;
+                let client = self.client().await?;
+                let settings = client.notification_settings().await;
+                match s(v, "mode")?.as_str() {
+                    "all" => settings.set_room_notification_mode(room.room_id(), RoomNotificationMode::AllMessages).await?,
+                    "mentions" => settings
+                        .set_room_notification_mode(room.room_id(), RoomNotificationMode::MentionsAndKeywordsOnly)
+                        .await?,
+                    "mute" => settings.set_room_notification_mode(room.room_id(), RoomNotificationMode::Mute).await?,
+                    _ => settings.delete_user_defined_room_rules(room.room_id()).await?,
+                }
+                self.notification_mode(&room).await
+            }
+            "export_keys" => {
+                let client = self.client().await?;
+                let path = PathBuf::from(s(v, "path")?);
+                client.encryption().export_room_keys(path.clone(), &s(v, "passphrase")?, |_| true).await?;
+                self.emit(json!({"ev": "keys_exported", "path": path.to_string_lossy()}));
+                Ok(())
+            }
+            "import_keys" => {
+                let client = self.client().await?;
+                let result = client
+                    .encryption()
+                    .import_room_keys(PathBuf::from(s(v, "path")?), &s(v, "passphrase")?)
+                    .await?;
+                self.emit(json!({"ev": "keys_imported", "imported": result.imported_count, "total": result.total_count}));
+                Ok(())
+            }
+            "create_room" => {
+                let client = self.client().await?;
+                let mut req = create_room::v3::Request::new();
+                req.name = opt(v, "name");
+                req.topic = opt(v, "topic");
+                let public = v.get("public").and_then(Value::as_bool).unwrap_or(false);
+                req.preset = Some(if public { create_room::v3::RoomPreset::PublicChat } else { create_room::v3::RoomPreset::PrivateChat });
+                if public {
+                    req.visibility = Visibility::Public;
+                    req.room_alias_name = opt(v, "alias");
+                }
+                if v.get("encrypted").and_then(Value::as_bool).unwrap_or(!public) {
+                    let content = RoomEncryptionEventContent::with_recommended_defaults();
+                    req.initial_state = vec![InitialStateEvent::with_empty_state_key(content).to_raw_any()];
+                }
+                let room = client.create_room(req).await?;
+                self.emit(json!({"ev": "joined", "room_id": room.room_id().as_str()}));
                 Ok(())
             }
             "mark_read" => {
@@ -785,11 +901,17 @@ impl Core {
                     let st = self.state.lock().await;
                     st.open.as_ref().map(|o| o.room_id == room.room_id()).unwrap_or(false)
                 };
+                // a private receipt moves our marker without telling the room
+                let kind = if v.get("private").and_then(Value::as_bool).unwrap_or(false) {
+                    ReceiptType::ReadPrivate
+                } else {
+                    ReceiptType::Read
+                };
                 if is_open {
                     let tl = self.timeline_for(&room).await?;
-                    tl.mark_as_read(ReceiptType::Read).await?;
+                    tl.mark_as_read(kind).await?;
                 } else if let Some(event_id) = crate::serialize::latest_event_id(&room) {
-                    room.send_single_receipt(ReceiptType::Read, ReceiptThread::Unthreaded, event_id).await?;
+                    room.send_single_receipt(kind, ReceiptThread::Unthreaded, event_id).await?;
                 }
                 let _ = room.set_unread_flag(false).await;
                 Ok(())

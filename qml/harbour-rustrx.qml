@@ -36,8 +36,18 @@ ApplicationWindow {
     // appearance settings, shared by every page and delegate
     property alias roundAvatars: cfgRoundAvatars.value
     property alias showReadBy: cfgShowReadBy.value
+    // privacy: what others learn from us
+    property alias sendReceipts: cfgSendReceipts.value
+    property alias sendTyping: cfgSendTyping.value
     ConfigurationValue { id: cfgRoundAvatars; key: "/apps/harbour-rustrx/roundAvatars"; defaultValue: true }
     ConfigurationValue { id: cfgShowReadBy; key: "/apps/harbour-rustrx/showReadBy"; defaultValue: true }
+    ConfigurationValue { id: cfgSendReceipts; key: "/apps/harbour-rustrx/sendReceipts"; defaultValue: true }
+    ConfigurationValue { id: cfgSendTyping; key: "/apps/harbour-rustrx/sendTyping"; defaultValue: true }
+
+    // the receipt honours the privacy switch: a private one moves only our own marker
+    function markRead(roomId) {
+        rustrx.command({ cmd: "mark_read", room_id: roomId, "private": !sendReceipts })
+    }
 
     // flow ids of verifications that already have a page
     property var shownVerifications: ({})

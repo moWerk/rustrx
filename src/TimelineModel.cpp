@@ -106,6 +106,7 @@ void TimelineModel::setItems(const QVariantList &items)
 void TimelineModel::setMediaPath(const QString &eventId, bool thumb, const QString &path)
 {
     (thumb ? m_thumbs : m_media).insert(eventId, path);
+    emit mediaChanged(eventId);
     for (int i = 0; i < m_items.size(); ++i) {
         if (m_items.at(i).toMap().value("event_id").toString() == eventId) {
             emit dataChanged(index(i), index(i));

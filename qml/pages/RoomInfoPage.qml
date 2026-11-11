@@ -45,7 +45,11 @@ Page {
         return ""
     }
 
-    Component.onCompleted: rustrx.command({ cmd: "room_members", room_id: roomId })
+    property string notifyMode: ""
+    Component.onCompleted: {
+        rustrx.command({ cmd: "room_members", room_id: roomId })
+        rustrx.command({ cmd: "get_notification_mode", room_id: roomId })
+    }
 
     // the header lays out after creation (the topic wraps, the fields size),
     // which moves the list's origin and leaves the view scrolled: re-anchor
@@ -74,6 +78,7 @@ Page {
                                    { roomId: roomId, roomName: rustrx.roomInfo(roomId).name || userId })
         }
         onErrorOccurred: if (cmd === "set_room_name" || cmd === "set_room_topic") refresh()
+        onNotificationMode: if (roomId === page.roomId) page.notifyMode = mode
     }
 
     // the room list carries the name and topic; pick changes up
@@ -198,6 +203,30 @@ Page {
                 horizontalAlignment: Text.AlignRight
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: Theme.secondaryColor
+            }
+
+            ComboBox {
+                id: notifyBox
+                //% "Notifications"
+                label: qsTrId("rustrx-la-notifications")
+                enabled: page.notifyMode.length > 0
+                readonly property var modes: ["default", "all", "mentions", "mute"]
+                currentIndex: Math.max(0, modes.indexOf(page.notifyMode))
+                menu: ContextMenu {
+                    //% "Default"
+                    MenuItem { text: qsTrId("rustrx-me-notify-default") }
+                    //% "All messages"
+                    MenuItem { text: qsTrId("rustrx-me-notify-all") }
+                    //% "Mentions only"
+                    MenuItem { text: qsTrId("rustrx-me-notify-mentions") }
+                    //% "Muted"
+                    MenuItem { text: qsTrId("rustrx-me-notify-mute") }
+                }
+                onCurrentIndexChanged: {
+                    var m = modes[currentIndex]
+                    if (page.notifyMode.length && m !== page.notifyMode)
+                        rustrx.command({ cmd: "set_notification_mode", room_id: roomId, mode: m })
+                }
             }
 
             TextSwitch {

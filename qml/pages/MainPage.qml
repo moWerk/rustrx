@@ -63,6 +63,12 @@ Page {
     }
     onStatusChanged: {
         if (status !== PageStatus.Active || debugDone) return
+        // "page:KeysPage" pushes that page from here
+        if (debugNavigate.value.indexOf("page:") === 0 && !debugOpenRoom.value.length) {
+            debugDone = true
+            pageStack.push(Qt.resolvedUrl(debugNavigate.value.slice(5) + ".qml"))
+            return
+        }
         if (debugMarkRead.value.length) {
             var mid = debugResolve(debugMarkRead.value)
             if (mid.length) { debugDone = true; rustrx.command({ cmd: "mark_read", room_id: mid }) }

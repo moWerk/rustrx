@@ -45,10 +45,6 @@
         <source>Reply</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-me-react-thumbs-up">
-        <source>Thumbs up</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-me-copy">
         <source>Copy text</source>
         <translation type="unfinished"></translation>
@@ -682,6 +678,182 @@
     </message>
     <message id="rustrx-bt-save-topic">
         <source>Save topic</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-shield-red">
+        <source>unverified device</source>
+        <extracomment>a message from a device the sender has not verified</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-shield-grey">
+        <source>not verifiable</source>
+        <extracomment>authenticity cannot be checked (e.g. a key from backup)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-send-again">
+        <source>Send again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-discard">
+        <source>Discard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-react">
+        <source>React</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-edit">
+        <source>Edit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-copy-link">
+        <source>Copy link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-report">
+        <source>Report</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-re-reporting">
+        <source>Reporting to the server admins</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-new-room">
+        <source>New room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-topic-optional">
+        <source>Topic (optional)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-sw-public">
+        <source>Public</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-public-hint">
+        <source>Anyone can find and join it in the room directory.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-alias-new">
+        <source>Address, like myroom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-sw-encrypted">
+        <source>Encrypted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-encrypted-hint">
+        <source>Cannot be turned off later.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-create">
+        <source>Create</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-saved">
+        <source>Saved to %1</source>
+        <extracomment>%1 the file path</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-save-downloads">
+        <source>Save to Downloads</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-keys-exported">
+        <source>Keys written to %1</source>
+        <extracomment>%1 the file path</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-keys-imported">
+        <source>%1 of %2 keys imported</source>
+        <extracomment>%1 keys taken over, %2 keys in the file</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-keys">
+        <source>Room keys</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-keys-hint">
+        <source>The file holds the keys to your encrypted messages. It is protected by the passphrase; keep both apart.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-passphrase">
+        <source>Passphrase</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-export-keys">
+        <source>Export to Documents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-import-keys">
+        <source>Import from a file</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-notifications">
+        <source>Notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-notify-default">
+        <source>Default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-notify-all">
+        <source>All messages</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-notify-mentions">
+        <source>Mentions only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-notify-mute">
+        <source>Muted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-typing-one">
+        <source>%1 is typing…</source>
+        <extracomment>%1 a name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-typing-two">
+        <source>%1 and %2 are typing…</source>
+        <extracomment>%1 and %2 names</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-typing-many">
+        <source>Several people are typing…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-editing">
+        <source>Editing: %1</source>
+        <extracomment>%1 the original text</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-save">
+        <source>Save</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-create-room">
+        <source>Create a new room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-privacy">
+        <source>Privacy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-send-receipts">
+        <source>Send read receipts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-send-receipts-hint">
+        <source>Others see how far you have read. When off, only your own devices know.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-send-typing">
+        <source>Show that I am typing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-keys-file">
+        <source>Export or import room keys</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

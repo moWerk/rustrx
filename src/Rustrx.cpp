@@ -359,5 +359,13 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit paginated(ev.value("room_id").toString(), ev.value("at_start").toBool());
     } else if (type == QLatin1String("search_results")) {
         emit searchResults(ev);
+    } else if (type == QLatin1String("typing")) {
+        emit typing(ev.value("room_id").toString(), ev.value("names").toStringList());
+    } else if (type == QLatin1String("notification_mode")) {
+        emit notificationMode(ev.value("room_id").toString(), ev.value("mode").toString());
+    } else if (type == QLatin1String("keys_exported")) {
+        emit keysExported(ev.value("path").toString());
+    } else if (type == QLatin1String("keys_imported")) {
+        emit keysImported(ev.value("imported").toInt(), ev.value("total").toInt());
     }
 }

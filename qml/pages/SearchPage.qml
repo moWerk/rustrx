@@ -92,6 +92,19 @@ Page {
                 title: qsTrId("rustrx-he-add")
             }
 
+            // a room of one's own, named after what was typed if anything
+            BackgroundItem {
+                width: parent.width
+                onClicked: pageStack.push(Qt.resolvedUrl("CreateRoomPage.qml"), { name: field.text.charAt(0) === "#" ? field.text.slice(1).split(":")[0] : field.text })
+                Label {
+                    x: Theme.horizontalPageMargin
+                    anchors.verticalCenter: parent.verticalCenter
+                    //% "Create a new room"
+                    text: qsTrId("rustrx-la-create-room")
+                    color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
+                }
+            }
+
             SearchField {
                 id: field
                 width: parent.width

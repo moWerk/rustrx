@@ -28,6 +28,8 @@ ListItem {
 
     property string roomId
     signal reply(string eventId, string text)
+    signal edit(string eventId, string text)
+    signal resend(string txnId, string text)
 
     readonly property bool isEvent: model.kind === "event"
     readonly property bool own: model.is_own === true
@@ -41,6 +43,11 @@ ListItem {
     // captured here: inside the Repeater, `model` would name the Repeater's own property
     readonly property var reactionList: model.reactions ? model.reactions : []
     readonly property string eventId: model.event_id || ""
+    readonly property bool failed: model.send_state === "failed"
+    readonly property bool canAct: isEvent && msgType !== "membership" && msgType !== "state" && msgType !== "redacted"
+    // the reactions offered in the menu; the first stays where it always was
+    readonly property var quickReactions: ["👍", "❤️", "😂", "😮", "😢", "🎉"]
+    property bool reactOpen
 
     // plain bodies: escape, link the addresses, keep the line breaks
     function linkify(t) {
@@ -57,7 +64,14 @@ ListItem {
         rustrx.exportMedia(roomId, model.event_id)
     }
 
-    onClicked: if (isMedia || isFile) openMedia()
+    onClicked: {
+        if (msgType === "image" || msgType === "sticker") {
+            pageStack.push(Qt.resolvedUrl("../pages/ImagePage.qml"), { roomId: roomId, eventId: eventId,
+                           source: model.media_path || model.thumb_path || "", fullLoaded: !!(model.media_path && model.media_path.length) })
+        } else if (isMedia || isFile) {
+            openMedia()
+        }
+    }
 
     Connections {
         target: rustrx
@@ -266,6 +280,14 @@ ListItem {
                     if (model.send_state === "failed") t += " · " + qsTrId("rustrx-la-not-sent")
                     //% "edited"
                     if (model.edited) t += " · " + qsTrId("rustrx-la-edited")
+                    if (model.shield && model.shield.indexOf("red") === 0)
+                        //: a message from a device the sender has not verified
+                        //% "unverified device"
+                        t += " · " + qsTrId("rustrx-la-shield-red")
+                    else if (model.shield && model.shield.indexOf("grey") === 0)
+                        //: authenticity cannot be checked (e.g. a key from backup)
+                        //% "not verifiable"
+                        t += " · " + qsTrId("rustrx-la-shield-grey")
                     if (app.showReadBy && model.read_by && model.read_by.length)
                         //: %1 the names of the people whose read receipt sits on this message
                         //% "read by %1"
@@ -279,17 +301,55 @@ ListItem {
     Component {
         id: contextMenu
         ContextMenu {
+            onClosed: item.reactOpen = false
+            // a failed message: send it again or let it go
+            MenuItem {
+                visible: failed
+                //% "Send again"
+                text: qsTrId("rustrx-me-send-again")
+                onClicked: item.resend(model.txn_id || "", model.body || "")
+            }
+            MenuItem {
+                visible: failed
+                //% "Discard"
+                text: qsTrId("rustrx-me-discard")
+                onClicked: rustrx.command({ cmd: "redact", room_id: roomId, txn_id: model.txn_id || "" })
+            }
             MenuItem {
                 //% "Reply"
                 text: qsTrId("rustrx-me-reply")
-                visible: msgType !== "membership" && msgType !== "state" && msgType !== "redacted"
+                visible: canAct && !failed
                 onClicked: item.reply(model.event_id, (model.sender_name || model.sender) + ": " + (model.body || ""))
             }
+            // the reactions: a row of six that the menu unfolds into
             MenuItem {
-                //% "Thumbs up"
-                text: qsTrId("rustrx-me-react-thumbs-up")
-                visible: msgType !== "membership" && msgType !== "state" && msgType !== "redacted"
-                onClicked: rustrx.command({ cmd: "react", room_id: roomId, event_id: model.event_id, key: "👍" })
+                //% "React"
+                text: qsTrId("rustrx-me-react")
+                visible: canAct && !failed && !item.reactOpen
+                onDelayedClick: {}
+                onClicked: item.reactOpen = true
+            }
+            Row {
+                visible: item.reactOpen
+                anchors.horizontalCenter: parent.horizontalCenter
+                Repeater {
+                    model: item.quickReactions
+                    BackgroundItem {
+                        width: Theme.itemSizeSmall
+                        height: Theme.itemSizeSmall
+                        onClicked: {
+                            rustrx.command({ cmd: "react", room_id: roomId, event_id: item.eventId, key: modelData })
+                            item.closeMenu()
+                        }
+                        Label { anchors.centerIn: parent; text: modelData; font.pixelSize: Theme.fontSizeLarge }
+                    }
+                }
+            }
+            MenuItem {
+                //% "Edit"
+                text: qsTrId("rustrx-me-edit")
+                visible: own && model.editable === true && (msgType === "text" || msgType === "emote" || msgType === "notice")
+                onClicked: item.edit(model.event_id, model.body || "")
             }
             MenuItem {
                 //% "Copy text"
@@ -298,15 +358,33 @@ ListItem {
                 onClicked: Clipboard.text = model.body
             }
             MenuItem {
+                //% "Copy link"
+                text: qsTrId("rustrx-me-copy-link")
+                visible: canAct && !failed && item.eventId.length > 0
+                onClicked: Clipboard.text = "https://matrix.to/#/" + encodeURIComponent(roomId) + "/" + encodeURIComponent(item.eventId)
+            }
+            MenuItem {
                 //% "Save"
                 text: qsTrId("rustrx-me-save")
                 visible: isMedia || isFile
                 onClicked: openMedia()
             }
             MenuItem {
+                //% "Report"
+                text: qsTrId("rustrx-me-report")
+                visible: canAct && !own
+                onClicked: {
+                    var id = model.event_id, room = roomId, core = rustrx
+                    //% "Reporting to the server admins"
+                    item.remorseAction(qsTrId("rustrx-re-reporting"), function () {
+                        core.command({ cmd: "report", room_id: room, event_id: id })
+                    })
+                }
+            }
+            MenuItem {
                 //% "Remove"
                 text: qsTrId("rustrx-me-remove")
-                visible: own && msgType !== "redacted"
+                visible: own && msgType !== "redacted" && !failed
                 onClicked: {
                     var id = model.event_id, room = roomId, core = rustrx
                     //% "Removing"

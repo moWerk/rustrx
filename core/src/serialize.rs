@@ -10,7 +10,7 @@ use matrix_sdk::ruma::events::{AnyMessageLikeEventContent, AnySyncTimelineEvent}
 use matrix_sdk::ruma::{OwnedUserId, UserId};
 use matrix_sdk::{Client, Room, RoomState};
 use matrix_sdk_ui::timeline::{
-    EventSendState, MembershipChange, MsgLikeKind, TimelineDetails, TimelineItem, TimelineItemContent,
+    EventSendState, MembershipChange, TimelineEventShieldState, MsgLikeKind, TimelineDetails, TimelineItem, TimelineItemContent,
     TimelineItemKind, VirtualTimelineItem,
 };
 use serde_json::{json, Map, Value};
@@ -354,6 +354,12 @@ pub(crate) fn item_json(item: &Arc<TimelineItem>, own: &UserId, names: &HashMap<
                 put(&mut o, "read_by", readers);
             }
             put(&mut o, "editable", e.is_editable());
+            // a warning on messages from unverified or unknown devices
+            match e.get_shield(false) {
+                TimelineEventShieldState::Red { code } => put(&mut o, "shield", format!("red:{code:?}")),
+                TimelineEventShieldState::Grey { code } => put(&mut o, "shield", format!("grey:{code:?}")),
+                TimelineEventShieldState::None => {}
+            }
             put(&mut o, "highlight", e.is_highlighted());
             put(
                 &mut o,
