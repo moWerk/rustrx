@@ -140,8 +140,13 @@ pub(crate) async fn rooms_json(client: &Client, avatar_dir: &std::path::Path) ->
         rooms.push(room_json(&room, avatar_dir).await);
     }
     rooms.sort_by(|a, b| {
+        // the id breaks ties, so rooms without a timestamp keep their order
         let key = |r: &Value| {
-            (r["state"] != "invited", std::cmp::Reverse(r["ts"].as_u64().unwrap_or(0)))
+            (
+                r["state"] != "invited",
+                std::cmp::Reverse(r["ts"].as_u64().unwrap_or(0)),
+                r["id"].as_str().unwrap_or("").to_owned(),
+            )
         };
         key(a).cmp(&key(b))
     });

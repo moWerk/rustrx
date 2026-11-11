@@ -24,7 +24,7 @@ Rustrx 0.2.1: the first day of real use on a Jolla Phone 2026, with the fixes an
 - Tested against one account on one homeserver only.
 
 **Install**
-`harbour-rustrx-0.2.1-1.aarch64.rpm`: `pkcon install-local` as root, or Storeman from a local file. Needs Sailfish OS 5.x on aarch64 (built against 5.1.0.11, used on 5.2.0.22). Upgrading from 0.2.0 keeps the session.
+`harbour-rustrx-0.2.1-1.aarch64.rpm`: `pkcon install-local` as root, or Storeman from a local file. Needs Sailfish OS 5.1 or later on aarch64 (the core links against glibc 2.34; built against 5.1.0.11, used on 5.2.0.22). Upgrading from 0.2.0 keeps the session.
 
 **Authorship**
 Written by an LLM (Claude), directed and tested by the author on a Jolla Phone 2026. Each commit carries an LLMGD disclosure line (github.com/moWerk/llmgd-specs).

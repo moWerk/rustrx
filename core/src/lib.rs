@@ -17,6 +17,7 @@ mod core;
 mod serialize;
 
 use std::ffi::{c_char, c_void, CStr, CString};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 
 pub type EventCallback = extern "C" fn(ctx: *mut c_void, json: *const c_char);
@@ -32,12 +33,25 @@ pub(crate) struct Emitter {
     ctx: Ctx,
 }
 
+/// Cleared by rustrx_stop: the callback's receiver is going away, no event
+/// may reach it any more (tokio tasks keep running until the process ends).
+static LIVE: AtomicBool = AtomicBool::new(true);
+
 impl Emitter {
     pub(crate) fn emit(&self, value: serde_json::Value) {
+        if !LIVE.load(Ordering::Acquire) {
+            return;
+        }
         if let Ok(s) = CString::new(value.to_string()) {
             (self.cb)(self.ctx.0, s.as_ptr());
         }
     }
+}
+
+/// Stop delivering events. Called by the UI before its receiver is destroyed.
+#[no_mangle]
+pub extern "C" fn rustrx_stop() {
+    LIVE.store(false, Ordering::Release);
 }
 
 static CORE: OnceLock<core::Core> = OnceLock::new();
@@ -106,6 +120,10 @@ pub extern "C" fn rustrx_start(data_dir: *const c_char, cb: EventCallback, ctx: 
         Ok(rt) => rt,
         Err(_) => return 3,
     };
+    // a panicking task would otherwise vanish: the sandbox drops stderr
+    std::panic::set_hook(Box::new(|info| {
+        tracing::error!("panic: {info}");
+    }));
     let core = core::Core::new(rt, dir.into(), Emitter { cb, ctx: Ctx(ctx) });
     if CORE.set(core).is_err() {
         return 1;

@@ -31,6 +31,12 @@
 #include <QStandardPaths>
 #include <QUrl>
 
+#include <QMutex>
+#include <QMutexLocker>
+
+// The core's tokio threads call eventCallback until the process ends; the
+// lock and the pointer keep them away from a Rustrx that is being destroyed.
+static QMutex s_lock;
 static Rustrx *s_instance = nullptr;
 
 Rustrx::Rustrx(const QString &dataDir, QObject *parent)
@@ -46,7 +52,14 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     const int rc = rustrx_start(dataDir.toUtf8().constData(), &Rustrx::eventCallback, this);
     if (rc != 0)
         qWarning() << "rustrx_start failed:" << rc;
-    qWarning().noquote() << "startup: core started after" << m_since.elapsed() << "ms";
+    qInfo().noquote() << "startup: core started after" << m_since.elapsed() << "ms";
+}
+
+Rustrx::~Rustrx()
+{
+    QMutexLocker lock(&s_lock);
+    rustrx_stop();
+    s_instance = nullptr;
 }
 
 QString Rustrx::coreVersion() const
@@ -57,9 +70,12 @@ QString Rustrx::coreVersion() const
 // tokio thread: parse here, hand the map to the GUI thread
 void Rustrx::eventCallback(void *ctx, const char *json)
 {
-    Rustrx *self = static_cast<Rustrx *>(ctx);
     const QJsonDocument doc = QJsonDocument::fromJson(QByteArray(json));
     if (!doc.isObject())
+        return;
+    QMutexLocker lock(&s_lock);
+    Rustrx *self = static_cast<Rustrx *>(ctx);
+    if (!s_instance || self != s_instance)
         return;
     QMetaObject::invokeMethod(self, "handleEvent", Qt::QueuedConnection,
                               Q_ARG(QVariantMap, doc.object().toVariantMap()));
@@ -70,7 +86,10 @@ void Rustrx::command(const QVariantMap &cmd)
     const QByteArray json = QJsonDocument(QJsonObject::fromVariantMap(cmd)).toJson(QJsonDocument::Compact);
     const int rc = rustrx_command(json.constData());
     // one line per command in the journal; the password is not part of the message
-    qWarning().noquote() << "command" << cmd.value("cmd").toString() << (rc ? QString("rc %1").arg(rc) : QString());
+    if (rc)
+        qWarning().noquote() << "command" << cmd.value("cmd").toString() << "rc" << rc;
+    else
+        qInfo().noquote() << "command" << cmd.value("cmd").toString();
 }
 
 void Rustrx::loginPassword(const QString &user, const QString &password, const QString &homeserver)
@@ -239,14 +258,19 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     const QString type = ev.value("ev").toString();
     if (type == QLatin1String("log")) {
         // the core's own log, routed here because the sandbox drops its stderr
-        qWarning().noquote() << "core:" << ev.value("line").toString();
+        // the core's own level is in the line (WARN/INFO/...); warn only on its warnings
+        const QString line = ev.value("line").toString();
+        if (line.contains(QLatin1String(" WARN ")) || line.contains(QLatin1String(" ERROR ")))
+            qWarning().noquote() << "core:" << line;
+        else
+            qInfo().noquote() << "core:" << line;
         return;
     }
     if (type == QLatin1String("error"))
         qWarning().noquote() << "core error:" << ev.value("cmd").toString() << ev.value("message").toString();
     if (type == QLatin1String("ready") || type == QLatin1String("logged_in") || type == QLatin1String("sync_state")
             || (type == QLatin1String("rooms") && m_firstRooms)) {
-        qWarning().noquote() << "startup:" << type << "after" << m_since.elapsed() << "ms";
+        qInfo().noquote() << "startup:" << type << "after" << m_since.elapsed() << "ms";
         if (type == QLatin1String("rooms"))
             m_firstRooms = false;
     }

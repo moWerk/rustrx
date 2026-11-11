@@ -196,7 +196,23 @@ impl Core {
             session,
             sliding_sync: Some(!matches!(client.sliding_sync_version(), Version::None)),
         };
-        std::fs::write(self.session_path(), serde_json::to_vec(&saved)?)?;
+        // the tokens: owner-only, and complete or absent (a crash mid-write
+        // must not leave a half file for the next start)
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let path = self.session_path();
+        let tmp = path.with_extension("json.tmp");
+        {
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&tmp)?;
+            f.write_all(&serde_json::to_vec(&saved)?)?;
+            f.sync_all()?;
+        }
+        std::fs::rename(&tmp, &path)?;
         Ok(())
     }
 
@@ -373,7 +389,8 @@ impl Core {
                 ));
             }
         }
-        tracing::info!(rooms = %parts.join(" "), "counts");
+        // room names: debug only, the journal is not the place for them
+        tracing::debug!(rooms = %parts.join(" "), "counts");
     }
 
     /// The latest-event service is lazy: a room's preview is only computed
@@ -501,12 +518,13 @@ impl Core {
     /// Incoming verification requests, to-device and in-room.
     fn install_handlers(&'static self, client: &Client) {
         client.add_event_handler(|ev: ToDeviceKeyVerificationRequestEvent, client: Client| async move {
+            // spawned: a handler that awaits the whole flow would hold up the sync
             if let Some(req) = client
                 .encryption()
                 .get_verification_request(&ev.sender, ev.content.transaction_id.as_str())
                 .await
             {
-                crate::instance().watch_request(req).await;
+                tokio::spawn(async move { crate::instance().watch_request(req).await });
             }
         });
         client.add_event_handler(|ev: OriginalSyncRoomMessageEvent, client: Client| async move {
@@ -514,7 +532,7 @@ impl Core {
                 if let Some(req) =
                     client.encryption().get_verification_request(&ev.sender, ev.event_id.as_str()).await
                 {
-                    crate::instance().watch_request(req).await;
+                    tokio::spawn(async move { crate::instance().watch_request(req).await });
                 }
             }
         });

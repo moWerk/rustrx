@@ -61,6 +61,7 @@ desktop-file-install --delete-original \
 
 %files
 %defattr(-,root,root,-)
+%license LICENSE
 %{_bindir}/%{name}
 %{_datadir}/%{name}
 %{_datadir}/applications/%{name}.desktop

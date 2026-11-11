@@ -4,7 +4,8 @@
 # usage: tools/build-and-install.sh [--no-fetch] [--no-install]
 set -euo pipefail
 cd "$(dirname "$0")/.."
-S=/tmp/claude-1000/-home-mo-sailfish/afced4d4-4500-4c4e-93ee-d8693735723a/scratchpad
+# the author's helper directory (askpass script for the phone, scratch files); set RUSTRX_TOOLS_DIR to use the scripts elsewhere
+S=${RUSTRX_TOOLS_DIR:-$HOME/.cache/rustrx-tools}
 fetch=1; install=1
 for a in "$@"; do case $a in --no-fetch) fetch=0;; --no-install) install=0;; esac; done
 

@@ -49,8 +49,12 @@ are no notifications while the app is closed.
 
 ## Install
 
-RPMs are attached to the GitHub releases. Rustrx bundles its core library,
-so it is a Chum or OpenRepos app, not a Jolla Store one.
+RPMs are attached to the GitHub releases, for Sailfish OS 5.1 or later on
+aarch64 (the core links against glibc 2.34; 5.0 and 4.6 ship older ones).
+Rustrx bundles its core library, so it is an OpenRepos app, not a Jolla Store
+one, and not a Chum one yet: Chum builds from source and Jolla's Rust is 1.75,
+matrix-rust-sdk 0.19 needs 1.96. `core/Cargo.lock` is in the tree and the core
+is built with `--locked` (rustc 1.99.1, zig 0.17.1, cargo-zigbuild).
 
 ## Authorship
 

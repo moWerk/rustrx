@@ -3,7 +3,8 @@
 # environment and the core's log on, log to /tmp/rustrx.log on the phone.
 # usage: tools/run-on-phone.sh [start|stop|log]
 set -euo pipefail
-S=/tmp/claude-1000/-home-mo-sailfish/afced4d4-4500-4c4e-93ee-d8693735723a/scratchpad
+# the author's helper directory (askpass script for the phone, scratch files); set RUSTRX_TOOLS_DIR to use the scripts elsewhere
+S=${RUSTRX_TOOLS_DIR:-$HOME/.cache/rustrx-tools}
 export SSH_ASKPASS=$S/askpass-jp26.sh SSH_ASKPASS_REQUIRE=force
 ssh="ssh -F $HOME/sailfish/work/ssh/config jp26"
 case ${1:-start} in

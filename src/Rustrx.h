@@ -51,6 +51,7 @@ class Rustrx : public QObject
 
 public:
     explicit Rustrx(const QString &dataDir, QObject *parent = nullptr);
+    ~Rustrx();
 
     bool ready() const { return m_ready; }
     bool loggedIn() const { return m_loggedIn; }
