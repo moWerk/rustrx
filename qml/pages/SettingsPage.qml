@@ -83,6 +83,15 @@ Page {
                 onCheckedChanged: app.showReadBy = checked
             }
 
+            TextSwitch {
+                //% "Send smaller pictures"
+                text: qsTrId("rustrx-la-downscale")
+                //% "Photos larger than 2048 pixels are scaled down before sending."
+                description: qsTrId("rustrx-la-downscale-hint")
+                checked: rustrx.downscaleImages
+                onCheckedChanged: rustrx.downscaleImages = checked
+            }
+
             //% "Privacy"
             SectionHeader { text: qsTrId("rustrx-se-privacy") }
 

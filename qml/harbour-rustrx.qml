@@ -103,20 +103,73 @@ ApplicationWindow {
         }
         onNewMessages: {
             if (Qt.application.state === Qt.ApplicationActive) return
-            notification.summary = roomName
-            //: notification body, %n new messages
-            //% "%n new messages"
-            notification.body = qsTrId("rustrx-no-new-messages", count)
-            notification.publish()
+            app.notify(roomId, roomName, count)
         }
+        // a tapped notification: bring the window up and show the room
+        onOpenRoomRequested: {
+            app.activate()
+            app.closeNotification(roomId)
+            app.showRoom(roomId)
+        }
+        onOpenRoomChanged: if (rustrx.openRoomId.length) app.closeNotification(rustrx.openRoomId)
     }
 
-    Notification {
-        id: notification
-        appName: "Rustrx"
-        appIcon: "harbour-rustrx"
-        category: "x-nemo.messaging.im"
-        urgency: Notification.Normal
+    // one notification per room, updated in place: the events view keeps a
+    // line per room, the banner shows the latest message
+    property var roomNotifications: ({})
+    function notify(roomId, roomName, count) {
+        var n = roomNotifications[roomId]
+        if (!n) {
+            n = notificationComponent.createObject(app, { roomId: roomId })
+            roomNotifications[roomId] = n
+        }
+        var info = rustrx.roomInfo(roomId)
+        var last = (info.preview_sender ? info.preview_sender + ": " : "") + (info.preview || "")
+        n.pending += count
+        n.summary = roomName
+        n.previewSummary = roomName
+        //: notification body, %n new messages
+        //% "%n new messages"
+        n.body = last.length ? last : qsTrId("rustrx-no-new-messages", n.pending)
+        n.previewBody = n.body
+        n.itemCount = n.pending
+        n.publish()
+    }
+    function closeNotification(roomId) {
+        var n = roomNotifications[roomId]
+        if (!n) return
+        n.close()
+        n.destroy()
+        delete roomNotifications[roomId]
+    }
+    function showRoom(roomId) {
+        if (rustrx.openRoomId === roomId) return
+        var main = pageStack.find(function (p) { return p.objectName === "main" })
+        if (!main) return
+        pageStack.pop(main, PageStackAction.Immediate)
+        pageStack.push(Qt.resolvedUrl("pages/RoomPage.qml"),
+                       { roomId: roomId, roomName: rustrx.roomInfo(roomId).name || "" }, PageStackAction.Immediate)
+    }
+
+    Component {
+        id: notificationComponent
+        Notification {
+            property string roomId
+            property int pending
+            appName: "Rustrx"
+            appIcon: "harbour-rustrx"
+            category: "x-nemo.messaging.im"
+            urgency: Notification.Normal
+            remoteActions: [{
+                "name": "default",
+                "service": "net.mowerk.harbour-rustrx",
+                "path": "/net/mowerk/harbour_rustrx",
+                "iface": "net.mowerk.harbour_rustrx",
+                "method": "openRoomFromNotification",
+                "arguments": [ roomId ]
+            }]
+            onClosed: pending = 0
+        }
     }
 
     Component.onCompleted: route()

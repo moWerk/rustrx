@@ -12,6 +12,7 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{FutureExt, StreamExt};
 use matrix_sdk::authentication::matrix::MatrixSession;
+use matrix_sdk::attachment::{AttachmentInfo, BaseImageInfo, Thumbnail};
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::encryption::recovery::RecoveryState;
 use matrix_sdk::encryption::verification::{
@@ -33,11 +34,11 @@ use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::key::verification::request::ToDeviceKeyVerificationRequestEvent;
 use matrix_sdk::ruma::events::room::message::{
     MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent,
-    RoomMessageEventContentWithoutRelation,
+    RoomMessageEventContentWithoutRelation, TextMessageEventContent,
 };
 use matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType;
 use matrix_sdk::ruma::{
-    uint, EventId, OwnedDeviceId, OwnedMxcUri, OwnedRoomId, OwnedUserId, RoomId, RoomOrAliasId, UserId,
+    uint, EventId, OwnedDeviceId, UInt, OwnedMxcUri, OwnedRoomId, OwnedUserId, RoomId, RoomOrAliasId, UserId,
 };
 use matrix_sdk::sliding_sync::{Version, VersionBuilder};
 use matrix_sdk::{Client, Room, RoomMemberships, RoomState, SessionChange};
@@ -807,7 +808,34 @@ impl Core {
                 let path = PathBuf::from(s(v, "path")?);
                 let mime = mime_guess::from_path(&path).first_or_octet_stream();
                 let tl = self.timeline_for(&room).await?;
-                tl.send_attachment(path, mime, AttachmentConfig::default()).await?;
+                let dim = |key: &str| v.get(key).and_then(Value::as_u64).and_then(|n| UInt::try_from(n).ok());
+                let mut config = AttachmentConfig::default();
+                if let (Some(w), Some(h)) = (dim("w"), dim("h")) {
+                    let size = std::fs::metadata(&path).ok().and_then(|m| UInt::try_from(m.len()).ok());
+                    config.info = Some(AttachmentInfo::Image(BaseImageInfo {
+                        width: Some(w),
+                        height: Some(h),
+                        size,
+                        ..Default::default()
+                    }));
+                }
+                if let (Some(tp), Some(w), Some(h)) = (opt(v, "thumb_path"), dim("thumb_w"), dim("thumb_h")) {
+                    if let Ok(data) = std::fs::read(&tp) {
+                        let size = UInt::try_from(data.len() as u64).unwrap_or_default();
+                        config.thumbnail = Some(Thumbnail {
+                            data,
+                            content_type: mime::IMAGE_JPEG,
+                            width: w,
+                            height: h,
+                            size,
+                        });
+                    }
+                    let _ = std::fs::remove_file(&tp);
+                }
+                if let Some(caption) = opt(v, "caption") {
+                    config.caption = Some(TextMessageEventContent::markdown(caption));
+                }
+                tl.send_attachment(path, mime, config).await?;
                 Ok(())
             }
             "react" => {

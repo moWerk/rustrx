@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=net.mowerk.harbour-rustrx
+Exec=/usr/bin/invoker --type=silica-qt5 --single-instance --id=harbour-rustrx harbour-rustrx

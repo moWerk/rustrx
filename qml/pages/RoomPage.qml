@@ -68,6 +68,15 @@ Page {
             app.markRead(roomId)
     }
 
+    // whatever is in the composer, taken out of it
+    function takeCaption() {
+        if (!inputArea || editId.length) return ""
+        var t = inputArea.text.trim()
+        inputArea.text = ""
+        rustrx.setDraft(roomId, "")
+        return t
+    }
+
     function startEdit(eventId, text) {
         replyToId = ""; replyToText = ""
         editId = eventId; editText = text
@@ -132,9 +141,22 @@ Page {
         MouseArea { anchors.fill: parent; onClicked: pageStack.navigateForward() }
     }
 
+    // the first time the room fills, start at the read marker if it is there
+    property bool positioned
     Connections {
         target: rustrx.timeline
-        onCountChanged: if (list.atYBeginning) markRead()
+        onCountChanged: {
+            if (!page.positioned && rustrx.timeline.count > 0) {
+                page.positioned = true
+                for (var i = 0; i < rustrx.timeline.count; i++) {
+                    if (rustrx.timeline.get(i).kind === "readmarker") {
+                        list.positionViewAtIndex(i, ListView.Center)
+                        break
+                    }
+                }
+            }
+            if (list.atYBeginning) markRead()
+        }
     }
 
     SilicaListView {
@@ -159,7 +181,7 @@ Page {
                 text: qsTrId("rustrx-me-take-photo")
                 onClicked: {
                     var cam = pageStack.push(Qt.resolvedUrl("CameraPage.qml"))
-                    cam.captured.connect(function (path) { rustrx.sendFile(roomId, path) })
+                    cam.captured.connect(function (path) { rustrx.sendFile(roomId, path, page.takeCaption()) })
                 }
             }
             MenuItem {
@@ -168,8 +190,10 @@ Page {
                 onClicked: {
                     var picker = pageStack.push(multiImagePicker)
                     picker.accepted.connect(function () {
+                        // the text in the composer becomes the caption of a single picture
+                        var caption = picker.selectedContent.count === 1 ? page.takeCaption() : ""
                         for (var i = 0; i < picker.selectedContent.count; i++)
-                            rustrx.sendFile(roomId, picker.selectedContent.get(i).filePath)
+                            rustrx.sendFile(roomId, picker.selectedContent.get(i).filePath, caption)
                     })
                 }
             }

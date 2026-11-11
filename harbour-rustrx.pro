@@ -6,6 +6,8 @@ TARGET = harbour-rustrx
 isEmpty(VERSION): VERSION = 0.2.2
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
+QT += dbus
+
 CONFIG += sailfishapp sailfishapp_i18n sailfishapp_i18n_idbased sailfishapp_i18n_unfinished
 
 SOURCES += src/main.cpp \
@@ -24,6 +26,11 @@ QMAKE_LFLAGS += -Wl,-rpath,/usr/share/$${TARGET}/lib
 corelib.files = lib/librustrx.so
 corelib.path = /usr/share/$${TARGET}/lib
 INSTALLS += corelib
+
+# notifications open their room through this service, also when the app is closed
+dbusservice.files = dbus/net.mowerk.harbour_rustrx.service
+dbusservice.path = /usr/share/dbus-1/services
+INSTALLS += dbusservice
 
 DISTFILES += qml/harbour-rustrx.qml \
     qml/pages/*.qml \

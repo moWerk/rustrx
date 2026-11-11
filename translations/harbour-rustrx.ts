@@ -856,5 +856,13 @@
         <source>Export or import room keys</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-downscale">
+        <source>Send smaller pictures</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-downscale-hint">
+        <source>Photos larger than 2048 pixels are scaled down before sending.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

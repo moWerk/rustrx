@@ -31,6 +31,7 @@ class TimelineModel;
 class Rustrx : public QObject
 {
     Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "net.mowerk.harbour_rustrx")
     Q_PROPERTY(bool ready READ ready NOTIFY stateChanged)
     Q_PROPERTY(bool loggedIn READ loggedIn NOTIFY stateChanged)
     Q_PROPERTY(bool loggingIn READ loggingIn NOTIFY stateChanged)
@@ -48,6 +49,7 @@ class Rustrx : public QObject
     Q_PROPERTY(RoomModel *favourites READ favourites CONSTANT)
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
     Q_PROPERTY(QString coreVersion READ coreVersion CONSTANT)
+    Q_PROPERTY(bool downscaleImages READ downscaleImages WRITE setDownscaleImages NOTIFY settingsChanged)
 
 public:
     explicit Rustrx(const QString &dataDir, QObject *parent = nullptr);
@@ -70,6 +72,8 @@ public:
     RoomModel *favourites() const { return m_favourites; }
     TimelineModel *timeline() const { return m_timeline; }
     QString coreVersion() const;
+    bool downscaleImages() const;
+    void setDownscaleImages(bool on);
 
     Q_INVOKABLE void command(const QVariantMap &cmd);
     Q_INVOKABLE void loginPassword(const QString &user, const QString &password, const QString &homeserver);
@@ -78,7 +82,7 @@ public:
     Q_INVOKABLE void openRoom(const QString &roomId);
     Q_INVOKABLE void closeRoom();
     Q_INVOKABLE void sendText(const QString &roomId, const QString &body, const QString &replyTo);
-    Q_INVOKABLE void sendFile(const QString &roomId, const QString &path);
+    Q_INVOKABLE void sendFile(const QString &roomId, const QString &path, const QString &caption = QString());
     Q_INVOKABLE void getMedia(const QString &roomId, const QString &eventId, bool thumb);
     // a copy in Downloads, where other apps may read it; answered by mediaExported
     Q_INVOKABLE void exportMedia(const QString &roomId, const QString &eventId);
@@ -93,6 +97,7 @@ public:
 
 signals:
     void stateChanged();
+    void settingsChanged();
     void syncStateChanged();
     void encryptionChanged();
     void openRoomChanged();
@@ -121,6 +126,12 @@ signals:
     void notificationMode(const QString &roomId, const QString &mode);
     void keysExported(const QString &path);
     void keysImported(int imported, int total);
+    // a notification was tapped: show this room
+    void openRoomRequested(const QString &roomId);
+
+public slots:
+    // D-Bus net.mowerk.harbour_rustrx.openRoom, the notifications' action
+    Q_SCRIPTABLE void openRoomFromNotification(const QString &roomId) { emit openRoomRequested(roomId); }
 
 private slots:
     void handleEvent(const QVariantMap &ev);

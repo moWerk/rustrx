@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import QtMultimedia 5.6
 import Sailfish.Silica 1.0
 
 // One timeline row: a date divider, a read marker, or an event. Own
@@ -64,8 +65,31 @@ ListItem {
         rustrx.exportMedia(roomId, model.event_id)
     }
 
+    // audio plays in place once the file is in the cache; only audio rows
+    // carry a player
+    property bool wantPlay
+    readonly property var player: audioLoader.item
+    readonly property bool playing: player !== null && player.playbackState === Audio.PlayingState
+    Loader {
+        id: audioLoader
+        active: msgType === "audio"
+        sourceComponent: Audio {
+            source: model.media_path && model.media_path.length ? "file://" + model.media_path : ""
+            onSourceChanged: if (item.wantPlay && source.toString().length) { item.wantPlay = false; play() }
+        }
+    }
+
     onClicked: {
-        if (msgType === "image" || msgType === "sticker") {
+        if (msgType === "audio") {
+            if (!player) return
+            if (playing) { player.pause(); return }
+            if (player.source.toString().length) { player.play(); return }
+            wantPlay = true
+            rustrx.getMedia(roomId, eventId, false)
+        } else if (msgType === "video") {
+            pageStack.push(Qt.resolvedUrl("../pages/VideoPage.qml"), { roomId: roomId, eventId: eventId,
+                           source: model.media_path || "" })
+        } else if (msgType === "image" || msgType === "sticker") {
             pageStack.push(Qt.resolvedUrl("../pages/ImagePage.qml"), { roomId: roomId, eventId: eventId,
                            source: model.media_path || model.thumb_path || "", fullLoaded: !!(model.media_path && model.media_path.length) })
         } else if (isMedia || isFile) {
@@ -205,7 +229,14 @@ ListItem {
                     if (msgType === "utd") return qsTrId("rustrx-la-utd")
                     //% "Message removed"
                     if (msgType === "redacted") return qsTrId("rustrx-la-redacted")
-                    if (msgType === "file" || msgType === "audio") {
+                    if (msgType === "audio") {
+                        var state = playing ? "⏸ " : "▶ "
+                        var len = player && player.duration > 0 ? player.duration : (model.duration || 0)
+                        var pos = player && player.playbackState !== Audio.StoppedState
+                                  ? Format.formatDuration(player.position / 1000, Formatter.DurationShort) + " / " : ""
+                        return state + (model.filename || model.body || "") + (len > 0 ? "  " + pos + Format.formatDuration(len / 1000, Formatter.DurationShort) : "")
+                    }
+                    if (msgType === "file") {
                         var size = model.size ? " (" + Format.formatFileSize(model.size) + ")" : ""
                         return (model.filename || model.body || "") + size
                     }

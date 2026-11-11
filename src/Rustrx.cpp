@@ -24,6 +24,8 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QImage>
+#include <QImageReader>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaObject>
@@ -31,6 +33,8 @@
 #include <QStandardPaths>
 #include <QUrl>
 
+#include <QDBusConnection>
+#include <QDBusError>
 #include <QMutex>
 #include <QMutexLocker>
 
@@ -53,6 +57,12 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     if (rc != 0)
         qWarning() << "rustrx_start failed:" << rc;
     qInfo().noquote() << "startup: core started after" << m_since.elapsed() << "ms";
+
+    // the sandbox lets the app own its organisation's name on the session bus
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.registerObject(QStringLiteral("/net/mowerk/harbour_rustrx"), this, QDBusConnection::ExportScriptableSlots)
+            || !bus.registerService(QStringLiteral("net.mowerk.harbour-rustrx")))
+        qWarning() << "D-Bus service not registered:" << bus.lastError().message();
 }
 
 Rustrx::~Rustrx()
@@ -60,6 +70,19 @@ Rustrx::~Rustrx()
     QMutexLocker lock(&s_lock);
     rustrx_stop();
     s_instance = nullptr;
+}
+
+bool Rustrx::downscaleImages() const
+{
+    return QSettings().value("downscaleImages", true).toBool();
+}
+
+void Rustrx::setDownscaleImages(bool on)
+{
+    if (on == downscaleImages())
+        return;
+    QSettings().setValue("downscaleImages", on);
+    emit settingsChanged();
 }
 
 QString Rustrx::coreVersion() const
@@ -142,12 +165,47 @@ void Rustrx::sendText(const QString &roomId, const QString &body, const QString 
     command(cmd);
 }
 
-void Rustrx::sendFile(const QString &roomId, const QString &path)
+void Rustrx::sendFile(const QString &roomId, const QString &path, const QString &caption)
 {
     QString p = path;
     if (p.startsWith(QLatin1String("file://")))
         p = QUrl(p).toLocalFile();
-    command({{"cmd", "send_file"}, {"room_id", roomId}, {"path", p}});
+    QVariantMap cmd{{"cmd", "send_file"}, {"room_id", roomId}, {"path", p}};
+    if (!caption.trimmed().isEmpty())
+        cmd.insert("caption", caption.trimmed());
+
+    // pictures go out the way Element expects them: upright, at most 2048 px
+    // on the long side when the setting asks for it, with their size and a
+    // thumbnail, so the other side shows a preview instead of a bare file
+    QImageReader reader(p);
+    reader.setAutoTransform(true);
+    const QByteArray format = reader.format();
+    if (!format.isEmpty() && format != "gif") {
+        QImage image = reader.read();
+        if (!image.isNull()) {
+            const QString cache = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/outgoing";
+            QDir().mkpath(cache);
+            const QString stem = cache + "/" + QString::number(QDateTime::currentMSecsSinceEpoch());
+            const bool shrink = QSettings().value("downscaleImages", true).toBool()
+                    && qMax(image.width(), image.height()) > 2048;
+            if (shrink) {
+                image = image.scaled(2048, 2048, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                const QString out = stem + ".jpg";
+                if (image.save(out, "JPEG", 88))
+                    cmd.insert("path", out);
+            }
+            cmd.insert("w", image.width());
+            cmd.insert("h", image.height());
+            const QImage thumb = image.scaled(800, 800, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            const QString thumbPath = stem + "-thumb.jpg";
+            if (thumb.save(thumbPath, "JPEG", 80)) {
+                cmd.insert("thumb_path", thumbPath);
+                cmd.insert("thumb_w", thumb.width());
+                cmd.insert("thumb_h", thumb.height());
+            }
+        }
+    }
+    command(cmd);
 }
 
 void Rustrx::getMedia(const QString &roomId, const QString &eventId, bool thumb)

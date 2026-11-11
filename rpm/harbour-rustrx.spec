@@ -22,6 +22,7 @@ BuildRequires:  pkgconfig(sailfishapp) >= 1.0.2
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5Qml)
 BuildRequires:  pkgconfig(Qt5Quick)
+BuildRequires:  pkgconfig(Qt5DBus)
 BuildRequires:  desktop-file-utils
 BuildRequires:  qt5-qttools-linguist
 
@@ -65,4 +66,5 @@ desktop-file-install --delete-original \
 %{_bindir}/%{name}
 %{_datadir}/%{name}
 %{_datadir}/applications/%{name}.desktop
+%{_datadir}/dbus-1/services/net.mowerk.harbour_rustrx.service
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
