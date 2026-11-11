@@ -223,7 +223,7 @@ ListItem {
                 color: msgType === "utd" || msgType === "redacted" ? dimColor : (mention ? Theme.highlightColor : mainColor)
                 font.italic: msgType === "emote" || msgType === "utd" || msgType === "redacted"
                 linkColor: Theme.secondaryHighlightColor
-                onLinkActivated: Qt.openUrlExternally(link)
+                onLinkActivated: app.openLink(link)
                 text: {
                     //% "Waiting for the key to decrypt this message"
                     if (msgType === "utd") return qsTrId("rustrx-la-utd")
@@ -286,7 +286,7 @@ ListItem {
                 text: visible ? linkify(model.caption) : ""
                 color: mainColor
                 linkColor: Theme.secondaryHighlightColor
-                onLinkActivated: Qt.openUrlExternally(link)
+                onLinkActivated: app.openLink(link)
             }
 
             Flow {

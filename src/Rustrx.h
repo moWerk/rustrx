@@ -87,6 +87,8 @@ public:
     // a copy in Downloads, where other apps may read it; answered by mediaExported
     Q_INVOKABLE void exportMedia(const QString &roomId, const QString &eventId);
     Q_INVOKABLE QVariantMap roomInfo(const QString &roomId) const;
+    // the most recent room with unread messages, for the cover; empty if none
+    Q_INVOKABLE QString firstUnreadRoom() const;
     Q_INVOKABLE QString formatTime(const QVariant &ms) const;
     Q_INVOKABLE QString formatDate(const QVariant &ms) const;
     // unsent text per room, kept across pages and restarts
@@ -128,6 +130,10 @@ signals:
     void keysImported(int imported, int total);
     // a notification was tapped: show this room
     void openRoomRequested(const QString &roomId);
+    // a matrix: or matrix.to link to follow
+    void matrixUriRequested(const QString &uri);
+    // the share sheet hands over files (local paths) and/or a text
+    void shareRequested(const QStringList &files, const QString &text);
 
 public slots:
     // D-Bus net.mowerk.harbour_rustrx.openRoom, the notifications' action
@@ -135,7 +141,20 @@ public slots:
     Q_SCRIPTABLE void openRoomFromNotification(const QString &roomId) { m_pendingRoom = roomId; emit openRoomRequested(roomId); }
 public:
     Q_INVOKABLE QString takePendingRoom() { const QString r = m_pendingRoom; m_pendingRoom.clear(); return r; }
+    // a link or a share that arrived before QML was loaded
+    Q_INVOKABLE QString takePendingUri() { const QString r = m_pendingUri; m_pendingUri.clear(); return r; }
+    Q_INVOKABLE QVariantMap takePendingShare() { const QVariantMap r = m_pendingShare; m_pendingShare.clear(); return r; }
+    // called by the share adaptor
+    void receiveShare(const QStringList &files, const QString &text);
 public slots:
+    // D-Bus net.mowerk.harbour_rustrx.openUrl, the desktop file's handler for matrix: links
+    Q_SCRIPTABLE void openUrl(const QStringList &urls)
+    {
+        if (urls.isEmpty())
+            return;
+        m_pendingUri = urls.first();
+        emit matrixUriRequested(m_pendingUri);
+    }
 
 private slots:
     void handleEvent(const QVariantMap &ev);
@@ -155,6 +174,8 @@ private:
     QString m_recoveryState = QStringLiteral("unknown");
     QString m_openRoomId;
     QString m_pendingRoom;
+    QString m_pendingUri;
+    QVariantMap m_pendingShare;
     int m_unreadTotal = 0;
     int m_unreadChats = 0;
     QHash<QString, int> m_notificationCounts;

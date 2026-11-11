@@ -881,5 +881,16 @@
         <extracomment>%1 the server name</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-he-send-to">
+        <source>Send to</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-n-files" numerus="yes">
+        <source>%n files</source>
+        <extracomment>%n the number of files</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+        </translation>
+    </message>
 </context>
 </TS>

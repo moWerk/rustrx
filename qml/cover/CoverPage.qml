@@ -110,4 +110,25 @@ CoverBackground {
             }
         }
     }
+
+    // left: find a room or a person; right: the most recent room with
+    // unread messages (only while there is one)
+    CoverActionList {
+        enabled: rustrx.loggedIn
+        CoverAction {
+            iconSource: "image://theme/icon-cover-search"
+            onTriggered: {
+                app.activate()
+                pageStack.push(Qt.resolvedUrl("../pages/SearchPage.qml"), {}, PageStackAction.Immediate)
+            }
+        }
+        CoverAction {
+            iconSource: "image://theme/icon-cover-message"
+            onTriggered: {
+                app.activate()
+                var id = rustrx.firstUnreadRoom()
+                if (id.length) app.showRoom(id)
+            }
+        }
+    }
 }

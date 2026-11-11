@@ -7,6 +7,14 @@ Name=Rustrx
 Comment=A Matrix client
 # one instance: a second launch raises the running window
 X-Nemo-Single-Instance=yes
+# matrix: links (matrix:r/room:server, matrix:u/person:server) come over D-Bus,
+# so the sandbox's check of the command line does not refuse them
+MimeType=x-scheme-handler/matrix;
+X-Maemo-Service=net.mowerk.harbour-rustrx
+X-Maemo-Object-Path=/net/mowerk/harbour_rustrx
+X-Maemo-Method=net.mowerk.harbour_rustrx.openUrl
+# a target in the share sheet: org.sailfishos.share on /share
+X-Share-Methods=room;
 
 [X-Sailjail]
 # Internet for the homeserver; Pictures, Videos, Music, Documents and Downloads for sending
@@ -16,3 +24,8 @@ X-Nemo-Single-Instance=yes
 OrganizationName=net.mowerk
 ApplicationName=harbour-rustrx
 Permissions=Internet;Pictures;Videos;Music;Documents;Downloads;MediaIndexing;Camera;Audio
+
+[X-Share Method room]
+Description=Send to a room
+Capabilities=text/x-url;text/plain;image/*;video/*;audio/*;application/*;
+SupportsMultipleFiles=true

@@ -33,7 +33,10 @@
 #include <QStandardPaths>
 #include <QUrl>
 
+#include <QDBusArgument>
 #include <QDBusConnection>
+#include <QDBusVariant>
+#include <QFile>
 #include <QDBusError>
 #include <QMutex>
 #include <QMutexLocker>
@@ -41,6 +44,107 @@
 // The core's tokio threads call eventCallback until the process ends; the
 // lock and the pointer keep them away from a Rustrx that is being destroyed.
 static QMutex s_lock;
+
+// org.sailfishos.share on /share: the system share sheet calls share(a{sv})
+// with "resources", a list of file paths or URLs, or of maps that carry the
+// data itself ("data", "name", "type"), e.g. a link or a piece of text.
+class ShareAdaptor : public QObject
+{
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.sailfishos.share")
+public:
+    explicit ShareAdaptor(Rustrx *owner) : QObject(owner), m_owner(owner) {}
+public slots:
+    Q_SCRIPTABLE void share(const QVariantMap &config)
+    {
+        QStringList files;
+        QStringList texts;
+        const QVariantList resources = unwrap(config.value(QStringLiteral("resources"))).toList();
+        const QString cache = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/shared";
+        int n = 0;
+        for (const QVariant &raw : resources) {
+            const QVariant r = unwrap(raw);
+            if (r.type() == QVariant::String || r.type() == QVariant::Url) {
+                QString path = r.toString();
+                if (path.startsWith(QLatin1String("file://")))
+                    path = QUrl(path).toLocalFile();
+                if (QFileInfo(path).isFile())
+                    files << path;
+                else
+                    texts << path;   // a URL that is not a local file: send it as text
+                continue;
+            }
+            const QVariantMap m = r.toMap();
+            const QString type = unwrap(m.value(QStringLiteral("type"))).toString();
+            const QVariant rawData = unwrap(m.value(QStringLiteral("data")));
+            QByteArray data = rawData.type() == QVariant::String ? rawData.toString().toUtf8() : rawData.toByteArray();
+            if (type.startsWith(QLatin1String("text/")))
+                while (data.endsWith('\0'))   // C strings arrive with their terminator
+                    data.chop(1);
+            if (type.startsWith(QLatin1String("text/")) || m.contains(QStringLiteral("linkTitle"))) {
+                texts << QString::fromUtf8(data);
+            } else if (!data.isEmpty()) {
+                QDir().mkpath(cache);
+                QString name = m.value(QStringLiteral("name")).toString();
+                if (name.isEmpty())
+                    name = QStringLiteral("shared-%1").arg(++n);
+                const QString path = cache + "/" + QFileInfo(name).fileName();
+                QFile f(path);
+                if (f.open(QIODevice::WriteOnly)) {
+                    f.write(data);
+                    files << path;
+                }
+            }
+        }
+        m_owner->receiveShare(files, texts.join(QStringLiteral("\n")));
+    }
+private:
+    // D-Bus hands nested values over as QDBusVariant / QDBusArgument
+    static QVariant unwrap(const QVariant &v)
+    {
+        if (v.userType() == qMetaTypeId<QDBusVariant>())
+            return unwrap(v.value<QDBusVariant>().variant());
+        if (v.userType() == qMetaTypeId<QDBusArgument>()) {
+            const QDBusArgument arg = v.value<QDBusArgument>();
+            if (arg.currentType() == QDBusArgument::ArrayType) {
+                if (arg.currentSignature() == QLatin1String("ay")) {
+                    QByteArray bytes;
+                    arg.beginArray();
+                    while (!arg.atEnd()) {
+                        uchar b = 0;
+                        arg >> b;
+                        bytes.append(char(b));
+                    }
+                    arg.endArray();
+                    return bytes;
+                }
+                if (arg.currentSignature().startsWith(QLatin1String("a{"))) {
+                    QVariantMap map;
+                    arg >> map;
+                    return map;
+                }
+                QVariantList list;
+                arg.beginArray();
+                while (!arg.atEnd()) {
+                    QVariant item;
+                    arg >> item;
+                    list << unwrap(item);
+                }
+                arg.endArray();
+                return list;
+            }
+            if (arg.currentType() == QDBusArgument::MapType) {
+                QVariantMap map;
+                arg >> map;
+                return map;
+            }
+        }
+        return v;
+    }
+    Rustrx *m_owner;
+};
+
+#include "Rustrx.moc"
 static Rustrx *s_instance = nullptr;
 
 Rustrx::Rustrx(const QString &dataDir, QObject *parent)
@@ -60,6 +164,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
 
     // the sandbox lets the app own its organisation's name on the session bus
     QDBusConnection bus = QDBusConnection::sessionBus();
+    bus.registerObject(QStringLiteral("/share"), new ShareAdaptor(this), QDBusConnection::ExportScriptableSlots);
     if (!bus.registerObject(QStringLiteral("/net/mowerk/harbour_rustrx"), this, QDBusConnection::ExportScriptableSlots)
             || !bus.registerService(QStringLiteral("net.mowerk.harbour-rustrx")))
         qWarning() << "D-Bus service not registered:" << bus.lastError().message();
@@ -70,6 +175,12 @@ Rustrx::~Rustrx()
     QMutexLocker lock(&s_lock);
     rustrx_stop();
     s_instance = nullptr;
+}
+
+void Rustrx::receiveShare(const QStringList &files, const QString &text)
+{
+    m_pendingShare = QVariantMap{{"files", files}, {"text", text}};
+    emit shareRequested(files, text);
 }
 
 bool Rustrx::downscaleImages() const
@@ -222,6 +333,18 @@ void Rustrx::exportMedia(const QString &roomId, const QString &eventId)
 QVariantMap Rustrx::roomInfo(const QString &roomId) const
 {
     return m_roomsById.value(roomId);
+}
+
+QString Rustrx::firstUnreadRoom() const
+{
+    // the room list is ordered by activity; take the first with something unread
+    for (int i = 0; i < m_rooms->rowCount(); ++i) {
+        const QVariantMap r = m_rooms->get(i);
+        if (r.value("state").toString() != QLatin1String("invited")
+                && (r.value("notifications").toInt() > 0 || r.value("unread").toInt() > 0))
+            return r.value("room_id").toString();
+    }
+    return QString();
 }
 
 QString Rustrx::formatTime(const QVariant &ms) const

@@ -66,6 +66,11 @@ ApplicationWindow {
             // started by a notification's tap: its room, once the list knows it
             var asked = rustrx.takePendingRoom()
             if (asked.length) showRoom(asked)
+            // started by a matrix: link or the share sheet
+            var uri = rustrx.takePendingUri()
+            if (uri.length) openMatrixUri(uri)
+            var shared = rustrx.takePendingShare()
+            if (shared.files || shared.text) showShare(shared.files || [], shared.text || "")
         } else if (current !== "login") {
             console.log("route: logged out on page", current, "reason", rustrx.logoutReason)
             pageStack.replaceAbove(null, Qt.resolvedUrl("pages/LoginPage.qml"))
@@ -129,6 +134,8 @@ ApplicationWindow {
             app.showRoom(roomId)
         }
         onOpenRoomChanged: if (rustrx.openRoomId.length) app.closeNotification(rustrx.openRoomId)
+        onMatrixUriRequested: { rustrx.takePendingUri(); app.activate(); app.openMatrixUri(uri) }
+        onShareRequested: { rustrx.takePendingShare(); app.activate(); app.showShare(files, text) }
     }
 
     // one notification per room, updated in place: the events view keeps a
@@ -159,6 +166,48 @@ ApplicationWindow {
         n.destroy()
         delete roomNotifications[roomId]
     }
+    // matrix:r/alias:server, matrix:roomid/id:server, matrix:u/user:server
+    // (MSC2312) and https://matrix.to/#/<id or alias>; false when it is neither
+    function openMatrixUri(uri) {
+        var id = ""
+        var m = /^matrix:(r|roomid|u)\/([^?#]+)/.exec(uri)
+        if (m) {
+            id = (m[1] === "r" ? "#" : m[1] === "u" ? "@" : "!") + decodeURIComponent(m[2].split("/")[0])
+        } else {
+            m = /^https?:\/\/matrix\.to\/#\/([^?]+)/.exec(uri)
+            if (!m) return false
+            id = decodeURIComponent(m[1].split("/")[0])
+        }
+        if (!rustrx.loggedIn) return true
+        if (id.charAt(0) === "@") {
+            pendingJoin = "dm"
+            rustrx.command({ cmd: "create_dm", user_id: id })
+        } else if (id.charAt(0) === "!" && rustrx.roomInfo(id).name) {
+            showRoom(id)
+        } else {
+            // an alias, or a room we are not in: joining opens it
+            pendingJoin = id
+            rustrx.command({ cmd: "join_by_id_or_alias", id: id })
+        }
+        return true
+    }
+    property string pendingJoin
+    Connections {
+        target: rustrx
+        onJoined: if (app.pendingJoin.length) { app.pendingJoin = ""; app.showRoom(roomId) }
+        onDmReady: if (app.pendingJoin === "dm") { app.pendingJoin = ""; app.showRoom(roomId) }
+    }
+
+    function showShare(files, text) {
+        if (!rustrx.loggedIn) return
+        pageStack.push(Qt.resolvedUrl("pages/SharePage.qml"), { files: files, text: text })
+    }
+
+    // a link tapped inside the app: Matrix links stay here, the rest goes out
+    function openLink(link) {
+        if (!openMatrixUri(link)) Qt.openUrlExternally(link)
+    }
+
     // a room asked for before the main page is up (the app started from a notification)
     property string pendingRoom
     function showRoom(roomId) {
