@@ -1,0 +1,28 @@
+* Wed Nov 11 2026 moWerk <mo@mowerk.net> - 0.2.2
+- New: a page for each room (swipe left in a conversation): name and topic,
+  address, encryption, favourite and low priority, members with direct chat
+  and ignore, invite and leave.
+- New: reactions toggle with a tap; mentions are marked; addresses in plain
+  messages are links.
+- Fixed: the room's header stays at the top; "Mark as read" from the room
+  list works; spinners instead of empty-page texts while loading; no endless
+  reloading at the start of a room's history.
+- Fixed: the session file is owner-only and written in one piece; clean
+  shutdown; no room names in the system log; reproducible builds (lock file).
+
+* Tue Nov 10 2026 moWerk <mo@mowerk.net> - 0.2.1
+- Fixed: sessions survive the server's token rotation (0.2.0 lost the session
+  after a restart); when a server ends a session, the app returns to login.
+- Fixed: sync resumes after a network loss; the cover shows the right state;
+  direct chats show the other person's picture; unread counts match other
+  clients; leaving a room and removing a message work again.
+- New: rows show the last message, its age, the unread count on the avatar,
+  favourites and encrypted rooms; read receipts (switchable); round avatars
+  (switchable); Add Room / Contact; reply quotes; a reminder line while the
+  device is unverified.
+
+* Mon Nov 09 2026 moWerk <mo@mowerk.net> - 0.2.0
+- First release: login with password, rooms, people and favourites, text,
+  replies, reactions, images and files, photos from the built-in camera,
+  emoji verification, history restore with the recovery key, key backup,
+  drafts, cover, notifications while running.
