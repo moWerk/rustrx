@@ -868,5 +868,18 @@
         <source>When off, a notification only says how many messages arrived.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-se-new-account">
+        <source>New to Matrix</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-create-account">
+        <source>Create an account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-create-account-note">
+        <source>Opens the sign-up page of %1 in the browser. Come back afterwards and log in here with the new Matrix ID and password.</source>
+        <extracomment>%1 the server name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

@@ -175,6 +175,31 @@ Page {
                 text: qsTrId("rustrx-la-sso-note")
             }
 
+            //% "New to Matrix"
+            SectionHeader { text: qsTrId("rustrx-se-new-account") }
+
+            // accounts are made on the server's own sign-up page (matrix.org and
+            // other servers with an account service no longer take sign-ups from
+            // apps); the password login above works for them afterwards
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                //% "Create an account"
+                text: qsTrId("rustrx-bt-create-account")
+                onClicked: Qt.openUrlExternally(server.signup && server.signup.length
+                                                ? server.signup : "https://account.matrix.org/register")
+            }
+
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                color: Theme.secondaryColor
+                font.pixelSize: Theme.fontSizeExtraSmall
+                //: %1 the server name
+                //% "Opens the sign-up page of %1 in the browser. Come back afterwards and log in here with the new Matrix ID and password."
+                text: qsTrId("rustrx-la-create-account-note").arg(server.signup && server.signup.length ? server.name : "matrix.org")
+            }
+
             Item { width: 1; height: Theme.paddingLarge }
 
             Label {
@@ -198,7 +223,7 @@ Page {
         onLoginError: errorText = message
         onServerInfo: {
             server = { probed: true, name: info.server, password: info.password, sso: info.sso,
-                       idps: info.idps, sliding: info.sliding_sync }
+                       idps: info.idps, sliding: info.sliding_sync, signup: info.signup_url || "" }
         }
         onErrorOccurred: if (cmd === "probe_server") errorText = message
     }

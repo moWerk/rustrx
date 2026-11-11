@@ -276,6 +276,19 @@ ListItem {
                 }
             }
 
+            // the text sent with a picture, a video or a file
+            Label {
+                visible: !!(model.caption && model.caption.length)
+                x: own ? parent.width - width - sideMargin : sideMargin
+                width: Math.min(implicitWidth, bubbleWidth)
+                wrapMode: Text.Wrap
+                textFormat: Text.StyledText
+                text: visible ? linkify(model.caption) : ""
+                color: mainColor
+                linkColor: Theme.secondaryHighlightColor
+                onLinkActivated: Qt.openUrlExternally(link)
+            }
+
             Flow {
                 visible: reactionList.length > 0
                 x: own ? parent.width - width - sideMargin : sideMargin

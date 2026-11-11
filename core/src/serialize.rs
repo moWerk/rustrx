@@ -205,6 +205,8 @@ fn message_json(o: &mut Map<String, Value>, msg: &matrix_sdk_ui::timeline::Messa
         MessageType::Emote(_) => put(o, "type", "emote"),
         MessageType::Image(c) => {
             put(o, "type", "image");
+            // the text sent with it, when the body is not just the file name
+            put(o, "caption", c.caption());
             if let Some(i) = &c.info {
                 put(o, "mime", i.mimetype.clone());
                 put(o, "size", i.size.map(u64::from));
@@ -215,6 +217,8 @@ fn message_json(o: &mut Map<String, Value>, msg: &matrix_sdk_ui::timeline::Messa
         }
         MessageType::File(c) => {
             put(o, "type", "file");
+            // the text sent with it, when the body is not just the file name
+            put(o, "caption", c.caption());
             put(o, "filename", c.filename.clone().unwrap_or_else(|| c.body.clone()));
             if let Some(i) = &c.info {
                 put(o, "mime", i.mimetype.clone());
@@ -223,6 +227,8 @@ fn message_json(o: &mut Map<String, Value>, msg: &matrix_sdk_ui::timeline::Messa
         }
         MessageType::Audio(c) => {
             put(o, "type", "audio");
+            // the text sent with it, when the body is not just the file name
+            put(o, "caption", c.caption());
             if let Some(i) = &c.info {
                 put(o, "mime", i.mimetype.clone());
                 put(o, "size", i.size.map(u64::from));
@@ -231,6 +237,8 @@ fn message_json(o: &mut Map<String, Value>, msg: &matrix_sdk_ui::timeline::Messa
         }
         MessageType::Video(c) => {
             put(o, "type", "video");
+            // the text sent with it, when the body is not just the file name
+            put(o, "caption", c.caption());
             if let Some(i) = &c.info {
                 put(o, "mime", i.mimetype.clone());
                 put(o, "size", i.size.map(u64::from));

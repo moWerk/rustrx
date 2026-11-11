@@ -24,7 +24,8 @@ TimelineModel::TimelineModel(QObject *parent)
     const char *names[] = { "id", "kind", "event_id", "txn_id", "sender", "sender_name", "is_own", "ts",
                             "editable", "highlight", "send_state", "type", "body", "html", "edited",
                             "reactions", "reply_to", "thread_root", "mime", "size", "w", "h", "has_thumb",
-                            "filename", "duration", "geo_uri", "media_path", "thumb_path", "read_by" };
+                            "filename", "duration", "geo_uri", "media_path", "thumb_path", "read_by",
+                            "caption", "shield" };
     int role = Qt::UserRole + 1;
     for (const char *n : names)
         m_roles.insert(role++, QByteArray(n));

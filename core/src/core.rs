@@ -1313,8 +1313,17 @@ impl Core {
                 _ => {}
             }
         }
+        // a server with an account service (MAS, matrix.org since 2025) signs
+        // new people up in the browser; the password login works afterwards
+        let signup = match client.oauth().server_metadata().await {
+            Ok(meta) if meta.prompt_values_supported.iter().any(|p| p.as_str() == "create") => {
+                meta.issuer.join("register").ok().map(|u| u.to_string())
+            }
+            _ => None,
+        };
         self.emit(json!({
             "ev": "server_info",
+            "signup_url": signup,
             "server": server,
             "homeserver": client.homeserver().to_string(),
             "password": password,

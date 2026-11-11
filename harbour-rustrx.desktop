@@ -9,10 +9,10 @@ Comment=A Matrix client
 X-Nemo-Single-Instance=yes
 
 [X-Sailjail]
-# Internet for the homeserver; Pictures, Documents and Downloads for sending
+# Internet for the homeserver; Pictures, Videos, Music, Documents and Downloads for sending
 # files from the pickers; MediaIndexing for the gallery picker (it reads the
 # Tracker index); Camera for the photos taken in the app (a sandboxed app
 # cannot start the stock camera); Audio to play voice messages and videos.
 OrganizationName=net.mowerk
 ApplicationName=harbour-rustrx
-Permissions=Internet;Pictures;Documents;Downloads;MediaIndexing;Camera;Audio
+Permissions=Internet;Pictures;Videos;Music;Documents;Downloads;MediaIndexing;Camera;Audio
