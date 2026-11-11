@@ -27,6 +27,8 @@ Page {
     property var info: rustrx.roomInfo(roomId)
     property var memberList: []
     property bool membersLoaded
+    // the member a direct chat was asked for from this page
+    property string pendingDm
     // own power level, from the member list; 50 is the moderator default
     property int ownPower: 0
     readonly property bool canEdit: ownPower >= 50
@@ -64,7 +66,9 @@ Page {
             }
         }
         onDmReady: {
-            // a direct chat opened from a member row replaces this room
+            // a direct chat opened from a member row here replaces this room
+            if (userId !== pendingDm) return
+            pendingDm = ""
             var main = pageStack.find(function (p) { return p.objectName === "main" })
             pageStack.replaceAbove(main, Qt.resolvedUrl("RoomPage.qml"),
                                    { roomId: roomId, roomName: rustrx.roomInfo(roomId).name || userId })
@@ -115,33 +119,48 @@ Page {
                 description: info.is_dm ? "" : qsTrId("rustrx-he-room")
             }
 
-            // name and topic: fields for moderators, labels for everyone else;
-            // a change is sent when the field loses focus
+            // name and topic: fields for moderators, labels for everyone else.
+            // Nothing is sent on its own: the name on Enter, the topic by its
+            // Save button, which only appears once the text differs.
             TextField {
+                id: nameField
                 visible: canEdit && !info.is_dm
                 width: parent.width
                 //% "Room name"
                 label: qsTrId("rustrx-la-room-name")
                 placeholderText: label
                 text: info.name || ""
-                EnterKey.iconSource: "image://theme/icon-m-enter-close"
-                EnterKey.onClicked: focus = false
-                onActiveFocusChanged: {
-                    if (!activeFocus && text.trim().length && text.trim() !== (info.name || ""))
-                        rustrx.command({ cmd: "set_room_name", room_id: roomId, name: text.trim() })
+                EnterKey.enabled: text.trim().length > 0 && text.trim() !== (info.name || "")
+                EnterKey.iconSource: "image://theme/icon-m-enter-accept"
+                EnterKey.onClicked: {
+                    rustrx.command({ cmd: "set_room_name", room_id: roomId, name: text.trim() })
+                    focus = false
                 }
             }
 
             TextArea {
+                id: topicField
                 visible: canEdit && !info.is_dm
                 width: parent.width
                 //% "Topic"
                 label: qsTrId("rustrx-la-topic")
                 placeholderText: label
                 text: info.topic || ""
-                onActiveFocusChanged: {
-                    if (!activeFocus && text !== (info.topic || ""))
-                        rustrx.command({ cmd: "set_room_topic", room_id: roomId, topic: text })
+            }
+
+            BackgroundItem {
+                visible: canEdit && !info.is_dm && topicField.text !== (info.topic || "")
+                width: parent.width
+                height: Theme.itemSizeSmall
+                onClicked: {
+                    rustrx.command({ cmd: "set_room_topic", room_id: roomId, topic: topicField.text })
+                    topicField.focus = false
+                }
+                Label {
+                    anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                    //% "Save topic"
+                    text: qsTrId("rustrx-bt-save-topic")
+                    color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
                 }
             }
 
@@ -247,7 +266,10 @@ Page {
                         visible: !row.isSelf
                         //% "Direct chat"
                         text: qsTrId("rustrx-me-direct-chat")
-                        onClicked: rustrx.command({ cmd: "create_dm", user_id: modelData.user_id })
+                        onClicked: {
+                            pendingDm = modelData.user_id
+                            rustrx.command({ cmd: "create_dm", user_id: modelData.user_id })
+                        }
                     }
                     MenuItem {
                         visible: !row.isSelf

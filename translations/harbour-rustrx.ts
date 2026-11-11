@@ -641,10 +641,6 @@
         <source>Off</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-room-id">
-        <source>Room ID</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-sw-favourite">
         <source>Favourite</source>
         <translation type="unfinished"></translation>
@@ -682,6 +678,10 @@
     </message>
     <message id="rustrx-la-invite-id">
         <source>Matrix ID, like @name:server</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-save-topic">
+        <source>Save topic</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
