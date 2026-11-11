@@ -6,7 +6,7 @@
 
 Name:       harbour-rustrx
 Summary:    Rustrx, a Matrix client
-Version:    0.3.0
+Version:    0.4.0
 Release:    1
 License:    GPLv3+
 URL:        https://github.com/moWerk/rustrx

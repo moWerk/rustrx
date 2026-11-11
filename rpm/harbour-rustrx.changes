@@ -1,3 +1,23 @@
+* Wed Nov 11 2026 moWerk <mo@mowerk.net> - 0.4.0
+- New: notifications while Rustrx is closed (Settings > Notifications >
+  "Keep running in the background", off by default): closing leaves a
+  stand-in without a window that stays connected, starts with the phone and
+  shows a line in the events view (tap: open, Quit: end).
+- New: one notification per room, updated in place; a tap opens the room.
+- New: voice messages; audio plays in place, videos on their own page;
+  polls with votes; shared locations open in a maps app.
+- New: Rustrx in the share sheet; matrix: and matrix.to links open in it;
+  cover actions (search, latest unread room).
+- New: edit, report, discard failed messages, emoji reactions in the menu,
+  who is typing, per-room notification settings, room key export and
+  import, create a room, captions under pictures and files, picture
+  previews for other clients, an image viewer, Settings > Privacy and
+  Storage, "Create an account" on the login page.
+- Fixed: reading back through history no longer jumps; logout clears
+  everything; the unread badge grows to the left.
+- Needs new permissions (Audio, Microphone, Videos, Music, User services):
+  Sailfish asks once on the first start.
+
 * Wed Nov 11 2026 moWerk <mo@mowerk.net> - 0.2.2
 - New: a page for each room (swipe left in a conversation): name and topic,
   address, encryption, favourite and low priority, members with direct chat
