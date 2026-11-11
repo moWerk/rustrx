@@ -85,6 +85,8 @@ ApplicationWindow {
             if (data.state === "requested" && !data.we_started) showVerification(data)
         }
         onErrorOccurred: {
+            // the settings page shows the recovery errors in place
+            if (cmd === "recovery_recover" || cmd === "recovery_enable" || cmd === "recovery_reset") return
             //: transient error line, %1 the command, %2 the message
             //% "%1 failed: %2"
             Notices.show(qsTrId("rustrx-no-command-failed").arg(cmd).arg(message), Notice.Long)

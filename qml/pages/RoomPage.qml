@@ -30,6 +30,9 @@ Page {
     property string replyToId
     property string replyToText
     property bool paginating
+    // the oldest message is in: no more pages to ask for
+    property bool atStart
+    property bool infoAttached
     // the text field lives in the list header, a scope of its own; it registers here
     property Item inputArea
 
@@ -42,8 +45,18 @@ Page {
     }
 
     onStatusChanged: {
-        if (status === PageStatus.Active) markRead()
+        if (status === PageStatus.Active) {
+            markRead()
+            // the room's page, one swipe to the right
+            if (!infoAttached) {
+                infoAttached = true
+                pageStack.pushAttached(Qt.resolvedUrl("RoomInfoPage.qml"), { roomId: roomId })
+            }
+        }
     }
+
+    // a few seconds of patience before an empty room says so
+    Timer { id: openGrace; interval: 6000; running: true }
 
     function markRead() {
         if (rustrx.timeline.count > 0 && Qt.application.state === Qt.ApplicationActive)
@@ -71,7 +84,17 @@ Page {
 
     Connections {
         target: rustrx
-        onPaginated: if (roomId === page.roomId) paginating = false
+        onPaginated: if (roomId === page.roomId) { paginating = false; page.atStart = atStart }
+    }
+
+    // the header stays put; the list runs underneath it
+    PageHeader {
+        id: header
+        title: roomName
+        description: rustrx.syncState === "running" ? "" :
+                     //% "Not connected"
+                     qsTrId("rustrx-la-not-connected")
+        MouseArea { anchors.fill: parent; onClicked: pageStack.navigateForward() }
     }
 
     Connections {
@@ -81,7 +104,7 @@ Page {
 
     SilicaListView {
         id: list
-        anchors.fill: parent
+        anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         verticalLayoutDirection: ListView.BottomToTop
         model: rustrx.timeline
         spacing: Theme.paddingSmall
@@ -89,7 +112,7 @@ Page {
 
         // the oldest end is at the top in this layout
         onAtYEndChanged: {
-            if (atYEnd && count > 0 && !paginating) {
+            if (atYEnd && count > 0 && !paginating && !atStart) {
                 paginating = true
                 rustrx.command({ cmd: "paginate_back", room_id: roomId, count: 40 })
             }
@@ -128,12 +151,16 @@ Page {
             }
         }
 
-        // in a bottom-to-top list the footer is drawn at the top
-        footer: PageHeader {
-            title: roomName
-            description: rustrx.syncState === "running" ? "" :
-                         //% "Not connected"
-                         qsTrId("rustrx-la-not-connected")
+        // in a bottom-to-top list the footer is drawn at the top: a line while
+        // older messages load, nothing once the beginning is reached
+        footer: Item {
+            width: list.width
+            height: paginating ? Theme.itemSizeSmall : Theme.paddingLarge
+            BusyIndicator {
+                anchors.centerIn: parent
+                size: BusyIndicatorSize.Small
+                running: paginating
+            }
         }
 
         header: Column {
@@ -204,9 +231,15 @@ Page {
         }
 
         ViewPlaceholder {
-            enabled: list.count === 0
+            enabled: list.count === 0 && !openGrace.running
             //% "No messages yet"
             text: qsTrId("rustrx-la-no-messages")
+        }
+
+        BusyIndicator {
+            anchors.centerIn: parent
+            size: BusyIndicatorSize.Large
+            running: list.count === 0 && openGrace.running
         }
 
         VerticalScrollDecorator { }

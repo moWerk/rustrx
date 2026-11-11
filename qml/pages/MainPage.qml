@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 import Sailfish.Silica.private 1.0
+import Nemo.Configuration 1.0
 import "../components"
 
 // Two panels, Rooms and People, in the tab view Jolla uses for Settings.
@@ -42,6 +43,42 @@ Page {
         return qsTrId("rustrx-he-favs")
     }
 
+    // debug: open this room when the page first becomes active, and go on to
+    // its attached page when debugNavigate is "info" (unattended screenshots)
+    ConfigurationValue { id: debugOpenRoom; key: "/apps/harbour-rustrx/debugOpenRoom"; defaultValue: "" }
+    ConfigurationValue { id: debugNavigate; key: "/apps/harbour-rustrx/debugNavigate"; defaultValue: "" }
+    property bool debugDone
+    // the key may hold a room id or a room name; names are looked up in the list
+    Instantiator {
+        id: debugRooms
+        model: debugOpenRoom.value.length ? rustrx.rooms : null
+        delegate: QtObject { property string rid: model.room_id; property string rname: model.name }
+    }
+    function debugResolve(key) {
+        if (key.charAt(0) === "!") return key
+        for (var i = 0; i < debugRooms.count; i++)
+            if (debugRooms.objectAt(i).rname === key) return debugRooms.objectAt(i).rid
+        return ""
+    }
+    onStatusChanged: {
+        if (status !== PageStatus.Active || debugDone || !debugOpenRoom.value.length) return
+        var id = debugResolve(debugOpenRoom.value)
+        if (!id.length) return   // rooms not in yet; the next activation tries again
+        debugDone = true
+        var room = pageStack.push(Qt.resolvedUrl("RoomPage.qml"), { roomId: id, roomName: rustrx.roomInfo(id).name || "" })
+        if (debugNavigate.value === "info") debugNav.target = room
+    }
+    // rooms arriving after the page is active
+    Connections {
+        target: rustrx.rooms
+        onCountChanged: if (page.status === PageStatus.Active && !debugDone && debugOpenRoom.value.length) page.statusChanged()
+    }
+    Connections {
+        id: debugNav
+        target: null
+        onStatusChanged: if (target.status === PageStatus.Active) { pageStack.navigateForward(); target = null }
+    }
+
     TabView {
         id: tabs
         anchors.fill: parent
@@ -52,7 +89,6 @@ Page {
             model: tabModel
             delegate: TabButton {
                 title: tabTitle(model.kind)
-                count: model.kind === "rooms" ? 0 : 0
             }
         }
 
@@ -79,7 +115,11 @@ Page {
                 }
 
                 section.property: isFavs ? "" : "section"
-                section.delegate: SectionHeader { text: section }
+                section.delegate: SectionHeader {
+                    text: section
+                    visible: section.length > 0
+                    height: visible ? implicitHeight : 0
+                }
 
                 PullDownMenu {
                     MenuItem {
@@ -125,8 +165,16 @@ Page {
 
                 delegate: RoomDelegate { }
 
+                // the first sync takes a moment: a spinner first, the text after
+                Timer { id: firstSyncGrace; interval: 10000; running: true }
+                BusyIndicator {
+                    anchors.centerIn: parent
+                    size: BusyIndicatorSize.Large
+                    running: list.count === 0 && firstSyncGrace.running && rustrx.syncState !== "error"
+                }
+
                 ViewPlaceholder {
-                    enabled: list.count === 0
+                    enabled: list.count === 0 && !firstSyncGrace.running
                     text: rustrx.syncState === "running" || rustrx.syncState === "idle"
                           //% "Nothing here yet"
                           ? qsTrId("rustrx-la-empty")

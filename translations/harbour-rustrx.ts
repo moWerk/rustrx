@@ -572,5 +572,117 @@
         <source>Older encrypted messages need the recovery key. Tap to enter it.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-age-now">
+        <source>now</source>
+        <extracomment>age of the last message, keep it to one short word</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-age-minutes">
+        <source>%1m</source>
+        <extracomment>minutes, keep the suffix to one or two characters</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-age-hours">
+        <source>%1h</source>
+        <extracomment>hours, keep the suffix to one or two characters</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-age-days">
+        <source>%1d</source>
+        <extracomment>days, keep the suffix to one or two characters</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-age-years">
+        <source>%1y</source>
+        <extracomment>years, keep the suffix to one or two characters</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-power-admin">
+        <source>admin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-power-moderator">
+        <source>moderator</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-invite">
+        <source>Invite someone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-leave-room">
+        <source>Leave room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-room">
+        <source>Room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-room-name">
+        <source>Room name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-topic">
+        <source>Topic</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-alias">
+        <source>Address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-encryption">
+        <source>Encryption</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-on">
+        <source>On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-off">
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-room-id">
+        <source>Room ID</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-sw-favourite">
+        <source>Favourite</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-sw-low-priority">
+        <source>Low priority</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-low-priority-desc">
+        <source>Sorted below the other rooms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-members" numerus="yes">
+        <source>%n members</source>
+        <extracomment>%n the number of members</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message id="rustrx-me-direct-chat">
+        <source>Direct chat</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-ignore">
+        <source>Ignore this person</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-re-ignoring">
+        <source>Ignoring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-dh-invite">
+        <source>Invite</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-invite-id">
+        <source>Matrix ID, like @name:server</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

@@ -34,7 +34,7 @@ ListItem {
     readonly property bool hasUnread: model.notifications > 0 || model.unread > 0
 
     onClicked: {
-        if (invited) return
+        if (invited) { openMenu(); return }
         ListView.view.currentIndex = index   // the list keeps this row in view on return
         pageStack.push(Qt.resolvedUrl("../pages/RoomPage.qml"), { roomId: model.room_id, roomName: model.name })
     }
@@ -96,7 +96,7 @@ ListItem {
             // grows into a pill towards the left as the number gets wider
             width: Math.max(height, badgeLabel.implicitWidth + Theme.paddingSmall)
             // the circle keeps this size; the digits grew into its padding
-            height: Theme.fontSizeExtraSmall * 2 / 3 * 1.1 + Theme.paddingSmall + 10
+            height: Theme.iconSizeSmall
             radius: height / 2
             color: model.highlights > 0 ? Theme.highlightColor : Theme.secondaryHighlightColor
 
@@ -116,7 +116,7 @@ ListItem {
                 // digits have no descender; the text box's share for it pushes them low
                 anchors.verticalCenterOffset: -Math.round(font.pixelSize * 0.04)
                 text: model.notifications > 0 ? model.notifications : model.unread
-                font.pixelSize: Theme.fontSizeExtraSmall * 2 / 3 * 1.44
+                font.pixelSize: Theme.fontSizeExtraSmall
                 font.bold: true
                 color: "white"
             }
@@ -168,7 +168,7 @@ ListItem {
                 if (model.preview && model.preview.length) {
                     var who = model.preview_sender
                               ? "<font color=\"" + (item.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor)
-                                + "\">" + model.preview_sender + ":</font> " : ""
+                                + "\">" + model.preview_sender.replace(/&/g, "&amp;").replace(/</g, "&lt;") + ":</font> " : ""
                     return who + model.preview.replace(/&/g, "&amp;").replace(/</g, "&lt;")
                 }
                 if (model.topic && model.topic.length) return model.topic.replace(/\s+/g, " ")
@@ -206,11 +206,21 @@ ListItem {
         text: {
             if (!model.ts || invited) return ""
             var s = (app.now - model.ts) / 1000
-            if (s < 60) return "now"
-            if (s < 3600) return Math.floor(s / 60) + "m"
-            if (s < 86400) return Math.floor(s / 3600) + "h"
-            if (s < 365 * 86400) return Math.floor(s / 86400) + "d"
-            return Math.floor(s / (365 * 86400)) + "y"
+            //: age of the last message, keep it to one short word
+            //% "now"
+            if (s < 60) return qsTrId("rustrx-la-age-now")
+            //: minutes, keep the suffix to one or two characters
+            //% "%1m"
+            if (s < 3600) return qsTrId("rustrx-la-age-minutes").arg(Math.floor(s / 60))
+            //: hours, keep the suffix to one or two characters
+            //% "%1h"
+            if (s < 86400) return qsTrId("rustrx-la-age-hours").arg(Math.floor(s / 3600))
+            //: days, keep the suffix to one or two characters
+            //% "%1d"
+            if (s < 365 * 86400) return qsTrId("rustrx-la-age-days").arg(Math.floor(s / 86400))
+            //: years, keep the suffix to one or two characters
+            //% "%1y"
+            return qsTrId("rustrx-la-age-years").arg(Math.floor(s / (365 * 86400)))
         }
     }
 

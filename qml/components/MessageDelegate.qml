@@ -34,11 +34,20 @@ ListItem {
     readonly property string msgType: model.type || "text"
     readonly property bool isMedia: msgType === "image" || msgType === "video" || msgType === "sticker"
     readonly property bool isFile: msgType === "file" || msgType === "audio"
-    readonly property color mainColor: own ? (highlighted ? Theme.highlightColor : Theme.highlightColor)
-                                           : (highlighted ? Theme.highlightColor : Theme.primaryColor)
+    readonly property color mainColor: own || highlighted ? Theme.highlightColor : Theme.primaryColor
+    // a message that mentions us (or a keyword rule) gets the highlight colour
+    readonly property bool mention: model.highlight === true && !own
     readonly property color dimColor: own ? Theme.secondaryHighlightColor : Theme.secondaryColor
     // captured here: inside the Repeater, `model` would name the Repeater's own property
     readonly property var reactionList: model.reactions ? model.reactions : []
+    readonly property string eventId: model.event_id || ""
+
+    // plain bodies: escape, link the addresses, keep the line breaks
+    function linkify(t) {
+        return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                .replace(/(https?:\/\/[^\s<]+|matrix:[^\s<]+)/g, "<a href=\"$1\">$1</a>")
+                .replace(/\n/g, "<br>")
+    }
 
     property bool exporting
 
@@ -161,13 +170,19 @@ ListItem {
                 }
             }
 
-            Label {
+            // a thin bar marks a mention; plain bodies get their addresses linked
+            Row {
                 visible: msgType !== "membership" && msgType !== "state" && !isMedia
                 x: own ? parent.width - width - sideMargin : sideMargin
-                width: Math.min(implicitWidth, bubbleWidth)
+                width: Math.min(body.implicitWidth + (mention ? spacing + 2 : 0), bubbleWidth)
+                spacing: Theme.paddingSmall
+                Rectangle { visible: mention; width: 2; height: body.height; color: Theme.highlightColor }
+            Label {
+                id: body
+                width: parent.width - (mention ? parent.spacing + 2 : 0)
                 wrapMode: Text.Wrap
-                textFormat: model.html && model.html.length ? Text.StyledText : Text.PlainText
-                color: msgType === "utd" || msgType === "redacted" ? dimColor : mainColor
+                textFormat: msgType === "text" || msgType === "notice" || (model.html && model.html.length) ? Text.StyledText : Text.PlainText
+                color: msgType === "utd" || msgType === "redacted" ? dimColor : (mention ? Theme.highlightColor : mainColor)
                 font.italic: msgType === "emote" || msgType === "utd" || msgType === "redacted"
                 linkColor: Theme.secondaryHighlightColor
                 onLinkActivated: Qt.openUrlExternally(link)
@@ -185,8 +200,10 @@ ListItem {
                     if (msgType === "verification") return qsTrId("rustrx-la-verification-request")
                     if (msgType === "emote") return (model.sender_name || model.sender) + " " + (model.body || "")
                     if (model.html && model.html.length) return model.html
+                    if (msgType === "text" || msgType === "notice") return linkify(model.body || "")
                     return model.body || ""
                 }
+            }
             }
 
             // image, video thumbnail or sticker
@@ -221,10 +238,15 @@ ListItem {
                 spacing: Theme.paddingMedium
                 Repeater {
                     model: reactionList
+                    // a tap toggles our own reaction with this key
                     Label {
                         text: modelData.key + " " + modelData.count
                         font.pixelSize: Theme.fontSizeExtraSmall
                         color: modelData.me ? Theme.highlightColor : Theme.secondaryColor
+                        MouseArea {
+                            anchors { fill: parent; margins: -Theme.paddingSmall }
+                            onClicked: rustrx.command({ cmd: "react", room_id: roomId, event_id: item.eventId, key: modelData.key })
+                        }
                     }
                 }
             }
@@ -232,6 +254,8 @@ ListItem {
             Label {
                 visible: msgType !== "membership" && msgType !== "state"
                 x: own ? parent.width - width - sideMargin : sideMargin
+                width: Math.min(implicitWidth, bubbleWidth)
+                truncationMode: TruncationMode.Fade
                 font.pixelSize: Theme.fontSizeTiny
                 color: dimColor
                 text: {
