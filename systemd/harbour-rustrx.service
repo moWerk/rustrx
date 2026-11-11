@@ -2,15 +2,17 @@
 # session and by the app when it is closed, while the user has "Keep running
 # in the background" on (the app then writes the flag file in its own
 # sandboxed config folder; without it this unit does nothing).
-# Started through invoker exactly like the launcher and the D-Bus service do,
-# so the process runs in the same sandbox and finds its session and store.
+# Started through sailjail with the app's own profile, so the process runs in
+# the same sandbox and finds its session and store, but not through invoker:
+# the launcher's single-instance check would find an invoker-started
+# stand-in and try to raise a window it does not have (a spinning tile).
 [Unit]
 Description=Rustrx Matrix client (background)
 ConditionPathExists=%h/.config/net.mowerk/harbour-rustrx/background
 
 [Service]
 Environment=RUSTRX_BACKGROUND=1
-ExecStart=/usr/bin/invoker --type=silica-qt5 --id=harbour-rustrx harbour-rustrx
+ExecStart=/usr/bin/sailjail -p harbour-rustrx.desktop /usr/bin/harbour-rustrx
 Restart=no
 
 [Install]

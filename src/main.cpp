@@ -54,6 +54,15 @@ static bool waitForNameToGo(QDBusConnection &bus)
 
 int main(int argc, char *argv[])
 {
+    // the stand-in: started by the user unit, with the session or when the
+    // app is closed in background mode. It never has a window and does not
+    // even connect to the display: the home screen counts any connected
+    // process as the running app, and a launcher tap then waits for its
+    // window (a spinning tile).
+    const bool standIn = qgetenv("RUSTRX_BACKGROUND") == "1";
+    if (standIn)
+        qputenv("QT_QPA_PLATFORM", "minimal");
+
     QScopedPointer<QGuiApplication> app(SailfishApp::application(argc, argv));
     app->setOrganizationName(QStringLiteral("net.mowerk"));
     app->setApplicationName(QStringLiteral("harbour-rustrx"));
@@ -61,9 +70,6 @@ int main(int argc, char *argv[])
     qmlRegisterUncreatableType<RoomModel>("Rustrx", 1, 0, "RoomModel", "owned by rustrx");
     qmlRegisterUncreatableType<TimelineModel>("Rustrx", 1, 0, "TimelineModel", "owned by rustrx");
 
-    // the stand-in: started by the user unit, with the session or when the
-    // app is closed in background mode; it never has a window
-    const bool standIn = qgetenv("RUSTRX_BACKGROUND") == "1";
     if (standIn && !QFile::exists(Rustrx::backgroundFlagPath()))
         return 0;
 

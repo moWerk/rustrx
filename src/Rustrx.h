@@ -188,11 +188,14 @@ public:
     // called by the share adaptor
     void receiveShare(const QStringList &files, const QString &text);
 public slots:
-    // D-Bus net.mowerk.harbour_rustrx.openUrl, the desktop file's handler for matrix: links
+    // D-Bus net.mowerk.harbour_rustrx.openUrl, the desktop file's handler for
+    // matrix: links; the launcher icon calls it too, without a link
     Q_SCRIPTABLE void openUrl(const QStringList &urls)
     {
-        if (urls.isEmpty())
+        if (urls.isEmpty()) {
+            open();
             return;
+        }
         m_pendingUri = urls.first();
         if (handOver())
             return;
