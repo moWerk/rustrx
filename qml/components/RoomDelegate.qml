@@ -93,8 +93,11 @@ ListItem {
                 topMargin: -Theme.paddingSmall / 2
             }
             visible: !invited && (model.notifications > 0 || model.unread > 0)
-            // grows into a pill towards the left as the number gets wider
-            width: Math.max(height, badgeLabel.implicitWidth + Theme.paddingSmall)
+            // one digit: a circle; every further digit adds one digit's width to
+            // the straight middle only, so the ends stay half circles and the
+            // pill grows to the left (it is anchored at the right)
+            width: height + Math.max(0, badgeLabel.text.length - 1) * digitWidth.advanceWidth
+            TextMetrics { id: digitWidth; font: badgeLabel.font; text: "0" }
             // the circle keeps this size; the digits grew into its padding
             height: Theme.iconSizeSmall
             radius: height / 2

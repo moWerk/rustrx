@@ -8,7 +8,7 @@ use matrix_sdk::latest_events::LatestEventValue;
 use matrix_sdk::ruma::events::room::message::{MessageFormat, MessageType};
 use matrix_sdk::ruma::events::{AnyMessageLikeEventContent, AnySyncTimelineEvent};
 use matrix_sdk::ruma::{OwnedUserId, UserId};
-use matrix_sdk::{Client, Room, RoomState};
+use matrix_sdk::{Room, RoomState};
 use matrix_sdk_ui::timeline::{
     EventSendState, MembershipChange, TimelineEventShieldState, MsgLikeKind, TimelineDetails, TimelineItem, TimelineItemContent,
     TimelineItemKind, VirtualTimelineItem,
@@ -140,16 +140,15 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
 /// Joined rooms and invitations, invitations first, then by activity.
 /// Favourites are not pinned here; the UI has its own tab for them.
 /// Spaces and left rooms are left out.
-pub(crate) async fn rooms_json(client: &Client, avatar_dir: &std::path::Path) -> Value {
-    let mut rooms = Vec::new();
-    for room in client.rooms() {
-        if !matches!(room.state(), RoomState::Joined | RoomState::Invited) || room.is_space() {
-            continue;
-        }
-        rooms.push(room_json(&room, avatar_dir).await);
-    }
+/// Rooms that belong in the list: joined or invited, no spaces.
+pub(crate) fn listed(room: &Room) -> bool {
+    matches!(room.state(), RoomState::Joined | RoomState::Invited) && !room.is_space()
+}
+
+/// Invitations first, then by the last activity; the id breaks ties, so
+/// rooms without a timestamp keep their order.
+pub(crate) fn sorted_rooms(mut rooms: Vec<Value>) -> Value {
     rooms.sort_by(|a, b| {
-        // the id breaks ties, so rooms without a timestamp keep their order
         let key = |r: &Value| {
             (
                 r["state"] != "invited",

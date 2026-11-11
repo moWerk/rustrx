@@ -106,6 +106,16 @@ Page {
             }
 
             TextSwitch {
+                //% "Message text in notifications"
+                text: qsTrId("rustrx-la-notify-text")
+                //% "When off, a notification only says how many messages arrived."
+                description: qsTrId("rustrx-la-notify-text-hint")
+                checked: app.notifyText
+                automaticCheck: false
+                onClicked: app.notifyText = !app.notifyText
+            }
+
+            TextSwitch {
                 //% "Show that I am typing"
                 text: qsTrId("rustrx-la-send-typing")
                 checked: app.sendTyping

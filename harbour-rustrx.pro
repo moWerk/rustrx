@@ -3,7 +3,7 @@
 # /usr/share/harbour-rustrx/lib; this project is the Silica UI around it.
 TARGET = harbour-rustrx
 
-isEmpty(VERSION): VERSION = 0.2.2
+isEmpty(VERSION): VERSION = 0.3.0
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 QT += dbus

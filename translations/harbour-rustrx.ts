@@ -698,10 +698,6 @@
         <source>Discard</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-me-react">
-        <source>React</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-me-edit">
         <source>Edit</source>
         <translation type="unfinished"></translation>
@@ -862,6 +858,14 @@
     </message>
     <message id="rustrx-la-downscale-hint">
         <source>Photos larger than 2048 pixels are scaled down before sending.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-notify-text">
+        <source>Message text in notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-notify-text-hint">
+        <source>When off, a notification only says how many messages arrived.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

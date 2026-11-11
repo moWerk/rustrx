@@ -39,6 +39,9 @@ ApplicationWindow {
     // privacy: what others learn from us
     property alias sendReceipts: cfgSendReceipts.value
     property alias sendTyping: cfgSendTyping.value
+    // whether a notification shows the message itself or only a count
+    property alias notifyText: cfgNotifyText.value
+    ConfigurationValue { id: cfgNotifyText; key: "/apps/harbour-rustrx/notifyText"; defaultValue: true }
     ConfigurationValue { id: cfgRoundAvatars; key: "/apps/harbour-rustrx/roundAvatars"; defaultValue: true }
     ConfigurationValue { id: cfgShowReadBy; key: "/apps/harbour-rustrx/showReadBy"; defaultValue: true }
     ConfigurationValue { id: cfgSendReceipts; key: "/apps/harbour-rustrx/sendReceipts"; defaultValue: true }
@@ -60,6 +63,9 @@ ApplicationWindow {
         if (rustrx.loggedIn) {
             if (current !== "main" && (current === "login" || current === "start"))
                 pageStack.replaceAbove(null, Qt.resolvedUrl("pages/MainPage.qml"))
+            // started by a notification's tap: its room, once the list knows it
+            var asked = rustrx.takePendingRoom()
+            if (asked.length) showRoom(asked)
         } else if (current !== "login") {
             console.log("route: logged out on page", current, "reason", rustrx.logoutReason)
             pageStack.replaceAbove(null, Qt.resolvedUrl("pages/LoginPage.qml"))
@@ -67,6 +73,16 @@ ApplicationWindow {
     }
 
     Timer { id: routeRetry; interval: 300; onTriggered: route() }
+    Timer {
+        id: pendingRoomRetry
+        interval: 500
+        repeat: true
+        property int tries
+        onTriggered: {
+            if (!app.pendingRoom.length || ++tries > 40) { stop(); tries = 0; return }
+            if (!pageStack.busy) app.showRoom(app.pendingRoom)
+        }
+    }
 
     // "Today", "Yesterday", else the long local date
     function dayLabel(ms) {
@@ -107,6 +123,7 @@ ApplicationWindow {
         }
         // a tapped notification: bring the window up and show the room
         onOpenRoomRequested: {
+            rustrx.takePendingRoom()
             app.activate()
             app.closeNotification(roomId)
             app.showRoom(roomId)
@@ -130,7 +147,7 @@ ApplicationWindow {
         n.previewSummary = roomName
         //: notification body, %n new messages
         //% "%n new messages"
-        n.body = last.length ? last : qsTrId("rustrx-no-new-messages", n.pending)
+        n.body = last.length && notifyText ? last : qsTrId("rustrx-no-new-messages", n.pending)
         n.previewBody = n.body
         n.itemCount = n.pending
         n.publish()
@@ -142,10 +159,13 @@ ApplicationWindow {
         n.destroy()
         delete roomNotifications[roomId]
     }
+    // a room asked for before the main page is up (the app started from a notification)
+    property string pendingRoom
     function showRoom(roomId) {
         if (rustrx.openRoomId === roomId) return
         var main = pageStack.find(function (p) { return p.objectName === "main" })
-        if (!main) return
+        if (!main || !rustrx.roomInfo(roomId).name) { pendingRoom = roomId; pendingRoomRetry.restart(); return }
+        pendingRoom = ""
         pageStack.pop(main, PageStackAction.Immediate)
         pageStack.push(Qt.resolvedUrl("pages/RoomPage.qml"),
                        { roomId: roomId, roomName: rustrx.roomInfo(roomId).name || "" }, PageStackAction.Immediate)

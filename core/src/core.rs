@@ -52,7 +52,7 @@ use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
-use crate::serialize::{avatar_file, items_json, rooms_json};
+use crate::serialize::{avatar_file, items_json, room_json, sorted_rooms};
 use crate::Emitter;
 
 const DEVICE_NAME: &str = "Rustrx (Sailfish OS)";
@@ -299,7 +299,11 @@ impl Core {
                     Ok(()) => tracing::info!("tokens refreshed, session saved"),
                     Err(e) => tracing::warn!("saving the refreshed session: {e}"),
                 },
-                Ok(SessionChange::UnknownToken(data)) => self.session_expired(data.soft_logout).await,
+                // on a task of its own: the teardown aborts this one
+                Ok(SessionChange::UnknownToken(data)) => {
+                    self.rt.spawn(self.session_expired(data.soft_logout));
+                    break;
+                }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             }
@@ -405,26 +409,67 @@ impl Core {
     }
 
     /// Room list snapshots on every notable room change, coalesced.
+    /// The room list: every room once, then only the rooms the update
+    /// stream names are serialised again; a lagged stream or a minute of
+    /// updates rebuilds the whole list (and catches what the stream missed).
     async fn rooms_task(&'static self, client: Client) {
         let mut rx = client.room_info_notable_update_receiver();
         let avatar_dir = self.data_dir.join("avatars");
         let t = std::time::Instant::now();
-        let rooms = rooms_json(&client, &avatar_dir).await;
-        tracing::info!(ms = t.elapsed().as_millis() as u64, rooms = rooms.as_array().map(|a| a.len()).unwrap_or(0), "startup: first room list");
-        self.emit(json!({"ev": "rooms", "rooms": rooms}));
+        let mut cache: HashMap<OwnedRoomId, Value> = HashMap::new();
+        for room in client.rooms().into_iter().filter(crate::serialize::listed) {
+            cache.insert(room.room_id().to_owned(), room_json(&room, &avatar_dir).await);
+        }
+        tracing::info!(ms = t.elapsed().as_millis() as u64, rooms = cache.len(), "startup: first room list");
+        self.emit(json!({"ev": "rooms", "rooms": sorted_rooms(cache.values().cloned().collect())}));
         self.listen_latest(&client).await;
-        self.fetch_avatars(&client).await;
+        let mut avatars_new = self.fetch_avatars(&client).await;
+        let mut last_full = std::time::Instant::now();
         loop {
-            match rx.recv().await {
-                Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
-                Err(_) => break,
+            let mut changed: std::collections::HashSet<OwnedRoomId> = std::collections::HashSet::new();
+            // new pictures change rows the update stream does not name
+            let mut full = std::mem::take(&mut avatars_new);
+            if !full {
+                match rx.recv().await {
+                    Ok(update) => {
+                        changed.insert(update.room_id);
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => full = true,
+                    Err(_) => break,
+                }
             }
             tokio::time::sleep(Duration::from_millis(150)).await;
-            while rx.try_recv().is_ok() {}
-            self.emit(json!({"ev": "rooms", "rooms": rooms_json(&client, &avatar_dir).await}));
+            loop {
+                match rx.try_recv() {
+                    Ok(update) => {
+                        changed.insert(update.room_id);
+                    }
+                    Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => full = true,
+                    Err(_) => break,
+                }
+            }
+            if full || last_full.elapsed() > Duration::from_secs(60) {
+                cache.clear();
+                for room in client.rooms().into_iter().filter(crate::serialize::listed) {
+                    cache.insert(room.room_id().to_owned(), room_json(&room, &avatar_dir).await);
+                }
+                last_full = std::time::Instant::now();
+            } else {
+                for id in &changed {
+                    match client.get_room(id).filter(crate::serialize::listed) {
+                        Some(room) => {
+                            cache.insert(id.clone(), room_json(&room, &avatar_dir).await);
+                        }
+                        None => {
+                            cache.remove(id);
+                        }
+                    }
+                }
+            }
+            self.emit(json!({"ev": "rooms", "rooms": sorted_rooms(cache.values().cloned().collect())}));
             Self::log_counts(&client);
             self.listen_latest(&client).await;
-            self.fetch_avatars(&client).await;
+            avatars_new = self.fetch_avatars(&client).await;
         }
     }
 
@@ -470,7 +515,8 @@ impl Core {
     }
 
     /// Cache the avatars that are missing, once per room, then resend the list.
-    async fn fetch_avatars(&'static self, client: &Client) {
+    /// Returns whether a new picture arrived (the room list then needs it).
+    async fn fetch_avatars(&'static self, client: &Client) -> bool {
         let avatar_dir = self.data_dir.join("avatars");
         let own = client.user_id().map(ToOwned::to_owned);
         let mut fetched = false;
@@ -497,9 +543,7 @@ impl Core {
                 Err(e) => tracing::info!(room = %room.room_id(), "avatar: {e}"),
             }
         }
-        if fetched {
-            self.emit(json!({"ev": "rooms", "rooms": rooms_json(client, &avatar_dir).await}));
-        }
+        fetched
     }
 
     /// The room's own picture, or for a direct chat the other person's.
@@ -1217,7 +1261,12 @@ impl Core {
             }
             "refresh_rooms" => {
                 let client = self.client().await?;
-                self.emit(json!({"ev": "rooms", "rooms": rooms_json(&client, &self.data_dir.join("avatars")).await}));
+                let dir = self.data_dir.join("avatars");
+                let mut rooms = Vec::new();
+                for room in client.rooms().into_iter().filter(crate::serialize::listed) {
+                    rooms.push(room_json(&room, &dir).await);
+                }
+                self.emit(json!({"ev": "rooms", "rooms": sorted_rooms(rooms)}));
                 Ok(())
             }
             other => bail!("unknown command {other}"),

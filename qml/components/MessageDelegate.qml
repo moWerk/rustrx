@@ -21,7 +21,8 @@ import Sailfish.Silica 1.0
 // One timeline row: a date divider, a read marker, or an event. Own
 // messages sit at the right in the highlight colour, others at the left.
 ListItem {
-    id: item
+    // not "item": inside a Loader's component that name is the Loader's own property
+    id: msg
     width: ListView.view.width
     contentHeight: loader.height + Theme.paddingSmall
     menu: isEvent ? contextMenu : null
@@ -48,7 +49,6 @@ ListItem {
     readonly property bool canAct: isEvent && msgType !== "membership" && msgType !== "state" && msgType !== "redacted"
     // the reactions offered in the menu; the first stays where it always was
     readonly property var quickReactions: ["👍", "❤️", "😂", "😮", "😢", "🎉"]
-    property bool reactOpen
 
     // plain bodies: escape, link the addresses, keep the line breaks
     function linkify(t) {
@@ -75,7 +75,7 @@ ListItem {
         active: msgType === "audio"
         sourceComponent: Audio {
             source: model.media_path && model.media_path.length ? "file://" + model.media_path : ""
-            onSourceChanged: if (item.wantPlay && source.toString().length) { item.wantPlay = false; play() }
+            onSourceChanged: if (msg.wantPlay && source.toString().length) { msg.wantPlay = false; play() }
         }
     }
 
@@ -290,7 +290,7 @@ ListItem {
                         color: modelData.me ? Theme.highlightColor : Theme.secondaryColor
                         MouseArea {
                             anchors { fill: parent; margins: -Theme.paddingSmall }
-                            onClicked: rustrx.command({ cmd: "react", room_id: roomId, event_id: item.eventId, key: modelData.key })
+                            onClicked: rustrx.command({ cmd: "react", room_id: roomId, event_id: msg.eventId, key: modelData.key })
                         }
                     }
                 }
@@ -332,13 +332,29 @@ ListItem {
     Component {
         id: contextMenu
         ContextMenu {
-            onClosed: item.reactOpen = false
+            // the reactions first: six at a tap, the menu closes after one
+            Row {
+                visible: canAct && !failed
+                anchors.horizontalCenter: parent.horizontalCenter
+                Repeater {
+                    model: msg.quickReactions
+                    BackgroundItem {
+                        width: Theme.itemSizeSmall
+                        height: Theme.itemSizeSmall
+                        onClicked: {
+                            rustrx.command({ cmd: "react", room_id: roomId, event_id: msg.eventId, key: modelData })
+                            msg.closeMenu()
+                        }
+                        Label { anchors.centerIn: parent; text: modelData; font.pixelSize: Theme.fontSizeLarge }
+                    }
+                }
+            }
             // a failed message: send it again or let it go
             MenuItem {
                 visible: failed
                 //% "Send again"
                 text: qsTrId("rustrx-me-send-again")
-                onClicked: item.resend(model.txn_id || "", model.body || "")
+                onClicked: msg.resend(model.txn_id || "", model.body || "")
             }
             MenuItem {
                 visible: failed
@@ -350,37 +366,13 @@ ListItem {
                 //% "Reply"
                 text: qsTrId("rustrx-me-reply")
                 visible: canAct && !failed
-                onClicked: item.reply(model.event_id, (model.sender_name || model.sender) + ": " + (model.body || ""))
-            }
-            // the reactions: a row of six that the menu unfolds into
-            MenuItem {
-                //% "React"
-                text: qsTrId("rustrx-me-react")
-                visible: canAct && !failed && !item.reactOpen
-                onDelayedClick: {}
-                onClicked: item.reactOpen = true
-            }
-            Row {
-                visible: item.reactOpen
-                anchors.horizontalCenter: parent.horizontalCenter
-                Repeater {
-                    model: item.quickReactions
-                    BackgroundItem {
-                        width: Theme.itemSizeSmall
-                        height: Theme.itemSizeSmall
-                        onClicked: {
-                            rustrx.command({ cmd: "react", room_id: roomId, event_id: item.eventId, key: modelData })
-                            item.closeMenu()
-                        }
-                        Label { anchors.centerIn: parent; text: modelData; font.pixelSize: Theme.fontSizeLarge }
-                    }
-                }
+                onClicked: msg.reply(model.event_id, (model.sender_name || model.sender) + ": " + (model.body || ""))
             }
             MenuItem {
                 //% "Edit"
                 text: qsTrId("rustrx-me-edit")
                 visible: own && model.editable === true && (msgType === "text" || msgType === "emote" || msgType === "notice")
-                onClicked: item.edit(model.event_id, model.body || "")
+                onClicked: msg.edit(model.event_id, model.body || "")
             }
             MenuItem {
                 //% "Copy text"
@@ -391,8 +383,8 @@ ListItem {
             MenuItem {
                 //% "Copy link"
                 text: qsTrId("rustrx-me-copy-link")
-                visible: canAct && !failed && item.eventId.length > 0
-                onClicked: Clipboard.text = "https://matrix.to/#/" + encodeURIComponent(roomId) + "/" + encodeURIComponent(item.eventId)
+                visible: canAct && !failed && msg.eventId.length > 0
+                onClicked: Clipboard.text = "https://matrix.to/#/" + encodeURIComponent(roomId) + "/" + encodeURIComponent(msg.eventId)
             }
             MenuItem {
                 //% "Save"
@@ -407,7 +399,7 @@ ListItem {
                 onClicked: {
                     var id = model.event_id, room = roomId, core = rustrx
                     //% "Reporting to the server admins"
-                    item.remorseAction(qsTrId("rustrx-re-reporting"), function () {
+                    msg.remorseAction(qsTrId("rustrx-re-reporting"), function () {
                         core.command({ cmd: "report", room_id: room, event_id: id })
                     })
                 }
@@ -419,7 +411,7 @@ ListItem {
                 onClicked: {
                     var id = model.event_id, room = roomId, core = rustrx
                     //% "Removing"
-                    item.remorseAction(qsTrId("rustrx-re-removing"), function () {
+                    msg.remorseAction(qsTrId("rustrx-re-removing"), function () {
                         core.command({ cmd: "redact", room_id: room, event_id: id })
                     })
                 }

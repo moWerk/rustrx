@@ -131,7 +131,11 @@ signals:
 
 public slots:
     // D-Bus net.mowerk.harbour_rustrx.openRoom, the notifications' action
-    Q_SCRIPTABLE void openRoomFromNotification(const QString &roomId) { emit openRoomRequested(roomId); }
+    // kept until QML takes it: a cold start delivers the call before QML is loaded
+    Q_SCRIPTABLE void openRoomFromNotification(const QString &roomId) { m_pendingRoom = roomId; emit openRoomRequested(roomId); }
+public:
+    Q_INVOKABLE QString takePendingRoom() { const QString r = m_pendingRoom; m_pendingRoom.clear(); return r; }
+public slots:
 
 private slots:
     void handleEvent(const QVariantMap &ev);
@@ -150,6 +154,7 @@ private:
     QString m_verificationState = QStringLiteral("unknown");
     QString m_recoveryState = QStringLiteral("unknown");
     QString m_openRoomId;
+    QString m_pendingRoom;
     int m_unreadTotal = 0;
     int m_unreadChats = 0;
     QHash<QString, int> m_notificationCounts;
