@@ -145,8 +145,8 @@ signals:
     void openRoomRequested(const QString &roomId);
     // show the window (a second launch, a notification, a link, a share)
     void activateRequested();
-    // background mode: back to the cover instead of closing
-    void minimizeRequested();
+    // hide the window as a close does in background mode (debug and tests)
+    void hideRequested();
     // a matrix: or matrix.to link to follow
     void matrixUriRequested(const QString &uri);
     // the share sheet hands over files (local paths) and/or a text
@@ -161,6 +161,7 @@ public slots:
 public:
     Q_INVOKABLE QString takePendingRoom() { const QString r = m_pendingRoom; m_pendingRoom.clear(); return r; }
     // a link or a share that arrived before QML was loaded
+    Q_INVOKABLE void hideWindow() { emit hideRequested(); }
     Q_INVOKABLE QString takePendingUri() { const QString r = m_pendingUri; m_pendingUri.clear(); return r; }
     Q_INVOKABLE QVariantMap takePendingShare() { const QVariantMap r = m_pendingShare; m_pendingShare.clear(); return r; }
     // called by the share adaptor

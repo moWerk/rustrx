@@ -32,24 +32,26 @@
 #include "TimelineModel.h"
 #include "VoiceRecorder.h"
 
-// In background mode the window's close request (closing the app from its
-// cover) minimises it; QML does the minimising (ApplicationWindow.deactivate).
-class CloseToCover : public QObject
+// In background mode closing the app (from its cover or by the top swipe)
+// hides the window instead of ending the process: the home screen drops the
+// tile at once, notifications go on, and the launcher brings the window back.
+class CloseToHidden : public QObject
 {
 public:
-    explicit CloseToCover(Rustrx *rustrx) : m_rustrx(rustrx) {}
+    explicit CloseToHidden(Rustrx *rustrx, QWindow *window) : m_rustrx(rustrx), m_window(window) {}
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override
     {
         if (event->type() == QEvent::Close && m_rustrx->background()) {
             event->ignore();
-            emit m_rustrx->minimizeRequested();
+            m_window->hide();
             return true;
         }
         return QObject::eventFilter(obj, event);
     }
 private:
     Rustrx *m_rustrx;
+    QWindow *m_window;
 };
 
 int main(int argc, char *argv[])
@@ -94,11 +96,10 @@ int main(int argc, char *argv[])
         view->raise();
         view->requestActivate();
     });
-    // Background mode keeps a window, minimised to its cover: closing it
-    // minimises instead (the launcher can raise it again; a process without
-    // a window cannot be raised), and a session start opens minimised.
-    CloseToCover closer(&rustrx);
+    CloseToHidden closer(&rustrx, view.data());
     view->installEventFilter(&closer);
+    QObject::connect(&rustrx, &Rustrx::hideRequested, view.data(), [&view]() { view->hide(); });
+    // a session start opens minimised to the cover (QML), so the launcher can raise it
     view->show();
     return app->exec();
 }

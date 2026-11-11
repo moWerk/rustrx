@@ -253,10 +253,9 @@ ApplicationWindow {
     }
     Timer { id: wakeHold; interval: 20000; onTriggered: wakeJob.finished() }
 
-    Connections {
-        target: rustrx
-        onMinimizeRequested: app.deactivate()
-    }
+    // debug: hide the window like a close in background mode does
+    ConfigurationValue { id: debugHide; key: "/apps/harbour-rustrx/debugHide"; defaultValue: false }
+    Timer { running: debugHide.value === true; interval: 4000; onTriggered: rustrx.hideWindow() }
 
     // started with the session: to the cover once the window is up (before
     // it is mapped the call does nothing); retried until the app is inactive
