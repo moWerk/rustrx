@@ -129,8 +129,11 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
         "is_fav": room.is_favourite(),
         "is_low": room.is_low_priority(),
         "unread": room.num_unread_messages(),
-        "notifications": counts.notification_count,
-        "highlights": counts.highlight_count,
+        // the server's counts, or the ones computed here from the push rules
+        // and read receipts when those are higher (the server's stayed at 0
+        // for a room set to "all messages")
+        "notifications": counts.notification_count.max(room.num_unread_notifications()),
+        "highlights": counts.highlight_count.max(room.num_unread_mentions()),
         "ts": room.latest_event_timestamp().map(ms),
         "state": match room.state() { RoomState::Invited => "invited", RoomState::Joined => "joined", _ => "other" },
         "encrypted": room.encryption_state().is_encrypted(),

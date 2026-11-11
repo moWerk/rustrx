@@ -37,10 +37,12 @@ Item {
 
     Connections {
         target: rustrx
+        // the stand-in has no window, and without one Qt reports it active
         onNewMessages: {
-            if (Qt.application.state === Qt.ApplicationActive) return
+            if (!rustrx.standIn && Qt.application.state === Qt.ApplicationActive) return
             service.notify(roomId, roomName, count)
         }
+        onUnreadChanged: if (rustrx.standIn) console.log("stand-in: unread", rustrx.unreadTotal, "in", rustrx.unreadChats)
         onOpenRoomChanged: if (rustrx.openRoomId.length) service.closeNotification(rustrx.openRoomId)
         onQuitRequested: standInNote.close()
     }
@@ -50,6 +52,7 @@ Item {
     property var roomNotifications: ({})
     property var roomPending: ({})
     function notify(roomId, roomName, count) {
+        console.log("notify: +" + count)
         var n = roomNotifications[roomId]
         if (!n) {
             n = notificationComponent.createObject(service, { roomId: roomId })
