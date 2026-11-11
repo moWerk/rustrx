@@ -358,8 +358,23 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_people->setRooms({});
         m_favourites->setRooms({});
         m_notificationCounts.clear();
+        m_roomsById.clear();
+        m_homeserver.clear();
+        m_syncState = QStringLiteral("idle");
+        m_verificationState = QStringLiteral("unknown");
+        m_recoveryState = QStringLiteral("unknown");
+        m_firstRooms = true;
+        if (m_unreadTotal || m_unreadChats) {
+            m_unreadTotal = m_unreadChats = 0;
+            emit unreadChanged();
+        }
+        // the drafts belonged to that account
+        QSettings settings;
+        settings.remove(QStringLiteral("drafts"));
         emit stateChanged();
         emit openRoomChanged();
+        emit syncStateChanged();
+        emit encryptionChanged();
     } else if (type == QLatin1String("server_info")) {
         emit serverInfo(ev);
     } else if (type == QLatin1String("sync_state")) {

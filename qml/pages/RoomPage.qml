@@ -52,11 +52,19 @@ Page {
     onStatusChanged: {
         if (status === PageStatus.Active) {
             markRead()
-            // the room's page, one swipe to the right
-            if (!infoAttached) {
-                infoAttached = true
-                pageStack.pushAttached(Qt.resolvedUrl("RoomInfoPage.qml"), { roomId: roomId })
-            }
+            // the room's page, one swipe to the right; attached once the
+            // transition is over (inside it the stack reports a binding loop)
+            if (!infoAttached) attachInfo.start()
+        }
+    }
+
+    Timer {
+        id: attachInfo
+        interval: 0
+        onTriggered: {
+            if (page.infoAttached) return
+            page.infoAttached = true
+            pageStack.pushAttached(Qt.resolvedUrl("RoomInfoPage.qml"), { roomId: roomId })
         }
     }
 

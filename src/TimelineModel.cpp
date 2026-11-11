@@ -16,6 +16,8 @@
  */
 #include "TimelineModel.h"
 
+#include <QSet>
+
 TimelineModel::TimelineModel(QObject *parent)
     : QAbstractListModel(parent)
 {
@@ -64,43 +66,68 @@ QVariantMap TimelineModel::get(int row) const
     return row >= 0 && row < m_items.size() ? withMedia(m_items.at(row).toMap()) : QVariantMap();
 }
 
-// The core sends the whole timeline, oldest first. Reverse it; when only
-// rows were added at the new end (the common case: a message arrived or
-// was sent), insert them, else reset.
+// The core sends the whole timeline, oldest first; the model holds it
+// newest first. Rows are matched by their unique id: removed rows go,
+// new ones are inserted where they belong, moved ones move, and only rows
+// whose content changed are reported. A page of older history therefore
+// arrives as an insertion at the far end and the view stays where it is
+// (a reset used to throw a reader back to the newest message).
 void TimelineModel::setItems(const QVariantList &items)
 {
-    QVariantList reversed;
-    reversed.reserve(items.size());
+    QVariantList target;
+    target.reserve(items.size());
     for (int i = items.size() - 1; i >= 0; --i)
-        reversed.append(items.at(i));
+        target.append(items.at(i));
 
-    const int added = reversed.size() - m_items.size();
-    bool appendOnly = added > 0 && !m_items.isEmpty();
-    for (int i = 0; appendOnly && i < m_items.size(); ++i)
-        appendOnly = reversed.at(i + added).toMap().value("id") == m_items.at(i).toMap().value("id");
-    if (appendOnly) {
-        beginInsertRows(QModelIndex(), 0, added - 1);
-        for (int i = added - 1; i >= 0; --i)
-            m_items.prepend(reversed.at(i));
-        endInsertRows();
-        // existing rows may have changed too (send state, reactions, edits)
-        emit dataChanged(index(added), index(m_items.size() - 1));
+    auto idOf = [](const QVariant &v) { return v.toMap().value(QStringLiteral("id")).toString(); };
+
+    const int before = m_items.size();
+    QSet<QString> wanted;
+    for (const QVariant &v : target)
+        wanted.insert(idOf(v));
+
+    // 1. rows that are gone, from the end so the indices stay valid
+    for (int i = m_items.size() - 1; i >= 0; --i) {
+        if (!wanted.contains(idOf(m_items.at(i)))) {
+            beginRemoveRows(QModelIndex(), i, i);
+            m_items.removeAt(i);
+            endRemoveRows();
+        }
+    }
+
+    // 2. walk the target order: keep, move up, or insert
+    for (int i = 0; i < target.size(); ++i) {
+        const QString id = idOf(target.at(i));
+        if (i < m_items.size() && idOf(m_items.at(i)) == id) {
+            if (m_items.at(i) != target.at(i)) {
+                m_items[i] = target.at(i);
+                emit dataChanged(index(i), index(i));
+            }
+            continue;
+        }
+        int from = -1;
+        for (int j = i + 1; j < m_items.size(); ++j) {
+            if (idOf(m_items.at(j)) == id) {
+                from = j;
+                break;
+            }
+        }
+        if (from >= 0) {
+            beginMoveRows(QModelIndex(), from, from, QModelIndex(), i);
+            m_items.move(from, i);
+            endMoveRows();
+            if (m_items.at(i) != target.at(i)) {
+                m_items[i] = target.at(i);
+                emit dataChanged(index(i), index(i));
+            }
+        } else {
+            beginInsertRows(QModelIndex(), i, i);
+            m_items.insert(i, target.at(i));
+            endInsertRows();
+        }
+    }
+    if (m_items.size() != before)
         emit countChanged();
-        return;
-    }
-    bool sameRows = reversed.size() == m_items.size();
-    for (int i = 0; sameRows && i < reversed.size(); ++i)
-        sameRows = reversed.at(i).toMap().value("id") == m_items.at(i).toMap().value("id");
-    if (sameRows) {
-        m_items = reversed;
-        if (!m_items.isEmpty())
-            emit dataChanged(index(0), index(m_items.size() - 1));
-        return;
-    }
-    beginResetModel();
-    m_items = reversed;
-    endResetModel();
-    emit countChanged();
 }
 
 void TimelineModel::setMediaPath(const QString &eventId, bool thumb, const QString &path)

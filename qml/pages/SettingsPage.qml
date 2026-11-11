@@ -101,14 +101,16 @@ Page {
                 //% "Others see how far you have read. When off, only your own devices know."
                 description: qsTrId("rustrx-la-send-receipts-hint")
                 checked: app.sendReceipts
-                onCheckedChanged: app.sendReceipts = checked
+                automaticCheck: false
+                onClicked: app.sendReceipts = !app.sendReceipts
             }
 
             TextSwitch {
                 //% "Show that I am typing"
                 text: qsTrId("rustrx-la-send-typing")
                 checked: app.sendTyping
-                onCheckedChanged: app.sendTyping = checked
+                automaticCheck: false
+                onClicked: app.sendTyping = !app.sendTyping
             }
 
             //% "Account"

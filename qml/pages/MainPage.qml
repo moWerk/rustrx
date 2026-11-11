@@ -61,7 +61,11 @@ Page {
             if (debugRooms.objectAt(i).rname === key) return debugRooms.objectAt(i).rid
         return ""
     }
-    onStatusChanged: {
+    onStatusChanged: if (debugOpenRoom.value.length || debugMarkRead.value.length || debugNavigate.value.length) debugTimer.start()
+    Timer { id: debugTimer; interval: 0; onTriggered: page.debugTry() }
+    // after the room has attached its page
+    Timer { id: debugForward; interval: 300; onTriggered: { pageStack.navigateForward(); debugNav.target = null } }
+    function debugTry() {
         if (status !== PageStatus.Active || debugDone) return
         // "page:KeysPage" pushes that page from here
         if (debugNavigate.value.indexOf("page:") === 0 && !debugOpenRoom.value.length) {
@@ -84,12 +88,12 @@ Page {
     // rooms arriving after the page is active
     Connections {
         target: rustrx.rooms
-        onCountChanged: if (page.status === PageStatus.Active && !debugDone && (debugOpenRoom.value.length || debugMarkRead.value.length)) page.statusChanged()
+        onCountChanged: if (debugOpenRoom.value.length || debugMarkRead.value.length) debugTimer.start()
     }
     Connections {
         id: debugNav
         target: null
-        onStatusChanged: if (target.status === PageStatus.Active) { pageStack.navigateForward(); target = null }
+        onStatusChanged: if (target.status === PageStatus.Active) debugForward.start()
     }
 
     TabView {

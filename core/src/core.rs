@@ -84,6 +84,45 @@ struct State {
     sas: HashMap<String, SasVerification>,
     avatars_tried: std::collections::HashSet<OwnedRoomId>,
     latest_listened: std::collections::HashSet<OwnedRoomId>,
+    /// tasks that live as long as one login; aborted on logout
+    login_tasks: Vec<JoinHandle<()>>,
+}
+
+/// What a logout has to stop, taken out of the state so the lock is not
+/// held across the network or a service shutdown.
+struct Teardown {
+    client: Option<Client>,
+    service: Option<Arc<SyncService>>,
+    tasks: Vec<JoinHandle<()>>,
+}
+
+impl State {
+    fn take_login(&mut self) -> Teardown {
+        let mut tasks = std::mem::take(&mut self.login_tasks);
+        if let Some(open) = self.open.take() {
+            tasks.push(open.task);
+        }
+        if let Some(task) = self.sync_task.take() {
+            tasks.push(task);
+        }
+        self.requests.clear();
+        self.sas.clear();
+        self.avatars_tried.clear();
+        self.latest_listened.clear();
+        Teardown { client: self.client.take(), service: self.sync_service.take(), tasks }
+    }
+}
+
+impl Teardown {
+    async fn stop(self) -> Option<Client> {
+        for t in &self.tasks {
+            t.abort();
+        }
+        if let Some(service) = self.service {
+            service.stop().await;
+        }
+        self.client
+    }
 }
 
 pub(crate) struct Core {
@@ -239,12 +278,13 @@ impl Core {
             let mut st = self.state.lock().await;
             st.client = Some(client.clone());
         }
-        self.rt.spawn(self.session_watch(client.clone()));
+        let watch = self.rt.spawn(self.session_watch(client.clone()));
         // the previews come from the event cache; the sync service subscribes
         // it itself, the classic sync loop does not
         let _ = client.event_cache().subscribe();
         // the cached room list first, before anything waits for the network
-        self.rt.spawn(self.rooms_task(client.clone()));
+        let rooms = self.rt.spawn(self.rooms_task(client.clone()));
+        self.state.lock().await.login_tasks.extend([watch, rooms]);
         self.start_sync(client).await
     }
 
@@ -270,26 +310,35 @@ impl Core {
     /// the saved session, tell the UI. A soft logout keeps the crypto store
     /// for a new login on the same device.
     async fn session_expired(&'static self, soft_logout: bool) {
-        let mut st = self.state.lock().await;
-        if st.client.take().is_none() {
-            return; // already handled; every failing request reports it once more
-        }
+        let teardown = {
+            let mut st = self.state.lock().await;
+            if st.client.is_none() {
+                return; // already handled; every failing request reports it once more
+            }
+            st.take_login()
+        };
         tracing::warn!(soft_logout, "the server no longer accepts this session");
-        if let Some(open) = st.open.take() {
-            open.task.abort();
-        }
-        if let Some(service) = st.sync_service.take() {
-            service.stop().await;
-        }
-        if let Some(task) = st.sync_task.take() {
-            task.abort();
-        }
-        drop(st);
+        let client = teardown.stop().await;
         std::fs::remove_file(self.session_path()).ok();
-        if !soft_logout {
-            std::fs::remove_dir_all(self.data_dir.join("store")).ok();
+        if soft_logout {
+            // the crypto store belongs to this device: the next login asks for it again
+            if let Some(device) = client.as_ref().and_then(|c| c.device_id()) {
+                std::fs::write(self.data_dir.join("device_id"), device.as_str()).ok();
+            }
+        } else {
+            self.wipe_local_data();
         }
         self.emit(json!({"ev": "logged_out", "reason": "session_expired", "soft_logout": soft_logout}));
+    }
+
+    /// Everything of the account on this phone: store, decrypted media, avatars.
+    fn wipe_local_data(&self) {
+        std::fs::remove_dir_all(self.data_dir.join("store")).ok();
+        std::fs::remove_file(self.data_dir.join("device_id")).ok();
+        for dir in ["media", "avatars"] {
+            std::fs::remove_dir_all(self.data_dir.join(dir)).ok();
+            std::fs::create_dir_all(self.data_dir.join(dir)).ok();
+        }
     }
 
     async fn start_sync(&'static self, client: Client) -> Result<()> {
@@ -325,7 +374,7 @@ impl Core {
             // we listened left the cover on "Connecting" (0.2.0).
             let mut states = service.state();
             service.start().await;
-            self.rt.spawn(async move {
+            let state_task = self.rt.spawn(async move {
                 let mut current = Some(states.get());
                 loop {
                     let state = match current.take() {
@@ -346,9 +395,12 @@ impl Core {
                     self.emit(json!({"ev": "sync_state", "state": name, "message": message}));
                 }
             });
-            self.state.lock().await.sync_service = Some(service);
+            let mut st = self.state.lock().await;
+            st.sync_service = Some(service);
+            st.login_tasks.push(state_task);
         }
-        self.rt.spawn(self.encryption_task(client));
+        let enc = self.rt.spawn(self.encryption_task(client));
+        self.state.lock().await.login_tasks.push(enc);
         Ok(())
     }
 
@@ -1225,19 +1277,26 @@ impl Core {
     }
 
     async fn login_password(&'static self, v: &Value) -> Result<()> {
+        if self.state.lock().await.client.is_some() {
+            bail!("already logged in");
+        }
         let result: Result<Client> = async {
             let server = Self::server_of(v)?;
             let user = s(v, "user")?;
             let password = s(v, "password")?;
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
-            client
+            // after a soft logout: the same device again, so the kept crypto store fits
+            let device = std::fs::read_to_string(self.data_dir.join("device_id")).ok();
+            let mut login = client
                 .matrix_auth()
                 .login_username(user.trim(), &password)
                 .initial_device_display_name(DEVICE_NAME)
-                .request_refresh_token()
-                .send()
-                .await
-                .map_err(|e| anyhow!("{e}"))?;
+                .request_refresh_token();
+            if let Some(d) = device.as_deref() {
+                login = login.device_id(d.trim());
+            }
+            login.send().await.map_err(|e| anyhow!("{e}"))?;
+            std::fs::remove_file(self.data_dir.join("device_id")).ok();
             Ok(client)
         }
         .await;
@@ -1251,6 +1310,9 @@ impl Core {
     }
 
     async fn login_sso(&'static self, v: &Value) -> Result<()> {
+        if self.state.lock().await.client.is_some() {
+            bail!("already logged in");
+        }
         let result: Result<Client> = async {
             let server = Self::server_of(v)?;
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
@@ -1279,24 +1341,16 @@ impl Core {
     }
 
     async fn logout(&'static self) -> Result<()> {
-        let mut st = self.state.lock().await;
-        if let Some(open) = st.open.take() {
-            open.task.abort();
-        }
-        if let Some(service) = st.sync_service.take() {
-            service.stop().await;
-        }
-        if let Some(task) = st.sync_task.take() {
-            task.abort();
-        }
-        if let Some(client) = st.client.take() {
+        // out of the state first: nothing below may hold the lock, or every
+        // other command waits for the server (or its timeout) too
+        let teardown = self.state.lock().await.take_login();
+        if let Some(client) = teardown.stop().await {
             if let Err(e) = client.logout().await {
                 tracing::warn!("logout: {e}");
             }
         }
-        drop(st);
         std::fs::remove_file(self.session_path()).ok();
-        std::fs::remove_dir_all(self.data_dir.join("store")).ok();
+        self.wipe_local_data();
         self.emit(json!({"ev": "logged_out"}));
         Ok(())
     }
