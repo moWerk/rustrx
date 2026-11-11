@@ -1,6 +1,6 @@
 [package]
 name = "rustrx-core"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "Matrix core for Rustrx, a SailfishOS client: matrix-rust-sdk behind a small C ABI"
