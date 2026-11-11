@@ -50,6 +50,10 @@ class Rustrx : public QObject
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
     Q_PROPERTY(QString coreVersion READ coreVersion CONSTANT)
     Q_PROPERTY(bool downscaleImages READ downscaleImages WRITE setDownscaleImages NOTIFY settingsChanged)
+    // keep running with the window closed, start with the session, wake every few minutes
+    Q_PROPERTY(bool background READ background WRITE setBackground NOTIFY settingsChanged)
+    // started by the session (autostart), no window shown yet
+    Q_PROPERTY(bool startedHidden READ startedHidden CONSTANT)
 
 public:
     explicit Rustrx(const QString &dataDir, QObject *parent = nullptr);
@@ -74,6 +78,12 @@ public:
     QString coreVersion() const;
     bool downscaleImages() const;
     void setDownscaleImages(bool on);
+    bool background() const;
+    void setBackground(bool on);
+    bool startedHidden() const { return m_startedHidden; }
+    void setStartedHidden(bool hidden) { m_startedHidden = hidden; }
+    // the file the autostart unit looks for (in the sandbox's own config folder)
+    static QString backgroundFlagPath();
 
     Q_INVOKABLE void command(const QVariantMap &cmd);
     Q_INVOKABLE void loginPassword(const QString &user, const QString &password, const QString &homeserver);
@@ -133,6 +143,10 @@ signals:
     void storageInfo(const QVariantMap &info);
     // a notification was tapped: show this room
     void openRoomRequested(const QString &roomId);
+    // show the window (a second launch, a notification, a link, a share)
+    void activateRequested();
+    // background mode: back to the cover instead of closing
+    void minimizeRequested();
     // a matrix: or matrix.to link to follow
     void matrixUriRequested(const QString &uri);
     // the share sheet hands over files (local paths) and/or a text
@@ -141,7 +155,9 @@ signals:
 public slots:
     // D-Bus net.mowerk.harbour_rustrx.openRoom, the notifications' action
     // kept until QML takes it: a cold start delivers the call before QML is loaded
-    Q_SCRIPTABLE void openRoomFromNotification(const QString &roomId) { m_pendingRoom = roomId; emit openRoomRequested(roomId); }
+    Q_SCRIPTABLE void openRoomFromNotification(const QString &roomId) { m_pendingRoom = roomId; emit activateRequested(); emit openRoomRequested(roomId); }
+    // a second launch while this one runs in the background
+    Q_SCRIPTABLE void activate() { emit activateRequested(); }
 public:
     Q_INVOKABLE QString takePendingRoom() { const QString r = m_pendingRoom; m_pendingRoom.clear(); return r; }
     // a link or a share that arrived before QML was loaded
@@ -156,6 +172,7 @@ public slots:
         if (urls.isEmpty())
             return;
         m_pendingUri = urls.first();
+        emit activateRequested();
         emit matrixUriRequested(m_pendingUri);
     }
 
@@ -177,6 +194,7 @@ private:
     QString m_recoveryState = QStringLiteral("unknown");
     QString m_openRoomId;
     QString m_pendingRoom;
+    bool m_startedHidden = false;
     QString m_pendingUri;
     QVariantMap m_pendingShare;
     int m_unreadTotal = 0;

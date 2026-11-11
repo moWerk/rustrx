@@ -95,6 +95,19 @@ Page {
                 onCheckedChanged: rustrx.downscaleImages = checked
             }
 
+            //% "Notifications"
+            SectionHeader { text: qsTrId("rustrx-se-notifications") }
+
+            TextSwitch {
+                //% "Keep running in the background"
+                text: qsTrId("rustrx-la-background")
+                //% "Notifications also when Rustrx is closed. It starts with the phone, stays connected and checks for messages every five minutes while the phone sleeps. Quit it from the pulley menu."
+                description: qsTrId("rustrx-la-background-hint")
+                checked: rustrx.background
+                automaticCheck: false
+                onClicked: rustrx.background = !rustrx.background
+            }
+
             //% "Privacy"
             SectionHeader { text: qsTrId("rustrx-se-privacy") }
 

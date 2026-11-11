@@ -18,6 +18,7 @@ import QtQuick 2.6
 import Sailfish.Silica 1.0
 import Nemo.Notifications 1.0
 import Nemo.Configuration 1.0
+import Nemo.KeepAlive 1.2
 import "pages"
 
 ApplicationWindow {
@@ -238,6 +239,36 @@ ApplicationWindow {
                 "arguments": [ roomId ]
             }]
             onClosed: pending = 0
+        }
+    }
+
+    // Background mode: while the phone sleeps the sync is frozen; every five
+    // minutes (in the system's shared wake slot) the job wakes it and keeps it
+    // awake for a short while, so new messages arrive and notify.
+    BackgroundJob {
+        id: wakeJob
+        enabled: rustrx.background && rustrx.loggedIn
+        frequency: BackgroundJob.FiveMinutes
+        onTriggered: { console.log("background: woken"); wakeHold.restart() }
+    }
+    Timer { id: wakeHold; interval: 20000; onTriggered: wakeJob.finished() }
+
+    Connections {
+        target: rustrx
+        onMinimizeRequested: app.deactivate()
+    }
+
+    // started with the session: to the cover once the window is up (before
+    // it is mapped the call does nothing); retried until the app is inactive
+    Timer {
+        id: toCover
+        interval: 400
+        repeat: true
+        running: rustrx.startedHidden
+        property int tries
+        onTriggered: {
+            if (Qt.application.state !== Qt.ApplicationActive || ++tries > 15) { stop(); return }
+            app.deactivate()
         }
     }
 

@@ -183,7 +183,33 @@ Rustrx::~Rustrx()
 void Rustrx::receiveShare(const QStringList &files, const QString &text)
 {
     m_pendingShare = QVariantMap{{"files", files}, {"text", text}};
+    emit activateRequested();
     emit shareRequested(files, text);
+}
+
+QString Rustrx::backgroundFlagPath()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QStringLiteral("/background");
+}
+
+bool Rustrx::background() const
+{
+    return QFile::exists(backgroundFlagPath());
+}
+
+void Rustrx::setBackground(bool on)
+{
+    if (on == background())
+        return;
+    if (on) {
+        QDir().mkpath(QFileInfo(backgroundFlagPath()).path());
+        QFile f(backgroundFlagPath());
+        f.open(QIODevice::WriteOnly);
+    } else {
+        QFile::remove(backgroundFlagPath());
+    }
+    QGuiApplication::setQuitOnLastWindowClosed(!on);
+    emit settingsChanged();
 }
 
 bool Rustrx::downscaleImages() const

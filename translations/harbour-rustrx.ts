@@ -941,5 +941,21 @@
         <source>Discard</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-me-quit">
+        <source>Quit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-notifications">
+        <source>Notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-background">
+        <source>Keep running in the background</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-background-hint">
+        <source>Notifications also when Rustrx is closed. It starts with the phone, stays connected and checks for messages every five minutes while the phone sleeps. Quit it from the pulley menu.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

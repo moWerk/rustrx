@@ -34,6 +34,11 @@ dbusservice.files = dbus/net.mowerk.harbour_rustrx.service
 dbusservice.path = /usr/share/dbus-1/services
 INSTALLS += dbusservice
 
+# background mode: started with the session when the user switched it on
+autostart.files = systemd/harbour-rustrx.service
+autostart.path = /usr/lib/systemd/user
+INSTALLS += autostart
+
 DISTFILES += qml/harbour-rustrx.qml \
     qml/pages/*.qml \
     qml/components/*.qml \

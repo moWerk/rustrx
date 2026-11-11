@@ -57,6 +57,9 @@ Links:
 
 %install
 %qmake5_install
+# the background unit is wanted by the session; it checks the app's flag file itself
+mkdir -p %{buildroot}%{_userunitdir}/post-user-session.target.wants
+ln -s ../harbour-rustrx.service %{buildroot}%{_userunitdir}/post-user-session.target.wants/harbour-rustrx.service
 desktop-file-install --delete-original \
     --dir %{buildroot}%{_datadir}/applications \
     %{buildroot}%{_datadir}/applications/*.desktop
@@ -68,4 +71,6 @@ desktop-file-install --delete-original \
 %{_datadir}/%{name}
 %{_datadir}/applications/%{name}.desktop
 %{_datadir}/dbus-1/services/net.mowerk.harbour_rustrx.service
+%{_userunitdir}/harbour-rustrx.service
+%{_userunitdir}/post-user-session.target.wants/harbour-rustrx.service
 %{_datadir}/icons/hicolor/*/apps/%{name}.png

@@ -149,6 +149,13 @@ Page {
                         text: qsTrId("rustrx-me-settings")
                         onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
                     }
+                    // closing the window does not end the app in background mode
+                    MenuItem {
+                        visible: rustrx.background
+                        //% "Quit"
+                        text: qsTrId("rustrx-me-quit")
+                        onClicked: Qt.quit()
+                    }
                 }
 
                 // the tab bar is drawn over the list; content starts below it
