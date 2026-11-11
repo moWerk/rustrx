@@ -101,11 +101,22 @@ Page {
             TextSwitch {
                 //% "Keep running in the background"
                 text: qsTrId("rustrx-la-background")
-                //% "Notifications also when Rustrx is closed. It starts with the phone, stays connected and checks for messages every five minutes while the phone sleeps. Quit it from the pulley menu."
+                //% "Notifications also when Rustrx is closed. It starts with the phone, stays connected and checks for messages every five minutes while the phone sleeps. Quit it from the pulley menu or from its notification."
                 description: qsTrId("rustrx-la-background-hint")
                 checked: rustrx.background
                 automaticCheck: false
                 onClicked: rustrx.background = !rustrx.background
+            }
+
+            TextSwitch {
+                visible: rustrx.background
+                //% "Show a notification while it runs"
+                text: qsTrId("rustrx-la-background-note")
+                //% "A quiet line in the events view while Rustrx is closed: tap to open it, or quit it there."
+                description: qsTrId("rustrx-la-background-note-hint")
+                checked: app.showBackgroundNote
+                automaticCheck: false
+                onClicked: app.showBackgroundNote = !app.showBackgroundNote
             }
 
             //% "Privacy"

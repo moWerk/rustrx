@@ -17,6 +17,7 @@
 #ifndef RUSTRX_H
 #define RUSTRX_H
 
+#include <QCoreApplication>
 #include <QObject>
 #include <QVariantMap>
 #include <QVariantList>
@@ -147,6 +148,9 @@ signals:
     void activateRequested();
     // hide the window as a close does in background mode (debug and tests)
     void hideRequested();
+    // the window went away (background mode) / came back
+    void windowHidden();
+    void windowShown();
     // a matrix: or matrix.to link to follow
     void matrixUriRequested(const QString &uri);
     // the share sheet hands over files (local paths) and/or a text
@@ -158,6 +162,8 @@ public slots:
     Q_SCRIPTABLE void openRoomFromNotification(const QString &roomId) { m_pendingRoom = roomId; emit activateRequested(); emit openRoomRequested(roomId); }
     // a second launch while this one runs in the background
     Q_SCRIPTABLE void activate() { emit activateRequested(); }
+    // the background notification's Quit button
+    Q_SCRIPTABLE void quit() { QCoreApplication::quit(); }
 public:
     Q_INVOKABLE QString takePendingRoom() { const QString r = m_pendingRoom; m_pendingRoom.clear(); return r; }
     // a link or a share that arrived before QML was loaded

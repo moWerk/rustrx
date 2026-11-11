@@ -27,7 +27,7 @@ ApplicationWindow {
     // The login and the main page replace each other at the bottom of the
     // stack; everything else is pushed on top of the main page.
     initialPage: Component { StartPage { } }
-    cover: Qt.resolvedUrl("cover/CoverPage.qml")
+    cover: coverSource
     allowedOrientations: defaultAllowedOrientations
 
     // the rows' "3m" age labels follow this clock
@@ -253,9 +253,54 @@ ApplicationWindow {
     }
     Timer { id: wakeHold; interval: 20000; onTriggered: wakeJob.finished() }
 
+    // A window that comes back after a hide gets a fresh tile on the home
+    // screen, which waits for the cover; Silica thinks it delivered it
+    // already, so the cover is set again (else: a spinner, then no tile).
+    property var coverSource: Qt.resolvedUrl("cover/CoverPage.qml")
+    Timer { id: recover; interval: 300; onTriggered: app.cover = app.coverSource }
+    Connections {
+        target: rustrx
+        onWindowShown: { backgroundNote.close(); app.cover = null; recover.restart() }
+        onWindowHidden: if (app.showBackgroundNote) backgroundNote.publish()
+    }
+
+    // while the window is hidden in background mode: a quiet line in the
+    // events view, tap opens Rustrx, Quit ends it
+    property alias showBackgroundNote: cfgBackgroundNote.value
+    ConfigurationValue { id: cfgBackgroundNote; key: "/apps/harbour-rustrx/backgroundNote"; defaultValue: true }
+    Notification {
+        id: backgroundNote
+        appName: "Rustrx"
+        appIcon: "harbour-rustrx"
+        //% "Rustrx matrix client is running in the background"
+        summary: qsTrId("rustrx-no-background")
+        //% "Notifications keep coming. Tap to open."
+        body: qsTrId("rustrx-no-background-body")
+        urgency: Notification.Low
+        isTransient: false
+        remoteActions: [{
+            "name": "default",
+            "service": "net.mowerk.harbour-rustrx",
+            "path": "/net/mowerk/harbour_rustrx",
+            "iface": "net.mowerk.harbour_rustrx",
+            "method": "activate"
+        }, {
+            "name": "quit",
+            //% "Quit"
+            "displayName": qsTrId("rustrx-me-quit"),
+            "service": "net.mowerk.harbour-rustrx",
+            "path": "/net/mowerk/harbour_rustrx",
+            "iface": "net.mowerk.harbour_rustrx",
+            "method": "quit"
+        }]
+    }
+
     // debug: hide the window like a close in background mode does
     ConfigurationValue { id: debugHide; key: "/apps/harbour-rustrx/debugHide"; defaultValue: false }
     Timer { running: debugHide.value === true; interval: 4000; onTriggered: rustrx.hideWindow() }
+    // debug: back to the home screen (to look at the tile)
+    ConfigurationValue { id: debugMinimize; key: "/apps/harbour-rustrx/debugMinimize"; defaultValue: false }
+    Connections { target: debugMinimize; onValueChanged: if (debugMinimize.value === true) app.deactivate() }
 
     // started with the session: to the cover once the window is up (before
     // it is mapped the call does nothing); retried until the app is inactive
@@ -271,5 +316,11 @@ ApplicationWindow {
         }
     }
 
-    Component.onCompleted: route()
+    Component.onCompleted: {
+        // notifications an earlier run left behind (killed, crashed) cannot be
+        // updated or closed through new objects; start clean
+        var stale = backgroundNote.notifications()
+        for (var i = 0; i < stale.length; i++) stale[i].close()
+        route()
+    }
 }

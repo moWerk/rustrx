@@ -45,6 +45,7 @@ protected:
         if (event->type() == QEvent::Close && m_rustrx->background()) {
             event->ignore();
             m_window->hide();
+            emit m_rustrx->windowHidden();
             return true;
         }
         return QObject::eventFilter(obj, event);
@@ -96,9 +97,17 @@ int main(int argc, char *argv[])
         view->raise();
         view->requestActivate();
     });
+    // every way back (the launcher raises the window itself, not through us)
+    QObject::connect(view.data(), &QWindow::visibleChanged, &rustrx, [&rustrx](bool visible) {
+        if (visible)
+            emit rustrx.windowShown();
+    });
     CloseToHidden closer(&rustrx, view.data());
     view->installEventFilter(&closer);
-    QObject::connect(&rustrx, &Rustrx::hideRequested, view.data(), [&view]() { view->hide(); });
+    QObject::connect(&rustrx, &Rustrx::hideRequested, view.data(), [&view, &rustrx]() {
+        view->hide();
+        emit rustrx.windowHidden();
+    });
     // a session start opens minimised to the cover (QML), so the launcher can raise it
     view->show();
     return app->exec();

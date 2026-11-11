@@ -954,7 +954,25 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-background-hint">
-        <source>Notifications also when Rustrx is closed. It starts with the phone, stays connected and checks for messages every five minutes while the phone sleeps. Quit it from the pulley menu.</source>
+        <source>Notifications also when Rustrx is closed. It starts with the phone, stays connected and checks for messages every five minutes while the phone sleeps. Quit it from the pulley menu or from its notification.</source>
+        <oldsource>Notifications also when Rustrx is closed. It starts with the phone, stays connected and checks for messages every five minutes while the phone sleeps. Quit it from the pulley menu.</oldsource>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-background">
+        <source>Rustrx matrix client is running in the background</source>
+        <oldsource>Rustrx is running in the background</oldsource>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-background-body">
+        <source>Notifications keep coming. Tap to open.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-background-note">
+        <source>Show a notification while it runs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-background-note-hint">
+        <source>A quiet line in the events view while Rustrx is closed: tap to open it, or quit it there.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
