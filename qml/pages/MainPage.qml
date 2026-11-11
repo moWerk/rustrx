@@ -47,11 +47,12 @@ Page {
     // its attached page when debugNavigate is "info" (unattended screenshots)
     ConfigurationValue { id: debugOpenRoom; key: "/apps/harbour-rustrx/debugOpenRoom"; defaultValue: "" }
     ConfigurationValue { id: debugNavigate; key: "/apps/harbour-rustrx/debugNavigate"; defaultValue: "" }
+    ConfigurationValue { id: debugMarkRead; key: "/apps/harbour-rustrx/debugMarkRead"; defaultValue: "" }
     property bool debugDone
     // the key may hold a room id or a room name; names are looked up in the list
     Instantiator {
         id: debugRooms
-        model: debugOpenRoom.value.length ? rustrx.rooms : null
+        model: debugOpenRoom.value.length || debugMarkRead.value.length ? rustrx.rooms : null
         delegate: QtObject { property string rid: model.room_id; property string rname: model.name }
     }
     function debugResolve(key) {
@@ -61,7 +62,13 @@ Page {
         return ""
     }
     onStatusChanged: {
-        if (status !== PageStatus.Active || debugDone || !debugOpenRoom.value.length) return
+        if (status !== PageStatus.Active || debugDone) return
+        if (debugMarkRead.value.length) {
+            var mid = debugResolve(debugMarkRead.value)
+            if (mid.length) { debugDone = true; rustrx.command({ cmd: "mark_read", room_id: mid }) }
+            return
+        }
+        if (!debugOpenRoom.value.length) return
         var id = debugResolve(debugOpenRoom.value)
         if (!id.length) return   // rooms not in yet; the next activation tries again
         debugDone = true
@@ -71,7 +78,7 @@ Page {
     // rooms arriving after the page is active
     Connections {
         target: rustrx.rooms
-        onCountChanged: if (page.status === PageStatus.Active && !debugDone && debugOpenRoom.value.length) page.statusChanged()
+        onCountChanged: if (page.status === PageStatus.Active && !debugDone && (debugOpenRoom.value.length || debugMarkRead.value.length)) page.statusChanged()
     }
     Connections {
         id: debugNav

@@ -25,6 +25,15 @@ pub(crate) fn avatar_file(dir: &std::path::Path, room: &Room) -> std::path::Path
     dir.join(format!("{safe}.img"))
 }
 
+/// The id of the room's latest remote event, for a read receipt on a room
+/// without an open timeline.
+pub(crate) fn latest_event_id(room: &Room) -> Option<matrix_sdk::ruma::OwnedEventId> {
+    match room.latest_event() {
+        LatestEventValue::Remote(ev) => ev.event_id().map(ToOwned::to_owned),
+        _ => None,
+    }
+}
+
 /// One line for the room list: what the last message was, and who sent it
 /// in a group (`None` sender for direct chats and own messages say "You").
 async fn preview(room: &Room) -> (Option<String>, Option<String>) {

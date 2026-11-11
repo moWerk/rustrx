@@ -23,6 +23,7 @@ use matrix_sdk::ruma::api::client::directory::get_public_rooms_filtered;
 use matrix_sdk::ruma::api::client::session::get_login_types::v3::LoginType;
 use matrix_sdk::ruma::api::client::uiaa::{AuthData, MatrixUserIdentifier, Password, UserIdentifier};
 use matrix_sdk::ruma::events::room::power_levels::UserPowerLevel;
+use matrix_sdk::ruma::events::receipt::ReceiptThread;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::key::verification::request::ToDeviceKeyVerificationRequestEvent;
 use matrix_sdk::ruma::events::room::message::{
@@ -777,8 +778,20 @@ impl Core {
             }
             "mark_read" => {
                 let room = self.room(v).await?;
-                let tl = self.timeline_for(&room).await?;
-                tl.mark_as_read(ReceiptType::Read).await?;
+                // the open room's timeline knows its newest item; any other room
+                // gets the receipt on its latest event (a throwaway timeline is
+                // empty and marked nothing, so "Mark as read" in the list did nothing)
+                let is_open = {
+                    let st = self.state.lock().await;
+                    st.open.as_ref().map(|o| o.room_id == room.room_id()).unwrap_or(false)
+                };
+                if is_open {
+                    let tl = self.timeline_for(&room).await?;
+                    tl.mark_as_read(ReceiptType::Read).await?;
+                } else if let Some(event_id) = crate::serialize::latest_event_id(&room) {
+                    room.send_single_receipt(ReceiptType::Read, ReceiptThread::Unthreaded, event_id).await?;
+                }
+                let _ = room.set_unread_flag(false).await;
                 Ok(())
             }
             "typing" => {
