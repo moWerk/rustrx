@@ -51,7 +51,7 @@ static const int kProto = 1;
 
 static QMutex s_lock;
 
-// org.sailfishos.share on /share: the system share sheet calls share(a{sv})
+// org.sailfishos.share on /share/room (see the constructor): the system share sheet calls share(a{sv})
 // with "resources", a list of file paths or URLs, or of maps that carry the
 // data itself ("data", "name", "type"), e.g. a link or a piece of text.
 class ShareAdaptor : public QObject
@@ -206,7 +206,11 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
 
     // the sandbox lets the app own its organisation's name on the session bus
     QDBusConnection bus = QDBusConnection::sessionBus();
-    bus.registerObject(QStringLiteral("/share"), new ShareAdaptor(this), QDBusConnection::ExportScriptableSlots);
+    // the share sheet calls /share/<method>, the method named in the desktop
+    // file's X-Share-Methods ("room"); /share stays for direct callers
+    ShareAdaptor *share = new ShareAdaptor(this);
+    bus.registerObject(QStringLiteral("/share"), share, QDBusConnection::ExportScriptableSlots);
+    bus.registerObject(QStringLiteral("/share/room"), share, QDBusConnection::ExportScriptableSlots);
     if (!bus.registerObject(QStringLiteral("/net/mowerk/harbour_rustrx"), this, QDBusConnection::ExportScriptableSlots)
             || !bus.registerService(QStringLiteral("net.mowerk.harbour-rustrx")))
         qWarning() << "D-Bus service not registered:" << bus.lastError().message();

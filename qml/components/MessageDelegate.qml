@@ -203,7 +203,7 @@ ListItem {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: Theme.paddingLarge
+                    radius: Theme.paddingLarge / 2
                     color: own ? Theme.rgba(Theme.highlightBackgroundColor, Theme.opacityFaint)
                                : Theme.rgba(Theme.primaryColor, Theme.opacityFaint / 2)
                 }
