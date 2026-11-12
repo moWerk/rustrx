@@ -38,6 +38,7 @@
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusVariant>
+#include <QDBusUnixFileDescriptor>
 #include <QFile>
 #include <QDBusError>
 #include <QMutex>
@@ -65,6 +66,7 @@ public slots:
         QStringList files;
         QStringList texts;
         const QVariantList resources = unwrap(config.value(QStringLiteral("resources"))).toList();
+        qInfo() << "share:" << resources.size() << "resources";
         const QString cache = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/shared";
         int n = 0;
         for (const QVariant &raw : resources) {
@@ -82,6 +84,15 @@ public slots:
             const QVariantMap m = r.toMap();
             const QString type = unwrap(m.value(QStringLiteral("type"))).toString();
             const QVariant rawData = unwrap(m.value(QStringLiteral("data")));
+            // a file from a sandboxed app (the gallery, say) comes as an open
+            // file descriptor, since this app may not read the other's folders
+            if (rawData.userType() == qMetaTypeId<QDBusUnixFileDescriptor>()) {
+                const QString path = copyFromDescriptor(rawData.value<QDBusUnixFileDescriptor>(), cache,
+                        unwrap(m.value(QStringLiteral("name"))).toString(), ++n);
+                if (!path.isEmpty())
+                    files << path;
+                continue;
+            }
             QByteArray data = rawData.type() == QVariant::String ? rawData.toString().toUtf8() : rawData.toByteArray();
             if (type.startsWith(QLatin1String("text/")))
                 while (data.endsWith('\0'))   // C strings arrive with their terminator
@@ -104,6 +115,32 @@ public slots:
         m_owner->receiveShare(files, texts.join(QStringLiteral("\n")));
     }
 private:
+    // the shared file, read from its descriptor into this app's cache
+    static QString copyFromDescriptor(const QDBusUnixFileDescriptor &fd, const QString &cache,
+                                      const QString &name, int n)
+    {
+        if (!fd.isValid())
+            return QString();
+        QDir().mkpath(cache);
+        const QString file = name.isEmpty() ? QStringLiteral("shared-%1").arg(n) : QFileInfo(name).fileName();
+        const QString path = cache + "/" + file;
+        QFile in;
+        QFile out(path);
+        // the descriptor stays owned by fd; QFile reads it without closing it
+        if (!in.open(fd.fileDescriptor(), QIODevice::ReadOnly, QFileDevice::DontCloseHandle)
+                || !out.open(QIODevice::WriteOnly)) {
+            qWarning() << "share: cannot copy" << file;
+            return QString();
+        }
+        in.seek(0);
+        while (!in.atEnd()) {
+            const QByteArray chunk = in.read(1 << 20);
+            if (chunk.isEmpty() || out.write(chunk) != chunk.size())
+                break;
+        }
+        qInfo() << "share: received" << file << out.size() << "bytes";
+        return path;
+    }
     // D-Bus hands nested values over as QDBusVariant / QDBusArgument
     static QVariant unwrap(const QVariant &v)
     {

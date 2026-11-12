@@ -68,18 +68,22 @@ impl Core {
                 b.server_name_or_homeserver_url(server)
             }
         };
-        if let Some(native) = known {
+        let client = if let Some(native) = known {
             let version = if native { VersionBuilder::Native } else { VersionBuilder::None };
-            return make(version).build().await.map_err(|e| anyhow!("{e}"));
-        }
-        // Native sliding sync where the server has it, the classic sync otherwise.
-        match make(VersionBuilder::DiscoverNative).build().await {
-            Ok(c) => Ok(c),
-            Err(first) => {
-                tracing::info!("no native sliding sync ({first}), using the classic sync");
-                make(VersionBuilder::None).build().await.map_err(|e| anyhow!("{e}"))
+            make(version).build().await.map_err(|e| anyhow!("{e}"))?
+        } else {
+            // Native sliding sync where the server has it, the classic sync otherwise.
+            match make(VersionBuilder::DiscoverNative).build().await {
+                Ok(c) => c,
+                Err(first) => {
+                    tracing::info!("no native sliding sync ({first}), using the classic sync");
+                    make(VersionBuilder::None).build().await.map_err(|e| anyhow!("{e}"))?
+                }
             }
-        }
+        };
+        // a picture or file on its way shows how much of it is uploaded
+        client.send_queue().enable_upload_progress(true);
+        Ok(client)
     }
 
     pub(crate) fn save_session(&self, client: &Client) -> Result<()> {

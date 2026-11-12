@@ -131,7 +131,9 @@ impl Core {
                     let size = std::fs::metadata(&path).ok().and_then(|m| UInt::try_from(m.len()).ok());
                     config.info = Some(AttachmentInfo::Voice(BaseAudioInfo { duration, size, ..Default::default() }));
                 }
-                tl.send_attachment(path, mime, config).await?;
+                // through the send queue: the message shows at once as a local
+                // echo with its upload progress, instead of only once uploaded
+                tl.send_attachment(path, mime, config).use_send_queue().await?;
                 Ok(())
             }
             React { room_id, event_id, key } => {

@@ -389,6 +389,10 @@ pub(crate) fn item_json(item: &Arc<TimelineItem>, own: &UserId, names: &HashMap<
                 TimelineEventShieldState::None => {}
             }
             put(&mut o, "highlight", e.is_highlighted());
+            if let Some(EventSendState::NotSentYet { progress: Some(p) }) = e.send_state() {
+                put(&mut o, "upload_done", p.progress.current as u64);
+                put(&mut o, "upload_total", p.progress.total as u64);
+            }
             put(
                 &mut o,
                 "send_state",
