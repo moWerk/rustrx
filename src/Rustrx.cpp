@@ -71,14 +71,17 @@ public slots:
         int n = 0;
         for (const QVariant &raw : resources) {
             const QVariant r = unwrap(raw);
+            qInfo() << "share: resource of type" << r.typeName();
             if (r.type() == QVariant::String || r.type() == QVariant::Url) {
                 QString path = r.toString();
                 if (path.startsWith(QLatin1String("file://")))
                     path = QUrl(path).toLocalFile();
-                if (QFileInfo(path).isFile())
+                if (QFileInfo(path).isFile()) {
                     files << path;
-                else
+                } else {
+                    qInfo() << "share: not a readable file, sent as text";
                     texts << path;   // a URL that is not a local file: send it as text
+                }
                 continue;
             }
             const QVariantMap m = r.toMap();

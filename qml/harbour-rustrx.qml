@@ -165,9 +165,28 @@ ApplicationWindow {
         onDmReady: if (app.pendingJoin === "dm") { app.pendingJoin = ""; app.showRoom(roomId) }
     }
 
+    // a page transition in flight (the main page coming in on a cold
+    // start) refuses the push: keep the share and try again
+    property var pendingShare: null
     function showShare(files, text) {
         if (!rustrx.loggedIn) return
+        if (pageStack.busy || !pageStack.find(function (p) { return p.objectName === "main" })) {
+            pendingShare = { files: files, text: text }
+            shareRetry.restart()
+            return
+        }
+        pendingShare = null
         pageStack.push(Qt.resolvedUrl("pages/SharePage.qml"), { files: files, text: text })
+    }
+    Timer {
+        id: shareRetry
+        interval: 300
+        repeat: true
+        property int tries
+        onTriggered: {
+            if (!app.pendingShare || ++tries > 40) { stop(); tries = 0; return }
+            app.showShare(app.pendingShare.files, app.pendingShare.text)
+        }
     }
 
     // a link tapped inside the app: Matrix links stay here, the rest goes out
