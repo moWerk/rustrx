@@ -20,7 +20,7 @@ import Sailfish.Silica.private 1.0
 import Nemo.Configuration 1.0
 import "../components"
 
-// Two panels, Rooms and People, in the tab view Jolla uses for Settings.
+// Three panels, Rooms, People and Favs, in the tab view Jolla uses for Settings.
 // Each panel is a list with its own pulley menu holding the one item,
 // Settings. Invitations and favourites sit on top as sections.
 Page {
@@ -89,11 +89,15 @@ Page {
         onStatusChanged: if (target.status === PageStatus.Active) debugForward.start()
     }
 
+    // the app opens on the tab it was left on
+    ConfigurationValue { id: lastTab; key: "/apps/harbour-rustrx/lastTab"; defaultValue: 0 }
+
     TabView {
         id: tabs
         anchors.fill: parent
         model: tabModel
-        currentIndex: 0
+        currentIndex: Math.max(0, Math.min(2, lastTab.value))
+        onCurrentIndexChanged: if (currentIndex >= 0) lastTab.value = currentIndex
 
         header: TabBar {
             model: tabModel
