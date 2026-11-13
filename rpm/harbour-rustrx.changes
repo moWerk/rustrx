@@ -1,3 +1,17 @@
+* Fri Nov 13 2026 moWerk <mo@mowerk.net> - 0.4.1
+- New: message bubbles; own messages right, others left with the sender's
+  name inside, no avatars.
+- New: pictures and files show in the room at once while they upload, with
+  a progress bar.
+- New: sort order for the room lists (by activity, unread first, by name)
+  behind a small filter icon at the tab bar; low priority rooms at the
+  bottom.
+- New: Rustrx opens on the tab it was left on; optionally (Settings) in the
+  chat that was open.
+- New: the cover reads "Connected" over "to matrix", the icon sits higher;
+  the background line reads "Matrix client is running".
+- Fixed: sharing a picture from the gallery to Rustrx.
+
 * Wed Nov 11 2026 moWerk <mo@mowerk.net> - 0.4.0
 - New: notifications while Rustrx is closed (Settings > Notifications >
   "Keep running in the background", off by default): closing leaves a
