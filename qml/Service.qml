@@ -42,6 +42,7 @@ Item {
             if (!rustrx.standIn && Qt.application.state === Qt.ApplicationActive) return
             service.notify(roomId, roomName, count)
         }
+        onInvited: service.notifyInvite(roomId, roomName, inviter, direct)
         onUnreadChanged: if (rustrx.standIn) console.log("stand-in: unread", rustrx.unreadTotal, "in", rustrx.unreadChats)
         onOpenRoomChanged: if (rustrx.openRoomId.length) service.closeNotification(rustrx.openRoomId)
         onQuitRequested: standInNote.close()
@@ -69,6 +70,31 @@ Item {
         n.body = last.length && notifyText ? last : qsTrId("rustrx-no-new-messages", pending)
         n.previewBody = n.body
         n.itemCount = pending
+        n.publish()
+    }
+    // an invitation: a banner, also while Rustrx is in front (they are easy
+    // to miss in the list); a tap opens it, where it is accepted or declined
+    function notifyInvite(roomId, roomName, inviter, direct) {
+        console.log("notify: invitation")
+        var n = roomNotifications[roomId]
+        if (!n) {
+            n = notificationComponent.createObject(service, { roomId: roomId })
+            roomNotifications[roomId] = n
+        }
+        var who = inviter.length ? inviter : roomName
+        //: notification title for an invitation
+        //% "Invitation"
+        n.summary = qsTrId("rustrx-no-invitation")
+        n.previewSummary = n.summary
+        n.body = direct
+                //: %1 who invites
+                //% "%1 wants to chat with you"
+                ? qsTrId("rustrx-no-invite-dm").arg(who)
+                //: %1 who invites, %2 the room
+                //% "%1 invites you to %2"
+                : qsTrId("rustrx-no-invite-room").arg(who).arg(roomName)
+        n.previewBody = n.body
+        n.itemCount = 1
         n.publish()
     }
     function closeNotification(roomId) {

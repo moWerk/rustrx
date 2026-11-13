@@ -116,7 +116,17 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
     let counts = room.unread_notification_counts();
     let avatar = avatar_file(avatar_dir, room);
     let (preview, preview_sender) = preview(room).await;
+    // who sent an invitation: their name, else their id
+    let inviter = if room.state() == RoomState::Invited {
+        room.invite_details().await.ok().map(|i| match i.inviter {
+            Some(m) => m.name().to_owned(),
+            None => i.inviter_id.to_string(),
+        })
+    } else {
+        None
+    };
     json!({
+        "inviter": inviter,
         "has_avatar": avatar.exists(),
         "avatar": if avatar.exists() { Some(avatar.to_string_lossy().into_owned()) } else { None },
         "room_id": room.room_id().as_str(),
