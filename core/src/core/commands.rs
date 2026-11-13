@@ -165,6 +165,12 @@ impl Core {
                 Ok(())
             }
             StorageInfo => self.storage_info().await,
+            CallStart { room_id, voice } => self.call_start(&room_id, voice.unwrap_or(false)).await,
+            CallMessage { data } => self.call_message(&data).await,
+            CallEnd => {
+                self.call_end().await;
+                Ok(())
+            }
             ClearMedia => {
                 // the decrypted copies this app keeps, and the SDK's media cache
                 for dir in ["media"] {

@@ -7,7 +7,7 @@
 Name:       harbour-rustrx
 Summary:    Rustrx, a Matrix client
 Version:    0.4.1
-Release:    3
+Release:    3.calls1
 License:    GPLv3+
 URL:        https://github.com/moWerk/rustrx
 Source0:    %{name}-%{version}.tar.bz2
@@ -18,6 +18,7 @@ Requires:   nemo-qml-plugin-notifications-qt5
 Requires:   qt5-qtdeclarative-import-multimedia
 Requires:   qt5-qtdeclarative-import-sensors
 Requires:   nemo-qml-plugin-configuration-qt5
+Requires:   sailfish-components-webview-qt5
 BuildRequires:  pkgconfig(sailfishapp) >= 1.0.2
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5Qml)

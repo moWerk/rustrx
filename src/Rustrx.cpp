@@ -767,5 +767,11 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit storageInfo(ev);
     } else if (type == QLatin1String("keys_imported")) {
         emit keysImported(ev.value("imported").toInt(), ev.value("total").toInt());
+    } else if (type == QLatin1String("call_url")) {
+        emit callUrl(ev.value("room_id").toString(), ev.value("url").toString());
+    } else if (type == QLatin1String("call_message")) {
+        emit callMessage(ev.value("data").toString());
+    } else if (type == QLatin1String("call_ended")) {
+        emit callEnded(ev.value("room_id").toString());
     }
 }

@@ -91,9 +91,21 @@ Page {
         id: list
         anchors.fill: parent
         model: memberList
+
+        Connections {
+            target: rustrx
+            onCallUrl: if (roomId === page.roomId)
+                pageStack.push(Qt.resolvedUrl("CallPage.qml"), { roomId: roomId, url: url })
+        }
         currentIndex: -1   // or the view re-anchors to the first member when the list arrives
 
         PullDownMenu {
+            MenuItem {
+                //: experimental: a call through Element Call
+                //% "Call (test)"
+                text: qsTrId("rustrx-me-call-test")
+                onClicked: rustrx.command({ cmd: "call_start", room_id: roomId })
+            }
             MenuItem {
                 //% "Invite someone"
                 text: qsTrId("rustrx-me-invite")

@@ -150,6 +150,10 @@ signals:
     void notificationMode(const QString &roomId, const QString &mode);
     void keysExported(const QString &path);
     void keysImported(int imported, int total);
+    // a call: the Element Call page to show, widget API messages for it, its end
+    void callUrl(const QString &roomId, const QString &url);
+    void callMessage(const QString &data);
+    void callEnded(const QString &roomId);
     // sizes in bytes: store, media_files, and the SDK's per-store sizes
     void storageInfo(const QVariantMap &info);
     // a notification was tapped: show this room

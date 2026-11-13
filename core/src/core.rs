@@ -92,6 +92,8 @@ struct State {
     latest_listened: std::collections::HashSet<OwnedRoomId>,
     /// tasks that live as long as one login; aborted on logout
     login_tasks: Vec<JoinHandle<()>>,
+    /// the call shown in the WebView, if any
+    call: Option<call::CallSession>,
 }
 
 /// What a logout has to stop, taken out of the state so the lock is not
@@ -110,6 +112,9 @@ impl State {
         }
         if let Some(task) = self.sync_task.take() {
             tasks.push(task);
+        }
+        if let Some(call) = self.call.take() {
+            call.stop();
         }
         self.requests.clear();
         self.sas.clear();
@@ -140,6 +145,7 @@ pub(crate) struct Core {
 
 
 
+mod call;
 mod commands;
 mod session;
 mod sync;
