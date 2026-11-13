@@ -620,6 +620,25 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
             emit newMessages(id, r.value("name").toString(), n - before);
         m_notificationCounts.insert(id, n);
     }
+    // every invitation once, with a banner: the ones already notified are
+    // kept in the settings (pruned to the open ones), so a restart does not
+    // repeat them and one that came while Rustrx was closed still shows
+    {
+        QSettings settings;
+        const QStringList notified = settings.value("invitesNotified").toStringList();
+        QStringList open;
+        for (const QVariant &v : rooms) {
+            const QVariantMap r = v.toMap();
+            if (r.value("state").toString() != QLatin1String("invited"))
+                continue;
+            const QString id = r.value("room_id").toString();
+            open << id;
+            if (!notified.contains(id))
+                emit invited(id, r.value("name").toString(), r.value("inviter").toString(), r.value("is_dm").toBool());
+        }
+        if (open != notified)
+            settings.setValue("invitesNotified", open);
+    }
     sortRooms(groups);
     sortRooms(dms);
     sortRooms(favs);

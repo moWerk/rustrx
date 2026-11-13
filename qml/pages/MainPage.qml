@@ -93,6 +93,8 @@ Page {
         onStatusChanged: if (target.status === PageStatus.Active) debugForward.start()
     }
 
+    function showTab(i) { tabs.currentIndex = i }
+
     // the app opens on the tab it was left on
     ConfigurationValue { id: lastTab; key: "/apps/harbour-rustrx/lastTab"; defaultValue: 0 }
 

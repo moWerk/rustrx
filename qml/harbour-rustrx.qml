@@ -213,6 +213,9 @@ ApplicationWindow {
         if (!main || !rustrx.roomInfo(roomId).name) { pendingRoom = roomId; pendingRoomRetry.restart(); return }
         pendingRoom = ""
         pageStack.pop(main, PageStackAction.Immediate)
+        // an invitation is answered in the list: its tab, where it sits on top
+        var info = rustrx.roomInfo(roomId)
+        if (info.state === "invited") { main.showTab(info.is_dm ? 1 : 0); return }
         pageStack.push(Qt.resolvedUrl("pages/RoomPage.qml"),
                        { roomId: roomId, roomName: rustrx.roomInfo(roomId).name || "" }, PageStackAction.Immediate)
     }
