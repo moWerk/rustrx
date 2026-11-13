@@ -26,7 +26,9 @@ CoverBackground {
         anchors {
             horizontalCenter: parent.horizontalCenter
             bottom: parent.bottom
-            bottomMargin: -height / 4
+            // a twentieth above the edge: four of its fibres (about 7.5 % of the
+            // icon each) higher than the quarter below it at first
+            bottomMargin: height / 20
         }
         width: parent.width * 0.9
         height: width
@@ -62,7 +64,7 @@ CoverBackground {
                 //: beside the big count on the cover
                 //% "unread messages"
                 text: qsTrId("rustrx-la-cover-unread-messages")
-                font.pixelSize: Theme.fontSizeSmall
+                font.pixelSize: Theme.fontSizeSmall * 0.8
                 color: Theme.primaryColor
             }
         }
@@ -100,8 +102,14 @@ CoverBackground {
                 //% "Not logged in"
                 if (!rustrx.loggedIn) return qsTrId("rustrx-la-cover-not-logged-in")
                 switch (rustrx.syncState) {
-                //% "Connected"
-                case "running": return qsTrId("rustrx-la-cover-connected")
+                // two lines, so the tile reads apart from other messengers'
+                // (two strings: lupdate keeps a \n in //% as the two characters)
+                case "running":
+                    //% "Connected"
+                    return qsTrId("rustrx-la-cover-connected") + "\n"
+                            //: second line under "Connected" on the cover
+                            //% "to matrix"
+                            + qsTrId("rustrx-la-cover-to-matrix")
                 //% "Connecting"
                 case "idle": return qsTrId("rustrx-la-cover-connecting")
                 //% "Offline"

@@ -115,9 +115,9 @@ Item {
         id: standInNote
         appName: "Rustrx"
         appIcon: "harbour-rustrx"
-        //% "Rustrx matrix client is running in the background"
+        //% "Matrix client is running"
         summary: qsTrId("rustrx-no-background")
-        //% "Notifications keep coming. Tap to open."
+        //% "Tap to open Rustrx"
         body: qsTrId("rustrx-no-background-body")
         urgency: Notification.Low
         isTransient: false
