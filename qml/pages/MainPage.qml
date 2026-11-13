@@ -54,7 +54,11 @@ Page {
             if (debugRooms.objectAt(i).rname === key) return debugRooms.objectAt(i).rid
         return ""
     }
-    onStatusChanged: if (debugOpenRoom.value.length || debugMarkRead.value.length || debugNavigate.value.length) debugTimer.start()
+    onStatusChanged: {
+        // back on the lists: no chat to reopen at the next start
+        if (status === PageStatus.Active) app.lastRoom = ""
+        if (debugOpenRoom.value.length || debugMarkRead.value.length || debugNavigate.value.length) debugTimer.start()
+    }
     Timer { id: debugTimer; interval: 0; onTriggered: page.debugTry() }
     // after the room has attached its page
     Timer { id: debugForward; interval: 300; onTriggered: { pageStack.navigateForward(); debugNav.target = null } }

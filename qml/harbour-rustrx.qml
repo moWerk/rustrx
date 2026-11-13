@@ -42,6 +42,12 @@ ApplicationWindow {
     ConfigurationValue { id: cfgShowReadBy; key: "/apps/harbour-rustrx/showReadBy"; defaultValue: true }
     ConfigurationValue { id: cfgSendReceipts; key: "/apps/harbour-rustrx/sendReceipts"; defaultValue: true }
     ConfigurationValue { id: cfgSendTyping; key: "/apps/harbour-rustrx/sendTyping"; defaultValue: true }
+    // start in the chat that was open when the app was closed (off by default)
+    property alias reopenLast: cfgReopenLast.value
+    property alias lastRoom: cfgLastRoom.value
+    ConfigurationValue { id: cfgReopenLast; key: "/apps/harbour-rustrx/reopenLast"; defaultValue: false }
+    ConfigurationValue { id: cfgLastRoom; key: "/apps/harbour-rustrx/lastRoom"; defaultValue: "" }
+    property bool reopenTried
 
     // the receipt honours the privacy switch: a private one moves only our own marker
     function markRead(roomId) {
@@ -57,6 +63,9 @@ ApplicationWindow {
         if (pageStack.busy) { routeRetry.restart(); return }
         var current = pageStack.currentPage ? pageStack.currentPage.objectName : ""
         if (rustrx.loggedIn) {
+            // read before the main page comes in: becoming active, it forgets the room
+            var last = !reopenTried && reopenLast ? lastRoom : ""
+            reopenTried = true
             if (current !== "main" && (current === "login" || current === "start"))
                 pageStack.replaceAbove(null, Qt.resolvedUrl("pages/MainPage.qml"))
             // started by a notification's tap: its room, once the list knows it
@@ -67,6 +76,8 @@ ApplicationWindow {
             if (uri.length) openMatrixUri(uri)
             var shared = rustrx.takePendingShare()
             if (shared.files || shared.text) showShare(shared.files || [], shared.text || "")
+            // nothing asked for: the chat that was open when the app was closed
+            if (last.length && !asked.length && !uri.length && !(shared.files || shared.text)) showRoom(last)
         } else if (current !== "login") {
             console.log("route: logged out on page", current, "reason", rustrx.logoutReason)
             pageStack.replaceAbove(null, Qt.resolvedUrl("pages/LoginPage.qml"))

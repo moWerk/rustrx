@@ -51,6 +51,7 @@ Page {
 
     onStatusChanged: {
         if (status === PageStatus.Active) {
+            app.lastRoom = roomId
             markRead()
             // the room's page, one swipe to the right; attached once the
             // transition is over (inside it the stack reports a binding loop)

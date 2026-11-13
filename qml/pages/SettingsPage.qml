@@ -87,6 +87,15 @@ Page {
             }
 
             TextSwitch {
+                //% "Reopen the last chat"
+                text: qsTrId("rustrx-la-reopen-last")
+                //% "Rustrx starts in the room or chat that was open when it was closed."
+                description: qsTrId("rustrx-la-reopen-last-hint")
+                checked: app.reopenLast
+                onCheckedChanged: app.reopenLast = checked
+            }
+
+            TextSwitch {
                 //% "Send smaller pictures"
                 text: qsTrId("rustrx-la-downscale")
                 //% "Photos larger than 2048 pixels are scaled down before sending."
