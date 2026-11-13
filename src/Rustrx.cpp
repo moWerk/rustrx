@@ -42,6 +42,7 @@
 #include <QFile>
 #include <QDBusError>
 #include <QMutex>
+#include <algorithm>
 #include <QMutexLocker>
 
 // The core's tokio threads call eventCallback until the process ends; the
@@ -342,6 +343,49 @@ void Rustrx::setDownscaleImages(bool on)
     emit settingsChanged();
 }
 
+QString Rustrx::sortOrder() const
+{
+    return QSettings().value("sortOrder", QStringLiteral("activity")).toString();
+}
+
+void Rustrx::setSortOrder(const QString &order)
+{
+    if (order == sortOrder())
+        return;
+    QSettings().setValue("sortOrder", order);
+    emit settingsChanged();
+    distributeRooms(m_lastRooms);
+}
+
+// The core sends the rooms by activity. Invitations stay on top and low
+// priority rooms go to the bottom in every order; within that, unread rooms
+// first or by name, else the activity order stays (the sort is stable).
+void Rustrx::sortRooms(QVariantList &rooms) const
+{
+    const QString order = sortOrder();
+    const auto unread = [](const QVariantMap &r) {
+        return r.value("notifications").toInt() > 0 || r.value("unread").toInt() > 0;
+    };
+    std::stable_sort(rooms.begin(), rooms.end(), [&](const QVariant &va, const QVariant &vb) {
+        const QVariantMap a = va.toMap(), b = vb.toMap();
+        const bool ia = a.value("state").toString() == QLatin1String("invited");
+        const bool ib = b.value("state").toString() == QLatin1String("invited");
+        if (ia != ib)
+            return ia;
+        const bool la = a.value("is_low").toBool(), lb = b.value("is_low").toBool();
+        if (la != lb)
+            return lb;
+        if (order == QLatin1String("unread")) {
+            const bool ua = unread(a), ub = unread(b);
+            if (ua != ub)
+                return ua;
+        } else if (order == QLatin1String("name")) {
+            return QString::localeAwareCompare(a.value("name").toString(), b.value("name").toString()) < 0;
+        }
+        return false;
+    });
+}
+
 QString Rustrx::coreVersion() const
 {
     return QString::fromUtf8(rustrx_version());
@@ -538,6 +582,8 @@ void Rustrx::setDraft(const QString &roomId, const QString &text)
 
 void Rustrx::distributeRooms(const QVariantList &rooms)
 {
+    if (&rooms != &m_lastRooms)
+        m_lastRooms = rooms;
     QVariantList groups, dms, favs;
     int unread = 0, chats = 0;
     m_roomsById.clear();
@@ -574,6 +620,9 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
             emit newMessages(id, r.value("name").toString(), n - before);
         m_notificationCounts.insert(id, n);
     }
+    sortRooms(groups);
+    sortRooms(dms);
+    sortRooms(favs);
     m_rooms->setRooms(groups);
     m_people->setRooms(dms);
     m_favourites->setRooms(favs);

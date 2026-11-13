@@ -51,6 +51,8 @@ class Rustrx : public QObject
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
     Q_PROPERTY(QString coreVersion READ coreVersion CONSTANT)
     Q_PROPERTY(bool downscaleImages READ downscaleImages WRITE setDownscaleImages NOTIFY settingsChanged)
+    // the order of the room lists: "activity", "unread" (unread first) or "name"
+    Q_PROPERTY(QString sortOrder READ sortOrder WRITE setSortOrder NOTIFY settingsChanged)
     // notifications with the app closed: a stand-in, started with the session
     // and when the app is closed, wakes every few minutes
     Q_PROPERTY(bool background READ background WRITE setBackground NOTIFY settingsChanged)
@@ -80,6 +82,8 @@ public:
     QString coreVersion() const;
     bool downscaleImages() const;
     void setDownscaleImages(bool on);
+    QString sortOrder() const;
+    void setSortOrder(const QString &order);
     bool background() const;
     void setBackground(bool on);
     bool standIn() const { return m_standIn; }
@@ -209,6 +213,8 @@ private slots:
 private:
     static void eventCallback(void *ctx, const char *json);
     void distributeRooms(const QVariantList &rooms);
+    void sortRooms(QVariantList &rooms) const;
+    QVariantList m_lastRooms;   // as the core sent them, for a new order
     // the stand-in: pass what was asked for to a new app process and leave
     bool handOver();
 

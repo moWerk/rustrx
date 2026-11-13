@@ -99,10 +99,72 @@ Page {
         currentIndex: Math.max(0, Math.min(2, lastTab.value))
         onCurrentIndexChanged: if (currentIndex >= 0) lastTab.value = currentIndex
 
-        header: TabBar {
-            model: tabModel
-            delegate: TabButton {
-                title: tabTitle(model.kind)
+        // the tabs, and at their right a filter icon that opens the sort
+        // order below them
+        header: Column {
+            id: sortHeader
+            width: parent ? parent.width : page.width
+            property bool sortOpen
+
+            Item {
+                width: parent.width
+                height: tabBar.height
+                TabBar {
+                    id: tabBar
+                    width: parent.width - filterButton.width
+                    model: tabModel
+                    delegate: TabButton {
+                        title: tabTitle(model.kind)
+                    }
+                }
+                MouseArea {
+                    id: filterButton
+                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                    width: Theme.itemSizeSmall
+                    height: Theme.itemSizeSmall
+                    onClicked: sortHeader.sortOpen = !sortHeader.sortOpen
+                    // three bars, each narrower than the one above
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: Theme.paddingSmall / 2
+                        Repeater {
+                            model: 3
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: Theme.iconSizeExtraSmall * (1 - index / 3)
+                                height: Math.max(2, Math.round(Theme.paddingSmall / 2))
+                                radius: height / 2
+                                color: filterButton.pressed || sortHeader.sortOpen
+                                       ? Theme.highlightColor
+                                       : rustrx.sortOrder !== "activity" ? Theme.secondaryHighlightColor
+                                                                          : Theme.secondaryColor
+                            }
+                        }
+                    }
+                }
+            }
+
+            Repeater {
+                model: sortHeader.sortOpen ? [
+                    //: room list order
+                    //% "By activity"
+                    { key: "activity", text: qsTrId("rustrx-me-sort-activity") },
+                    //% "Unread first"
+                    { key: "unread", text: qsTrId("rustrx-me-sort-unread") },
+                    //% "By name"
+                    { key: "name", text: qsTrId("rustrx-me-sort-name") }
+                ] : []
+                BackgroundItem {
+                    width: page.width
+                    height: Theme.itemSizeExtraSmall
+                    onClicked: { rustrx.sortOrder = modelData.key; sortHeader.sortOpen = false }
+                    Label {
+                        anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                        text: modelData.text
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: rustrx.sortOrder === modelData.key || parent.highlighted ? Theme.highlightColor : Theme.primaryColor
+                    }
+                }
             }
         }
 
