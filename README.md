@@ -84,8 +84,16 @@ without sailfish-secrets. Calls are being looked into. It also works well as the
   Settings (tested with nheko); restoring encrypted history with the
   recovery key; key backup; room key export and import.
 - Settings for privacy (read receipts, who has read, typing, message text
-  in notifications), appearance (avatars, preview lines, the tabs), storage
-  (sizes, clearing pictures and files) and the logged-in devices.
+  in notifications), appearance (avatars, preview lines, the tabs), one's
+  own picture, storage (sizes, clearing pictures and files) and the
+  logged-in devices. Portrait and landscape.
+- The local store (messages and keys) is encrypted with a key kept in
+  sailfish-secrets where that works; elsewhere, such as on community ports
+  without it, as before. If a server ends the session, the store and the
+  device are kept, so logging in again brings back keys and history.
+- A debug log, on until 1.0 and off with a switch: if something goes wrong,
+  Settings > Debug log shares it, so nobody has to make it happen again. It
+  holds room and user IDs, never message texts or passwords.
 - The cover shows unread counts and the connection state, with actions for
   search and the latest room with unread messages.
 
@@ -112,7 +120,7 @@ when a process exits after hiding or recreating its window.
 
 ## Status
 
-0.4.2. From "let's build a client" to 0.2.0 in one evening, used daily on
+0.4.3. From "let's build a client" to 0.2.0 in one evening, used daily on
 the Jolla Phone 2026 since, and developed and maintained for the long run.
 Tested with two accounts, on matrix.org and on tchncs.de (single sign-on
 through its account service); QR and OIDC login wait for a server that
@@ -132,8 +140,11 @@ is built with `--locked` (rustc 1.99.1, zig 0.17.1, cargo-zigbuild).
 
 On the first start Sailfish asks once for the permissions Rustrx uses
 (internet, pictures, videos, music, documents, downloads, camera, audio,
-microphone, user services). User services is what lets it start its
-background stand-in.
+microphone, user services, secrets). User services is what lets it start
+its background stand-in; secrets is where the store key is kept.
+
+[Harpoon](https://github.com/JuhaniLehtimaeki/Harpoon) can install Rustrx
+from this repository and keep it updated.
 
 ## Authorship
 

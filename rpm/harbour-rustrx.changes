@@ -1,3 +1,18 @@
+* Sun Nov 15 2026 moWerk <mo@mowerk.net> - 0.4.3
+- Fixed: the keyboard stays up after Send and when a message comes in.
+- Fixed: a room opens at the newest message, not where another client
+  left the read marker.
+- Fixed: previews of WebP pictures and of videos; a video that can not
+  be played says why.
+- New: the local store is encrypted with a key kept in sailfish-secrets
+  where it works, as before elsewhere.
+- New: a session ended by the server keeps the store and the device, so
+  logging in again brings back keys and history.
+- New: a debug log, on until 1.0, shareable from Settings.
+- New: portrait and landscape; one's own picture in Settings; "Hide
+  muted" in the filter menu; switches for the background line and the
+  "Typing to <room>" line under the message field.
+
 * Sat Nov 14 2026 moWerk <mo@mowerk.net> - 0.4.2
 - Fixed: single sign-on opens the browser again (broken since 0.4.0); the
   sign-on link is shown to open again or copy; sign-on is offered as soon
