@@ -165,6 +165,23 @@ impl Core {
                 Ok(())
             }
             StorageInfo => self.storage_info().await,
+            EventSource { room_id, event_id } => {
+                let room = self.room(&room_id).await?;
+                let tl = self.timeline_for(&room).await?;
+                let item = tl
+                    .item_by_event_id(&EventId::parse(&event_id)?)
+                    .await
+                    .context("the message is not in the loaded timeline")?;
+                let pretty = |raw: &matrix_sdk::ruma::serde::Raw<_>| {
+                    serde_json::from_str::<Value>(raw.json().get())
+                        .and_then(|v| serde_json::to_string_pretty(&v))
+                        .unwrap_or_else(|_| raw.json().get().to_owned())
+                };
+                let original = item.original_json().map(&pretty).context("no source for this message yet")?;
+                let edit = item.latest_edit_json().map(&pretty);
+                self.emit(json!({"ev": "event_source", "event_id": event_id, "json": original, "edit": edit}));
+                Ok(())
+            }
             ClearMedia => {
                 // the decrypted copies this app keeps, and the SDK's media cache
                 for dir in ["media"] {

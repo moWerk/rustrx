@@ -536,6 +536,15 @@ ListItem {
                 onClicked: saveMedia()
             }
             MenuItem {
+                //% "View source"
+                text: qsTrId("rustrx-me-view-source")
+                visible: msg.eventId.length > 0
+                onClicked: {
+                    pageStack.push(Qt.resolvedUrl("../pages/SourcePage.qml"), { eventId: msg.eventId })
+                    rustrx.command({ cmd: "event_source", room_id: roomId, event_id: msg.eventId })
+                }
+            }
+            MenuItem {
                 //% "Report"
                 text: qsTrId("rustrx-me-report")
                 visible: canAct && !own

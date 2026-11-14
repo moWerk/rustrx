@@ -17,29 +17,40 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 
-// The account's sessions. Removing one asks for the password, as the
-// server requires.
-Page {
-    id: page
+// The account's sessions, listed in place (Settings). Removing one asks
+// for the password, as the server requires.
+Column {
+    id: devicesColumn
+
+    property bool loading: true
+    property string loadError
 
     Component.onCompleted: rustrx.command({ cmd: "devices" })
 
     ListModel { id: deviceModel }
-    // a spinner until the list arrives; the error in its place if it does not
-    property bool loading: true
-    property string loadError
 
-    SilicaListView {
-        id: list
-        anchors.fill: parent
+    BusyIndicator {
+        anchors.horizontalCenter: parent.horizontalCenter
+        size: BusyIndicatorSize.Medium
+        running: devicesColumn.loading
+        visible: running
+    }
+
+    Label {
+        visible: !devicesColumn.loading && deviceModel.count === 0
+        x: Theme.horizontalPageMargin
+        width: parent.width - 2 * x
+        wrapMode: Text.Wrap
+        color: Theme.secondaryHighlightColor
+        //% "The devices could not be loaded"
+        text: qsTrId("rustrx-la-devices-failed") + (devicesColumn.loadError.length ? ": " + devicesColumn.loadError : "")
+    }
+
+    Repeater {
         model: deviceModel
-
-        //% "Devices"
-        header: PageHeader { title: qsTrId("rustrx-he-devices") }
-
-        delegate: ListItem {
+        ListItem {
             id: item
-            width: parent.width
+            width: devicesColumn.width
             contentHeight: Theme.itemSizeMedium
             menu: model.current ? null : removeMenu
 
@@ -84,21 +95,6 @@ Page {
                 }
             }
         }
-
-        BusyIndicator {
-            anchors.centerIn: parent
-            size: BusyIndicatorSize.Large
-            running: page.loading
-        }
-
-        ViewPlaceholder {
-            enabled: !page.loading && list.count === 0
-            //% "The devices could not be loaded"
-            text: qsTrId("rustrx-la-devices-failed")
-            hintText: page.loadError
-        }
-
-        VerticalScrollDecorator { }
     }
 
     Component {
@@ -137,11 +133,11 @@ Page {
     Connections {
         target: rustrx
         onDevices: {
-            page.loading = false
+            devicesColumn.loading = false
             deviceModel.clear()
             for (var i = 0; i < devices.length; i++) deviceModel.append(devices[i])
         }
         onDeviceDeleted: rustrx.command({ cmd: "devices" })
-        onErrorOccurred: if (cmd === "devices") { page.loading = false; page.loadError = message }
+        onErrorOccurred: if (cmd === "devices") { devicesColumn.loading = false; devicesColumn.loadError = message }
     }
 }

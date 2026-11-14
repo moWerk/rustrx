@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
 
 // Account, encryption (verification, recovery), devices, about.
 Page {
@@ -77,58 +78,6 @@ Page {
             //% "Settings"
             PageHeader { title: qsTrId("rustrx-he-settings") }
 
-            //% "Appearance"
-            SectionHeader { text: qsTrId("rustrx-se-appearance") }
-
-            TextSwitch {
-                //% "Round avatars"
-                text: qsTrId("rustrx-la-round-avatars")
-                //% "Cut room and people pictures to a circle."
-                description: qsTrId("rustrx-la-round-avatars-hint")
-                checked: app.roundAvatars
-                onCheckedChanged: app.roundAvatars = checked
-            }
-
-            TextSwitch {
-                //% "Show who has read a message"
-                text: qsTrId("rustrx-la-show-read-by")
-                //% "Names appear under the last message each person has read."
-                description: qsTrId("rustrx-la-show-read-by-hint")
-                checked: app.showReadBy
-                onCheckedChanged: app.showReadBy = checked
-            }
-
-            TextSwitch {
-                //% "Reopen the last chat"
-                text: qsTrId("rustrx-la-reopen-last")
-                //% "Rustrx starts in the room or chat that was open when it was closed."
-                description: qsTrId("rustrx-la-reopen-last-hint")
-                checked: app.reopenLast
-                onCheckedChanged: app.reopenLast = checked
-            }
-
-            TextSwitch {
-                //% "Send smaller pictures"
-                text: qsTrId("rustrx-la-downscale")
-                //% "Photos larger than 2048 pixels are scaled down before sending."
-                description: qsTrId("rustrx-la-downscale-hint")
-                checked: rustrx.downscaleImages
-                onCheckedChanged: rustrx.downscaleImages = checked
-            }
-
-            //% "Notifications"
-            SectionHeader { text: qsTrId("rustrx-se-notifications") }
-
-            TextSwitch {
-                //% "Keep running in the background"
-                text: qsTrId("rustrx-la-background")
-                //% "Notifications also when Rustrx is closed. It starts with the phone and stays connected without a window, shown by a line in the events view: tap it to open Rustrx, or quit it there. While the phone sleeps it checks for messages every five minutes."
-                description: qsTrId("rustrx-la-background-hint")
-                checked: rustrx.background
-                automaticCheck: false
-                onClicked: rustrx.background = !rustrx.background
-            }
-
             //% "Privacy"
             SectionHeader { text: qsTrId("rustrx-se-privacy") }
 
@@ -140,6 +89,15 @@ Page {
                 checked: app.sendReceipts
                 automaticCheck: false
                 onClicked: app.sendReceipts = !app.sendReceipts
+            }
+
+            TextSwitch {
+                //% "Show who has read a message"
+                text: qsTrId("rustrx-la-show-read-by")
+                //% "Names appear under the last message each person has read."
+                description: qsTrId("rustrx-la-show-read-by-hint")
+                checked: app.showReadBy
+                onCheckedChanged: app.showReadBy = checked
             }
 
             TextSwitch {
@@ -158,6 +116,49 @@ Page {
                 checked: app.sendTyping
                 automaticCheck: false
                 onClicked: app.sendTyping = !app.sendTyping
+            }
+
+            //% "Notifications"
+            SectionHeader { text: qsTrId("rustrx-se-notifications") }
+
+            TextSwitch {
+                //% "Keep running in the background"
+                text: qsTrId("rustrx-la-background")
+                //% "Notifications also when Rustrx is closed. It starts with the phone and stays connected without a window, shown by a line in the events view: tap it to open Rustrx, or quit it there. While the phone sleeps it checks for messages every five minutes."
+                description: qsTrId("rustrx-la-background-hint")
+                checked: rustrx.background
+                automaticCheck: false
+                onClicked: rustrx.background = !rustrx.background
+            }
+
+            //% "Appearance"
+            SectionHeader { text: qsTrId("rustrx-se-appearance") }
+
+            TextSwitch {
+                //% "Round avatars"
+                text: qsTrId("rustrx-la-round-avatars")
+                //% "Cut room and people pictures to a circle."
+                description: qsTrId("rustrx-la-round-avatars-hint")
+                checked: app.roundAvatars
+                onCheckedChanged: app.roundAvatars = checked
+            }
+
+            TextSwitch {
+                //% "Reopen the last chat"
+                text: qsTrId("rustrx-la-reopen-last")
+                //% "Rustrx starts in the room or chat that was open when it was closed."
+                description: qsTrId("rustrx-la-reopen-last-hint")
+                checked: app.reopenLast
+                onCheckedChanged: app.reopenLast = checked
+            }
+
+            TextSwitch {
+                //% "Send smaller pictures"
+                text: qsTrId("rustrx-la-downscale")
+                //% "Photos larger than 2048 pixels are scaled down before sending."
+                description: qsTrId("rustrx-la-downscale-hint")
+                checked: rustrx.downscaleImages
+                onCheckedChanged: rustrx.downscaleImages = checked
             }
 
             //% "Account"
@@ -202,8 +203,11 @@ Page {
                 }
             }
 
-            //% "Encryption"
-            SectionHeader { id: encryptionHeader; text: qsTrId("rustrx-se-encryption") }
+            SectionHeader {
+                id: encryptionHeader
+                //% "Encryption"
+                text: qsTrId("rustrx-se-encryption")
+            }
 
             Label {
                 x: Theme.horizontalPageMargin
@@ -402,17 +406,7 @@ Page {
             //% "Devices"
             SectionHeader { text: qsTrId("rustrx-se-devices") }
 
-            BackgroundItem {
-                width: parent.width
-                onClicked: pageStack.push(Qt.resolvedUrl("DevicesPage.qml"))
-                Label {
-                    x: Theme.horizontalPageMargin
-                    anchors.verticalCenter: parent.verticalCenter
-                    //% "Logged-in devices"
-                    text: qsTrId("rustrx-la-devices")
-                    color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
-                }
-            }
+            DeviceList { width: parent.width }
 
             //% "About"
             SectionHeader { text: qsTrId("rustrx-se-about") }
@@ -423,9 +417,29 @@ Page {
                 wrapMode: Text.Wrap
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.secondaryColor
-                //: %1 app version, %2 core version
-                //% "Rustrx %1, core %2. A Matrix client built on matrix-rust-sdk. GPLv3+, github.com/moWerk/rustrx"
-                text: qsTrId("rustrx-la-about").arg(appVersion).arg(rustrx.coreVersion)
+                linkColor: Theme.highlightColor
+                textFormat: Text.StyledText
+                onLinkActivated: Qt.openUrlExternally(link)
+                //: %1 app version, %2 core version; lines separated by <br>, keep the link
+                //% "Rustrx %1, core %2<br>A Matrix client built on <a href='https://github.com/matrix-org/matrix-rust-sdk'>matrix-rust-sdk</a><br>GPLv3+, from moWerk with love<br><a href='https://github.com/moWerk/rustrx'>github.com/moWerk/rustrx</a>"
+                text: qsTrId("rustrx-la-about-lines").arg(appVersion).arg(rustrx.coreVersion)
+            }
+
+            // how it was made, graded by LLMGD (SPEC section 3: understood and
+            // tested by the author, not read line by line, no outside review: A3;
+            // the author directs and decides the design, the LLM writes: origin O1)
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                linkColor: Theme.highlightColor
+                textFormat: Text.StyledText
+                onLinkActivated: Qt.openUrlExternally(link)
+                //: the LLM disclosure grade; keep the link and the grade as they are
+                //% "<a href='https://github.com/moWerk/llmgd-specs'>LLMGD-3</a> · origin O1: written by an LLM, directed, understood and tested on the phone by the author; not yet reviewed by others"
+                text: qsTrId("rustrx-la-about-llmgd")
             }
 
             Item { width: 1; height: Theme.paddingLarge }

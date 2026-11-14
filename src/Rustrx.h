@@ -169,6 +169,8 @@ signals:
     void notificationMode(const QString &roomId, const QString &mode);
     void keysExported(const QString &path);
     void keysImported(int imported, int total);
+    // a message's source: its JSON as received, and its latest edit's
+    void eventSource(const QString &eventId, const QString &json, const QString &edit);
     // sizes in bytes: store, media_files, and the SDK's per-store sizes
     void storageInfo(const QVariantMap &info);
     // a notification was tapped: show this room

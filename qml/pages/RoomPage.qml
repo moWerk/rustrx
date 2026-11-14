@@ -143,10 +143,48 @@ Page {
         onTyping: if (roomId === page.roomId) page.typingNames = names
     }
 
+    // the room's picture beside its name in the header, kept current with
+    // the room list (a new picture comes with the sync)
+    property var roomInfo: rustrx.roomInfo(roomId)
+    Connections { target: rustrx.rooms; onDataChanged: page.roomInfo = rustrx.roomInfo(page.roomId) }
+    Connections { target: rustrx.people; onDataChanged: page.roomInfo = rustrx.roomInfo(page.roomId) }
+    readonly property bool hasPicture: !!(roomInfo && roomInfo.avatar)
+
     // the header stays put; the list runs underneath it
     PageHeader {
         id: header
         title: roomName
+        // room for the picture right of the name, as tall as the name's letters
+        readonly property real pictureSize: Math.round(_titleItem.font.pixelSize * 0.9)
+        rightMargin: Theme.horizontalPageMargin + (page.hasPicture ? pictureSize + Theme.paddingMedium : 0)
+
+        Image {
+            visible: page.hasPicture && status === Image.Ready
+            anchors {
+                right: parent.right
+                rightMargin: Theme.horizontalPageMargin
+                verticalCenter: header._titleItem.verticalCenter
+            }
+            width: header.pictureSize
+            height: width
+            asynchronous: true
+            fillMode: Image.PreserveAspectCrop
+            sourceSize.width: width * 2
+            sourceSize.height: height * 2
+            source: page.hasPicture ? "file://" + page.roomInfo.avatar + "?v=" + (page.roomInfo.avatar_v || 0) : ""
+            layer.enabled: app.roundAvatars
+            layer.effect: ShaderEffect {
+                fragmentShader: "
+                    varying highp vec2 qt_TexCoord0;
+                    uniform sampler2D source;
+                    uniform lowp float qt_Opacity;
+                    void main() {
+                        highp float d = length(qt_TexCoord0 - vec2(0.5));
+                        lowp float a = 1.0 - smoothstep(0.49, 0.5, d);
+                        gl_FragColor = texture2D(source, qt_TexCoord0) * a * qt_Opacity;
+                    }"
+            }
+        }
         description: rustrx.syncState === "idle"
                      //% "Connecting"
                      ? qsTrId("rustrx-la-cover-connecting")

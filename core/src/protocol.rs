@@ -44,6 +44,8 @@ pub(crate) enum Command {
     Edit { room_id: String, event_id: Option<String>, txn_id: Option<String>, body: String },
     PollVote { room_id: String, event_id: String, answers: Vec<String> },
     Report { room_id: String, event_id: String, reason: Option<String> },
+    /// The event's JSON as received (and its latest edit): "event_source".
+    EventSource { room_id: String, event_id: String },
     MarkRead { room_id: String, private: Option<bool> },
     Typing { room_id: String, typing: Option<bool> },
     /// The picture (or its thumbnail) of an event, into the media cache;

@@ -859,5 +859,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit storageInfo(ev);
     } else if (type == QLatin1String("keys_imported")) {
         emit keysImported(ev.value("imported").toInt(), ev.value("total").toInt());
+    } else if (type == QLatin1String("event_source")) {
+        emit eventSource(ev.value("event_id").toString(), ev.value("json").toString(), ev.value("edit").toString());
     }
 }
