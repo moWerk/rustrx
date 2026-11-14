@@ -60,6 +60,8 @@ Page {
         Column {
             id: column
             width: parent.width
+            // room between the buttons and the texts around them
+            spacing: Theme.paddingMedium
 
             PageHeader { title: "Rustrx" }
 
@@ -292,7 +294,7 @@ Page {
         target: rustrx
         onLoginError: errorText = message
         // the sign-on page's address (the window's openUrl handler opens it too)
-        onOpenUrl: if (rustrx.loggingIn) page.ssoUrl = url
+        onBrowserUrl: if (rustrx.loggingIn) page.ssoUrl = url
         onServerInfo: {
             server = { probed: true, name: info.server, password: info.password, sso: info.sso,
                        accountService: info.account_service === true,

@@ -736,7 +736,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
             m_timeline->setMediaPath(ev.value("event_id").toString(), ev.value("thumb").toBool(),
                                      ev.value("path").toString());
     } else if (type == QLatin1String("open_url")) {
-        emit openUrl(ev.value("url").toString());
+        emit browserUrl(ev.value("url").toString());
     } else if (type == QLatin1String("error")) {
         const QString cmd = ev.value("cmd").toString();
         if (cmd == QLatin1String("login_password") || cmd == QLatin1String("login_sso")) {

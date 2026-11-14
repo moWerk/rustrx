@@ -128,7 +128,9 @@ signals:
     void unreadChanged();
     void loginError(const QString &message);
     void serverInfo(const QVariantMap &info);
-    void openUrl(const QString &url);
+    // a web page to show in the browser (the single sign-on page); not
+    // "openUrl", which is the D-Bus method below and shadowed it in QML
+    void browserUrl(const QString &url);
     void errorOccurred(const QString &cmd, const QString &message);
     void verification(const QVariantMap &data);
     void sas(const QVariantMap &data);

@@ -49,6 +49,7 @@ impl Core {
 
     /// `known`: the sync flavour from a previous login, which skips discovery.
     pub(crate) async fn build_client_with(&self, server: &str, with_store: bool, known: Option<bool>) -> Result<Client> {
+        tracing::info!(%server, with_store, ?known, "client: building");
         let make = |version: VersionBuilder| {
             let mut b = Client::builder()
                 .sliding_sync_version_builder(version)
@@ -81,6 +82,7 @@ impl Core {
                 }
             }
         };
+        tracing::info!("client: built");
         // a picture or file on its way shows how much of it is uploaded
         client.send_queue().enable_upload_progress(true);
         Ok(client)
@@ -277,7 +279,9 @@ impl Core {
         }
         let result: Result<Client> = async {
             let server = Self::server_of(Some(&user), &homeserver)?;
+            tracing::info!(%server, "login: building the client");
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
+            tracing::info!("login: client built, sending the password");
             // after a soft logout: the same device again, so the kept crypto store fits
             let device = std::fs::read_to_string(self.data_dir.join("device_id")).ok();
             let mut login = client
@@ -308,10 +312,13 @@ impl Core {
         }
         let result: Result<Client> = async {
             let server = Self::server_of(user.as_deref(), &homeserver)?;
+            tracing::info!(%server, "sso: building the client");
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
+            tracing::info!("sso: client built, asking for the sign-on page");
             let mut builder = client
                 .matrix_auth()
                 .login_sso(|url| async move {
+                    tracing::info!("sso: sign-on page ready, waiting for the browser");
                     crate::instance().emit(json!({"ev": "open_url", "url": url}));
                     Ok(())
                 })

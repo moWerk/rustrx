@@ -117,7 +117,7 @@ ApplicationWindow {
     Connections {
         target: rustrx
         onStateChanged: route()
-        onOpenUrl: Qt.openUrlExternally(url)
+        onBrowserUrl: Qt.openUrlExternally(url)
         onVerification: {
             // an incoming request opens its page; one we started has its page already
             if (data.state === "requested" && !data.we_started) showVerification(data)
