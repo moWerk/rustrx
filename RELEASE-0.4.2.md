@@ -12,6 +12,12 @@ Rustrx 0.4.2: single sign-on works again, no more logouts when the network drops
 - More space between buttons and texts on the login and settings pages.
 - An empty tab (no rooms, no favourites yet) says so and how to add one, instead of a spinner.
 
+**Polish**
+- Avatars 10 % smaller, names and badges where they were. The unread badge digits are in Source Sans 3 Semibold (bundled; the system font has no heavier cut installed, so "bold" never did anything), on a slightly darker shade of the ambience colour, with a soft shadow under the pill. The badge still grows to show the full count.
+- The filter icon is larger and sits centred on the tabs, also on phones with a camera cutout; "By name" reads "Alphabetical".
+- A list no longer starts with its first row hidden under the tabs.
+- The cover: the app icon is larger, its bottom lined up with the cover buttons, its fibres behind the lines of text.
+
 **Tested** by the author on a Jolla Phone 2026 and a Pro¹-X (SFOS 5.2) with accounts on matrix.org and tchncs.de: single sign-on, restoring the keys with the recovery key, the settings position. Not yet tested: the invitation notification, "Reset encryption", and the logout fix with the network actually gone.
 
 **Install**

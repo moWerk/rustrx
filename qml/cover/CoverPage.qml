@@ -25,14 +25,20 @@ CoverBackground {
     Image {
         anchors {
             horizontalCenter: parent.horizontalCenter
+            // the icon's bottom as far from the tile's bottom as the cover
+            // action icons are: lipstick centres them (iconSizeSmall) in a
+            // strip itemSizeSmall tall at the bottom. The size alone moves
+            // the top; the bottom stays here.
             bottom: parent.bottom
-            // a twentieth above the edge: four of its fibres (about 7.5 % of the
-            // icon each) higher than the quarter below it at first
-            bottomMargin: height / 20
+            bottomMargin: (Theme.itemSizeSmall - Theme.iconSizeSmall) / 2
         }
-        width: parent.width * 0.9
+        // 1.368 times the tile's width, cropped at its sides: measured on the
+        // Jolla Phone 2026 so the first (red) fibre lies behind "in N chats"
+        width: parent.width * 1.368
         height: width
-        source: "/usr/share/icons/hicolor/172x172/apps/harbour-rustrx.png"
+        // the 512 px icon: the installed sizes end at 172 px and would blur
+        source: "rustrx-512.png"
+        sourceSize.width: width
         opacity: 0.15
         asynchronous: true
     }
