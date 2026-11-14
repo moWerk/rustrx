@@ -1,4 +1,7 @@
-Rustrx 0.4.2: single sign-on works again, no more logouts when the network drops, and notifications for invitations. Updates 0.4.x in place.
+Rustrx 0.4.2: single sign-on works again, a short loss of network no longer ends the session, invitations get a notification, and the room list grew a search, sort orders, status icons and multi-line previews. Updates 0.4.x in place.
+
+![Rustrx 0.4.2: the chat list with three-line previews, the filter menu with search, a message menu with View source, a conversation in bubbles](https://raw.githubusercontent.com/moWerk/rustrx/main/screenshots/rustrx-0.4.2.jpg)
+
 
 **Fixed**
 - **Single sign-on opens the browser again.** Since 0.4.0 the sign-on page was prepared but never handed to the browser (two things in the app shared a name). While Rustrx waits for the browser login, the login page now also shows the sign-on link with "Open again" and "Copy link", in case the browser does not come up by itself. Thanks to raketti and dopi04 in the forum.
