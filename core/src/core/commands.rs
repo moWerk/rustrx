@@ -434,6 +434,31 @@ impl Core {
                 self.emit(json!({"ev": "recovery_key", "key": key}));
                 Ok(())
             }
+            IdentityReset => {
+                use matrix_sdk::encryption::CrossSigningResetAuthType;
+                let client = self.client().await?;
+                let recovery = client.encryption().recovery();
+                if let Some(handle) = recovery.reset_identity().await? {
+                    match handle.auth_type() {
+                        CrossSigningResetAuthType::OAuth(info) => {
+                            let url = info.approval_url.to_string();
+                            tracing::info!("identity reset: waiting for the approval in the browser");
+                            self.emit(json!({"ev": "identity_reset_approval", "url": url}));
+                            self.emit(json!({"ev": "open_url", "url": url}));
+                            // the SDK polls for two minutes
+                            handle.reset(None).await?;
+                        }
+                        CrossSigningResetAuthType::Uiaa(_) => {
+                            handle.cancel().await;
+                            bail!("this server asks for the password to reset the encryption, which Rustrx cannot do yet");
+                        }
+                    }
+                }
+                tracing::info!("identity reset: done, setting up the backup");
+                let key = recovery.enable().wait_for_backups_to_upload().await?;
+                self.emit(json!({"ev": "recovery_key", "key": key}));
+                Ok(())
+            }
             Devices => {
                 let client = self.client().await?;
                 let own = client.device_id().map(|d| d.to_string());

@@ -131,6 +131,8 @@ signals:
     // a web page to show in the browser (the single sign-on page); not
     // "openUrl", which is the D-Bus method below and shadowed it in QML
     void browserUrl(const QString &url);
+    // an encryption reset waits for its approval on this page
+    void identityResetApproval(const QString &url);
     void errorOccurred(const QString &cmd, const QString &message);
     void verification(const QVariantMap &data);
     void sas(const QVariantMap &data);

@@ -89,6 +89,10 @@ pub(crate) enum Command {
     RecoveryRecover { key: String },
     RecoveryEnable,
     RecoveryReset,
+    /// No other device and no recovery key: new cross-signing keys, a new
+    /// backup and recovery key; the old backup is deleted. An account service
+    /// asks for approval in the browser ("identity_reset_approval").
+    IdentityReset,
     ExportKeys { path: String, passphrase: String },
     ImportKeys { path: String, passphrase: String },
 

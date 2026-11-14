@@ -212,16 +212,10 @@ Page {
                     MenuItem {
                         //% "Settings"
                         text: qsTrId("rustrx-me-settings")
-                        // unverified: the verification starts right away; the
-                        // recovery key: the settings, scrolled to its field
-                        onClicked: {
-                            if (rustrx.verificationState === "unverified") {
-                                rustrx.command({ cmd: "verification_request_self" })
-                                pageStack.push(Qt.resolvedUrl("VerificationPage.qml"), { waiting: true })
-                            } else {
-                                pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { showRecovery: true })
-                            }
-                        }
+                        // the settings, scrolled to the encryption section, where
+                        // verifying from another device and the recovery key sit
+                        // together: without another device only the key helps
+                        onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { showEncryption: true })
                     }
                 }
 

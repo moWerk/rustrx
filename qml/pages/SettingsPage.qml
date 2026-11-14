@@ -54,13 +54,13 @@ Page {
         }
     }
 
-    // opened from the main page's line about the recovery key: its field in view
-    property bool showRecovery
-    onStatusChanged: if (status === PageStatus.Active && showRecovery) {
-        showRecovery = false
-        settingsFlick.contentY = Math.max(0, Math.min(keyField.y - Theme.itemSizeLarge,
+    // opened from the main page's line about verification or the recovery
+    // key: the encryption section at the top of the screen
+    property bool showEncryption
+    onStatusChanged: if (status === PageStatus.Active && showEncryption) {
+        showEncryption = false
+        settingsFlick.contentY = Math.max(0, Math.min(encryptionHeader.y,
                                                        settingsFlick.contentHeight - settingsFlick.height))
-        keyField.forceActiveFocus()
     }
 
     SilicaFlickable {
@@ -203,7 +203,7 @@ Page {
             }
 
             //% "Encryption"
-            SectionHeader { text: qsTrId("rustrx-se-encryption") }
+            SectionHeader { id: encryptionHeader; text: qsTrId("rustrx-se-encryption") }
 
             Label {
                 x: Theme.horizontalPageMargin
@@ -264,6 +264,51 @@ Page {
                 onClicked: {
                     recoveryResult = qsTrId("rustrx-la-restoring")
                     rustrx.command({ cmd: "recovery_recover", key: keyField.text })
+                }
+            }
+
+            // no other device and no recovery key: start over
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: rustrx.recoveryState === "incomplete" && rustrx.verificationState !== "verified"
+                //% "Reset encryption"
+                text: qsTrId("rustrx-bt-reset-identity")
+                onClicked: {
+                    var core = rustrx
+                    //% "Resetting the encryption"
+                    resetRemorse.execute(qsTrId("rustrx-re-reset-identity"), function () {
+                        //% "Resetting… the server may ask you to approve it in the browser."
+                        recoveryResult = qsTrId("rustrx-la-resetting")
+                        core.command({ cmd: "identity_reset" })
+                    })
+                }
+            }
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                visible: rustrx.recoveryState === "incomplete" && rustrx.verificationState !== "verified"
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                //% "No other device and no recovery key? A reset makes new encryption keys and a new backup with a new recovery key. Older encrypted messages stay unreadable, and your other devices have to be verified again."
+                text: qsTrId("rustrx-la-reset-identity-hint")
+            }
+            // the approval page, if the browser did not open by itself
+            Row {
+                visible: resetApprovalUrl.length > 0
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: Theme.paddingLarge
+                Button {
+                    //% "Open approval"
+                    text: qsTrId("rustrx-bt-open-approval")
+                    onClicked: Qt.openUrlExternally(resetApprovalUrl)
+                }
+                Button {
+                    text: qsTrId("rustrx-bt-sso-copy")
+                    onClicked: {
+                        Clipboard.text = resetApprovalUrl
+                        Notices.show(qsTrId("rustrx-no-link-copied"), Notice.Short)
+                    }
                 }
             }
 
@@ -390,6 +435,8 @@ Page {
     }
 
     RemorsePopup { id: remorse }
+    RemorsePopup { id: resetRemorse }
+    property string resetApprovalUrl
 
     property var storage: ({})
     RemorsePopup { id: clearRemorse }
@@ -400,13 +447,19 @@ Page {
         onProfile: displayName = profile.display_name || ""
         //% "Encrypted messages restored. Rooms fill in as keys arrive."
         onRecoveryDone: { recoveryResult = qsTrId("rustrx-la-restored"); keyField.text = "" }
+        onIdentityResetApproval: {
+            resetApprovalUrl = url
+            //% "Approve the reset on your server's page in the browser (within two minutes). If it did not open, use the buttons above."
+            recoveryResult = qsTrId("rustrx-la-reset-approve")
+        }
         onRecoveryKey: {
+            resetApprovalUrl = ""
             //% "Backup is on. Write this recovery key down and keep it safe; it is shown only now. Tap it to copy."
             recoveryResult = qsTrId("rustrx-la-key-shown")
             shownKey = key
         }
         onErrorOccurred: {
-            if (cmd === "recovery_recover" || cmd === "recovery_enable" || cmd === "recovery_reset")
+            if (cmd === "recovery_recover" || cmd === "recovery_enable" || cmd === "recovery_reset" || cmd === "identity_reset")
                 recoveryResult = message
         }
     }

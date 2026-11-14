@@ -737,6 +737,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
                                      ev.value("path").toString());
     } else if (type == QLatin1String("open_url")) {
         emit browserUrl(ev.value("url").toString());
+    } else if (type == QLatin1String("identity_reset_approval")) {
+        emit identityResetApproval(ev.value("url").toString());
     } else if (type == QLatin1String("error")) {
         const QString cmd = ev.value("cmd").toString();
         if (cmd == QLatin1String("login_password") || cmd == QLatin1String("login_sso")) {
