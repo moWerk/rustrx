@@ -60,6 +60,7 @@ class Rustrx : public QObject
     // with any order: favourites first; low priority rooms last
     Q_PROPERTY(bool favsOnTop READ favsOnTop WRITE setFavsOnTop NOTIFY settingsChanged)
     Q_PROPERTY(bool lowLast READ lowLast WRITE setLowLast NOTIFY settingsChanged)
+    Q_PROPERTY(bool hideMuted READ hideMuted WRITE setHideMuted NOTIFY settingsChanged)
     // the lists show only rooms whose name or address contains this (not kept)
     Q_PROPERTY(QString roomFilter READ roomFilter WRITE setRoomFilter NOTIFY roomFilterChanged)
     // notifications with the app closed: a stand-in, started with the session
@@ -99,6 +100,8 @@ public:
     void setFavsOnTop(bool on);
     bool lowLast() const;
     void setLowLast(bool on);
+    bool hideMuted() const;
+    void setHideMuted(bool on);
     QString roomFilter() const { return m_roomFilter; }
     void setRoomFilter(const QString &text);
     bool background() const;

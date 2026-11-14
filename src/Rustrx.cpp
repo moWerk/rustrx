@@ -382,6 +382,20 @@ void Rustrx::setRoomFilter(const QString &text)
     distributeRooms(m_lastRooms);
 }
 
+bool Rustrx::hideMuted() const
+{
+    return QSettings().value("hideMuted", false).toBool();
+}
+
+void Rustrx::setHideMuted(bool on)
+{
+    if (on == hideMuted())
+        return;
+    QSettings().setValue("hideMuted", on);
+    emit settingsChanged();
+    distributeRooms(m_lastRooms);
+}
+
 bool Rustrx::lowLast() const
 {
     return QSettings().value("lowLast", true).toBool();
@@ -664,6 +678,7 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
     if (&rooms != &m_lastRooms)
         m_lastRooms = rooms;
     QVariantList groups, dms, favs, everything;
+    const bool hideMutedOn = hideMuted();
     int unread = 0, chats = 0;
     m_roomsById.clear();
     for (const QVariant &v : rooms) {
@@ -684,9 +699,11 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
         }
         // the search in the filter menu: only rooms whose name or address
         // contains it (the unread counts above still count every room)
-        const bool shown = m_roomFilter.isEmpty()
+        const bool shown = (m_roomFilter.isEmpty()
                 || r.value("name").toString().contains(m_roomFilter, Qt::CaseInsensitive)
-                || r.value("alias").toString().contains(m_roomFilter, Qt::CaseInsensitive);
+                || r.value("alias").toString().contains(m_roomFilter, Qt::CaseInsensitive))
+                // "Hide muted" in the filter menu (invitations always show)
+                && !(hideMutedOn && r.value("muted").toBool() && !invited);
         if (shown) {
             if (r.value("is_dm").toBool())
                 dms.append(r);

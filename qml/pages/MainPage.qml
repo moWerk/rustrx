@@ -207,7 +207,7 @@ Page {
                                 radius: height / 2
                                 color: filterButton.pressed || page.sortOpen
                                        ? Theme.highlightColor
-                                       : rustrx.sortOrder !== "activity" || page.filterLocked ? Theme.secondaryHighlightColor
+                                       : rustrx.sortOrder !== "activity" || page.filterLocked || rustrx.hideMuted ? Theme.secondaryHighlightColor
                                                                           : Theme.secondaryColor
                             }
                         }
@@ -264,7 +264,9 @@ Page {
                     //% "Favourites on top"
                     { key: "favsOnTop", text: qsTrId("rustrx-me-sort-favs-on-top") },
                     //% "Low priority at the bottom"
-                    { key: "lowLast", text: qsTrId("rustrx-me-sort-low-last") }
+                    { key: "lowLast", text: qsTrId("rustrx-me-sort-low-last") },
+                    //% "Hide muted"
+                    { key: "hideMuted", text: qsTrId("rustrx-me-sort-hide-muted") }
                 ] : []
                 BackgroundItem {
                     id: optionRow
