@@ -663,7 +663,7 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
 {
     if (&rooms != &m_lastRooms)
         m_lastRooms = rooms;
-    QVariantList groups, dms, favs;
+    QVariantList groups, dms, favs, everything;
     int unread = 0, chats = 0;
     m_roomsById.clear();
     for (const QVariant &v : rooms) {
@@ -692,6 +692,9 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
                 dms.append(r);
             else
                 groups.append(r);
+            // the one list keeps the core's order (by activity) across rooms
+            // and people; joining the two lists would put every room first
+            everything.append(r);
         }
         if (shown && fav && !invited) {
             // the Favs tab mixes rooms and people, by activity, no sections
@@ -732,7 +735,6 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
     m_people->setRooms(dms);
     m_favourites->setRooms(favs);
     // rooms and people together, in the same order
-    QVariantList everything = groups + dms;
     sortRooms(everything);
     m_all->setRooms(everything);
     if (unread != m_unreadTotal || chats != m_unreadChats) {
