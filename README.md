@@ -11,23 +11,26 @@ Rustrx is the Sailfish part around it.
 The name is Rust and Matrix mushed together. The icon is a rainbow flag of
 connecting fibres, because Rust.
 
-![Rustrx 0.4.2 on a Jolla Phone 2026: the chat list with three-line previews, the filter menu with sort orders and room search, a message's menu, and a conversation with its send menu](screenshots/rustrx-0.4.2.jpg)
-
 ## Why another one
 
-It started the day a Jolla Phone 2026 arrived and Matrix was the first thing
-that did not work. Sailtrix could not show the rooms properly, and its
-project does not take LLM-written contributions. Hydrogen is a web wrapper,
-and Element in App Support is not what you want on a Sailfish phone. So
-Rustrx was built that evening.
+It started the evening a Jolla Phone 2026 was unboxed, and Matrix was the
+first thing that did not work. Sailtrix could not show the rooms properly,
+and its project does not take LLM-written contributions. Hydrogen is a web
+wrapper, and Element in App Support is not what you want on a Sailfish
+phone. So Rustrx was built that evening.
 
-Xmatic exists and has more
-features. Rustrx does not try to compete with it or copy it: it is a
-different, lean and clean take, tailored to one use case, texting and some
-sharing of pictures and files. Rooms and people are kept apart, timestamps
-are short (5m, 3h, 2d) and the fonts are larger. Calls and video chat are not
-planned and will most likely never be. It also works well as the client for
-a second account next to another one.
+What the author did not find that evening was Xmatic, a native Matrix client
+that already existed and does more. Had it turned up, Rustrx would not
+have been started. That says something about how scattered the places are where
+Sailfish apps live. It also turned out to be lucky: Rustrx became a project
+worth finishing, and its differences grew on their own, from following one
+person's needs instead of looking at what other clients do. It is lean and
+text first, made for texting and sharing some pictures and files. Rooms and
+people sit apart by default, timestamps are short (5m, 3h, 2d), the room
+list can be sorted, filtered and searched, and it runs on community ports
+without sailfish-secrets. Calls are being looked into. It also works well as the client for a second account next to another one.
+
+![Rustrx 0.4.2 on a Jolla Phone 2026: the chat list with three-line previews, the filter menu with sort orders and room search, a message's menu, and a conversation with its send menu](screenshots/rustrx-0.4.2.jpg)
 
 ## What it does
 
