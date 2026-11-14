@@ -120,6 +120,7 @@ Page {
             if (text !== editText) rustrx.command({ cmd: "edit", room_id: roomId, event_id: editId, body: text })
             editId = ""; editText = ""
             inputArea.text = rustrx.draft(roomId)
+            inputArea.forceActiveFocus()
             return
         }
         rustrx.sendText(roomId, text, replyToId)
@@ -129,6 +130,9 @@ Page {
         replyToText = ""
         typingTimer.stop()
         if (app.sendTyping) rustrx.command({ cmd: "typing", room_id: roomId, typing: false })
+        // the Send button took the focus and the keyboard went: back to the
+        // field, so the next message can follow (as in Jolla's Messages)
+        inputArea.forceActiveFocus()
     }
 
     Timer {
