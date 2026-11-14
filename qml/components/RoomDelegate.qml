@@ -85,6 +85,23 @@ ListItem {
             }
         }
 
+        // the badge's shadow, offset a little further than the digits' shadow,
+        // soft at its edge: three pills, each a little larger, stacked to
+        // about 42 % black in the middle (no blur in plain Qt Quick 2.6)
+        Repeater {
+            model: 3
+            Rectangle {
+                readonly property real spread: index * 0.96
+                visible: badge.visible
+                x: badge.x + 1.5 - spread
+                y: badge.y + 3 - spread
+                width: badge.width + 2 * spread
+                height: badge.height + 2 * spread
+                radius: height / 2
+                color: Theme.rgba("black", 0.17)
+            }
+        }
+
         // unread badge, top right of the picture
         Rectangle {
             id: badge
@@ -99,7 +116,14 @@ ListItem {
             // the straight middle only, so the ends stay half circles and the
             // pill grows to the left (it is anchored at the right)
             width: height + Math.max(0, badgeLabel.text.length - 1) * digitWidth.advanceWidth
-            TextMetrics { id: digitWidth; font: badgeLabel.font; text: "0" }
+            // measured at the size the digits had, so the pill keeps its
+            // geometry while the digits shrink inside it
+            TextMetrics {
+                id: digitWidth
+                font.family: app.semiboldFontFamily
+                font.pixelSize: Theme.fontSizeExtraSmall
+                text: "0"
+            }
             // the circle keeps this size; the digits grew into its padding
             height: Theme.iconSizeSmall
             radius: height / 2
@@ -120,10 +144,15 @@ ListItem {
             Label {
                 id: badgeLabel
                 anchors.centerIn: parent
-                // digits have no descender; the text box's share for it pushes them low
-                anchors.verticalCenterOffset: -Math.round(font.pixelSize * 0.04)
+                // digits have no descender; the text box's share for it pushed
+                // them low in Sail Sans. Source Sans 3 sits higher, and the
+                // shadow below the digits adds visual weight: 1 px down
+                // centres digits and shadow together (the author's eye)
+                anchors.verticalCenterOffset: 1 - Math.round(font.pixelSize * 0.04)
                 text: model.notifications > 0 ? model.notifications : model.unread
-                font.pixelSize: Theme.fontSizeExtraSmall
+                // a tenth smaller than the size the pill is measured for: more
+                // room around the digits inside it
+                font.pixelSize: Math.round(Theme.fontSizeExtraSmall * 0.9)
                 // the file is the Semibold cut: asking for bold on top of it
                 // would make Qt embolden it again
                 font.family: app.semiboldFontFamily
