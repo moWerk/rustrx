@@ -15,6 +15,8 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Rustrx.h"
+#include <QLibrary>
+#include <sailfishapp.h>
 #include "RoomModel.h"
 #include "TimelineModel.h"
 #include "rustrx_core.h"
@@ -42,6 +44,7 @@
 #include <QFile>
 #include <QDBusError>
 #include <QMutex>
+#include <QElapsedTimer>
 #include <algorithm>
 #include <QMutexLocker>
 
@@ -204,6 +207,27 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     s_instance = this;
     m_since.start();
     QDir().mkpath(dataDir);
+    // the store's key from sailfish-secrets, if it works here; without it the
+    // store stays unencrypted (community ports without sailfish-secrets)
+    QElapsedTimer secretsTime;
+    secretsTime.start();
+    // the sailfish-secrets plugin, loaded only where it can be: its library
+    // is not a dependency of the package
+    QByteArray storeKey;
+    QLibrary secrets(SailfishApp::pathTo(QStringLiteral("lib/librustrx-secrets.so")).toLocalFile());
+    typedef int (*StoreKeyFn)(char *, int);
+    if (StoreKeyFn fn = reinterpret_cast<StoreKeyFn>(secrets.resolve("rustrx_secrets_store_key"))) {
+        char buf[128];
+        const int n = fn(buf, sizeof buf);
+        if (n > 0)
+            storeKey = QByteArray(buf, n);
+    } else {
+        qInfo().noquote() << "startup: no sailfish-secrets plugin:" << secrets.errorString();
+    }
+    qInfo().noquote() << "startup: store key" << (storeKey.isEmpty() ? "none" : "from sailfish-secrets")
+                      << "after" << secretsTime.elapsed() << "ms";
+    if (!storeKey.isEmpty())
+        rustrx_set_store_key(storeKey.constData());
     const int rc = rustrx_start(dataDir.toUtf8().constData(), &Rustrx::eventCallback, this);
     if (rc != 0)
         qWarning() << "rustrx_start failed:" << rc;

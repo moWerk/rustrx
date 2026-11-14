@@ -54,8 +54,50 @@ impl Core {
     }
 
     /// `known`: the sync flavour from a previous login, which skips discovery.
+    /// The passphrase for the store, if it is (to be) encrypted. A new store
+    /// is encrypted when sailfish-secrets gave a key; a file in it marks it,
+    /// with a fingerprint of the key (a hash; the key cannot be read from
+    /// it). A store from before stays as it is.
+    /// - no key now (sailfish-secrets locked before the first unlock, or not
+    ///   reachable): nothing is removed; the store cannot open this time
+    /// - a key that is not the store's (the secret was lost and made anew):
+    ///   the store can never be read again and goes
+    fn store_passphrase(&self) -> Result<Option<String>> {
+        let dir = self.data_dir.join("store");
+        let marker = dir.join("rustrx-encrypted");
+        let existing = std::fs::read_dir(&dir).map(|mut d| d.next().is_some()).unwrap_or(false);
+        let key = crate::store_key();
+        let fingerprint = |k: &str| {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            k.hash(&mut h);
+            format!("{:016x}", h.finish())
+        };
+        if existing {
+            let Ok(mark) = std::fs::read_to_string(&marker) else {
+                tracing::info!("store: unencrypted (made before sailfish-secrets was used)");
+                return Ok(None);
+            };
+            let Some(key) = key else {
+                bail!("the encrypted store's key is not available (sailfish-secrets locked or unreachable)");
+            };
+            if mark.trim() == fingerprint(key) {
+                tracing::info!("store: encrypted, key from sailfish-secrets");
+                return Ok(Some(key.to_owned()));
+            }
+            tracing::warn!("store: encrypted with a key that is gone; it cannot be read and goes");
+            std::fs::remove_dir_all(&dir).ok();
+        }
+        let Some(key) = key else { return Ok(None) };
+        std::fs::create_dir_all(&dir).ok();
+        std::fs::write(&marker, fingerprint(key)).ok();
+        tracing::info!("store: new and encrypted, key from sailfish-secrets");
+        Ok(Some(key.to_owned()))
+    }
+
     pub(crate) async fn build_client_with(&self, server: &str, with_store: bool, known: Option<bool>) -> Result<Client> {
         tracing::info!(%server, with_store, ?known, "client: building");
+        let passphrase = if with_store { self.store_passphrase()? } else { None };
         let make = |version: VersionBuilder| {
             let mut b = Client::builder()
                 .sliding_sync_version_builder(version)
@@ -67,7 +109,7 @@ impl Core {
                 .handle_refresh_tokens()
                 .user_agent(USER_AGENT);
             if with_store {
-                b = b.sqlite_store(self.data_dir.join("store"), None);
+                b = b.sqlite_store(self.data_dir.join("store"), passphrase.as_deref());
             }
             if server.starts_with("http://") || server.starts_with("https://") {
                 b.homeserver_url(server)

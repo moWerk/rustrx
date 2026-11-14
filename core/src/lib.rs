@@ -84,6 +84,28 @@ pub(crate) fn instance() -> &'static core::Core {
     CORE.get().expect("rustrx_start was called")
 }
 
+/// The key for the local store from sailfish-secrets (the app sets it before
+/// rustrx_start; none when sailfish-secrets is missing or failed).
+static STORE_KEY: OnceLock<String> = OnceLock::new();
+
+pub(crate) fn store_key() -> Option<&'static str> {
+    STORE_KEY.get().map(String::as_str).filter(|k| !k.is_empty())
+}
+
+/// Set the store key; call before rustrx_start. Returns 0, or 1 when it was
+/// set already, 2 on a bad argument.
+#[no_mangle]
+pub extern "C" fn rustrx_set_store_key(key: *const c_char) -> i32 {
+    if key.is_null() {
+        return 2;
+    }
+    let Ok(key) = unsafe { std::ffi::CStr::from_ptr(key) }.to_str() else { return 2 };
+    if STORE_KEY.set(key.to_owned()).is_err() {
+        return 1;
+    }
+    0
+}
+
 #[no_mangle]
 pub extern "C" fn rustrx_version() -> *const c_char {
     static VERSION: OnceLock<CString> = OnceLock::new();
