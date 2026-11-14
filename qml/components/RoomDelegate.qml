@@ -22,7 +22,8 @@ import Sailfish.Silica 1.0
 ListItem {
     id: item
     width: ListView.view.width
-    contentHeight: Theme.iconSizeLarge + 2 * rowMargin
+    // the same air above and below; more preview lines make the row taller
+    contentHeight: Math.max(Theme.iconSizeLarge, textColumn.height) + 2 * rowMargin
     menu: contextMenu
 
     // Tunables: the air above and below a row (the stock itemSizeMedium gave
@@ -35,6 +36,12 @@ ListItem {
 
     onClicked: {
         if (invited) { openMenu(); return }
+        // an upgraded room: on to its successor (joined if need be)
+        if (model.replaced_by && model.replaced_by.length) {
+            if (rustrx.roomInfo(model.replaced_by).name) app.showRoom(model.replaced_by)
+            else app.openMatrixUri("matrix:roomid/" + model.replaced_by.slice(1))
+            return
+        }
         ListView.view.currentIndex = index   // the list keeps this row in view on return
         pageStack.push(Qt.resolvedUrl("../pages/RoomPage.qml"), { roomId: model.room_id, roomName: model.name })
     }
@@ -163,6 +170,7 @@ ListItem {
     }
 
     Column {
+        id: textColumn
         anchors {
             left: avatar.right
             right: age.left
@@ -180,42 +188,81 @@ ListItem {
             color: item.highlighted ? Theme.highlightColor : Theme.primaryColor
         }
 
-        // the last message, a lock in front of it in encrypted rooms; the
+        // the last message (1 to 3 lines, the last faded), and in front of
+        // its first line the room's state: a stop sign when muted, a lock
+        // when encrypted, a check when one's own last message was read; the
         // topic or the state where there is no message yet
-        Row {
+        Item {
             width: parent.width
-            spacing: Theme.paddingSmall
+            height: preview.height
+            readonly property color iconColor: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
+            readonly property real iconSize: Theme.fontSizeSmall * 0.8
 
-            Image {
-                id: lock
-                anchors.verticalCenter: parent.verticalCenter
-                visible: model.encrypted && !invited
-                source: "image://theme/icon-s-secure?" + (item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor)
-                sourceSize.width: Theme.fontSizeSmall * 0.8
-                sourceSize.height: Theme.fontSizeSmall * 0.8
+            Row {
+                id: statusIcons
+                spacing: Theme.paddingSmall
+                // centred on the preview's first line
+                y: (preview.firstLineHeight - height) / 2
+
+                // muted: Silica's stop sign, from the same set as the lock;
+                // its canvas is 42 px where the lock's is 48, so it is drawn at
+                // that ratio and looks as large as the lock
+                Image {
+                    visible: model.muted === true && !invited
+                    anchors.verticalCenter: parent.verticalCenter
+                    source: "image://theme/icon-s-blocked?" + parent.parent.iconColor
+                    sourceSize.width: Math.round(parent.parent.iconSize * 42 / 48)
+                    sourceSize.height: sourceSize.width
+                }
+                Image {
+                    visible: model.encrypted && !invited
+                    source: "image://theme/icon-s-secure?" + parent.parent.iconColor
+                    sourceSize.width: parent.parent.iconSize
+                    sourceSize.height: parent.parent.iconSize
+                }
+                // one's own last message was read
+                Label {
+                    visible: model.own_read === true && !invited
+                    text: "\u2713"
+                    height: parent.parent.iconSize
+                    verticalAlignment: Text.AlignVCenter
+                    font.pixelSize: Theme.fontSizeSmall * 0.85
+                    color: item.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor
+                }
             }
 
             Label {
-            width: parent.width - (lock.visible ? lock.width + parent.spacing : 0)
-            truncationMode: TruncationMode.Fade
-            font.pixelSize: Theme.fontSizeSmall * 0.8
-            color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
-            textFormat: Text.StyledText
-            text: {
-                //% "Invitation. Long press to accept or decline."
-                if (invited) return qsTrId("rustrx-la-invitation")
-                if (model.preview && model.preview.length) {
-                    var who = model.preview_sender
-                              ? "<font color=\"" + (item.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor)
-                                + "\">" + model.preview_sender.replace(/&/g, "&amp;").replace(/</g, "&lt;") + ":</font> " : ""
-                    return who + model.preview.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                id: preview
+                // the first line's height, to centre the icons on it
+                readonly property real firstLineHeight: fontMetrics.height
+                FontMetrics { id: fontMetrics; font: preview.font }
+                anchors { left: statusIcons.right; leftMargin: statusIcons.width > 0 ? Theme.paddingSmall : 0; right: parent.right }
+                wrapMode: Text.Wrap
+                maximumLineCount: Math.max(1, Math.min(3, app.previewLines))
+                truncationMode: TruncationMode.Fade
+                font.pixelSize: Theme.fontSizeSmall * 0.8
+                color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
+                textFormat: Text.StyledText
+                text: {
+                    //% "Invitation. Long press to accept or decline."
+                    if (invited) return qsTrId("rustrx-la-invitation")
+                    //% "Replaced by a new room. Tap to go there."
+                    if (model.replaced_by && model.replaced_by.length) return qsTrId("rustrx-la-replaced")
+                    if (model.preview && model.preview.length) {
+                        var who = model.preview_sender
+                                  ? "<font color=\"" + (item.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor)
+                                    + "\">" + model.preview_sender.replace(/&/g, "&amp;").replace(/</g, "&lt;") + ":</font> " : ""
+                        var body = model.preview.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                        // one line: the breaks become spaces; more: kept
+                        body = maximumLineCount > 1 ? body.replace(/\n/g, "<br>") : body.replace(/\s+/g, " ")
+                        return who + body
+                    }
+                    if (model.topic && model.topic.length) return model.topic.replace(/\s+/g, " ")
+                    return model.encrypted
+                            //% "Encrypted"
+                            ? qsTrId("rustrx-la-encrypted")
+                            : ""
                 }
-                if (model.topic && model.topic.length) return model.topic.replace(/\s+/g, " ")
-                return model.encrypted
-                        //% "Encrypted"
-                        ? qsTrId("rustrx-la-encrypted")
-                        : ""
-            }
             }
         }
     }

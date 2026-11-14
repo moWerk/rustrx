@@ -144,6 +144,42 @@ Page {
             }
 
             TextSwitch {
+                //% "Separate people from rooms"
+                text: qsTrId("rustrx-la-separate-lists")
+                //% "Rooms and people as two tabs. When off, they share one list; the filter menu sorts and searches it."
+                description: qsTrId("rustrx-la-separate-lists-hint")
+                checked: app.separateLists
+                onCheckedChanged: app.separateLists = checked
+            }
+
+            TextSwitch {
+                //% "Separate favourites"
+                text: qsTrId("rustrx-la-separate-favs")
+                //% "The favourites as a tab of their own. When off, “Favourites on top” in the filter menu keeps them at hand."
+                description: qsTrId("rustrx-la-separate-favs-hint")
+                checked: app.separateFavs
+                onCheckedChanged: app.separateFavs = checked
+            }
+
+            ComboBox {
+                width: parent.width
+                //% "Message preview"
+                label: qsTrId("rustrx-la-preview-lines")
+                //% "Lines of the last message under a room's name."
+                description: qsTrId("rustrx-la-preview-lines-hint")
+                currentIndex: Math.max(0, Math.min(2, app.previewLines - 1))
+                menu: ContextMenu {
+                    //% "1 line"
+                    MenuItem { text: qsTrId("rustrx-me-lines-1") }
+                    //% "2 lines"
+                    MenuItem { text: qsTrId("rustrx-me-lines-2") }
+                    //% "3 lines"
+                    MenuItem { text: qsTrId("rustrx-me-lines-3") }
+                }
+                onCurrentIndexChanged: app.previewLines = currentIndex + 1
+            }
+
+            TextSwitch {
                 //% "Reopen the last chat"
                 text: qsTrId("rustrx-la-reopen-last")
                 //% "Rustrx starts in the room or chat that was open when it was closed."

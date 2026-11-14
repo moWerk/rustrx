@@ -45,6 +45,15 @@ ApplicationWindow {
     property alias sendReceipts: cfgSendReceipts.value
     property alias sendTyping: cfgSendTyping.value
     ConfigurationValue { id: cfgRoundAvatars; key: "/apps/harbour-rustrx/roundAvatars"; defaultValue: true }
+    // rooms and people as two tabs (default), or together in one list
+    property alias separateLists: cfgSeparateLists.value
+    ConfigurationValue { id: cfgSeparateLists; key: "/apps/harbour-rustrx/separateLists"; defaultValue: true }
+    // the favourites as a tab of their own (default), or not
+    property alias separateFavs: cfgSeparateFavs.value
+    ConfigurationValue { id: cfgSeparateFavs; key: "/apps/harbour-rustrx/separateFavs"; defaultValue: true }
+    // how many lines of the last message the room list shows (1 to 3)
+    property alias previewLines: cfgPreviewLines.value
+    ConfigurationValue { id: cfgPreviewLines; key: "/apps/harbour-rustrx/previewLines"; defaultValue: 1 }
     ConfigurationValue { id: cfgShowReadBy; key: "/apps/harbour-rustrx/showReadBy"; defaultValue: true }
     ConfigurationValue { id: cfgSendReceipts; key: "/apps/harbour-rustrx/sendReceipts"; defaultValue: true }
     ConfigurationValue { id: cfgSendTyping; key: "/apps/harbour-rustrx/sendTyping"; defaultValue: true }

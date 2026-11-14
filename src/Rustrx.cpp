@@ -198,6 +198,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     , m_rooms(new RoomModel(this))
     , m_people(new RoomModel(this))
     , m_favourites(new RoomModel(this))
+    , m_all(new RoomModel(this))
     , m_timeline(new TimelineModel(this))
 {
     s_instance = this;
@@ -368,6 +369,16 @@ void Rustrx::setFavsOnTop(bool on)
         return;
     QSettings().setValue("favsOnTop", on);
     emit settingsChanged();
+    distributeRooms(m_lastRooms);
+}
+
+void Rustrx::setRoomFilter(const QString &text)
+{
+    const QString t = text.trimmed();
+    if (t == m_roomFilter)
+        return;
+    m_roomFilter = t;
+    emit roomFilterChanged();
     distributeRooms(m_lastRooms);
 }
 
@@ -671,11 +682,18 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
             unread += rowUnread;
             ++chats;
         }
-        if (r.value("is_dm").toBool())
-            dms.append(r);
-        else
-            groups.append(r);
-        if (fav && !invited) {
+        // the search in the filter menu: only rooms whose name or address
+        // contains it (the unread counts above still count every room)
+        const bool shown = m_roomFilter.isEmpty()
+                || r.value("name").toString().contains(m_roomFilter, Qt::CaseInsensitive)
+                || r.value("alias").toString().contains(m_roomFilter, Qt::CaseInsensitive);
+        if (shown) {
+            if (r.value("is_dm").toBool())
+                dms.append(r);
+            else
+                groups.append(r);
+        }
+        if (shown && fav && !invited) {
             // the Favs tab mixes rooms and people, by activity, no sections
             QVariantMap f = r;
             f.insert("section", QString());
@@ -713,6 +731,10 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
     m_rooms->setRooms(groups);
     m_people->setRooms(dms);
     m_favourites->setRooms(favs);
+    // rooms and people together, in the same order
+    QVariantList everything = groups + dms;
+    sortRooms(everything);
+    m_all->setRooms(everything);
     if (unread != m_unreadTotal || chats != m_unreadChats) {
         m_unreadTotal = unread;
         m_unreadChats = chats;
@@ -771,6 +793,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_rooms->setRooms({});
         m_people->setRooms({});
         m_favourites->setRooms({});
+        m_all->setRooms({});
         m_notificationCounts.clear();
         m_roomsById.clear();
         m_homeserver.clear();

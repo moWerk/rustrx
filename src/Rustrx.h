@@ -50,6 +50,8 @@ class Rustrx : public QObject
     Q_PROPERTY(RoomModel *rooms READ rooms CONSTANT)
     Q_PROPERTY(RoomModel *people READ people CONSTANT)
     Q_PROPERTY(RoomModel *favourites READ favourites CONSTANT)
+    // everything in one list, for those who do not want rooms and people apart
+    Q_PROPERTY(RoomModel *all READ all CONSTANT)
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
     Q_PROPERTY(QString coreVersion READ coreVersion CONSTANT)
     Q_PROPERTY(bool downscaleImages READ downscaleImages WRITE setDownscaleImages NOTIFY settingsChanged)
@@ -58,6 +60,8 @@ class Rustrx : public QObject
     // with any order: favourites first; low priority rooms last
     Q_PROPERTY(bool favsOnTop READ favsOnTop WRITE setFavsOnTop NOTIFY settingsChanged)
     Q_PROPERTY(bool lowLast READ lowLast WRITE setLowLast NOTIFY settingsChanged)
+    // the lists show only rooms whose name or address contains this (not kept)
+    Q_PROPERTY(QString roomFilter READ roomFilter WRITE setRoomFilter NOTIFY roomFilterChanged)
     // notifications with the app closed: a stand-in, started with the session
     // and when the app is closed, wakes every few minutes
     Q_PROPERTY(bool background READ background WRITE setBackground NOTIFY settingsChanged)
@@ -84,6 +88,7 @@ public:
     RoomModel *rooms() const { return m_rooms; }
     RoomModel *people() const { return m_people; }
     RoomModel *favourites() const { return m_favourites; }
+    RoomModel *all() const { return m_all; }
     TimelineModel *timeline() const { return m_timeline; }
     QString coreVersion() const;
     bool downscaleImages() const;
@@ -94,6 +99,8 @@ public:
     void setFavsOnTop(bool on);
     bool lowLast() const;
     void setLowLast(bool on);
+    QString roomFilter() const { return m_roomFilter; }
+    void setRoomFilter(const QString &text);
     bool background() const;
     void setBackground(bool on);
     bool standIn() const { return m_standIn; }
@@ -135,6 +142,7 @@ signals:
     void stateChanged();
     void roomsLoadedChanged();
     void settingsChanged();
+    void roomFilterChanged();
     void syncStateChanged();
     void encryptionChanged();
     void openRoomChanged();
@@ -236,6 +244,7 @@ private:
     void distributeRooms(const QVariantList &rooms);
     void sortRooms(QVariantList &rooms) const;
     QVariantList m_lastRooms;   // as the core sent them, for a new order
+    QString m_roomFilter;
     // the stand-in: pass what was asked for to a new app process and leave
     bool handOver();
 
@@ -260,6 +269,7 @@ private:
     RoomModel *m_rooms;
     RoomModel *m_people;
     RoomModel *m_favourites;
+    RoomModel *m_all;
     TimelineModel *m_timeline;
     QElapsedTimer m_since;   // start-up timing in the journal
     bool m_firstRooms = true;

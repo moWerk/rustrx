@@ -99,7 +99,23 @@ ListItem {
         }
     }
 
-    onClicked: {
+    // A double tap replies, without the long press (side swipes belong to
+    // the tabs and the room page). A single tap (opening a picture, playing
+    // audio) waits the system's double-tap interval first: at the first
+    // release Qt cannot know whether a second tap follows.
+    onDoubleClicked: {
+        singleTap.stop()
+        if (!canAct || failed) return
+        msg.reply(model.event_id, (model.sender_name || model.sender) + ": " + (model.body || ""))
+    }
+    onClicked: singleTap.restart()
+    Timer {
+        id: singleTap
+        interval: Qt.styleHints.mouseDoubleClickInterval
+        onTriggered: msg.tapped()
+    }
+
+    function tapped() {
         if (msgType === "audio") {
             if (!player) return
             if (playing) { player.pause(); return }
