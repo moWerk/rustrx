@@ -113,7 +113,7 @@ Page {
             }
 
             TextSwitch {
-                //% "Show that I am typing"
+                //% "Show others that I am typing"
                 text: qsTrId("rustrx-la-send-typing")
                 checked: app.sendTyping
                 automaticCheck: false

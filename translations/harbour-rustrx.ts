@@ -845,7 +845,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-send-typing">
-        <source>Show that I am typing</source>
+        <source>Show others that I am typing</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-keys-file">
