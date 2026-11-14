@@ -127,4 +127,5 @@ grading scheme is described at [moWerk/llmgd-specs](https://github.com/moWerk/ll
 
 ## Licence
 
-GPL-3.0-or-later. matrix-rust-sdk is Apache-2.0.
+GPL-3.0-or-later. matrix-rust-sdk is Apache-2.0. The bundled Source Sans 3 Semibold
+(`qml/fonts/`, by Adobe, unmodified) is under the SIL Open Font License 1.1.

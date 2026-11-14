@@ -125,19 +125,22 @@ Page {
                 }
                 MouseArea {
                     id: filterButton
-                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                    // centred on the tabs' row: the bar adds a top margin for a
+                    // camera cutout (Jolla Phone 2026) above it
+                    anchors { right: parent.right; verticalCenter: parent.verticalCenter; verticalCenterOffset: tabBar.topMargin / 2 }
                     width: Theme.itemSizeSmall
                     height: Theme.itemSizeSmall
                     onClicked: sortHeader.sortOpen = !sortHeader.sortOpen
                     // three bars, each narrower than the one above
                     Column {
                         anchors.centerIn: parent
-                        spacing: Theme.paddingSmall / 2
+                        // half again as tall and wide as at first, the bars as thin
+                        spacing: Math.round(Theme.paddingSmall * 1.1)
                         Repeater {
                             model: 3
                             Rectangle {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                width: Theme.iconSizeExtraSmall * (1 - index / 3)
+                                width: Theme.iconSizeExtraSmall * 1.5 * (1 - index / 3)
                                 height: Math.max(2, Math.round(Theme.paddingSmall / 2))
                                 radius: height / 2
                                 color: filterButton.pressed || sortHeader.sortOpen
@@ -157,7 +160,7 @@ Page {
                     { key: "activity", text: qsTrId("rustrx-me-sort-activity") },
                     //% "Unread first"
                     { key: "unread", text: qsTrId("rustrx-me-sort-unread") },
-                    //% "By name"
+                    //% "Alphabetical"
                     { key: "name", text: qsTrId("rustrx-me-sort-name") }
                 ] : []
                 BackgroundItem {
@@ -186,6 +189,34 @@ Page {
                 anchors.fill: parent
                 model: isRooms ? rustrx.rooms : isFavs ? rustrx.favourites : rustrx.people
                 currentIndex: -1
+
+                // A list at its top stays at its top when rows arrive or move
+                // there (the first sync, a new message, the sort order); the
+                // view would keep the old first row and push the new one up
+                // under the tabs. Once scrolled, the place is left alone.
+                property bool pinnedTop: true
+                onMovementEnded: pinnedTop = atYBeginning
+                // after the view has applied the change: inside the model's
+                // signal it still has the old rows (Qt 5.6 has no callLater)
+                function keepTop() { if (pinnedTop) keepTopLater.restart() }
+                Timer {
+                    id: keepTopLater
+                    interval: 0
+                    onTriggered: if (list.pinnedTop && !list.moving) list.positionViewAtBeginning()
+                }
+                // at the start the tab bar is laid out after the list: the
+                // header's spacer grows by its height and the first rows
+                // ended up under the tabs
+                Connections {
+                    target: tabs
+                    onTabBarHeightChanged: list.keepTop()
+                }
+                Connections {
+                    target: list.model
+                    onRowsInserted: list.keepTop()
+                    onRowsMoved: list.keepTop()
+                    onModelReset: list.keepTop()
+                }
 
                 // back from a chat: keep the row that was open in view
                 Connections {

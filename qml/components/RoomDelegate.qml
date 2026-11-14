@@ -42,9 +42,11 @@ ListItem {
     // the room's picture, or its initial where it has none
     Rectangle {
         id: avatar
-        x: Theme.horizontalPageMargin
+        // 10 % smaller than the large icon size, centred in that slot, so the
+        // texts beside it stay where they were
+        x: Theme.horizontalPageMargin + (Theme.iconSizeLarge - width) / 2
         anchors.verticalCenter: parent.verticalCenter
-        width: Theme.iconSizeLarge
+        width: Math.round(Theme.iconSizeLarge * 0.9)
         height: width
         radius: width / 2
         color: picture.visible && !app.roundAvatars
@@ -101,7 +103,9 @@ ListItem {
             // the circle keeps this size; the digits grew into its padding
             height: Theme.iconSizeSmall
             radius: height / 2
-            color: model.highlights > 0 ? Theme.highlightColor : Theme.secondaryHighlightColor
+            // a shade (10 %) darker than the ambience's highlight colours, so the
+            // white digits stand out; a mention gets the brighter one
+            color: Qt.darker(model.highlights > 0 ? Theme.highlightColor : Theme.secondaryHighlightColor, 1.1)
 
             // a soft shadow under the digits, one label behind the other
             Label {
@@ -120,7 +124,9 @@ ListItem {
                 anchors.verticalCenterOffset: -Math.round(font.pixelSize * 0.04)
                 text: model.notifications > 0 ? model.notifications : model.unread
                 font.pixelSize: Theme.fontSizeExtraSmall
-                font.bold: true
+                // the file is the Semibold cut: asking for bold on top of it
+                // would make Qt embolden it again
+                font.family: app.semiboldFontFamily
                 color: "white"
             }
         }
@@ -130,7 +136,7 @@ ListItem {
         anchors {
             left: avatar.right
             right: age.left
-            leftMargin: Theme.paddingLarge
+            leftMargin: Theme.paddingLarge + (Theme.iconSizeLarge - avatar.width) / 2
             rightMargin: Theme.paddingMedium
             verticalCenter: parent.verticalCenter
         }

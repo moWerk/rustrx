@@ -32,6 +32,12 @@ ApplicationWindow {
     property real now: Date.now()
     Timer { interval: 60000; repeat: true; running: Qt.application.active; onTriggered: app.now = Date.now() }
 
+    // Source Sans 3 Semibold (Adobe, OFL), shipped unmodified: the system font
+    // is the same design but installed only in ExtraLight and Light, so bold
+    // text in it never got heavier (the unread badges)
+    FontLoader { id: semiboldFont; source: Qt.resolvedUrl("fonts/SourceSans3-Semibold.ttf") }
+    readonly property string semiboldFontFamily: semiboldFont.status === FontLoader.Ready ? semiboldFont.name : Theme.fontFamily
+
     // appearance settings, shared by every page and delegate
     property alias roundAvatars: cfgRoundAvatars.value
     property alias showReadBy: cfgShowReadBy.value
