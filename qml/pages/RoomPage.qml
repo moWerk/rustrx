@@ -231,6 +231,10 @@ Page {
         anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         verticalLayoutDirection: ListView.BottomToTop
         model: rustrx.timeline
+        // no current item: a message arriving at the newest end moved it, and
+        // the view gave it the focus, away from the composer in the header,
+        // so the keyboard closed on every message sent or received
+        currentIndex: -1
         spacing: Theme.paddingSmall
         clip: true
 
