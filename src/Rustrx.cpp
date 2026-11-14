@@ -532,7 +532,7 @@ void Rustrx::sendText(const QString &roomId, const QString &body, const QString 
     command(cmd);
 }
 
-void Rustrx::setRoomAvatar(const QString &roomId, const QString &path)
+QString Rustrx::prepareAvatar(const QString &path, const QString &cmd, QSize *size)
 {
     QString p = path;
     if (p.startsWith(QLatin1String("file://")))
@@ -541,8 +541,8 @@ void Rustrx::setRoomAvatar(const QString &roomId, const QString &path)
     reader.setAutoTransform(true);
     QImage image = reader.read();
     if (image.isNull()) {
-        emit errorOccurred(QStringLiteral("set_room_avatar"), reader.errorString());
-        return;
+        emit errorOccurred(cmd, reader.errorString());
+        return QString();
     }
     if (qMax(image.width(), image.height()) > 512)
         image = image.scaled(512, 512, Qt::KeepAspectRatio, Qt::SmoothTransformation);
@@ -552,11 +552,29 @@ void Rustrx::setRoomAvatar(const QString &roomId, const QString &path)
     const bool alpha = image.hasAlphaChannel();
     const QString out = cache + "/avatar-" + QString::number(QDateTime::currentMSecsSinceEpoch()) + (alpha ? ".png" : ".jpg");
     if (!image.save(out, alpha ? "PNG" : "JPG", alpha ? -1 : 90)) {
-        emit errorOccurred(QStringLiteral("set_room_avatar"), QStringLiteral("cannot write ") + out);
-        return;
+        emit errorOccurred(cmd, QStringLiteral("cannot write ") + out);
+        return QString();
     }
+    if (size)
+        *size = image.size();
+    return out;
+}
+
+void Rustrx::setRoomAvatar(const QString &roomId, const QString &path)
+{
+    QSize size;
+    const QString out = prepareAvatar(path, QStringLiteral("set_room_avatar"), &size);
+    if (out.isEmpty())
+        return;
     command({{"cmd", "set_room_avatar"}, {"room_id", roomId}, {"path", out},
-             {"w", image.width()}, {"h", image.height()}});
+             {"w", size.width()}, {"h", size.height()}});
+}
+
+void Rustrx::setOwnAvatar(const QString &path)
+{
+    const QString out = prepareAvatar(path, QStringLiteral("set_own_avatar"), nullptr);
+    if (!out.isEmpty())
+        command({{"cmd", "set_own_avatar"}, {"path", out}});
 }
 
 void Rustrx::sendFile(const QString &roomId, const QString &path, const QString &caption)
@@ -790,6 +808,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     if (type == QLatin1String("ready")) {
         m_ready = true;
         m_loggedIn = ev.value("logged_in").toBool();
+        m_keptUser = ev.value("kept_user").toString();
         emit stateChanged();
     } else if (type == QLatin1String("logged_in")) {
         m_logoutReason.clear();
@@ -806,6 +825,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     } else if (type == QLatin1String("logged_out")) {
         m_loggedIn = false;
         m_logoutReason = ev.value("reason").toString();
+        m_keptUser = ev.value("user_id").toString();
         m_userId.clear();
         m_openRoomId.clear();
         m_timeline->clear();

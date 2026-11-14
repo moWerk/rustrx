@@ -27,9 +27,16 @@ Page {
     property string errorText
 
     Component.onCompleted: {
-        if (rustrx.logoutReason === "session_expired")
+        // a session the server ended: the same user again keeps messages and keys
+        if (rustrx.keptUser.length) {
+            userField.text = rustrx.keptUser
+            //: %1 the Matrix ID
+            //% "The server ended the session. Log in again as %1: your messages and keys are still on this phone."
+            errorText = qsTrId("rustrx-la-session-kept").arg(rustrx.keptUser)
+        } else if (rustrx.logoutReason === "session_expired") {
             //% "The server no longer accepts the saved session. Log in again."
             errorText = qsTrId("rustrx-la-session-expired")
+        }
     }
 
     function login() {

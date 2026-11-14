@@ -15,7 +15,13 @@ impl Core {
             std::fs::create_dir_all(self.data_dir.join("avatars")).ok();
             match self.restore().await {
                 Ok(true) => {}
-                Ok(false) => self.emit(json!({"ev": "ready", "logged_in": false, "proto": PROTO})),
+                Ok(false) => {
+                    // a session the server ended earlier: whose store is kept
+                    let kept = std::fs::read_to_string(self.relogin_path()).ok()
+                        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+                        .and_then(|v| v["user_id"].as_str().map(str::to_owned));
+                    self.emit(json!({"ev": "ready", "logged_in": false, "proto": PROTO, "kept_user": kept}))
+                }
                 Err(e) => {
                     self.error("restore", &e);
                     self.emit(json!({"ev": "ready", "logged_in": false, "proto": PROTO}));
@@ -183,9 +189,39 @@ impl Core {
         }
     }
 
+    /// What a session that ended on the server's side leaves for the next
+    /// login: who it was and on which device ("relogin.json").
+    fn relogin_path(&self) -> PathBuf {
+        self.data_dir.join("relogin.json")
+    }
+
+    /// Before a login: the device to log in to again, if the kept store
+    /// belongs to this user (the store, keys and history then stay). A store
+    /// of another user, or one that cannot be matched (single sign-on with
+    /// only a server given), is wiped first, so accounts never share one.
+    fn kept_device(&self, user: Option<&str>) -> Option<String> {
+        let wanted = user.map(|u| u.trim().to_lowercase()).filter(|u| u.starts_with('@'));
+        if let Ok(raw) = std::fs::read_to_string(self.relogin_path()) {
+            let kept: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
+            let kept_user = kept["user_id"].as_str().unwrap_or("").to_lowercase();
+            let device = kept["device_id"].as_str().map(str::to_owned);
+            if wanted.as_deref() == Some(kept_user.as_str()) && device.is_some() {
+                tracing::info!("login: the kept store and device of this user");
+                return device;
+            }
+            tracing::info!("login: another user or none given, the kept store goes");
+            self.wipe_local_data();
+            return None;
+        }
+        // after a soft logout of an earlier version: the device only
+        std::fs::read_to_string(self.data_dir.join("device_id")).ok().map(|d| d.trim().to_owned())
+    }
+
     /// Local side of a logout the server already did: stop syncing, drop
-    /// the saved session, tell the UI. A soft logout keeps the crypto store
-    /// for a new login on the same device.
+    /// the saved session, tell the UI. The store, the media and the device
+    /// stay: logging in again as the same user goes on where it was, keys
+    /// and history included (a lost refresh answer ended sessions on
+    /// servers that rotate their tokens).
     pub(crate) async fn session_expired(&'static self, soft_logout: bool) {
         let teardown = {
             let mut st = self.state.lock().await;
@@ -197,21 +233,21 @@ impl Core {
         tracing::warn!(soft_logout, "the server no longer accepts this session");
         let client = teardown.stop().await;
         std::fs::remove_file(self.session_path()).ok();
-        if soft_logout {
-            // the crypto store belongs to this device: the next login asks for it again
-            if let Some(device) = client.as_ref().and_then(|c| c.device_id()) {
-                std::fs::write(self.data_dir.join("device_id"), device.as_str()).ok();
-            }
+        let user = client.as_ref().and_then(|c| c.user_id()).map(|u| u.to_string());
+        if let (Some(user), Some(device)) = (user.as_deref(), client.as_ref().and_then(|c| c.device_id())) {
+            let kept = json!({"user_id": user, "device_id": device.as_str()});
+            std::fs::write(self.relogin_path(), kept.to_string()).ok();
         } else {
             self.wipe_local_data();
         }
-        self.emit(json!({"ev": "logged_out", "reason": "session_expired", "soft_logout": soft_logout}));
+        self.emit(json!({"ev": "logged_out", "reason": "session_expired", "soft_logout": soft_logout, "user_id": user}));
     }
 
     /// Everything of the account on this phone: store, decrypted media, avatars.
     pub(crate) fn wipe_local_data(&self) {
         std::fs::remove_dir_all(self.data_dir.join("store")).ok();
         std::fs::remove_file(self.data_dir.join("device_id")).ok();
+        std::fs::remove_file(self.relogin_path()).ok();
         for dir in ["media", "avatars"] {
             std::fs::remove_dir_all(self.data_dir.join(dir)).ok();
             std::fs::create_dir_all(self.data_dir.join(dir)).ok();
@@ -279,11 +315,12 @@ impl Core {
         }
         let result: Result<Client> = async {
             let server = Self::server_of(Some(&user), &homeserver)?;
+            // before the store opens: this user's kept store, or a clean one
+            let device = self.kept_device(Some(&user));
             tracing::info!(%server, "login: building the client");
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
             tracing::info!("login: client built, sending the password");
-            // after a soft logout: the same device again, so the kept crypto store fits
-            let device = std::fs::read_to_string(self.data_dir.join("device_id")).ok();
+            // the same device again, so the kept crypto store fits
             let mut login = client
                 .matrix_auth()
                 .login_username(user.trim(), &password)
@@ -294,6 +331,7 @@ impl Core {
             }
             login.send().await.map_err(|e| anyhow!("{e}"))?;
             std::fs::remove_file(self.data_dir.join("device_id")).ok();
+            std::fs::remove_file(self.relogin_path()).ok();
             Ok(client)
         }
         .await;
@@ -312,6 +350,8 @@ impl Core {
         }
         let result: Result<Client> = async {
             let server = Self::server_of(user.as_deref(), &homeserver)?;
+            // before the store opens: this user's kept store, or a clean one
+            let device = self.kept_device(user.as_deref());
             tracing::info!(%server, "sso: building the client");
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
             tracing::info!("sso: client built, asking for the sign-on page");
@@ -327,7 +367,12 @@ impl Core {
             if let Some(idp) = given(&idp) {
                 builder = builder.identity_provider_id(idp);
             }
+            if let Some(d) = device.as_deref() {
+                builder = builder.device_id(d);
+            }
             builder.send().await.map_err(|e| anyhow!("{e}"))?;
+            std::fs::remove_file(self.data_dir.join("device_id")).ok();
+            std::fs::remove_file(self.relogin_path()).ok();
             Ok(client)
         }
         .await;

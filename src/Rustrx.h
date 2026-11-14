@@ -41,6 +41,8 @@ class Rustrx : public QObject
     Q_PROPERTY(QString userId READ userId NOTIFY stateChanged)
     Q_PROPERTY(QString homeserver READ homeserver NOTIFY stateChanged)
     Q_PROPERTY(QString logoutReason READ logoutReason NOTIFY stateChanged)
+    // the user whose store was kept when the server ended the session
+    Q_PROPERTY(QString keptUser READ keptUser NOTIFY stateChanged)
     Q_PROPERTY(QString syncState READ syncState NOTIFY syncStateChanged)
     Q_PROPERTY(QString verificationState READ verificationState NOTIFY encryptionChanged)
     Q_PROPERTY(QString recoveryState READ recoveryState NOTIFY encryptionChanged)
@@ -81,6 +83,7 @@ public:
     QString homeserver() const { return m_homeserver; }
     QString syncState() const { return m_syncState; }
     QString logoutReason() const { return m_logoutReason; }
+    QString keptUser() const { return m_keptUser; }
     QString verificationState() const { return m_verificationState; }
     QString recoveryState() const { return m_recoveryState; }
     QString openRoomId() const { return m_openRoomId; }
@@ -126,6 +129,8 @@ public:
     Q_INVOKABLE void sendFile(const QString &roomId, const QString &path, const QString &caption = QString());
     // a picture from the phone as the room's picture: upright, at most 512 px
     Q_INVOKABLE void setRoomAvatar(const QString &roomId, const QString &path);
+    // a picture from the phone as one's own picture, prepared the same way
+    Q_INVOKABLE void setOwnAvatar(const QString &path);
     Q_INVOKABLE void sendVoice(const QString &roomId, const QString &path, qint64 durationMs);
     Q_INVOKABLE void getMedia(const QString &roomId, const QString &eventId, bool thumb);
     // a copy in Downloads, where other apps may read it; answered by mediaExported
@@ -247,6 +252,8 @@ private:
     void distributeRooms(const QVariantList &rooms);
     void sortRooms(QVariantList &rooms) const;
     QVariantList m_lastRooms;   // as the core sent them, for a new order
+    // an avatar picture upright, at most 512 px, in the cache; its path and size
+    QString prepareAvatar(const QString &path, const QString &cmd, QSize *size);
     QString m_roomFilter;
     // the stand-in: pass what was asked for to a new app process and leave
     bool handOver();
@@ -258,6 +265,7 @@ private:
     QString m_homeserver;
     QString m_syncState = QStringLiteral("idle");
     QString m_logoutReason;
+    QString m_keptUser;
     QString m_verificationState = QStringLiteral("unknown");
     QString m_recoveryState = QStringLiteral("unknown");
     QString m_openRoomId;
