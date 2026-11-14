@@ -26,7 +26,10 @@ ApplicationWindow {
     // stack; everything else is pushed on top of the main page.
     initialPage: Component { StartPage { } }
     cover: coverSource
-    allowedOrientations: defaultAllowedOrientations
+    // portrait and landscape: the room list and the chats suit both (the
+    // camera page keeps to portrait)
+    allowedOrientations: Orientation.All
+    _defaultPageOrientations: Orientation.All
 
     // the rows' "3m" age labels follow this clock
     property real now: Date.now()

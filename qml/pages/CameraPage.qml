@@ -23,6 +23,8 @@ import QtSensors 5.2
 // the tap, then the shot with Send and Retake. The page closes after Send.
 Page {
     id: page
+    // the viewfinder is laid out for portrait
+    allowedOrientations: Orientation.Portrait
 
     signal captured(string path)
 

@@ -320,7 +320,7 @@ ListItem {
                     // image, video thumbnail or sticker
                     Item {
                         visible: isMedia
-                        width: Math.min(innerMax, Screen.width * 0.6)
+                        width: Math.min(innerMax, Math.min(msg.width, Screen.width) * 0.6)
                         height: visible ? Math.min(width, Math.max(Theme.itemSizeLarge, width * (model.h && model.w ? model.h / model.w : 0.75))) : 0
 
                         Image {
@@ -401,7 +401,7 @@ ListItem {
                     // an upload on its way: how much of the file is at the server
                     Rectangle {
                         visible: uploading
-                        width: Math.min(innerMax, Screen.width * 0.6)
+                        width: Math.min(innerMax, Math.min(msg.width, Screen.width) * 0.6)
                         height: Theme.paddingSmall
                         radius: height / 2
                         color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
