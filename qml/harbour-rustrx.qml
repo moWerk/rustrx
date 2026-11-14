@@ -60,6 +60,9 @@ ApplicationWindow {
     ConfigurationValue { id: cfgShowReadBy; key: "/apps/harbour-rustrx/showReadBy"; defaultValue: true }
     ConfigurationValue { id: cfgSendReceipts; key: "/apps/harbour-rustrx/sendReceipts"; defaultValue: true }
     ConfigurationValue { id: cfgSendTyping; key: "/apps/harbour-rustrx/sendTyping"; defaultValue: true }
+    // the line under the message field that says the room sees you typing
+    property alias typingHint: cfgTypingHint.value
+    ConfigurationValue { id: cfgTypingHint; key: "/apps/harbour-rustrx/typingHint"; defaultValue: true }
     // start in the chat that was open when the app was closed (off by default)
     property alias reopenLast: cfgReopenLast.value
     property alias lastRoom: cfgLastRoom.value

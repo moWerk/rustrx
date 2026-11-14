@@ -120,6 +120,17 @@ Page {
                 onClicked: app.sendTyping = !app.sendTyping
             }
 
+            TextSwitch {
+                //% "Say so under the message field"
+                text: qsTrId("rustrx-la-typing-hint")
+                //% "A line under the field reminds you that the room sees you typing."
+                description: qsTrId("rustrx-la-typing-hint-hint")
+                enabled: app.sendTyping
+                checked: app.typingHint
+                automaticCheck: false
+                onClicked: app.typingHint = !app.typingHint
+            }
+
             //% "Notifications"
             SectionHeader { text: qsTrId("rustrx-se-notifications") }
 

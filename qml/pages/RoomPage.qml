@@ -360,7 +360,10 @@ Page {
                     width: parent.width - sendButton.width
                     //% "Message"
                     placeholderText: qsTrId("rustrx-ph-message")
-                    label: roomName
+                    //: %1 the room's name
+                    //% "Typing to %1"
+                    label: app.sendTyping && app.typingHint ? qsTrId("rustrx-la-typing-to").arg(roomName) : ""
+                    labelVisible: label !== ""
                     Component.onCompleted: {
                         page.inputArea = input
                         text = rustrx.draft(roomId)
