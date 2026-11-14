@@ -34,6 +34,9 @@ Item {
     // whether a notification shows the message itself or only a count
     property alias notifyText: cfgNotifyText.value
     ConfigurationValue { id: cfgNotifyText; key: "/apps/harbour-rustrx/notifyText"; defaultValue: true }
+    // the stand-in's line in the events view, on unless switched off
+    property alias showBackgroundLine: cfgShowBackgroundLine.value
+    ConfigurationValue { id: cfgShowBackgroundLine; key: "/apps/harbour-rustrx/showBackgroundLine"; defaultValue: true }
 
     Connections {
         target: rustrx
@@ -177,6 +180,7 @@ Item {
             else
                 old[i].close()
         }
-        if (rustrx.standIn) standInNote.publish()
+        // the line can be switched off (Settings); the stand-in runs either way
+        if (rustrx.standIn && cfgShowBackgroundLine.value) standInNote.publish()
     }
 }
