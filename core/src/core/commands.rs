@@ -515,9 +515,32 @@ impl Core {
             Profile => {
                 let client = self.client().await?;
                 let name = client.account().get_display_name().await?;
+                // one's own picture, cached beside the rooms' as "_own.img"
+                let file = self.data_dir.join("avatars").join("_own.img");
+                let format = MediaFormat::Thumbnail(MediaThumbnailSettings::new(uint!(256), uint!(256)));
+                let avatar = match client.account().get_avatar(format).await {
+                    Ok(Some(bytes)) if std::fs::write(&file, &bytes).is_ok() => Some(file.to_string_lossy().into_owned()),
+                    Ok(None) => {
+                        std::fs::remove_file(&file).ok();
+                        None
+                    }
+                    _ => file.exists().then(|| file.to_string_lossy().into_owned()),
+                };
+                let version = std::fs::metadata(&file).and_then(|m| m.modified()).ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64);
                 self.emit(json!({"ev": "profile", "display_name": name,
-                                 "user_id": client.user_id().map(|u| u.to_string())}));
+                                 "user_id": client.user_id().map(|u| u.to_string()),
+                                 "avatar": avatar, "avatar_v": version}));
                 Ok(())
+            }
+            SetOwnAvatar { path } => {
+                let client = self.client().await?;
+                let data = std::fs::read(&path)?;
+                let mime = mime_guess::from_path(&path).first_or(mime::IMAGE_JPEG);
+                client.account().upload_avatar(&mime, data).await?;
+                std::fs::remove_file(&path).ok();
+                // the new picture to the settings page
+                Box::pin(self.handle(Command::Profile)).await
             }
             SetDisplayName { name } => {
                 let client = self.client().await?;

@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import Sailfish.Pickers 1.0
 import "../components"
 
 // Account, encryption (verification, recovery), devices, about.
@@ -209,6 +210,49 @@ Page {
                 //% "Homeserver"
                 label: qsTrId("rustrx-la-homeserver")
                 value: rustrx.homeserver
+            }
+
+            // one's own picture; a tap picks a new one
+            BackgroundItem {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Theme.itemSizeHuge
+                height: width
+                onClicked: pageStack.push(ownPicturePicker)
+                Rectangle {
+                    anchors.fill: parent
+                    radius: app.roundAvatars ? width / 2 : 0
+                    visible: !ownPicture.visible
+                    color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
+                    Label {
+                        anchors.centerIn: parent
+                        text: (displayName || rustrx.userId.slice(1) || "?").charAt(0).toUpperCase()
+                        font.pixelSize: Theme.fontSizeHuge
+                        color: Theme.primaryColor
+                    }
+                }
+                Image {
+                    id: ownPicture
+                    anchors.fill: parent
+                    visible: status === Image.Ready
+                    asynchronous: true
+                    fillMode: Image.PreserveAspectCrop
+                    sourceSize.width: width
+                    sourceSize.height: height
+                    // the version makes a changed picture load past Qt's image cache
+                    source: ownAvatar.length ? "file://" + ownAvatar + "?v=" + ownAvatarVersion : ""
+                    layer.enabled: app.roundAvatars
+                    layer.effect: ShaderEffect {
+                        fragmentShader: "
+                            varying highp vec2 qt_TexCoord0;
+                            uniform sampler2D source;
+                            uniform lowp float qt_Opacity;
+                            void main() {
+                                highp float d = length(qt_TexCoord0 - vec2(0.5));
+                                lowp float a = 1.0 - smoothstep(0.49, 0.5, d);
+                                gl_FragColor = texture2D(source, qt_TexCoord0) * a * qt_Opacity;
+                            }"
+                    }
+                }
             }
 
             TextField {
@@ -484,6 +528,23 @@ Page {
         VerticalScrollDecorator { }
     }
 
+    property string ownAvatar
+    property real ownAvatarVersion
+
+    Component {
+        id: ownPicturePicker
+        ImagePickerPage {
+            //% "Your picture"
+            title: qsTrId("rustrx-he-own-picture")
+            onSelectedContentPropertiesChanged: {
+                if (!selectedContentProperties.filePath) return
+                rustrx.setOwnAvatar(selectedContentProperties.filePath)
+                //% "Setting your picture"
+                Notices.show(qsTrId("rustrx-no-own-picture"), Notice.Short)
+            }
+        }
+    }
+
     RemorsePopup { id: remorse }
     RemorsePopup { id: resetRemorse }
     property string resetApprovalUrl
@@ -494,7 +555,11 @@ Page {
     Connections {
         target: rustrx
         onStorageInfo: page.storage = info
-        onProfile: displayName = profile.display_name || ""
+        onProfile: {
+            displayName = profile.display_name || ""
+            ownAvatar = profile.avatar || ""
+            ownAvatarVersion = profile.avatar_v || 0
+        }
         //% "Encrypted messages restored. Rooms fill in as keys arrive."
         onRecoveryDone: { recoveryResult = qsTrId("rustrx-la-restored"); keyField.text = "" }
         onIdentityResetApproval: {
