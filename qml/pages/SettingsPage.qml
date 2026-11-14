@@ -54,13 +54,25 @@ Page {
         }
     }
 
+    // opened from the main page's line about the recovery key: its field in view
+    property bool showRecovery
+    onStatusChanged: if (status === PageStatus.Active && showRecovery) {
+        showRecovery = false
+        settingsFlick.contentY = Math.max(0, Math.min(keyField.y - Theme.itemSizeLarge,
+                                                       settingsFlick.contentHeight - settingsFlick.height))
+        keyField.forceActiveFocus()
+    }
+
     SilicaFlickable {
+        id: settingsFlick
         anchors.fill: parent
         contentHeight: column.height
 
         Column {
             id: column
             width: parent.width
+            // room between the buttons and the texts around them
+            spacing: Theme.paddingMedium
 
             //% "Settings"
             PageHeader { title: qsTrId("rustrx-he-settings") }

@@ -212,7 +212,16 @@ Page {
                     MenuItem {
                         //% "Settings"
                         text: qsTrId("rustrx-me-settings")
-                        onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
+                        // unverified: the verification starts right away; the
+                        // recovery key: the settings, scrolled to its field
+                        onClicked: {
+                            if (rustrx.verificationState === "unverified") {
+                                rustrx.command({ cmd: "verification_request_self" })
+                                pageStack.push(Qt.resolvedUrl("VerificationPage.qml"), { waiting: true })
+                            } else {
+                                pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { showRecovery: true })
+                            }
+                        }
                     }
                 }
 
