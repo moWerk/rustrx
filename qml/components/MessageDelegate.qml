@@ -70,10 +70,18 @@ ListItem {
     }
 
     property bool exporting
+    // a tap opens the copy in another app; "Save to Downloads" only saves it
+    property bool exportOpens
 
     // other apps cannot read this app's data folder: a copy goes to Downloads
     function openMedia() {
         exporting = true
+        exportOpens = true
+        rustrx.exportMedia(roomId, model.event_id)
+    }
+    function saveMedia() {
+        exporting = true
+        exportOpens = false
         rustrx.exportMedia(roomId, model.event_id)
     }
 
@@ -116,7 +124,8 @@ ListItem {
         onMediaExported: {
             if (!exporting || eventId !== model.event_id) return
             exporting = false
-            Qt.openUrlExternally("file://" + path)
+            if (exportOpens) Qt.openUrlExternally("file://" + path)
+            else Notices.show(qsTrId("rustrx-no-saved").arg(path))
         }
     }
 
@@ -506,19 +515,25 @@ ListItem {
                 //% "Copy text"
                 text: qsTrId("rustrx-me-copy")
                 visible: model.body && model.body.length > 0
-                onClicked: Clipboard.text = model.body
+                onClicked: {
+                    Clipboard.text = model.body
+                    //% "Text copied"
+                    Notices.show(qsTrId("rustrx-no-text-copied"), Notice.Short)
+                }
             }
             MenuItem {
                 //% "Copy link"
                 text: qsTrId("rustrx-me-copy-link")
                 visible: canAct && !failed && msg.eventId.length > 0
-                onClicked: Clipboard.text = "https://matrix.to/#/" + encodeURIComponent(roomId) + "/" + encodeURIComponent(msg.eventId)
+                onClicked: {
+                    Clipboard.text = "https://matrix.to/#/" + encodeURIComponent(roomId) + "/" + encodeURIComponent(msg.eventId)
+                    Notices.show(qsTrId("rustrx-no-link-copied"), Notice.Short)
+                }
             }
             MenuItem {
-                //% "Save"
-                text: qsTrId("rustrx-me-save")
+                text: qsTrId("rustrx-me-save-downloads")
                 visible: isMedia || isFile
-                onClicked: openMedia()
+                onClicked: saveMedia()
             }
             MenuItem {
                 //% "Report"

@@ -25,6 +25,9 @@ Page {
     Component.onCompleted: rustrx.command({ cmd: "devices" })
 
     ListModel { id: deviceModel }
+    // a spinner until the list arrives; the error in its place if it does not
+    property bool loading: true
+    property string loadError
 
     SilicaListView {
         id: list
@@ -82,10 +85,17 @@ Page {
             }
         }
 
+        BusyIndicator {
+            anchors.centerIn: parent
+            size: BusyIndicatorSize.Large
+            running: page.loading
+        }
+
         ViewPlaceholder {
-            enabled: list.count === 0
-            //% "Loading devices…"
-            text: qsTrId("rustrx-la-loading-devices")
+            enabled: !page.loading && list.count === 0
+            //% "The devices could not be loaded"
+            text: qsTrId("rustrx-la-devices-failed")
+            hintText: page.loadError
         }
 
         VerticalScrollDecorator { }
@@ -127,9 +137,11 @@ Page {
     Connections {
         target: rustrx
         onDevices: {
+            page.loading = false
             deviceModel.clear()
             for (var i = 0; i < devices.length; i++) deviceModel.append(devices[i])
         }
         onDeviceDeleted: rustrx.command({ cmd: "devices" })
+        onErrorOccurred: if (cmd === "devices") { page.loading = false; page.loadError = message }
     }
 }

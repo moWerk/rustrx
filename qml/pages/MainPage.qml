@@ -306,10 +306,7 @@ Page {
                     MenuItem {
                         //% "Settings"
                         text: qsTrId("rustrx-me-settings")
-                        // the settings, scrolled to the encryption section, where
-                        // verifying from another device and the recovery key sit
-                        // together: without another device only the key helps
-                        onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { showEncryption: true })
+                        onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
                     }
                 }
 
@@ -324,7 +321,10 @@ Page {
                         width: parent.width
                         height: visible ? Theme.itemSizeSmall : 0
                         visible: rustrx.verificationState === "unverified" || rustrx.recoveryState === "incomplete"
-                        onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
+                        // the settings, scrolled to the encryption section, where
+                        // verifying from another device and the recovery key sit
+                        // together: without another device only the key helps
+                        onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { showEncryption: true })
 
                         Label {
                             x: Theme.horizontalPageMargin
@@ -360,7 +360,10 @@ Page {
                           ? qsTrId("rustrx-la-empty")
                           //% "Not connected"
                           : qsTrId("rustrx-la-not-connected")
-                    hintText: isRooms
+                    hintText: !(rustrx.syncState === "running" || rustrx.syncState === "idle")
+                              //% "Rustrx connects again by itself once the network is back."
+                              ? qsTrId("rustrx-la-offline-hint")
+                              : isRooms
                               //% "Join or create a room with Add Room / Contact in the pulley menu."
                               ? qsTrId("rustrx-la-empty-rooms-hint")
                               : isFavs

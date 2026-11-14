@@ -89,7 +89,22 @@ Page {
     function startEdit(eventId, text) {
         replyToId = ""; replyToText = ""
         editId = eventId; editText = text
-        if (inputArea) { inputArea.text = text; inputArea.forceActiveFocus(); inputArea.cursorPosition = text.length }
+        if (inputArea) { inputArea.text = text; inputArea.cursorPosition = text.length }
+        showComposer()
+    }
+
+    // Reply and Edit come from a message's menu: while it was open the list
+    // scrolled to keep it in view, and the text field (the list's header, at
+    // the bottom) went out of sight. Once the menu has closed, back to the
+    // bottom with the field focused.
+    function showComposer() { composerLater.restart() }
+    Timer {
+        id: composerLater
+        interval: 350
+        onTriggered: {
+            list.positionViewAtBeginning()
+            if (page.inputArea) page.inputArea.forceActiveFocus()
+        }
     }
 
     function cancelEdit() {
@@ -132,7 +147,10 @@ Page {
     PageHeader {
         id: header
         title: roomName
-        description: rustrx.syncState !== "running"
+        description: rustrx.syncState === "idle"
+                     //% "Connecting"
+                     ? qsTrId("rustrx-la-cover-connecting")
+                     : rustrx.syncState !== "running"
                      //% "Not connected"
                      ? qsTrId("rustrx-la-not-connected")
                      : typingNames.length === 1
@@ -242,30 +260,54 @@ Page {
             Item { width: 1; height: Theme.paddingMedium }
 
             // editing: the message being changed, tap to cancel
-            Label {
+            // an edit or a reply in progress: the line and a clear button to
+            // drop it (a tap on the line drops it too)
+            Item {
                 visible: editId.length > 0
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                truncationMode: TruncationMode.Fade
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.secondaryHighlightColor
-                //: %1 the original text
-                //% "Editing: %1"
-                text: qsTrId("rustrx-la-editing").arg(editText)
-                MouseArea { anchors.fill: parent; onClicked: page.cancelEdit() }
+                width: parent.width
+                height: visible ? Theme.itemSizeExtraSmall : 0
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - x - clearEdit.width
+                    anchors.verticalCenter: parent.verticalCenter
+                    truncationMode: TruncationMode.Fade
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.secondaryHighlightColor
+                    //: %1 the original text
+                    //% "Editing: %1"
+                    text: qsTrId("rustrx-la-editing").arg(editText)
+                    MouseArea { anchors.fill: parent; onClicked: page.cancelEdit() }
+                }
+                IconButton {
+                    id: clearEdit
+                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                    icon.source: "image://theme/icon-m-clear"
+                    onClicked: page.cancelEdit()
+                }
             }
 
-            Label {
+            Item {
                 visible: replyToId.length > 0
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                truncationMode: TruncationMode.Fade
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.secondaryHighlightColor
-                //: %1 the quoted text
-                //% "Replying to: %1"
-                text: qsTrId("rustrx-la-replying-to").arg(replyToText)
-                MouseArea { anchors.fill: parent; onClicked: { replyToId = ""; replyToText = "" } }
+                width: parent.width
+                height: visible ? Theme.itemSizeExtraSmall : 0
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - x - clearReply.width
+                    anchors.verticalCenter: parent.verticalCenter
+                    truncationMode: TruncationMode.Fade
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.secondaryHighlightColor
+                    //: %1 the quoted text
+                    //% "Replying to: %1"
+                    text: qsTrId("rustrx-la-replying-to").arg(replyToText)
+                    MouseArea { anchors.fill: parent; onClicked: { replyToId = ""; replyToText = "" } }
+                }
+                IconButton {
+                    id: clearReply
+                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                    icon.source: "image://theme/icon-m-clear"
+                    onClicked: { replyToId = ""; replyToText = "" }
+                }
             }
 
             Row {
@@ -319,7 +361,7 @@ Page {
                 if (editId.length) page.cancelEdit()
                 replyToId = eventId
                 replyToText = text
-                if (inputArea) inputArea.focus = true
+                page.showComposer()
             }
             onEdit: page.startEdit(eventId, text)
             onResend: {

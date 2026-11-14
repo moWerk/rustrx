@@ -131,9 +131,14 @@ ApplicationWindow {
         onErrorOccurred: {
             // the settings page shows the recovery errors in place
             if (cmd === "recovery_recover" || cmd === "recovery_enable" || cmd === "recovery_reset") return
-            //: transient error line, %1 the command, %2 the message
-            //% "%1 failed: %2"
-            Notices.show(qsTrId("rustrx-no-command-failed").arg(cmd).arg(message), Notice.Long)
+            var what = actionLabel(cmd)
+            Notices.show(what.length
+                         //: transient error line, %1 what was tried, %2 the server's or the network's message
+                         //% "%1 failed: %2"
+                         ? qsTrId("rustrx-no-action-failed").arg(what).arg(message)
+                         //: transient error line for anything without its own name, %1 the message
+                         //% "Something went wrong: %1"
+                         : qsTrId("rustrx-no-something-failed").arg(message), Notice.Long)
         }
         // a tapped notification: bring the window up and show the room
         // (on a cold start route() has taken it already)
@@ -147,6 +152,45 @@ ApplicationWindow {
         onShareRequested: {
             var shared = rustrx.takePendingShare()
             if (shared.files || shared.text) { app.activate(); app.showShare(files, text) }
+        }
+    }
+
+    // the core's command, as the user knows the action; "" for the rare ones
+    function actionLabel(cmd) {
+        switch (cmd) {
+        //% "Sending"
+        case "send_text": case "send_file": return qsTrId("rustrx-la-act-send")
+        //% "Reacting"
+        case "react": return qsTrId("rustrx-la-act-react")
+        //% "Removing the message"
+        case "redact": return qsTrId("rustrx-la-act-redact")
+        //% "Editing"
+        case "edit": return qsTrId("rustrx-la-act-edit")
+        //% "Joining the room"
+        case "join_by_id_or_alias": case "join_room": return qsTrId("rustrx-la-act-join")
+        //% "Starting the chat"
+        case "create_dm": return qsTrId("rustrx-la-act-dm")
+        //% "Creating the room"
+        case "create_room": return qsTrId("rustrx-la-act-create-room")
+        //% "Leaving the room"
+        case "leave_room": return qsTrId("rustrx-la-act-leave")
+        //% "Inviting"
+        case "invite": return qsTrId("rustrx-la-act-invite")
+        //% "Changing the room"
+        case "set_room_name": case "set_room_topic": return qsTrId("rustrx-la-act-room")
+        //% "Changing favourites"
+        case "set_favourite": case "set_low_priority": return qsTrId("rustrx-la-act-fav")
+        //% "Changing notifications"
+        case "set_notification_mode": return qsTrId("rustrx-la-act-notify")
+        //% "Voting"
+        case "poll_vote": return qsTrId("rustrx-la-act-vote")
+        //% "Searching"
+        case "search": return qsTrId("rustrx-la-act-search")
+        //% "Loading older messages"
+        case "paginate_back": return qsTrId("rustrx-la-act-older")
+        //% "Loading the picture"
+        case "get_media": case "export_media": return qsTrId("rustrx-la-act-media")
+        default: return ""
         }
     }
 

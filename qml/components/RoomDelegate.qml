@@ -275,7 +275,13 @@ ListItem {
                 visible: invited
                 //% "Decline"
                 text: qsTrId("rustrx-me-decline")
-                onClicked: rustrx.command({ cmd: "leave_room", room_id: model.room_id })
+                onClicked: {
+                    var id = model.room_id, core = rustrx
+                    //% "Declining"
+                    item.remorseAction(qsTrId("rustrx-re-declining"), function () {
+                        core.command({ cmd: "leave_room", room_id: id })
+                    })
+                }
             }
             MenuItem {
                 visible: !invited
