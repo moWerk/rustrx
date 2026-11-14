@@ -1,6 +1,6 @@
 #!/bin/bash
-# Tag and publish a release: push main, tag vVERSION, create a GitHub
-# pre-release with the RPM and the notes. The repo must exist (created by
+# Tag and publish a release: push main, tag vVERSION, create the GitHub
+# release (marked latest, so Harpoon and others can follow it) with the RPM and the notes. The repo must exist (created by
 # the author). usage: tools/release.sh VERSION NOTES.md
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -13,4 +13,4 @@ git push -u origin main
 git rev-parse -q --verify "refs/tags/v$v" >/dev/null && { echo "tag v$v exists"; exit 1; }
 git tag -a "v$v" -m "Rustrx $v"
 git push origin "v$v"
-gh release create "v$v" "$rpm" --prerelease --title "Rustrx $v" --notes-file "$notes"
+gh release create "v$v" "$rpm" --latest --title "Rustrx $v" --notes-file "$notes"
