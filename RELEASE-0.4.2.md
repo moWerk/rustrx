@@ -10,6 +10,7 @@ Rustrx 0.4.2: single sign-on works again, no more logouts when the network drops
 - **Encryption:** the "not verified" line opens the settings right at the encryption section, with "Verify this device" and the recovery key field together. For an account with no other device and no recovery key, "Reset encryption" makes new keys and a new backup (older encrypted messages stay unreadable); servers with an account service ask you to approve it in the browser.
 - On servers that manage logins in the browser, a hint says to use single sign-on if the password is refused (tchncs.de refused a correct password).
 - More space between buttons and texts on the login and settings pages.
+- An empty tab (no rooms, no favourites yet) says so and how to add one, instead of a spinner.
 
 **Tested** by the author on a Jolla Phone 2026 and a Pro¹-X (SFOS 5.2) with accounts on matrix.org and tchncs.de: single sign-on, restoring the keys with the recovery key, the settings position. Not yet tested: the invitation notification, "Reset encryption", and the logout fix with the network actually gone.
 

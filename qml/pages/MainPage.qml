@@ -251,27 +251,28 @@ Page {
                 delegate: RoomDelegate { }
 
                 // the first sync takes a moment: a spinner first, the text after
-                Timer { id: firstSyncGrace; interval: 10000; running: true }
+                // a spinner only until the first room list is in; an empty tab
+                // then says so at once
                 BusyIndicator {
                     anchors.centerIn: parent
                     size: BusyIndicatorSize.Large
-                    running: list.count === 0 && firstSyncGrace.running && rustrx.syncState !== "error"
+                    running: list.count === 0 && !rustrx.roomsLoaded && rustrx.syncState !== "error"
                 }
 
                 ViewPlaceholder {
-                    enabled: list.count === 0 && !firstSyncGrace.running
+                    enabled: list.count === 0 && (rustrx.roomsLoaded || rustrx.syncState === "error")
                     text: rustrx.syncState === "running" || rustrx.syncState === "idle"
                           //% "Nothing here yet"
                           ? qsTrId("rustrx-la-empty")
                           //% "Not connected"
                           : qsTrId("rustrx-la-not-connected")
                     hintText: isRooms
-                              //% "Rooms you join appear here, sorted by activity."
+                              //% "Join or create a room with Add Room / Contact in the pulley menu."
                               ? qsTrId("rustrx-la-empty-rooms-hint")
                               : isFavs
                               //% "Long press a room or a person and choose Add to Favs."
                               ? qsTrId("rustrx-la-empty-favs-hint")
-                              //% "Direct chats appear here."
+                              //% "Start a chat with someone with Add Room / Contact in the pulley menu."
                               : qsTrId("rustrx-la-empty-people-hint")
                 }
 

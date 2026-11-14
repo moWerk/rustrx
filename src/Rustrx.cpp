@@ -670,8 +670,10 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     if (type == QLatin1String("ready") || type == QLatin1String("logged_in") || type == QLatin1String("sync_state")
             || (type == QLatin1String("rooms") && m_firstRooms)) {
         qInfo().noquote() << "startup:" << type << "after" << m_since.elapsed() << "ms";
-        if (type == QLatin1String("rooms"))
+        if (type == QLatin1String("rooms")) {
             m_firstRooms = false;
+            emit roomsLoadedChanged();
+        }
     }
     if ((type == QLatin1String("ready") || type == QLatin1String("logged_in"))
             && ev.value("proto").toInt() != kProto)
@@ -708,6 +710,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_verificationState = QStringLiteral("unknown");
         m_recoveryState = QStringLiteral("unknown");
         m_firstRooms = true;
+        emit roomsLoadedChanged();
         if (m_unreadTotal || m_unreadChats) {
             m_unreadTotal = m_unreadChats = 0;
             emit unreadChanged();

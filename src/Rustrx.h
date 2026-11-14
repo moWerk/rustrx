@@ -34,6 +34,8 @@ class Rustrx : public QObject
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "net.mowerk.harbour_rustrx")
     Q_PROPERTY(bool ready READ ready NOTIFY stateChanged)
+    // the first room list of this login has arrived (empty or not)
+    Q_PROPERTY(bool roomsLoaded READ roomsLoaded NOTIFY roomsLoadedChanged)
     Q_PROPERTY(bool loggedIn READ loggedIn NOTIFY stateChanged)
     Q_PROPERTY(bool loggingIn READ loggingIn NOTIFY stateChanged)
     Q_PROPERTY(QString userId READ userId NOTIFY stateChanged)
@@ -64,6 +66,7 @@ public:
     ~Rustrx();
 
     bool ready() const { return m_ready; }
+    bool roomsLoaded() const { return !m_firstRooms; }
     bool loggedIn() const { return m_loggedIn; }
     bool loggingIn() const { return m_loggingIn; }
     QString userId() const { return m_userId; }
@@ -121,6 +124,7 @@ public:
 
 signals:
     void stateChanged();
+    void roomsLoadedChanged();
     void settingsChanged();
     void syncStateChanged();
     void encryptionChanged();
