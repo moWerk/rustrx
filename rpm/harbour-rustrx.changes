@@ -20,6 +20,9 @@
   section with the LLMGD grade.
 - Fixed: copy and save feedback, a visible cancel for replies and edits,
   error messages in words, remorse when declining an invitation.
+- New: room search in the filter menu; mute, lock and read status before
+  the preview; 1 to 3 preview lines; one list instead of tabs, optional;
+  double tap to reply; upgraded rooms lead to their successor.
 
 * Fri Nov 13 2026 moWerk <mo@mowerk.net> - 0.4.1
 - New: message bubbles; own messages right, others left with the sender's
