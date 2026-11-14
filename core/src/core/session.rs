@@ -228,7 +228,11 @@ impl Core {
         }
         // a server with an account service (MAS, matrix.org since 2025) signs
         // new people up in the browser; the password login works afterwards
-        let signup = match client.oauth().server_metadata().await {
+        let meta = client.oauth().server_metadata().await;
+        // an account service: logins belong in the browser (single sign-on);
+        // tchncs.de refused a correct password over m.login.password
+        let account_service = meta.is_ok();
+        let signup = match meta {
             Ok(meta) if meta.prompt_values_supported.iter().any(|p| p.as_str() == "create") => {
                 meta.issuer.join("register").ok().map(|u| u.to_string())
             }
@@ -241,6 +245,7 @@ impl Core {
             "homeserver": client.homeserver().to_string(),
             "password": password,
             "sso": sso,
+            "account_service": account_service,
             "idps": idps,
             "sliding_sync": !matches!(client.sliding_sync_version(), Version::None),
         }));
