@@ -266,11 +266,16 @@ impl Core {
                 } else {
                     ReceiptType::Read
                 };
+                // The fully-read marker is where a room opens: only our own
+                // account sees it, so it moves with "receipts off" too.
+                // Without it a room opened where another client left it.
                 if is_open {
                     let tl = self.timeline_for(&room).await?;
                     tl.mark_as_read(kind).await?;
+                    tl.mark_as_read(ReceiptType::FullyRead).await?;
                 } else if let Some(event_id) = crate::serialize::latest_event_id(&room) {
-                    room.send_single_receipt(kind, ReceiptThread::Unthreaded, event_id).await?;
+                    room.send_single_receipt(kind, ReceiptThread::Unthreaded, event_id.clone()).await?;
+                    room.send_single_receipt(ReceiptType::FullyRead, ReceiptThread::Unthreaded, event_id).await?;
                 }
                 let _ = room.set_unread_flag(false).await;
                 Ok(())
