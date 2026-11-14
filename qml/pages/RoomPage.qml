@@ -130,8 +130,6 @@ Page {
         replyToText = ""
         typingTimer.stop()
         if (app.sendTyping) rustrx.command({ cmd: "typing", room_id: roomId, typing: false })
-        // the Send button took the focus and the keyboard went: back to the
-        // field, so the next message can follow (as in Jolla's Messages)
         inputArea.forceActiveFocus()
     }
 
@@ -364,6 +362,9 @@ Page {
                     //% "Typing to %1"
                     label: app.sendTyping && app.typingHint ? qsTrId("rustrx-la-typing-to").arg(roomName) : ""
                     labelVisible: label !== ""
+                    // a tap on Send (or anywhere else) must not take the focus and
+                    // close the keyboard, as in Jolla's Messages
+                    focusOutBehavior: FocusBehavior.KeepFocus
                     Component.onCompleted: {
                         page.inputArea = input
                         text = rustrx.draft(roomId)
