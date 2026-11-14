@@ -171,9 +171,12 @@ Page {
             Item {
                 width: parent.width
                 height: tabBar.height
+                // the tabs centred on the whole page, as Silica centres them;
+                // the filter icon lies over its right edge (and gets its taps,
+                // being declared after the bar)
                 TabBar {
                     id: tabBar
-                    width: parent.width - filterButton.width
+                    width: parent.width
                     model: tabModel
                     delegate: TabButton {
                         title: tabTitle(model.kind)

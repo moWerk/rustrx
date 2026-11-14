@@ -52,7 +52,9 @@ ListItem {
         // 10 % smaller than the large icon size, centred in that slot, so the
         // texts beside it stay where they were
         x: Theme.horizontalPageMargin + (Theme.iconSizeLarge - width) / 2
-        anchors.verticalCenter: parent.verticalCenter
+        // at the row's top, where a one-line row has it: rows with more
+        // preview lines grow downwards and the pictures stay in line
+        y: rowMargin + (Theme.iconSizeLarge - height) / 2
         width: Math.round(Theme.iconSizeLarge * 0.9)
         height: width
         radius: width / 2
@@ -176,8 +178,9 @@ ListItem {
             right: age.left
             leftMargin: Theme.paddingLarge + (Theme.iconSizeLarge - avatar.width) / 2
             rightMargin: Theme.paddingMedium
-            verticalCenter: parent.verticalCenter
         }
+        // centred beside the picture in a one-line row, from the top when taller
+        y: rowMargin + Math.max(0, (Theme.iconSizeLarge - height) / 2)
 
         Label {
             width: parent.width
@@ -188,10 +191,12 @@ ListItem {
             color: item.highlighted ? Theme.highlightColor : Theme.primaryColor
         }
 
-        // the last message (1 to 3 lines, the last faded), and in front of
-        // its first line the room's state: a stop sign when muted, a lock
-        // when encrypted, a check when one's own last message was read; the
-        // topic or the state where there is no message yet
+        // the last message (1 to 3 lines, the last faded). The room's state
+        // leads its first line: a stop sign when muted, a lock when
+        // encrypted, a check when one's own last message was read. Only the
+        // first line makes room for them (lineLaidOut), so the lines below
+        // start at the left edge. The topic or the state where there is no
+        // message yet.
         Item {
             width: parent.width
             height: preview.height
@@ -202,11 +207,9 @@ ListItem {
                 id: statusIcons
                 spacing: Theme.paddingSmall
                 // centred on the preview's first line
-                y: (preview.firstLineHeight - height) / 2
-
-                // muted: Silica's stop sign, from the same set as the lock;
-                // its canvas is 42 px where the lock's is 48, so it is drawn at
-                // that ratio and looks as large as the lock
+                y: (firstLine.height - height) / 2
+                // muted: Silica's stop sign; its canvas is 42 px where the
+                // lock's is 48, so it is drawn at that ratio
                 Image {
                     visible: model.muted === true && !invited
                     anchors.verticalCenter: parent.verticalCenter
@@ -216,6 +219,7 @@ ListItem {
                 }
                 Image {
                     visible: model.encrypted && !invited
+                    anchors.verticalCenter: parent.verticalCenter
                     source: "image://theme/icon-s-secure?" + parent.parent.iconColor
                     sourceSize.width: parent.parent.iconSize
                     sourceSize.height: parent.parent.iconSize
@@ -223,27 +227,31 @@ ListItem {
                 // one's own last message was read
                 Label {
                     visible: model.own_read === true && !invited
+                    anchors.verticalCenter: parent.verticalCenter
                     text: "\u2713"
-                    height: parent.parent.iconSize
-                    verticalAlignment: Text.AlignVCenter
                     font.pixelSize: Theme.fontSizeSmall * 0.85
                     color: item.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor
                 }
             }
 
+            // the height of one line of the preview, to centre the icons on it
+            FontMetrics { id: firstLine; font: preview.font }
+
             Label {
                 id: preview
-                // the first line's height, to centre the icons on it
-                readonly property real firstLineHeight: fontMetrics.height
-                FontMetrics { id: fontMetrics; font: preview.font }
-                anchors { left: statusIcons.right; leftMargin: statusIcons.width > 0 ? Theme.paddingSmall : 0; right: parent.right }
+                // what the first line leaves free for the icons
+                readonly property real indent: statusIcons.width > 0 ? statusIcons.width + Theme.paddingSmall : 0
+                width: parent.width
                 wrapMode: Text.Wrap
                 maximumLineCount: Math.max(1, Math.min(3, app.previewLines))
                 truncationMode: TruncationMode.Fade
                 font.pixelSize: Theme.fontSizeSmall * 0.8
                 color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
                 textFormat: Text.StyledText
+                onLineLaidOut: if (line.number === 0) { line.x += indent; line.width -= indent }
                 text: {
+                    // a new indent needs a new layout (Qt 5.6 has no forceLayout)
+                    var unused = indent
                     //% "Invitation. Long press to accept or decline."
                     if (invited) return qsTrId("rustrx-la-invitation")
                     //% "Replaced by a new room. Tap to go there."
