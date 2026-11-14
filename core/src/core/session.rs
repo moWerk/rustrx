@@ -153,12 +153,31 @@ impl Core {
                 },
                 // on a task of its own: the teardown aborts this one
                 Ok(SessionChange::UnknownToken(data)) => {
+                    if !Self::session_gone(&client).await {
+                        tracing::warn!("token refresh failed without an answer from the server; the session stays");
+                        continue;
+                    }
                     self.rt.spawn(self.session_expired(data.soft_logout));
                     break;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             }
+        }
+    }
+
+    /// Whether the server really ended the session. The SDK reports an unknown
+    /// token whenever a refresh fails, also when the refresh never reached the
+    /// server (no network after a sleep, a proxy error): that logged people
+    /// out. Refreshing again tells: gone only if the server answers with a
+    /// Matrix error (the refresh token refused) or there is no refresh token.
+    async fn session_gone(client: &Client) -> bool {
+        match client.refresh_access_token().await {
+            Ok(_) => false,
+            Err(matrix_sdk::RefreshTokenError::MatrixAuth(e)) => e.client_api_error_kind().is_some(),
+            Err(matrix_sdk::RefreshTokenError::RefreshTokenRequired) => true,
+            // the SDK reports an OAuth session as gone only for invalid_grant
+            Err(matrix_sdk::RefreshTokenError::OAuth(_)) => true,
         }
     }
 
