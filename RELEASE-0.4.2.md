@@ -12,6 +12,15 @@ Rustrx 0.4.2: single sign-on works again, no more logouts when the network drops
 - More space between buttons and texts on the login and settings pages.
 - An empty tab (no rooms, no favourites yet) says so and how to add one, instead of a spinner.
 
+**Also new**
+- **Room pictures:** set one from the room page (swipe left in a chat, pulley, "Change the room's picture"; for moderators). The room page shows it large, the chat header small beside the name. Pictures changed by others now update in the list too (before, a picture was fetched once and never again).
+- **View source:** long press a message for its JSON as received, and its latest edit's.
+- "Unread first" sorts by the number of unread messages.
+- Matrix ID fields (login, invite) start with the "@" already.
+- Copy text and Copy link confirm; "Save to Downloads" in a message's menu saves without opening another app; a reply or an edit can be cancelled with a visible button; error messages name the action instead of an internal command.
+- Settings in a new order: Privacy first, devices listed in place, and an About section with the app's LLMGD grade.
+- Declining an invitation has a remorse timer; a room's header says "Connecting" while it connects.
+
 **Polish**
 - Avatars 10 % smaller, names and badges where they were. The unread badge digits are in Source Sans 3 Semibold (bundled; the system font has no heavier cut installed, so "bold" never did anything), on a slightly darker shade of the ambience colour, with a soft shadow under the pill. The badge still grows to show the full count.
 - The filter icon is larger and sits centred on the tabs, also on phones with a camera cutout. Its menu has the three orders as a choice of one (by activity, unread first, alphabetical) and two switches that work with any of them: **Favourites on top** (off by default) and **Low priority at the bottom** (on, as before). The list re-sorts while the menu is open.
