@@ -14,7 +14,7 @@ Rustrx 0.4.2: single sign-on works again, no more logouts when the network drops
 
 **Polish**
 - Avatars 10 % smaller, names and badges where they were. The unread badge digits are in Source Sans 3 Semibold (bundled; the system font has no heavier cut installed, so "bold" never did anything), on a slightly darker shade of the ambience colour, with a soft shadow under the pill. The badge still grows to show the full count.
-- The filter icon is larger and sits centred on the tabs, also on phones with a camera cutout; "By name" reads "Alphabetical".
+- The filter icon is larger and sits centred on the tabs, also on phones with a camera cutout. Its menu has the three orders as a choice of one (by activity, unread first, alphabetical) and two switches that work with any of them: **Favourites on top** (off by default) and **Low priority at the bottom** (on, as before). The list re-sorts while the menu is open.
 - A list no longer starts with its first row hidden under the tabs.
 - The cover: the app icon is larger, its bottom lined up with the cover buttons, its fibres behind the lines of text.
 

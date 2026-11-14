@@ -153,6 +153,9 @@ Page {
                 }
             }
 
+            // one of three orders (a radio: the current one filled), then two
+            // switches that combine with any order; the menu stays open, a
+            // tap on the filter icon closes it
             Repeater {
                 model: sortHeader.sortOpen ? [
                     //: room list order
@@ -164,14 +167,74 @@ Page {
                     { key: "name", text: qsTrId("rustrx-me-sort-name") }
                 ] : []
                 BackgroundItem {
+                    id: orderRow
+                    readonly property bool chosen: rustrx.sortOrder === modelData.key
                     width: page.width
                     height: Theme.itemSizeExtraSmall
-                    onClicked: { rustrx.sortOrder = modelData.key; sortHeader.sortOpen = false }
+                    onClicked: rustrx.sortOrder = modelData.key
                     Label {
-                        anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                        anchors { right: radio.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }
                         text: modelData.text
                         font.pixelSize: Theme.fontSizeSmall
-                        color: rustrx.sortOrder === modelData.key || parent.highlighted ? Theme.highlightColor : Theme.primaryColor
+                        color: orderRow.chosen || orderRow.highlighted ? Theme.highlightColor : Theme.primaryColor
+                    }
+                    Rectangle {
+                        id: radio
+                        anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                        width: Theme.paddingLarge
+                        height: width
+                        radius: width / 2
+                        color: "transparent"
+                        border.width: Math.max(1, Math.round(Theme.paddingSmall / 3))
+                        border.color: orderRow.chosen ? Theme.highlightColor : Theme.secondaryColor
+                        Rectangle {
+                            anchors.centerIn: parent
+                            visible: orderRow.chosen
+                            width: parent.width / 2
+                            height: width
+                            radius: width / 2
+                            color: Theme.highlightColor
+                        }
+                    }
+                }
+            }
+            Separator {
+                visible: sortHeader.sortOpen
+                x: Theme.horizontalPageMargin
+                width: page.width - 2 * x
+                color: Theme.secondaryColor
+                horizontalAlignment: Qt.AlignRight
+            }
+            Repeater {
+                model: sortHeader.sortOpen ? [
+                    //: room list option, with any order
+                    //% "Favourites on top"
+                    { key: "favsOnTop", text: qsTrId("rustrx-me-sort-favs-on-top") },
+                    //% "Low priority at the bottom"
+                    { key: "lowLast", text: qsTrId("rustrx-me-sort-low-last") }
+                ] : []
+                BackgroundItem {
+                    id: optionRow
+                    readonly property bool on: rustrx[modelData.key] === true
+                    width: page.width
+                    height: Theme.itemSizeExtraSmall
+                    onClicked: rustrx[modelData.key] = !on
+                    Label {
+                        anchors { right: box.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }
+                        text: modelData.text
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: optionRow.on || optionRow.highlighted ? Theme.highlightColor : Theme.primaryColor
+                    }
+                    // a switch: a rounded square, filled while on
+                    Rectangle {
+                        id: box
+                        anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                        width: Theme.paddingLarge
+                        height: width
+                        radius: width / 4
+                        color: optionRow.on ? Theme.highlightColor : "transparent"
+                        border.width: Math.max(1, Math.round(Theme.paddingSmall / 3))
+                        border.color: optionRow.on ? Theme.highlightColor : Theme.secondaryColor
                     }
                 }
             }

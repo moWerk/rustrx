@@ -357,12 +357,43 @@ void Rustrx::setSortOrder(const QString &order)
     distributeRooms(m_lastRooms);
 }
 
-// The core sends the rooms by activity. Invitations stay on top and low
-// priority rooms go to the bottom in every order; within that, unread rooms
-// first or by name, else the activity order stays (the sort is stable).
+bool Rustrx::favsOnTop() const
+{
+    return QSettings().value("favsOnTop", false).toBool();
+}
+
+void Rustrx::setFavsOnTop(bool on)
+{
+    if (on == favsOnTop())
+        return;
+    QSettings().setValue("favsOnTop", on);
+    emit settingsChanged();
+    distributeRooms(m_lastRooms);
+}
+
+bool Rustrx::lowLast() const
+{
+    return QSettings().value("lowLast", true).toBool();
+}
+
+void Rustrx::setLowLast(bool on)
+{
+    if (on == lowLast())
+        return;
+    QSettings().setValue("lowLast", on);
+    emit settingsChanged();
+    distributeRooms(m_lastRooms);
+}
+
+// The core sends the rooms by activity. Invitations stay on top; then, if
+// switched on, favourites first and low priority rooms last; within that,
+// unread rooms first or by name, else the activity order stays (the sort is
+// stable).
 void Rustrx::sortRooms(QVariantList &rooms) const
 {
     const QString order = sortOrder();
+    const bool favsFirst = favsOnTop();
+    const bool lowAtEnd = lowLast();
     const auto unread = [](const QVariantMap &r) {
         return r.value("notifications").toInt() > 0 || r.value("unread").toInt() > 0;
     };
@@ -372,9 +403,16 @@ void Rustrx::sortRooms(QVariantList &rooms) const
         const bool ib = b.value("state").toString() == QLatin1String("invited");
         if (ia != ib)
             return ia;
-        const bool la = a.value("is_low").toBool(), lb = b.value("is_low").toBool();
-        if (la != lb)
-            return lb;
+        if (favsFirst) {
+            const bool fa = a.value("is_fav").toBool(), fb = b.value("is_fav").toBool();
+            if (fa != fb)
+                return fa;
+        }
+        if (lowAtEnd) {
+            const bool la = a.value("is_low").toBool(), lb = b.value("is_low").toBool();
+            if (la != lb)
+                return lb;
+        }
         if (order == QLatin1String("unread")) {
             const bool ua = unread(a), ub = unread(b);
             if (ua != ub)

@@ -55,6 +55,9 @@ class Rustrx : public QObject
     Q_PROPERTY(bool downscaleImages READ downscaleImages WRITE setDownscaleImages NOTIFY settingsChanged)
     // the order of the room lists: "activity", "unread" (unread first) or "name"
     Q_PROPERTY(QString sortOrder READ sortOrder WRITE setSortOrder NOTIFY settingsChanged)
+    // with any order: favourites first; low priority rooms last
+    Q_PROPERTY(bool favsOnTop READ favsOnTop WRITE setFavsOnTop NOTIFY settingsChanged)
+    Q_PROPERTY(bool lowLast READ lowLast WRITE setLowLast NOTIFY settingsChanged)
     // notifications with the app closed: a stand-in, started with the session
     // and when the app is closed, wakes every few minutes
     Q_PROPERTY(bool background READ background WRITE setBackground NOTIFY settingsChanged)
@@ -87,6 +90,10 @@ public:
     void setDownscaleImages(bool on);
     QString sortOrder() const;
     void setSortOrder(const QString &order);
+    bool favsOnTop() const;
+    void setFavsOnTop(bool on);
+    bool lowLast() const;
+    void setLowLast(bool on);
     bool background() const;
     void setBackground(bool on);
     bool standIn() const { return m_standIn; }
