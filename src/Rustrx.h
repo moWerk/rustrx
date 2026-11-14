@@ -114,6 +114,8 @@ public:
     Q_INVOKABLE void closeRoom();
     Q_INVOKABLE void sendText(const QString &roomId, const QString &body, const QString &replyTo);
     Q_INVOKABLE void sendFile(const QString &roomId, const QString &path, const QString &caption = QString());
+    // a picture from the phone as the room's picture: upright, at most 512 px
+    Q_INVOKABLE void setRoomAvatar(const QString &roomId, const QString &path);
     Q_INVOKABLE void sendVoice(const QString &roomId, const QString &path, qint64 durationMs);
     Q_INVOKABLE void getMedia(const QString &roomId, const QString &eventId, bool thumb);
     // a copy in Downloads, where other apps may read it; answered by mediaExported

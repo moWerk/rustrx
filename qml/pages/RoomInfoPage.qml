@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import Sailfish.Pickers 1.0
 
 // The room behind the conversation, attached to the right of RoomPage:
 // name and topic (editable for moderators), alias, encryption, the
@@ -95,6 +96,12 @@ Page {
 
         PullDownMenu {
             MenuItem {
+                visible: canEdit && !info.is_dm
+                //% "Change the room's picture"
+                text: qsTrId("rustrx-me-room-picture")
+                onClicked: pageStack.push(roomPicturePicker)
+            }
+            MenuItem {
                 //% "Invite someone"
                 text: qsTrId("rustrx-me-invite")
                 onClicked: pageStack.push(inviteDialog)
@@ -109,6 +116,20 @@ Page {
                         core.command({ cmd: "leave_room", room_id: id })
                         pageStack.pop(pageStack.find(function (p) { return p.objectName === "main" }))
                     })
+                }
+            }
+        }
+
+        Component {
+            id: roomPicturePicker
+            ImagePickerPage {
+                //% "Room picture"
+                title: qsTrId("rustrx-he-room-picture")
+                onSelectedContentPropertiesChanged: {
+                    if (!selectedContentProperties.filePath) return
+                    rustrx.setRoomAvatar(roomId, selectedContentProperties.filePath)
+                    //% "Setting the room's picture"
+                    Notices.show(qsTrId("rustrx-no-room-picture"), Notice.Short)
                 }
             }
         }
@@ -177,6 +198,53 @@ Page {
                 wrapMode: Text.Wrap
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.highlightColor
+            }
+
+            // the room's picture, large; for moderators a tap changes it
+            Item { width: 1; height: Theme.paddingMedium }
+            BackgroundItem {
+                visible: !info.is_dm
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Theme.itemSizeHuge
+                height: width
+                enabled: canEdit
+                onClicked: pageStack.push(roomPicturePicker)
+                Rectangle {
+                    anchors.fill: parent
+                    radius: app.roundAvatars ? width / 2 : 0
+                    visible: !roomPicture.visible
+                    color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
+                    Label {
+                        anchors.centerIn: parent
+                        text: info.name ? info.name.charAt(0).toUpperCase() : "?"
+                        font.pixelSize: Theme.fontSizeHuge
+                        color: Theme.primaryColor
+                    }
+                }
+                Image {
+                    id: roomPicture
+                    anchors.fill: parent
+                    visible: status === Image.Ready
+                    asynchronous: true
+                    fillMode: Image.PreserveAspectCrop
+                    sourceSize.width: width
+                    sourceSize.height: height
+                    // the version makes a changed picture load past Qt's image cache
+                    source: info.avatar ? "file://" + info.avatar + "?v=" + (info.avatar_v || 0) : ""
+                    // the same circle mask as the room list
+                    layer.enabled: app.roundAvatars
+                    layer.effect: ShaderEffect {
+                        fragmentShader: "
+                            varying highp vec2 qt_TexCoord0;
+                            uniform sampler2D source;
+                            uniform lowp float qt_Opacity;
+                            void main() {
+                                highp float d = length(qt_TexCoord0 - vec2(0.5));
+                                lowp float a = 1.0 - smoothstep(0.49, 0.5, d);
+                                gl_FragColor = texture2D(source, qt_TexCoord0) * a * qt_Opacity;
+                            }"
+                    }
+                }
             }
 
             Item { width: 1; height: Theme.paddingMedium }
@@ -265,7 +333,8 @@ Page {
         delegate: ListItem {
             id: row
             contentHeight: Theme.itemSizeMedium
-            menu: memberMenu
+            // nothing to do with oneself here (direct chat, ignore): no menu
+            menu: isSelf ? null : memberMenu
             readonly property bool isSelf: modelData.user_id === rustrx.userId
 
             Column {
@@ -337,6 +406,9 @@ Page {
                     label: qsTrId("rustrx-la-invite-id")
                     placeholderText: label
                     inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+                    // the @ is there already, see the login page
+                    text: "@"
+                    onTextChanged: if (text.indexOf("@@") === 0) text = text.slice(1)
                     focus: true
                     EnterKey.enabled: canAccept
                     EnterKey.iconSource: "image://theme/icon-m-enter-accept"

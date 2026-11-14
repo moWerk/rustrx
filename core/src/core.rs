@@ -88,7 +88,9 @@ struct State {
     open: Option<OpenRoom>,
     requests: HashMap<String, VerificationRequest>,
     sas: HashMap<String, SasVerification>,
-    avatars_tried: std::collections::HashSet<OwnedRoomId>,
+    /// room and picture pairs tried once ("!room|mxc://..."); a new picture
+    /// of the room is tried again
+    avatars_tried: std::collections::HashSet<String>,
     latest_listened: std::collections::HashSet<OwnedRoomId>,
     /// tasks that live as long as one login; aborted on logout
     login_tasks: Vec<JoinHandle<()>>,

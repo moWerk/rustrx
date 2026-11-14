@@ -23,7 +23,7 @@ RoomModel::RoomModel(QObject *parent)
 {
     const char *names[] = { "room_id", "name", "topic", "alias", "is_dm", "is_fav", "is_low", "unread",
                             "notifications", "highlights", "ts", "state", "encrypted", "section",
-                            "avatar", "has_avatar", "preview", "preview_sender" };
+                            "avatar", "avatar_v", "has_avatar", "preview", "preview_sender" };
     int role = Qt::UserRole + 1;
     for (const char *n : names)
         m_roles.insert(role++, QByteArray(n));

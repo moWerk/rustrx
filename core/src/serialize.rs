@@ -129,6 +129,9 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
         "inviter": inviter,
         "has_avatar": avatar.exists(),
         "avatar": if avatar.exists() { Some(avatar.to_string_lossy().into_owned()) } else { None },
+        // the file's age: the picture's URL changes with it, past Qt's image cache
+        "avatar_v": std::fs::metadata(&avatar).and_then(|m| m.modified()).ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()),
         "room_id": room.room_id().as_str(),
         "name": name,
         "preview": preview,

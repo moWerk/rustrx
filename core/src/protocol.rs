@@ -73,6 +73,8 @@ pub(crate) enum Command {
     /// Answered by "members".
     RoomMembers { room_id: String },
     SetRoomName { room_id: String, name: String },
+    /// A picture file (the UI has turned it upright and scaled it down).
+    SetRoomAvatar { room_id: String, path: String, w: Option<u64>, h: Option<u64> },
     SetRoomTopic { room_id: String, topic: String },
     Invite { room_id: String, user_id: String },
     /// Users and public rooms; answered by "search_results".

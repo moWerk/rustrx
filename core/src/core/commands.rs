@@ -369,6 +369,20 @@ impl Core {
                 room.set_name(name).await?;
                 Ok(())
             }
+            SetRoomAvatar { room_id, path, w, h } => {
+                let room = self.room(&room_id).await?;
+                let data = std::fs::read(&path)?;
+                let mime = mime_guess::from_path(&path).first_or(mime::IMAGE_JPEG);
+                let mut info = matrix_sdk::ruma::events::room::avatar::ImageInfo::new();
+                info.width = w.and_then(|n| UInt::try_from(n).ok());
+                info.height = h.and_then(|n| UInt::try_from(n).ok());
+                info.size = UInt::try_from(data.len() as u64).ok();
+                info.mimetype = Some(mime.to_string());
+                room.upload_avatar(&mime, data, Some(info)).await?;
+                std::fs::remove_file(&path).ok();
+                // the room list fetches the new picture once the sync brings it
+                Ok(())
+            }
             SetRoomTopic { room_id, topic } => {
                 let room = self.room(&room_id).await?;
                 room.set_room_topic(&topic).await?;

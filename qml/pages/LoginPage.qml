@@ -74,10 +74,17 @@ Page {
                 //% "Matrix ID"
                 label: qsTrId("rustrx-la-matrix-id")
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+                // a Matrix ID starts with @, which the Sailfish keyboard hides
+                // among its symbols: it is there already (a pasted full ID
+                // does not end up with two)
+                text: "@"
                 EnterKey.iconSource: "image://theme/icon-m-enter-next"
                 EnterKey.onClicked: passwordField.focus = true
                 onActiveFocusChanged: if (!activeFocus) probe()
-                onTextChanged: page.probeSoon()
+                onTextChanged: {
+                    if (text.indexOf("@@") === 0) text = text.slice(1)
+                    page.probeSoon()
+                }
             }
 
             TextField {
@@ -100,7 +107,7 @@ Page {
                 //% "Password"
                 placeholderText: qsTrId("rustrx-ph-password")
                 label: placeholderText
-                EnterKey.enabled: text.length > 0 && userField.text.length > 0 && !rustrx.loggingIn
+                EnterKey.enabled: text.length > 0 && userField.text.length > 1 && !rustrx.loggingIn
                 EnterKey.iconSource: "image://theme/icon-m-enter-accept"
                 EnterKey.onClicked: login()
             }
@@ -156,7 +163,7 @@ Page {
                 text: rustrx.loggingIn ? qsTrId("rustrx-bt-logging-in")
                 //% "Log in"
                                        : qsTrId("rustrx-bt-log-in")
-                enabled: !rustrx.loggingIn && userField.text.length > 0 && passwordField.text.length > 0
+                enabled: !rustrx.loggingIn && userField.text.length > 1 && passwordField.text.length > 0
                 onClicked: login()
             }
 

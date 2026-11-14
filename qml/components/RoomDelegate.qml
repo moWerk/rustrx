@@ -69,7 +69,8 @@ ListItem {
             fillMode: Image.PreserveAspectCrop
             sourceSize.width: width
             sourceSize.height: height
-            source: model.avatar ? "file://" + model.avatar : ""
+            // the version makes a changed picture load past Qt's image cache
+            source: model.avatar ? "file://" + model.avatar + "?v=" + (model.avatar_v || 0) : ""
             // clip: true would cut a square; the circle is a mask
             layer.enabled: app.roundAvatars
             layer.effect: ShaderEffect {

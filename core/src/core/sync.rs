@@ -173,29 +173,38 @@ impl Core {
         }
     }
 
-    /// Cache the avatars that are missing, once per room, then resend the list.
+    /// Cache the avatars that are missing or changed (the picture's mxc
+    /// address is kept beside it, "<room>.url"), once per picture.
     /// Returns whether a new picture arrived (the room list then needs it).
     pub(crate) async fn fetch_avatars(&'static self, client: &Client) -> bool {
         let avatar_dir = self.data_dir.join("avatars");
         let own = client.user_id().map(ToOwned::to_owned);
         let mut fetched = false;
         for room in client.rooms() {
-            if avatar_file(&avatar_dir, &room).exists() {
-                continue;
-            }
             // Rooms without a known picture are looked at again next time:
             // a DM's peer may only become known after a later sync.
             let Some(url) = Self::avatar_source(&room, own.as_deref()).await else { continue };
-            if !self.state.lock().await.avatars_tried.insert(room.room_id().to_owned()) {
+            let file = avatar_file(&avatar_dir, &room);
+            let marker = file.with_extension("url");
+            // the cached one is this picture (a file from before the marker
+            // counts as current, as before)
+            if file.exists() {
+                match std::fs::read_to_string(&marker) {
+                    Ok(known) if known.trim() != url.as_str() => {}
+                    _ => continue,
+                }
+            }
+            if !self.state.lock().await.avatars_tried.insert(format!("{}|{}", room.room_id(), url)) {
                 continue;
             }
             let request = MediaRequestParameters {
-                source: MediaSource::Plain(url),
+                source: MediaSource::Plain(url.clone()),
                 format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(uint!(192), uint!(192))),
             };
             match client.media().get_media_content(&request, true).await {
                 Ok(bytes) => {
-                    if tokio::fs::write(avatar_file(&avatar_dir, &room), &bytes).await.is_ok() {
+                    if tokio::fs::write(&file, &bytes).await.is_ok() {
+                        tokio::fs::write(&marker, url.as_str()).await.ok();
                         fetched = true;
                     }
                 }

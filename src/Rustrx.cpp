@@ -387,15 +387,17 @@ void Rustrx::setLowLast(bool on)
 
 // The core sends the rooms by activity. Invitations stay on top; then, if
 // switched on, favourites first and low priority rooms last; within that,
-// unread rooms first or by name, else the activity order stays (the sort is
-// stable).
+// the most unread first or by name, else the activity order stays (the sort
+// is stable).
 void Rustrx::sortRooms(QVariantList &rooms) const
 {
     const QString order = sortOrder();
     const bool favsFirst = favsOnTop();
     const bool lowAtEnd = lowLast();
+    // the number the badge shows: notifications, else unread messages
     const auto unread = [](const QVariantMap &r) {
-        return r.value("notifications").toInt() > 0 || r.value("unread").toInt() > 0;
+        const int n = r.value("notifications").toInt();
+        return n > 0 ? n : r.value("unread").toInt();
     };
     std::stable_sort(rooms.begin(), rooms.end(), [&](const QVariant &va, const QVariant &vb) {
         const QVariantMap a = va.toMap(), b = vb.toMap();
@@ -414,9 +416,10 @@ void Rustrx::sortRooms(QVariantList &rooms) const
                 return lb;
         }
         if (order == QLatin1String("unread")) {
-            const bool ua = unread(a), ub = unread(b);
+            // the most unread on top; equal counts keep the activity order
+            const int ua = unread(a), ub = unread(b);
             if (ua != ub)
-                return ua;
+                return ua > ub;
         } else if (order == QLatin1String("name")) {
             return QString::localeAwareCompare(a.value("name").toString(), b.value("name").toString()) < 0;
         }
@@ -502,6 +505,33 @@ void Rustrx::sendText(const QString &roomId, const QString &body, const QString 
     if (!replyTo.isEmpty())
         cmd.insert("reply_to", replyTo);
     command(cmd);
+}
+
+void Rustrx::setRoomAvatar(const QString &roomId, const QString &path)
+{
+    QString p = path;
+    if (p.startsWith(QLatin1String("file://")))
+        p = QUrl(p).toLocalFile();
+    QImageReader reader(p);
+    reader.setAutoTransform(true);
+    QImage image = reader.read();
+    if (image.isNull()) {
+        emit errorOccurred(QStringLiteral("set_room_avatar"), reader.errorString());
+        return;
+    }
+    if (qMax(image.width(), image.height()) > 512)
+        image = image.scaled(512, 512, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    const QString cache = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/outgoing";
+    QDir().mkpath(cache);
+    // PNG keeps a transparent picture (an icon) as it is; photos go as JPEG
+    const bool alpha = image.hasAlphaChannel();
+    const QString out = cache + "/avatar-" + QString::number(QDateTime::currentMSecsSinceEpoch()) + (alpha ? ".png" : ".jpg");
+    if (!image.save(out, alpha ? "PNG" : "JPG", alpha ? -1 : 90)) {
+        emit errorOccurred(QStringLiteral("set_room_avatar"), QStringLiteral("cannot write ") + out);
+        return;
+    }
+    command({{"cmd", "set_room_avatar"}, {"room_id", roomId}, {"path", out},
+             {"w", image.width()}, {"h", image.height()}});
 }
 
 void Rustrx::sendFile(const QString &roomId, const QString &path, const QString &caption)
