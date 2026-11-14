@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 import Sailfish.Pickers 1.0
+import Sailfish.Share 1.0
 import "../components"
 
 // Account, encryption (verification, recovery), devices, about.
@@ -497,6 +498,46 @@ Page {
             SectionHeader { text: qsTrId("rustrx-se-devices") }
 
             DeviceList { width: parent.width }
+
+            //% "Debug log"
+            SectionHeader { text: qsTrId("rustrx-se-debug-log") }
+
+            TextSwitch {
+                //% "Keep a debug log"
+                text: qsTrId("rustrx-la-debug-log")
+                //% "Rustrx notes what it does in a small file on the phone. If something goes wrong, share it with the developer, so nobody has to make it happen again. It holds room and user IDs, never message texts or passwords."
+                description: qsTrId("rustrx-la-debug-log-hint")
+                checked: rustrx.debugLog
+                automaticCheck: false
+                onClicked: rustrx.debugLog = !rustrx.debugLog
+            }
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                //% "Share the debug log"
+                text: qsTrId("rustrx-bt-share-log")
+                onClicked: {
+                    var path = rustrx.shareableLog()
+                    if (path === "")
+                        return
+                    logShare.resources = ["file://" + path]
+                    logShare.trigger()
+                }
+            }
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                //% "A copy goes to Downloads, so you can also attach it to a mail or a forum post."
+                text: qsTrId("rustrx-la-share-log-hint")
+            }
+            ShareAction {
+                id: logShare
+                mimeType: "text/plain"
+                //% "Rustrx debug log"
+                title: qsTrId("rustrx-he-share-log")
+            }
 
             //% "About"
             SectionHeader { text: qsTrId("rustrx-se-about") }

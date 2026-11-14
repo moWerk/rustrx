@@ -32,6 +32,8 @@
 #include <QThread>
 
 #include "Rustrx.h"
+#include "DebugLog.h"
+#include <QSettings>
 #include "RoomModel.h"
 #include "TimelineModel.h"
 #include "VoiceRecorder.h"
@@ -66,6 +68,9 @@ int main(int argc, char *argv[])
     QScopedPointer<QGuiApplication> app(SailfishApp::application(argc, argv));
     app->setOrganizationName(QStringLiteral("net.mowerk"));
     app->setApplicationName(QStringLiteral("harbour-rustrx"));
+    // the debug log (Settings): the app and the stand-in each their own file
+    DebugLog::install(standIn ? QStringLiteral("background") : QStringLiteral("app"));
+    DebugLog::setEnabled(QSettings().value(QStringLiteral("debugLog"), true).toBool());
 
     qmlRegisterUncreatableType<RoomModel>("Rustrx", 1, 0, "RoomModel", "owned by rustrx");
     qmlRegisterUncreatableType<TimelineModel>("Rustrx", 1, 0, "TimelineModel", "owned by rustrx");

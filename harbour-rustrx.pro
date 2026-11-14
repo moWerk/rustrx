@@ -14,12 +14,14 @@ SOURCES += src/main.cpp \
     src/Rustrx.cpp \
     src/RoomModel.cpp \
     src/TimelineModel.cpp \
-    src/VoiceRecorder.cpp
+    src/VoiceRecorder.cpp \
+    src/DebugLog.cpp
 
 HEADERS += src/Rustrx.h \
     src/RoomModel.h \
     src/TimelineModel.h \
     src/VoiceRecorder.h \
+    src/DebugLog.h \
     src/rustrx_core.h
 
 # the prebuilt core: lib/librustrx.so at build time, next to the data at run time

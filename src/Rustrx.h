@@ -63,6 +63,8 @@ class Rustrx : public QObject
     Q_PROPERTY(bool favsOnTop READ favsOnTop WRITE setFavsOnTop NOTIFY settingsChanged)
     Q_PROPERTY(bool lowLast READ lowLast WRITE setLowLast NOTIFY settingsChanged)
     Q_PROPERTY(bool hideMuted READ hideMuted WRITE setHideMuted NOTIFY settingsChanged)
+    // the debug log in the data folder (on until 1.0; Settings)
+    Q_PROPERTY(bool debugLog READ debugLog WRITE setDebugLog NOTIFY settingsChanged)
     // the lists show only rooms whose name or address contains this (not kept)
     Q_PROPERTY(QString roomFilter READ roomFilter WRITE setRoomFilter NOTIFY roomFilterChanged)
     // notifications with the app closed: a stand-in, started with the session
@@ -105,6 +107,10 @@ public:
     void setLowLast(bool on);
     bool hideMuted() const;
     void setHideMuted(bool on);
+    bool debugLog() const;
+    void setDebugLog(bool on);
+    // the logs in one text file in Downloads, for the share sheet; its path
+    Q_INVOKABLE QString shareableLog();
     QString roomFilter() const { return m_roomFilter; }
     void setRoomFilter(const QString &text);
     bool background() const;

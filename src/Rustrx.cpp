@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Rustrx.h"
+#include "DebugLog.h"
 #include <QLibrary>
 #include <sailfishapp.h>
 #include "RoomModel.h"
@@ -404,6 +405,35 @@ void Rustrx::setRoomFilter(const QString &text)
     m_roomFilter = t;
     emit roomFilterChanged();
     distributeRooms(m_lastRooms);
+}
+
+bool Rustrx::debugLog() const
+{
+    return QSettings().value("debugLog", true).toBool();
+}
+
+void Rustrx::setDebugLog(bool on)
+{
+    if (on == debugLog())
+        return;
+    QSettings().setValue("debugLog", on);
+    DebugLog::setEnabled(on);
+    emit settingsChanged();
+}
+
+QString Rustrx::shareableLog()
+{
+    // other apps cannot read the data folder: the copy goes to Downloads
+    QString device;
+    QFile release(QStringLiteral("/etc/sailfish-release"));
+    if (release.open(QIODevice::ReadOnly)) {
+        for (const QByteArray &line : release.readAll().split('\n'))
+            if (line.startsWith("VERSION=")) device = QString::fromUtf8(line.mid(8)).remove('"');
+    }
+    const QString header = QStringLiteral("Rustrx %1, core %2, Sailfish OS %3\nwritten %4")
+            .arg(QStringLiteral(APP_VERSION), coreVersion(), device,
+                 QDateTime::currentDateTime().toString(Qt::ISODate));
+    return DebugLog::collect(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation), header);
 }
 
 bool Rustrx::hideMuted() const
