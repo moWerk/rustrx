@@ -123,31 +123,6 @@ CoverBackground {
                 font.pixelSize: Theme.fontSizeSmall
             }
         }
-
-        Label {
-            width: parent.width
-            wrapMode: Text.Wrap
-            color: Theme.highlightColor
-            font.pixelSize: Theme.fontSizeLarge
-            text: {
-                //% "Not logged in"
-                if (!rustrx.loggedIn) return qsTrId("rustrx-la-cover-not-logged-in")
-                switch (rustrx.syncState) {
-                // two lines, so the tile reads apart from other messengers'
-                // (two strings: lupdate keeps a \n in //% as the two characters)
-                case "running":
-                    //% "Connected"
-                    return qsTrId("rustrx-la-cover-connected") + "\n"
-                            //: second line under "Connected" on the cover
-                            //% "to matrix"
-                            + qsTrId("rustrx-la-cover-to-matrix")
-                //% "Connecting"
-                case "idle": return qsTrId("rustrx-la-cover-connecting")
-                //% "Offline"
-                default: return qsTrId("rustrx-la-cover-offline")
-                }
-            }
-        }
     }
 
     Item {
@@ -173,7 +148,7 @@ CoverBackground {
         // the latest unread message, or only the count when notifications
         // leave message texts out (Settings > Privacy)
         Column {
-            anchors { top: chatName.bottom; topMargin: Theme.paddingMedium; bottom: chatState.top; bottomMargin: Theme.paddingSmall }
+            anchors { top: chatName.bottom; topMargin: Theme.paddingMedium; bottom: parent.bottom; bottomMargin: chatState.height + Theme.paddingSmall }
             width: parent.width
             spacing: Theme.paddingSmall
             visible: cover.chatUnread > 0
@@ -217,19 +192,31 @@ CoverBackground {
             }
         }
 
-        // "Rustrx" while connected, which is the usual case; otherwise what
-        // is wrong
-        Label {
-            id: chatState
-            anchors.bottom: parent.bottom
-            width: parent.width
-            truncationMode: TruncationMode.Fade
-            font.pixelSize: Theme.fontSizeExtraSmall
-            color: rustrx.syncState === "running" ? Theme.secondaryColor : Theme.highlightColor
-            text: rustrx.syncState === "running" ? "Rustrx"
-                : rustrx.syncState === "idle" ? qsTrId("rustrx-la-cover-connecting")
-                : qsTrId("rustrx-la-cover-offline")
+    }
+
+    // the same line at the bottom in both views: "Rustrx" while connected,
+    // which is the usual case; otherwise what is wrong
+    Label {
+        id: chatState
+        anchors {
+            left: parent.left
+            right: parent.right
+            bottom: parent.bottom
+            margins: Theme.paddingLarge
+            // above the cover actions' strip
+            bottomMargin: Theme.itemSizeSmall
         }
+        truncationMode: TruncationMode.Fade
+        font.pixelSize: Theme.fontSizeExtraSmall
+        readonly property bool fine: rustrx.loggedIn && rustrx.syncState === "running"
+        color: fine ? Theme.secondaryColor : Theme.highlightColor
+        //% "Not logged in"
+        text: !rustrx.loggedIn ? qsTrId("rustrx-la-cover-not-logged-in")
+            : fine ? "Rustrx"
+            //% "Connecting"
+            : rustrx.syncState === "idle" ? qsTrId("rustrx-la-cover-connecting")
+            //% "Offline"
+            : qsTrId("rustrx-la-cover-offline")
     }
 
     // left: find a room or a person; right: the most recent room with
