@@ -320,13 +320,34 @@ fn content_json(o: &mut Map<String, Value>, content: &TimelineItemContent, own: 
             if let Some(reply) = &m.in_reply_to {
                 let mut r = Map::new();
                 put(&mut r, "event_id", reply.event_id.as_str());
-                if let TimelineDetails::Ready(ev) = &reply.event {
-                    put(&mut r, "sender", ev.sender.as_str());
-                    if let TimelineDetails::Ready(p) = &ev.sender_profile {
-                        put(&mut r, "sender_name", p.display_name.clone());
+                match &reply.event {
+                    TimelineDetails::Ready(ev) => {
+                        put(&mut r, "sender", ev.sender.as_str());
+                        if let TimelineDetails::Ready(p) = &ev.sender_profile {
+                            put(&mut r, "sender_name", p.display_name.clone());
+                        }
+                        if let Some(msg) = ev.content.as_message() {
+                            put(&mut r, "body", msg.body());
+                            // the formatting too: custom emoji show in the quote
+                            let formatted = match msg.msgtype() {
+                                MessageType::Text(t) => t.formatted.as_ref(),
+                                MessageType::Notice(n) => n.formatted.as_ref(),
+                                _ => None,
+                            };
+                            if let Some(f) = formatted.filter(|f| f.format == MessageFormat::Html) {
+                                put(&mut r, "html", f.body.as_str());
+                            }
+                        } else if let Some(st) = ev.content.as_sticker() {
+                            put(&mut r, "body", st.content().body.as_str());
+                        } else {
+                            tracing::info!(event = %reply.event_id, "reply: the original is not a message");
+                        }
                     }
-                    if let Some(msg) = ev.content.as_message() {
-                        put(&mut r, "body", msg.body());
+                    // fetched by the timeline task; the quote says so meanwhile
+                    TimelineDetails::Unavailable | TimelineDetails::Pending => put(&mut r, "pending", true),
+                    TimelineDetails::Error(e) => {
+                        tracing::info!(event = %reply.event_id, "reply: original not available: {e}");
+                        put(&mut r, "missing", true);
                     }
                 }
                 put(o, "reply_to", Value::Object(r));

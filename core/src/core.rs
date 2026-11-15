@@ -39,13 +39,13 @@ use matrix_sdk::ruma::events::room::message::{
 };
 use matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType;
 use matrix_sdk::ruma::{
-    uint, EventId, OwnedDeviceId, UInt, OwnedMxcUri, OwnedRoomId, OwnedUserId, RoomId, RoomOrAliasId, UserId,
+    uint, EventId, OwnedDeviceId, OwnedEventId, UInt, OwnedMxcUri, OwnedRoomId, OwnedUserId, RoomId, RoomOrAliasId, UserId,
 };
 use matrix_sdk::sliding_sync::{Version, VersionBuilder};
 use matrix_sdk::{Client, Room, RoomMemberships, RoomState, SessionChange};
 use matrix_sdk_ui::sync_service::{State as SyncState, SyncService};
 use matrix_sdk_ui::timeline::{
-    AttachmentConfig, RoomExt, Timeline, TimelineEventItemId, TimelineItem, TimelineReadReceiptTracking,
+    AttachmentConfig, RoomExt, Timeline, TimelineDetails, TimelineEventItemId, TimelineItem, TimelineReadReceiptTracking,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

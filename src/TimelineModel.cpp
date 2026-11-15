@@ -77,6 +77,8 @@ QVariant TimelineModel::data(const QModelIndex &index, int role) const
         return renderReactions(item.value("reactions").toList());
     if (name == "emotes")
         return emotesOf(item);
+    if (name == "reply_to")
+        return renderReply(item.value("reply_to"));
     return item.value(QString::fromLatin1(name));
 }
 
@@ -94,6 +96,8 @@ QVariantMap TimelineModel::withMedia(QVariantMap item) const
         item.insert("html", renderHtml(item.value("html").toString()));
     if (item.contains("reactions"))
         item.insert("reactions", renderReactions(item.value("reactions").toList()));
+    if (item.contains("reply_to"))
+        item.insert("reply_to", renderReply(item.value("reply_to")));
     return item;
 }
 
@@ -275,11 +279,23 @@ QVariantList TimelineModel::renderReactions(const QVariantList &reactions) const
     return out;
 }
 
+// the quoted original of a reply: its HTML rendered like a message's
+QVariant TimelineModel::renderReply(const QVariant &reply) const
+{
+    if (!reply.isValid())
+        return reply;
+    QVariantMap r = reply.toMap();
+    if (r.contains("html"))
+        r.insert("html", renderHtml(r.value("html").toString()));
+    return r;
+}
+
 // the custom emoji an item shows that are not cached: asked for once
 void TimelineModel::askEmotes(const QVariantMap &item)
 {
     QStringList wanted;
-    const QString html = item.value("html").toString();
+    const QString html = item.value("html").toString()
+                         + item.value("reply_to").toMap().value("html").toString();
     if (html.contains(QLatin1String("mxc://"))) {
         QRegularExpressionMatchIterator it = imgTag().globalMatch(html);
         while (it.hasNext()) {
@@ -338,7 +354,8 @@ QVariantList TimelineModel::emotesOf(const QVariantMap &item) const
 
 bool TimelineModel::usesEmote(const QVariantMap &item, const QString &mxc) const
 {
-    if (item.value("html").toString().contains(mxc))
+    if (item.value("html").toString().contains(mxc)
+            || item.value("reply_to").toMap().value("html").toString().contains(mxc))
         return true;
     for (const QVariant &v : item.value("reactions").toList())
         if (v.toMap().value("key").toString() == mxc)

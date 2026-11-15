@@ -26,6 +26,34 @@ impl Core {
         }
     }
 
+    /// A reply whose original is not loaded (older than the loaded history,
+    /// or not yet decrypted when the reply came) gets it fetched, once; the
+    /// timeline then updates with the quote.
+    fn fetch_replied<'a>(
+        timeline: &Arc<Timeline>,
+        items: impl IntoIterator<Item = &'a Arc<TimelineItem>>,
+        asked: &mut std::collections::HashSet<OwnedEventId>,
+    ) {
+        for item in items {
+            let Some(event) = item.as_event() else { continue };
+            let Some(msg) = event.content().as_msglike() else { continue };
+            let Some(reply) = &msg.in_reply_to else { continue };
+            if !matches!(reply.event, TimelineDetails::Unavailable) {
+                continue;
+            }
+            let Some(id) = event.event_id().map(ToOwned::to_owned) else { continue };
+            if !asked.insert(id.clone()) {
+                continue;
+            }
+            let tl = timeline.clone();
+            tokio::spawn(async move {
+                if let Err(e) = tl.fetch_details_for_event(&id).await {
+                    tracing::info!(event = %id, "reply: fetching the original: {e}");
+                }
+            });
+        }
+    }
+
     /// Timeline snapshots for the open room, coalesced per update burst, and
     /// who is typing there (the own user left out).
     pub(crate) async fn timeline_task(&'static self, room: Room, timeline: Arc<Timeline>, own: OwnedUserId) {
@@ -33,6 +61,8 @@ impl Core {
         let mut names = HashMap::new();
         let (items, mut stream) = timeline.subscribe().await;
         let items: Vec<Arc<TimelineItem>> = items.into_iter().collect();
+        let mut replies_asked = std::collections::HashSet::new();
+        Self::fetch_replied(&timeline, &items, &mut replies_asked);
         Self::receipt_names(&room, &items, &mut names).await;
         self.emit(json!({"ev": "timeline", "room_id": room_id.as_str(), "items": items_json(&items, &own, &names)}));
         // the guard keeps the typing handler registered while this task lives
@@ -46,6 +76,7 @@ impl Core {
                     tokio::time::sleep(Duration::from_millis(60)).await;
                     while let Some(Some(_)) = stream.next().now_or_never() {}
                     let items = timeline.items().await;
+                    Self::fetch_replied(&timeline, &items, &mut replies_asked);
                     Self::receipt_names(&room, &items, &mut names).await;
                     self.emit(json!({"ev": "timeline", "room_id": room_id.as_str(), "items": items_json(&items, &own, &names)}));
                 }

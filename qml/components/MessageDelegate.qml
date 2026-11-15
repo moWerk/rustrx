@@ -258,7 +258,7 @@ ListItem {
 
                     // the message this one replies to: who said it and its first lines
                     Row {
-                        visible: !!(model.reply_to && model.reply_to.body)
+                        visible: !!model.reply_to
                         width: Math.min(quote.implicitWidth + spacing + 2, innerMax)
                         spacing: Theme.paddingSmall
 
@@ -273,11 +273,21 @@ ListItem {
                             font.pixelSize: Theme.fontSizeExtraSmall
                             color: Theme.secondaryColor
                             textFormat: Text.StyledText
-                            text: model.reply_to
-                                  ? "<font color=\"" + Theme.secondaryHighlightColor + "\">"
-                                    + (model.reply_to.sender_name || model.reply_to.sender || "") + "</font><br>"
-                                    + (model.reply_to.body || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>")
-                                  : ""
+                            text: {
+                                var r = model.reply_to
+                                if (!r) return ""
+                                var quoted
+                                if (r.html && r.html.length) quoted = r.html
+                                else if (r.body !== undefined) quoted = r.body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>")
+                                //: the quoted message of a reply while it is fetched
+                                //% "Loading the original message"
+                                else if (r.pending) quoted = "<i>" + qsTrId("rustrx-la-reply-loading") + "</i>"
+                                //: the quoted message of a reply cannot be had (deleted, or no access)
+                                //% "Original message not available"
+                                else quoted = "<i>" + qsTrId("rustrx-la-reply-missing") + "</i>"
+                                var who = r.sender_name || r.sender || ""
+                                return (who.length ? "<font color=\"" + Theme.secondaryHighlightColor + "\">" + who + "</font><br>" : "") + quoted
+                            }
                         }
                     }
 
