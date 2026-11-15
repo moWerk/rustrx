@@ -209,3 +209,22 @@ Open points to test, in this order:
    SIP one; can the address be the Matrix ID, or a display name?
 4. A Harbour app could not ship this (own D-Bus service names, a
    Telepathy manager); Rustrx is an OpenRepos app, so it can.
+
+## Incoming calls (queued for 0.4.4, 2026-11-15)
+
+First two-phone test: the jp26 started a call in the plain room, the
+Prawn showed nothing. Rustrx does not see calls it did not start; the
+other side has to open the room and start the call too (Element Call
+then joins the running one).
+
+1. **A running call is visible.** Element Call announces each participant
+   in the room's state (`m.call.member`, one per device, empty content
+   when it leaves). The core watches these for the rooms in the list and
+   reports "call in progress" per room; the room shows "Join call", the
+   list a mark.
+2. **Ringing.** Whoever starts a call sends a notification event
+   (`m.rtc.notification`, MSC4075; `notification_type` "ring" in DMs,
+   "notification" in groups; older clients `org.matrix.msc4075.call.notify`).
+   Rustrx answers a ring with a notification that rings, with Answer
+   (opens the call page and joins) and Decline (MSC4310 decline, or just
+   dismissing it). Later the native call screen (above) takes it over.
