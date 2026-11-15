@@ -35,6 +35,8 @@ Page {
     property string replyToText
     property string editId
     property string editText
+    // the text field lives in the list's header, a scope of its own; it registers here
+    property Item inputArea
 
     Component.onCompleted: rustrx.openThread(roomId, rootId)
     Component.onDestruction: rustrx.closeThread()
@@ -54,6 +56,8 @@ Page {
     Connections { target: rustrx.thread; onCountChanged: page.markSeen() }
 
     function send() {
+        var input = inputArea
+        if (!input) return
         var text = input.text.trim()
         if (!text.length) return
         if (editId.length) {
@@ -125,7 +129,10 @@ Page {
                     //% "Reply in the thread"
                     placeholderText: qsTrId("rustrx-ph-thread")
                     focusOutBehavior: FocusBehavior.KeepFocus
-                    Component.onCompleted: if (page.compose) forceActiveFocus()
+                    Component.onCompleted: {
+                        page.inputArea = input
+                        if (page.compose) forceActiveFocus()
+                    }
                 }
                 BackgroundItem {
                     id: sendButton
@@ -146,8 +153,11 @@ Page {
         delegate: MessageDelegate {
             roomId: page.roomId
             inThread: true
-            onReply: { page.editId = ""; page.replyToId = eventId; page.replyToText = text; input.forceActiveFocus() }
-            onEdit: { page.replyToId = ""; page.editId = eventId; page.editText = text; input.text = text; input.forceActiveFocus() }
+            onReply: { page.editId = ""; page.replyToId = eventId; page.replyToText = text; if (page.inputArea) page.inputArea.forceActiveFocus() }
+            onEdit: {
+                page.replyToId = ""; page.editId = eventId; page.editText = text
+                if (page.inputArea) { page.inputArea.text = text; page.inputArea.forceActiveFocus() }
+            }
             onResend: {
                 rustrx.command({ cmd: "redact", room_id: page.roomId, txn_id: txnId })
                 rustrx.sendText(page.roomId, text, "", {}, page.rootId)
