@@ -23,7 +23,17 @@ pub(crate) enum Command {
     CloseRoom,
     /// Older history; answered by "paginated".
     PaginateBack { room_id: String, count: Option<u16> },
-    SendText { room_id: String, body: String, reply_to: Option<String>, markdown: Option<bool> },
+    /// `emotes`: the custom emoji the text uses, shortcode (without the
+    /// colons) to mxc address; the formatted body gets their pictures.
+    SendText {
+        room_id: String,
+        body: String,
+        reply_to: Option<String>,
+        markdown: Option<bool>,
+        emotes: Option<std::collections::HashMap<String, String>>,
+    },
+    /// A sticker from an image pack.
+    SendSticker { room_id: String, url: String, body: String, info: Option<serde_json::Value> },
     /// A file; pictures carry their size and a thumbnail from the UI, voice
     /// messages their duration.
     SendFile {
@@ -54,6 +64,11 @@ pub(crate) enum Command {
     /// A custom emoji's picture (an mxc:// address from a message or a
     /// reaction), small, into the emote cache. Answered by "emote".
     FetchEmote { mxc: String },
+    /// The image packs offered in a room (own, enabled everywhere, the
+    /// room's). Answered by "image_packs".
+    ImagePacks { room_id: String },
+    /// A custom emoji into the user's own pack. Answered by "emote_added".
+    AddUserEmote { shortcode: String, url: String },
 
     // --- rooms ---
     GetNotificationMode { room_id: String },

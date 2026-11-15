@@ -49,7 +49,8 @@ TimelineModel::TimelineModel(QObject *parent)
                             "editable", "highlight", "send_state", "type", "body", "html", "edited",
                             "reactions", "reply_to", "thread_root", "mime", "size", "w", "h", "has_thumb",
                             "filename", "duration", "geo_uri", "media_path", "thumb_path", "read_by",
-                            "caption", "shield", "answers", "max_selections", "ended", "upload_done", "upload_total" };
+                            "caption", "shield", "answers", "max_selections", "ended", "upload_done", "upload_total",
+                            "emotes" };
     int role = Qt::UserRole + 1;
     for (const char *n : names)
         m_roles.insert(role++, QByteArray(n));
@@ -74,6 +75,8 @@ QVariant TimelineModel::data(const QModelIndex &index, int role) const
         return renderHtml(item.value("html").toString());
     if (name == "reactions")
         return renderReactions(item.value("reactions").toList());
+    if (name == "emotes")
+        return emotesOf(item);
     return item.value(QString::fromLatin1(name));
 }
 
@@ -296,6 +299,38 @@ void TimelineModel::askEmotes(const QVariantMap &item)
         m_emotesAsked.insert(mxc);
         emit emoteWanted(mxc);
     }
+}
+
+// the custom emoji in a message and its reactions, once each, with their
+// shortcodes: "Add to my emoji" offers them
+QVariantList TimelineModel::emotesOf(const QVariantMap &item) const
+{
+    QVariantList out;
+    QSet<QString> seen;
+    auto add = [&](const QString &url, QString name) {
+        if (!url.startsWith(QLatin1String("mxc://")) || seen.contains(url))
+            return;
+        seen.insert(url);
+        name.remove(QLatin1Char(':'));
+        out << QVariantMap{ { "url", url }, { "shortcode", name.trimmed() },
+                            { "path", m_emotes.contains(url) ? QStringLiteral("file://") + m_emotes.value(url).path : QString() } };
+    };
+    const QString html = item.value("html").toString();
+    if (html.contains(QLatin1String("mxc://"))) {
+        QRegularExpressionMatchIterator it = imgTag().globalMatch(html);
+        while (it.hasNext()) {
+            const QString tag = it.next().captured();
+            QString name = attribute(tag, QStringLiteral("alt"));
+            if (name.isEmpty())
+                name = attribute(tag, QStringLiteral("title"));
+            add(attribute(tag, QStringLiteral("src")), name);
+        }
+    }
+    for (const QVariant &v : item.value("reactions").toList()) {
+        const QVariantMap r = v.toMap();
+        add(r.value("key").toString(), r.value("shortcode").toString());
+    }
+    return out;
 }
 
 bool TimelineModel::usesEmote(const QVariantMap &item, const QString &mxc) const

@@ -42,6 +42,16 @@ HTML had an `<img>` with an `mxc://` address that Qt cannot load.
 
 ## Part 2: custom emoji and stickers
 
+Status (0.4.4, built 2026-11-15, not yet tested): use and grab are in;
+making new ones from a picture comes later. The core reads the packs
+(`image_packs`: the user's own from the account data, the enabled ones,
+the room's from its state, fetched from the server each time a room
+opens), the picker shows a tab per pack, a sticker is sent with
+`send_sticker`, `:shortcode:` in a message becomes the picture in its
+HTML (`send_text` with `emotes`), a reaction with a custom emoji has its
+mxc address as the key, and "Add :code: to my emoji" in a message's menu
+writes the address into the user's own pack (no upload).
+
 Matrix has them as image packs (MSC2545, what Element, Cinny, FluffyChat
 and nheko use):
 

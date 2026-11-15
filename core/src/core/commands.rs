@@ -74,14 +74,17 @@ impl Core {
                 self.emit(json!({"ev": "paginated", "room_id": room.room_id().as_str(), "at_start": more}));
                 Ok(())
             }
-            SendText { room_id, body, reply_to, markdown } => {
+            SendText { room_id, body, reply_to, markdown, emotes } => {
                 let room = self.room(&room_id).await?;
                 let tl = self.timeline_for(&room).await?;
-                let content = if markdown.unwrap_or(true) {
+                let mut content = if markdown.unwrap_or(true) {
                     RoomMessageEventContent::text_markdown(&body)
                 } else {
                     RoomMessageEventContent::text_plain(&body)
                 };
+                if let Some(emotes) = &emotes {
+                    packs::with_emotes(&mut content, emotes);
+                }
                 match given(&reply_to) {
                     Some(reply) => {
                         let without: RoomMessageEventContentWithoutRelation = content.into();
@@ -295,6 +298,9 @@ impl Core {
                 self.get_media(&room_id, &event_id, thumb.unwrap_or(false), dest_dir).await
             }
             FetchEmote { mxc } => self.fetch_emote(&mxc).await,
+            ImagePacks { room_id } => self.image_packs(&room_id).await,
+            AddUserEmote { shortcode, url } => self.add_user_emote(&shortcode, &url).await,
+            SendSticker { room_id, url, body, info } => self.send_sticker(&room_id, &url, &body, info).await,
             SetFavourite { room_id, value } => {
                 let room = self.room(&room_id).await?;
                 room.set_is_favourite(value.unwrap_or(true), None).await?;
