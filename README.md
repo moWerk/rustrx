@@ -155,4 +155,6 @@ grading scheme is described at [moWerk/llmgd-specs](https://github.com/moWerk/ll
 ## Licence
 
 GPL-3.0-or-later. matrix-rust-sdk is Apache-2.0. The bundled Source Sans 3 Semibold
-(`qml/fonts/`, by Adobe, unmodified) is under the SIL Open Font License 1.1.
+(`qml/fonts/`, by Adobe, unmodified) is under the SIL Open Font License 1.1. The emoji list
+(`qml/emoji-data.js`) is generated from Unicode's emoji-test.txt, under the
+[Unicode licence](https://www.unicode.org/terms_of_use.html).
