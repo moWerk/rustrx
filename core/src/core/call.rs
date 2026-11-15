@@ -11,6 +11,7 @@ use super::*;
 use matrix_sdk::ruma::events::room::power_levels::RoomPowerLevelsEventContent;
 use matrix_sdk::ruma::events::{AnySyncMessageLikeEvent, StateEventType, TimelineEventType};
 use matrix_sdk::ruma::Int;
+use matrix_sdk::deserialized_responses::RawAnySyncOrStrippedState;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::widget::{
     Capabilities, CapabilitiesProvider, ClientProperties, EncryptionSystem, Intent,
@@ -27,6 +28,7 @@ const WIDGET_ID: &str = "rustrx-element-call";
 pub(crate) struct CallSession {
     handle: Arc<WidgetDriverHandle>,
     tasks: Vec<JoinHandle<()>>,
+    room: Room,
 }
 
 impl CallSession {
@@ -149,6 +151,9 @@ impl Core {
     pub(crate) async fn call_start(&'static self, room_id: &str, voice: bool, skip_lobby: bool) -> Result<()> {
         let room = self.room(room_id).await?;
         self.call_end().await;
+        // a membership of this device left over from a call that did not
+        // end cleanly (a crash, a killed app) goes first
+        Self::leave_own_memberships(&room).await;
         self.ensure_call_permission(&room).await?;
 
         let dm = room.is_direct().await.unwrap_or(false);
@@ -207,6 +212,7 @@ impl Core {
             }
         }
 
+        let rid_room = room.clone();
         let (driver, handle) = WidgetDriver::new(settings);
         let handle = Arc::new(handle);
         let rid = room.room_id().to_owned();
@@ -226,7 +232,7 @@ impl Core {
                 }
             }
         });
-        self.state.lock().await.call = Some(CallSession { handle, tasks: vec![run, forward] });
+        self.state.lock().await.call = Some(CallSession { handle, tasks: vec![run, forward], room: rid_room });
         tracing::info!(room = %rid, ?intent_name, ?encryption_name, skip_lobby, "call widget started");
         self.emit(json!({"ev": "call_url", "room_id": rid.as_str(), "url": url.as_str()}));
         Ok(())
@@ -243,8 +249,40 @@ impl Core {
     }
 
     pub(crate) async fn call_end(&self) {
-        if let Some(call) = self.state.lock().await.call.take() {
+        let call = self.state.lock().await.call.take();
+        if let Some(call) = call {
+            let room = call.room.clone();
             call.stop();
+            // Element Call leaves by emptying its membership; closed from
+            // outside (the page swiped away, the app quit) it had no time
+            // to, and the room showed a call in progress for hours
+            Self::leave_own_memberships(&room).await;
+        }
+    }
+
+    /// This device's call memberships in the room, emptied (the way Element
+    /// Call leaves a call); others' and already empty ones are left alone.
+    async fn leave_own_memberships(room: &Room) {
+        let own = room.own_user_id().to_owned();
+        let device = room.client().device_id().map(|d| d.to_string()).unwrap_or_default();
+        if device.is_empty() {
+            return;
+        }
+        for kind in CALL_MEMBER_TYPES {
+            let Ok(events) = room.get_state_events(StateEventType::from(kind)).await else { continue };
+            for ev in events {
+                let RawAnySyncOrStrippedState::Sync(raw) = ev else { continue };
+                let v: Value = serde_json::from_str(raw.json().get()).unwrap_or(Value::Null);
+                let key = v.get("state_key").and_then(Value::as_str).unwrap_or("");
+                let live = v.get("content").and_then(Value::as_object).is_some_and(|c| !c.is_empty());
+                let mine = v.get("sender").and_then(Value::as_str) == Some(own.as_str()) && key.contains(&device);
+                if live && mine {
+                    match room.send_state_event_raw(kind, key, json!({})).await {
+                        Ok(_) => tracing::info!(room = %room.room_id(), "call: left a membership of this device"),
+                        Err(e) => tracing::info!(room = %room.room_id(), "call: leaving a membership: {e}"),
+                    }
+                }
+            }
         }
     }
 }

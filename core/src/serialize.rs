@@ -472,6 +472,22 @@ pub(crate) fn item_json(item: &Arc<TimelineItem>, own: &UserId, names: &HashMap<
                 },
             );
             content_json(&mut o, e.content(), own);
+            // a call membership (Element Call's): who joined or left the call,
+            // from the event itself (the timeline knows it only as some state)
+            if let TimelineItemContent::OtherState(st) = e.content() {
+                let kind = st.content().event_type().to_string();
+                if kind.ends_with("call.member") {
+                    let left = e
+                        .original_json()
+                        .and_then(|raw| raw.get_field::<Value>("content").ok().flatten())
+                        .map_or(false, |c| c.as_object().map_or(true, |m| m.is_empty()));
+                    let who = match e.sender_profile() {
+                        TimelineDetails::Ready(p) => p.display_name.clone().unwrap_or_else(|| e.sender().localpart().to_owned()),
+                        _ => e.sender().localpart().to_owned(),
+                    };
+                    put(&mut o, "body", format!("{who} {}", if left { "left the call" } else { "joined the call" }));
+                }
+            }
         }
     }
     Value::Object(o)
