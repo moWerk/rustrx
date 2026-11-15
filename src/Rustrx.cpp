@@ -207,6 +207,9 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     , m_timeline(new TimelineModel(this))
 {
     s_instance = this;
+    connect(m_timeline, &TimelineModel::emoteWanted, this, [this](const QString &mxc) {
+        command({ { "cmd", "fetch_emote" }, { "mxc", mxc } });
+    });
     m_since.start();
     QDir().mkpath(dataDir);
     // the store's key from sailfish-secrets, if it works here; without it the
@@ -528,6 +531,9 @@ void Rustrx::eventCallback(void *ctx, const char *json)
 
 void Rustrx::command(const QVariantMap &cmd)
 {
+    // the emote pictures live in the media folder
+    if (cmd.value("cmd").toString() == QLatin1String("clear_media"))
+        m_timeline->clearEmotes();
     const QByteArray json = QJsonDocument(QJsonObject::fromVariantMap(cmd)).toJson(QJsonDocument::Compact);
     const int rc = rustrx_command(json.constData());
     // one line per command in the journal; the password is not part of the message
@@ -933,6 +939,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         else
             m_timeline->setMediaPath(ev.value("event_id").toString(), ev.value("thumb").toBool(),
                                      ev.value("path").toString());
+    } else if (type == QLatin1String("emote")) {
+        m_timeline->setEmotePath(ev.value("mxc").toString(), ev.value("path").toString());
     } else if (type == QLatin1String("open_url")) {
         emit browserUrl(ev.value("url").toString());
     } else if (type == QLatin1String("identity_reset_approval")) {

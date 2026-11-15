@@ -319,4 +319,7 @@ ApplicationWindow {
     Connections { target: debugMinimize; onValueChanged: if (debugMinimize.value === true) app.deactivate() }
 
     Component.onCompleted: route()
+
+    // custom emoji in messages: a little taller than the text, like an emoji
+    Binding { target: rustrx.timeline; property: "emoteSize"; value: Math.round(Theme.fontSizeMedium * 1.25) }
 }

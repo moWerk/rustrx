@@ -187,6 +187,41 @@ impl Core {
     }
 }
 
+impl Core {
+    /// A custom emoji's picture, cached by its address in media/emotes (one
+    /// file per address, kept: an mxc address never changes its content).
+    /// A cached one is answered without the network.
+    pub(crate) async fn fetch_emote(&'static self, mxc: &str) -> Result<()> {
+        let dir = self.data_dir.join("media").join("emotes");
+        let safe: String = mxc.trim_start_matches("mxc://").chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+        let cached = std::fs::read_dir(&dir).ok().and_then(|entries| {
+            entries.flatten().map(|e| e.path()).find(|p| p.file_stem().map_or(false, |s| s == safe.as_str()))
+        });
+        let path = match cached {
+            Some(p) => p,
+            None => {
+                let client = self.client().await?;
+                let url = OwnedMxcUri::from(mxc);
+                url.validate()?;
+                // small: it is drawn at the height of a line
+                let request = MediaRequestParameters {
+                    source: MediaSource::Plain(url),
+                    format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(uint!(96), uint!(96))),
+                };
+                let bytes = client.media().get_media_content(&request, true).await?;
+                let ext = sniff_extension(&bytes).unwrap_or("png");
+                tokio::fs::create_dir_all(&dir).await?;
+                let path = dir.join(format!("{safe}.{ext}"));
+                tokio::fs::write(&path, &bytes).await?;
+                path
+            }
+        };
+        self.emit(json!({"ev": "emote", "mxc": mxc, "path": path.to_string_lossy()}));
+        Ok(())
+    }
+}
+
 /// The file type from its first bytes, for the types the UI shows or plays.
 fn sniff_extension(bytes: &[u8]) -> Option<&'static str> {
     let b = bytes;

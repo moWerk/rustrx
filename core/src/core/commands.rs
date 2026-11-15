@@ -288,6 +288,7 @@ impl Core {
             GetMedia { room_id, event_id, thumb, dest_dir } => {
                 self.get_media(&room_id, &event_id, thumb.unwrap_or(false), dest_dir).await
             }
+            FetchEmote { mxc } => self.fetch_emote(&mxc).await,
             SetFavourite { room_id, value } => {
                 let room = self.room(&room_id).await?;
                 room.set_is_favourite(value.unwrap_or(true), None).await?;
