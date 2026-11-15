@@ -1020,6 +1020,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_timeline->setEmotePath(mxc, path);
         m_emotePaths.insert(mxc, path);
         emit emoteReady(mxc, QStringLiteral("file://") + path);
+    } else if (type == QLatin1String("calls_allowed")) {
+        emit callsAllowed(ev.value("room_id").toString());
     } else if (type == QLatin1String("call_ring")) {
         emit callRing(ev.value("room_id").toString(), ev.value("room_name").toString(),
                       ev.value("sender_name").toString(), ev.value("ring").toBool(),

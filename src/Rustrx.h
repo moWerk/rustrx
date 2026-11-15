@@ -181,6 +181,8 @@ signals:
                   bool ring, const QString &eventId, int expiresMs);
     // answered or declined: the ringing notification goes
     void callAnswered(const QString &roomId);
+    // starting a call opened the room's calls to everyone (permissions)
+    void callsAllowed(const QString &roomId);
     void roomsLoadedChanged();
     void settingsChanged();
     void roomFilterChanged();

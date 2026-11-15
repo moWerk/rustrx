@@ -215,6 +215,9 @@ ApplicationWindow {
             if (rustrx.openRoomId === roomId && rustrx.takePendingCall() === roomId)
                 rustrx.command({ cmd: "call_start", room_id: roomId })
         }
+        //: a call was started where only moderators could take part; the starter could change that
+        //% "Everyone in this room can now take part in calls"
+        onCallsAllowed: Notices.show(qsTrId("rustrx-no-calls-allowed"), Notice.Long)
         onMatrixUriRequested: if (rustrx.takePendingUri().length) { app.activate(); app.openMatrixUri(uri) }
         onShareRequested: {
             var shared = rustrx.takePendingShare()

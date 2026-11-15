@@ -257,6 +257,20 @@ impl Core {
                     let content = RoomEncryptionEventContent::with_recommended_defaults();
                     req.initial_state = vec![InitialStateEvent::with_empty_state_key(content).to_raw_any()];
                 }
+                // everyone may take part in calls (a call membership is a state
+                // event); the map replaces the server's, so its defaults are
+                // restated (Synapse's, as Element sends them)
+                let mut events = json!({
+                    "m.room.name": 50, "m.room.power_levels": 100, "m.room.history_visibility": 100,
+                    "m.room.canonical_alias": 50, "m.room.avatar": 50, "m.room.tombstone": 100,
+                    "m.room.server_acl": 100, "m.room.encryption": 100,
+                });
+                for t in super::call::CALL_MEMBER_TYPES {
+                    events[t] = json!(0);
+                }
+                req.power_level_content_override = Some(
+                    matrix_sdk::ruma::serde::Raw::new(&json!({ "events": events }))?.cast_unchecked(),
+                );
                 let room = client.create_room(req).await?;
                 self.emit(json!({"ev": "joined", "room_id": room.room_id().as_str()}));
                 Ok(())

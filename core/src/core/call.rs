@@ -8,7 +8,9 @@
 //! granted (Element Call asks only for what a call needs in this room).
 
 use super::*;
-use matrix_sdk::ruma::events::AnySyncMessageLikeEvent;
+use matrix_sdk::ruma::events::room::power_levels::RoomPowerLevelsEventContent;
+use matrix_sdk::ruma::events::{AnySyncMessageLikeEvent, StateEventType, TimelineEventType};
+use matrix_sdk::ruma::Int;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::widget::{
     Capabilities, CapabilitiesProvider, ClientProperties, EncryptionSystem, Intent,
@@ -46,6 +48,9 @@ impl CapabilitiesProvider for GrantAll {
 /// The event types a starting call rings with: MSC4075 as Element Call
 /// sends it now, its stable name, and the older call.notify.
 const RING_TYPES: [&str; 3] = ["org.matrix.msc4075.rtc.notification", "m.rtc.notification", "org.matrix.msc4075.call.notify"];
+/// The state events a call participant announces itself with (Element
+/// Call's MatrixRTC membership, the unstable name and the stable one).
+pub(crate) const CALL_MEMBER_TYPES: [&str; 2] = ["org.matrix.msc3401.call.member", "m.call.member"];
 /// MSC4310, answering a ring with no.
 const DECLINE_TYPE: &str = "org.matrix.msc4310.rtc.decline";
 
@@ -115,9 +120,36 @@ impl Core {
         Ok(())
     }
 
+    /// A call needs each participant to post a membership state event; a
+    /// room made without calls in mind asks moderator level for that, and
+    /// Element Call then fails with "Connection lost". Someone who may
+    /// change the room's permissions opens calls to everyone (as Element X
+    /// sets up new rooms); anyone else gets told why.
+    async fn ensure_call_permission(&'static self, room: &Room) -> Result<()> {
+        let own = room.own_user_id().to_owned();
+        let mut levels = room.power_levels().await?;
+        let blocked = CALL_MEMBER_TYPES
+            .iter()
+            .any(|t| !levels.user_can_send_state(&own, StateEventType::from(*t)));
+        if !blocked {
+            return Ok(());
+        }
+        if !levels.user_can_send_state(&own, StateEventType::RoomPowerLevels) {
+            bail!("only moderators can take part in calls in this room; a room admin can allow calls for everyone");
+        }
+        for t in CALL_MEMBER_TYPES {
+            levels.events.insert(TimelineEventType::from(t), Int::from(0u8));
+        }
+        room.send_state_event(RoomPowerLevelsEventContent::try_from(levels)?).await?;
+        tracing::info!(room = %room.room_id(), "call: opened calls to everyone in the room");
+        self.emit(json!({"ev": "calls_allowed", "room_id": room.room_id().as_str()}));
+        Ok(())
+    }
+
     pub(crate) async fn call_start(&'static self, room_id: &str, voice: bool, skip_lobby: bool) -> Result<()> {
         let room = self.room(room_id).await?;
         self.call_end().await;
+        self.ensure_call_permission(&room).await?;
 
         let dm = room.is_direct().await.unwrap_or(false);
         let ongoing = room.has_active_room_call();
