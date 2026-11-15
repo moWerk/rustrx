@@ -244,3 +244,15 @@ sleeps (a short window every five minutes), so a ring in between is
 missed; push (Foghorn, docs/PUSH.md) is the way out. Whether lipstick
 plays `x-nemo-feedback` for an app's notification on a locked phone is
 to be seen; the fallback is a notification category file of our own.
+
+## First two-phone call (2026-11-15, 21:00, 0.4.3-30)
+
+The jp26 started a call in the plain test room, the Prawn rang and
+joined; both heard each other (on speakers in one room: feedback).
+On the way: the room asked moderator level for call memberships
+(fixed: an admin's call opens it to the members, new rooms allow it),
+phantom "Call in progress" from memberships never emptied (fixed: the
+core empties this device's on every end and start). Open: the Prawn's
+camera stays off in the call (the mainline Pro1-X camera in the
+WebView, a question for the memeline track); still unencrypted only
+(Gecko 115).
