@@ -130,14 +130,24 @@ impl Core {
     async fn ensure_call_permission(&'static self, room: &Room) -> Result<()> {
         let own = room.own_user_id().to_owned();
         let mut levels = room.power_levels().await?;
-        let blocked = CALL_MEMBER_TYPES
+        // the others have to be able to join too, not only the one who
+        // starts the call (an admin starting it is never blocked)
+        let members_blocked = CALL_MEMBER_TYPES.iter().any(|t| {
+            let needed = levels.events.get(&TimelineEventType::from(*t)).copied().unwrap_or(levels.state_default);
+            needed > levels.users_default
+        });
+        let own_blocked = CALL_MEMBER_TYPES
             .iter()
             .any(|t| !levels.user_can_send_state(&own, StateEventType::from(*t)));
-        if !blocked {
+        if !members_blocked && !own_blocked {
             return Ok(());
         }
         if !levels.user_can_send_state(&own, StateEventType::RoomPowerLevels) {
-            bail!("only moderators can take part in calls in this room; a room admin can allow calls for everyone");
+            if own_blocked {
+                bail!("only moderators can take part in calls in this room; a room admin can allow calls for everyone");
+            }
+            // we may, others may not: the call goes ahead, they will be told
+            return Ok(());
         }
         for t in CALL_MEMBER_TYPES {
             levels.events.insert(TimelineEventType::from(t), Int::from(0u8));
