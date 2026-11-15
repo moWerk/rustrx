@@ -44,6 +44,9 @@ ListItem {
     readonly property color mainColor: own || highlighted ? Theme.highlightColor : Theme.primaryColor
     // a message that mentions us (or a keyword rule) gets the highlight colour
     readonly property bool mention: model.highlight === true && !own
+    // its bar in front of the text, though not in a reply: there the line
+    // belongs to the quote above (a reply to us always counts as a mention)
+    readonly property bool mentionBar: mention && !model.reply_to
     readonly property color dimColor: own ? Theme.secondaryHighlightColor : Theme.secondaryColor
     // captured here: inside the Repeater, `model` would name the Repeater's own property
     readonly property var reactionList: model.reactions ? model.reactions : []
@@ -294,12 +297,12 @@ ListItem {
                     // a thin bar marks a mention; plain bodies get their addresses linked
                     Row {
                         visible: !isMedia
-                        width: Math.min(body.implicitWidth + (mention ? spacing + 2 : 0), innerMax)
+                        width: Math.min(body.implicitWidth + (mentionBar ? spacing + 2 : 0), innerMax)
                         spacing: Theme.paddingSmall
-                        Rectangle { visible: mention; width: 2; height: body.height; color: Theme.highlightColor }
+                        Rectangle { visible: mentionBar; width: 2; height: body.height; color: Theme.highlightColor }
                         Label {
                             id: body
-                            width: parent.width - (mention ? parent.spacing + 2 : 0)
+                            width: parent.width - (mentionBar ? parent.spacing + 2 : 0)
                             wrapMode: Text.Wrap
                             textFormat: msgType === "text" || msgType === "notice" || (model.html && model.html.length) ? Text.StyledText : Text.PlainText
                             color: msgType === "utd" || msgType === "redacted" ? dimColor : (mention ? Theme.highlightColor : mainColor)
