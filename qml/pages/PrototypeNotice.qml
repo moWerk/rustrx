@@ -49,8 +49,8 @@ Dialog {
                 wrapMode: Text.Wrap
                 font.pixelSize: Theme.fontSizeLarge
                 color: Theme.highlightColor
-                //% "Rustrx is a prototype"
-                text: qsTrId("rustrx-he-prototype")
+                //% "Thanks for testing Rustrx!"
+                text: qsTrId("rustrx-he-thanks-testing")
             }
 
             Label {
