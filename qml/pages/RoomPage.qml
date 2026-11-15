@@ -302,7 +302,8 @@ Page {
         id: list
         anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         // the emoji panel takes the keyboard's place below the composer
-        anchors.bottomMargin: emojiPanel.visibleSize
+        // the picker's part above the keyboard (none while the keyboard covers it)
+        anchors.bottomMargin: Math.max(0, page.emojiLift - page.keyboardSize)
         verticalLayoutDirection: ListView.BottomToTop
         model: rustrx.timeline
         // no current item: a message arriving at the newest end moved it, and
@@ -501,9 +502,7 @@ Page {
                     height: Math.max(input.height, Theme.itemSizeSmall)
                     onClicked: {
                         if (emojiPanel.open && emojiPanel.mode === "insert") {
-                            emojiPanel.open = false
-                            input.forceActiveFocus()
-                            Qt.inputMethod.show()
+                            page.emojiToKeyboard()
                         } else {
                             emojiPanel.stickers = page.hasStickers && input.text.trim().length === 0
                             page.showEmoji("insert", "")
@@ -612,11 +611,60 @@ Page {
         FilePickerPage { }
     }
 
-    // the emoji picker in the keyboard's place: inserts at the cursor, or
-    // reacts to a message (EmojiPanel)
+    // The emoji picker in the keyboard's place: inserts at the cursor, or
+    // reacts to a message (EmojiPanel). The picker and the keyboard share
+    // one place at the bottom of the screen. Silica shrinks the page by the
+    // keyboard as it slides (keyboardSize); the picker sits at the screen's
+    // bottom, lifted by emojiLift, and the conversation ends above whichever
+    // is higher. Switching from one to the other keeps the height: the
+    // picker takes the keyboard's, lies under it and is uncovered as the
+    // keyboard slides away, or is covered by the keyboard sliding up and
+    // only then goes. With nothing open it slides in and out on its own.
+    readonly property real keyboardSize: pageStack.panelSize
+    property real emojiHeight: defaultEmojiHeight()
+    property real emojiLift: 0
+    property bool emojiLiftAnimated
+    // the keyboard is coming back in the picker's place
+    property bool emojiToKeys
+    Behavior on emojiLift {
+        enabled: page.emojiLiftAnimated
+        NumberAnimation { duration: 250; easing.type: Easing.InOutQuad }
+    }
+    function defaultEmojiHeight() { return Math.round(Screen.height * (isPortrait ? 0.36 : 0.5)) }
+    onIsPortraitChanged: { emojiHeight = defaultEmojiHeight(); if (emojiPanel.open) emojiLift = emojiHeight }
+
     function showEmoji(mode, eventId) {
-        Qt.inputMethod.hide()
-        emojiPanel.show(mode, eventId)
+        emojiToKeys = false
+        if (keyboardSize > 0) {
+            // under the keyboard, at its height, uncovered as it goes
+            emojiHeight = keyboardSize
+            emojiLiftAnimated = false
+            emojiLift = emojiHeight
+            emojiPanel.show(mode, eventId)
+            Qt.inputMethod.hide()
+        } else {
+            emojiPanel.show(mode, eventId)
+            emojiLiftAnimated = true
+            emojiLift = emojiHeight
+        }
+    }
+    // the emoji button again, or a tap into the field: the keyboard covers
+    // the picker, which goes once it is covered
+    function emojiToKeyboard() {
+        emojiToKeys = true
+        if (inputArea) inputArea.forceActiveFocus()
+        Qt.inputMethod.show()
+    }
+    onKeyboardSizeChanged: {
+        // the keyboard's own height, for the picker next time
+        if (Qt.inputMethod.visible && !emojiPanel.open && keyboardSize > 0)
+            emojiHeight = keyboardSize
+        if (emojiToKeys && emojiPanel.open && keyboardSize >= emojiLift - 1) {
+            emojiToKeys = false
+            emojiLiftAnimated = false
+            emojiLift = 0
+            emojiPanel.open = false
+        }
     }
     function insertEmoji(emoji) {
         if (!inputArea) return
@@ -629,6 +677,12 @@ Page {
     property string reactMoreText
     EmojiPanel {
         id: emojiPanel
+        // at the screen's bottom, below the page while the keyboard is up
+        y: page.height + page.keyboardSize - page.emojiLift
+        height: page.emojiHeight
+        visible: page.emojiLift > 0
+        // closed by itself (a reaction, a sticker): it slides away
+        onOpenChanged: if (!open && page.emojiLift > 0) { page.emojiLiftAnimated = true; page.emojiLift = 0 }
         packs: page.packs
         // a pack's picture: a reaction (its address the key), a sticker sent
         // (an empty message, and the image is one), else :shortcode: in the text
@@ -650,9 +704,9 @@ Page {
                 page.insertEmoji(emoji)
         }
     }
-    // the keyboard back (a tap into the field): the panel makes way
+    // the keyboard back (a tap into the field): it takes the picker's place
     Connections {
         target: Qt.inputMethod
-        onVisibleChanged: if (Qt.inputMethod.visible) emojiPanel.open = false
+        onVisibleChanged: if (Qt.inputMethod.visible && emojiPanel.open) page.emojiToKeys = true
     }
 }

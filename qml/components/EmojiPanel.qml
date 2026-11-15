@@ -24,8 +24,12 @@ import "../emoji-data.js" as EmojiData
 // "insert" mode an emoji goes into the message at the cursor and the panel
 // stays for the next one; with an empty message ("stickers" on) a pack's
 // sticker is sent at once. In "react" mode it reacts to a message and closes.
-DockedPanel {
+// The room page places it and moves it, sharing the place with the keyboard.
+Item {
     id: panel
+
+    // shown (the page slides it in and out)
+    property bool open
 
     property string mode: "insert"
     // the message a reaction is for
@@ -43,10 +47,6 @@ DockedPanel {
     signal textReaction()
 
     width: parent.width
-    // about the keyboard's height, so the conversation does not jump
-    height: Math.round(Screen.height * (isPortrait ? 0.36 : 0.5))
-    dock: Dock.Bottom
-    modal: false
 
     function show(newMode, forEvent) {
         mode = newMode
