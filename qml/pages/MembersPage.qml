@@ -59,30 +59,35 @@ Page {
         }
     }
 
+    // the title and the search above the list, not in it: a new list with
+    // every letter took the focus away from the search (a list is a focus
+    // scope), and the keyboard closed after each one
+    Column {
+        id: top
+        width: parent.width
+        PageHeader {
+            //: %n the room's members
+            //% "%n members"
+            title: qsTrId("rustrx-se-members", page.members.length)
+            description: page.roomName
+        }
+        SearchField {
+            width: parent.width
+            //% "Search members"
+            placeholderText: qsTrId("rustrx-ph-member-search")
+            inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+            onTextChanged: page.filter = text
+            EnterKey.iconSource: "image://theme/icon-m-enter-close"
+            EnterKey.onClicked: focus = false
+        }
+    }
+
     SilicaListView {
         id: list
-        anchors.fill: parent
+        anchors { top: top.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        clip: true
         model: page.shown
         currentIndex: -1
-
-        header: Column {
-            width: list.width
-            PageHeader {
-                //: %n the room's members
-                //% "%n members"
-                title: qsTrId("rustrx-se-members", page.members.length)
-                description: page.roomName
-            }
-            SearchField {
-                width: parent.width
-                //% "Search members"
-                placeholderText: qsTrId("rustrx-ph-member-search")
-                inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
-                onTextChanged: page.filter = text
-                EnterKey.iconSource: "image://theme/icon-m-enter-close"
-                EnterKey.onClicked: focus = false
-            }
-        }
 
         delegate: ListItem {
             id: row
