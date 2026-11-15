@@ -107,6 +107,10 @@ Page {
             app.markRead(roomId)
     }
 
+    // a message is drafted: the push-up menu attaches to it
+    readonly property bool hasDraft: !!inputArea && !editId.length && !reactToId.length
+                                     && inputArea.text.trim().length > 0
+
     // whatever is in the composer, taken out of it
     function takeCaption() {
         if (!inputArea || editId.length || reactToId.length) return ""
@@ -316,23 +320,14 @@ Page {
             }
         }
 
+        // with an empty message an entry sends on its own; with a message
+        // drafted it attaches: the text goes along as the caption
         PushUpMenu {
             MenuItem {
-                //% "Take a photo"
-                text: qsTrId("rustrx-me-take-photo")
-                onClicked: {
-                    var cam = pageStack.push(Qt.resolvedUrl("CameraPage.qml"))
-                    cam.captured.connect(function (path) { rustrx.sendFile(roomId, path, page.takeCaption()) })
-                }
-            }
-            MenuItem {
-                //% "Record a voice message"
-                text: qsTrId("rustrx-me-record-voice")
-                onClicked: pageStack.push(Qt.resolvedUrl("VoicePage.qml"), { roomId: roomId })
-            }
-            MenuItem {
+                //% "Attach an image"
+                text: page.hasDraft ? qsTrId("rustrx-me-attach-image")
                 //% "Send an image"
-                text: qsTrId("rustrx-me-send-image")
+                                    : qsTrId("rustrx-me-send-image")
                 onClicked: {
                     var picker = pageStack.push(multiImagePicker)
                     picker.accepted.connect(function () {
@@ -344,26 +339,37 @@ Page {
                 }
             }
             MenuItem {
+                //% "Attach a file"
+                text: page.hasDraft ? qsTrId("rustrx-me-attach-file")
                 //% "Send a file"
-                text: qsTrId("rustrx-me-send-file")
+                                    : qsTrId("rustrx-me-send-file")
                 onClicked: {
                     var picker = pageStack.push(filePicker)
                     picker.selectedContentPropertiesChanged.connect(function () {
                         if (picker.selectedContentProperties.filePath)
-                            rustrx.sendFile(roomId, picker.selectedContentProperties.filePath)
+                            rustrx.sendFile(roomId, picker.selectedContentProperties.filePath, page.takeCaption())
                     })
                 }
             }
-            // closest to the edge, the one used most; with an empty message
-            // and a pack with stickers, the stickers too
             MenuItem {
-                readonly property bool withStickers: page.hasStickers && page.inputArea && page.inputArea.text.trim().length === 0
-                //% "Stickers and emoji"
-                text: withStickers ? qsTrId("rustrx-me-stickers-emoji")
-                //% "Insert emoji"
-                                   : qsTrId("rustrx-me-insert-emoji")
-                onClicked: { emojiPanel.stickers = withStickers; page.showEmoji("insert", "") }
+                //% "Attach a photo"
+                text: page.hasDraft ? qsTrId("rustrx-me-attach-photo")
+                //% "Take a photo"
+                                    : qsTrId("rustrx-me-take-photo")
+                onClicked: {
+                    var cam = pageStack.push(Qt.resolvedUrl("CameraPage.qml"))
+                    cam.captured.connect(function (path) { rustrx.sendFile(roomId, path, page.takeCaption()) })
+                }
             }
+            // closest to the edge
+            MenuItem {
+                //% "Attach a voice message"
+                text: page.hasDraft ? qsTrId("rustrx-me-attach-voice")
+                //% "Record a voice message"
+                                    : qsTrId("rustrx-me-record-voice")
+                onClicked: pageStack.push(Qt.resolvedUrl("VoicePage.qml"), { roomId: roomId, takeCaption: page.takeCaption })
+            }
+        }
         }
 
         // in a bottom-to-top list the footer is drawn at the top: a line while
@@ -488,9 +494,35 @@ Page {
             Row {
                 width: parent.width
 
+                // the emoji picker (and the stickers with an empty message);
+                // a second tap brings the keyboard back
+                BackgroundItem {
+                    id: emojiButton
+                    width: Theme.itemSizeSmall
+                    height: Math.max(input.height, Theme.itemSizeSmall)
+                    onClicked: {
+                        if (emojiPanel.open && emojiPanel.mode === "insert") {
+                            emojiPanel.open = false
+                            input.forceActiveFocus()
+                            Qt.inputMethod.show()
+                        } else {
+                            emojiPanel.stickers = page.hasStickers && input.text.trim().length === 0
+                            page.showEmoji("insert", "")
+                        }
+                    }
+                    Label {
+                        anchors.centerIn: parent
+                        text: "🙂"
+                        font.pixelSize: Theme.fontSizeLarge
+                        opacity: emojiButton.highlighted || emojiPanel.open ? 1.0 : Theme.opacityHigh
+                    }
+                }
+
                 TextArea {
                     id: input
-                    width: parent.width - sendButton.width
+                    width: parent.width - emojiButton.width - sendButton.width
+                    // the emoji button holds the page margin
+                    textLeftMargin: Theme.paddingSmall
                     //% "Message"
                     placeholderText: qsTrId("rustrx-ph-message")
                     //: %1 the room's name

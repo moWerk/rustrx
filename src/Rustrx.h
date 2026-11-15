@@ -147,7 +147,8 @@ public:
     Q_INVOKABLE void setRoomAvatar(const QString &roomId, const QString &path);
     // a picture from the phone as one's own picture, prepared the same way
     Q_INVOKABLE void setOwnAvatar(const QString &path);
-    Q_INVOKABLE void sendVoice(const QString &roomId, const QString &path, qint64 durationMs);
+    Q_INVOKABLE void sendVoice(const QString &roomId, const QString &path, qint64 durationMs,
+                               const QString &caption = QString());
     Q_INVOKABLE void getMedia(const QString &roomId, const QString &eventId, bool thumb);
     // a copy in Downloads, where other apps may read it; answered by mediaExported
     Q_INVOKABLE void exportMedia(const QString &roomId, const QString &eventId);

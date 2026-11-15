@@ -24,6 +24,8 @@ Page {
     id: page
 
     property string roomId
+    // the room's composer: a drafted message goes along as the caption
+    property var takeCaption
     property bool sent
     // counted from the tap: the recorder reports its duration a few seconds late
     property real startedAt: 0
@@ -167,7 +169,7 @@ Page {
                 //% "Send"
                 text: qsTrId("rustrx-bt-send")
                 onClicked: {
-                    rustrx.sendVoice(page.roomId, voice.path, page.elapsed)
+                    rustrx.sendVoice(page.roomId, voice.path, page.elapsed, page.takeCaption ? page.takeCaption() : "")
                     page.sent = true
                     pageStack.pop()
                 }

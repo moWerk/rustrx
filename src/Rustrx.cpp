@@ -743,9 +743,12 @@ void Rustrx::sendFile(const QString &roomId, const QString &path, const QString 
     command(cmd);
 }
 
-void Rustrx::sendVoice(const QString &roomId, const QString &path, qint64 durationMs)
+void Rustrx::sendVoice(const QString &roomId, const QString &path, qint64 durationMs, const QString &caption)
 {
-    command({{"cmd", "send_file"}, {"room_id", roomId}, {"path", path}, {"voice", true}, {"duration_ms", durationMs}});
+    QVariantMap cmd{{"cmd", "send_file"}, {"room_id", roomId}, {"path", path}, {"voice", true}, {"duration_ms", durationMs}};
+    if (!caption.isEmpty())
+        cmd.insert("caption", caption);
+    command(cmd);
 }
 
 void Rustrx::getMedia(const QString &roomId, const QString &eventId, bool thumb)
