@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 import Sailfish.Pickers 1.0
+import Nemo.Configuration 1.0
 import "../components"
 
 // The conversation. The list runs bottom to top, so its header, the text
@@ -76,32 +77,82 @@ Page {
         if (rustrx.openRoomId === roomId) rustrx.closeRoom()
     }
 
-    // Back from a page above (a picture, a video, the room's page): the
-    // chat stays where it was. Coming back, the text field takes its focus
-    // again and the list ran down to it, away from the picture tapped.
-    property real returnY: NaN
-    Timer {
-        id: restoreY
-        interval: 0
-        property int rounds
-        onTriggered: {
-            if (!isNaN(page.returnY)) list.contentY = page.returnY
-            // the focus may settle a little later: once more
-            if (++rounds < 2) { interval = 250; restart() } else { rounds = 0; interval = 0; page.returnY = NaN }
+    // The chat keeps its place. It moves on an action (send, reply, edit,
+    // a reaction) or to follow new messages at the newest end; otherwise the
+    // message at the bottom edge keeps its distance from that edge. When a
+    // page comes over the chat (a picture, a thread, the room's page) that
+    // message (by its row id, not a raw contentY: the keyboard changes the
+    // height in between and older history may page in) and its distance
+    // are noted; back, they are put back once, after the keyboard has
+    // settled. (Silica's auto scroll to the focused text field, the main
+    // mover before, is off: see the TextArea.)
+    property string anchorId
+    property real anchorOffset
+    property bool anchorNewest
+    property bool anchorPending
+
+    // the row at a point of the view, as an item and its index
+    function rowAt(y) {
+        for (var k = 0; k < 30; k++) {
+            var i = list.indexAt(list.width / 2, y - k * 8)
+            if (i >= 0) return { index: i, item: list.itemAt(list.width / 2, y - k * 8) }
         }
+        return null
+    }
+    function takeAnchor() {
+        anchorNewest = list.atYBeginning
+        anchorId = ""
+        var bottom = list.contentY + list.height
+        var r = rowAt(bottom - 1)
+        if (!r || !r.item) return
+        anchorId = rustrx.timeline.get(r.index).id || ""
+        anchorOffset = bottom - (r.item.y + r.item.height)
+        cp("anchor-take", "id=" + anchorId.slice(0, 10) + " off=" + Math.round(anchorOffset) + " newest=" + anchorNewest)
+    }
+    function applyAnchor() {
+        anchorPending = false
+        if (anchorNewest) { cp("anchor-newest"); list.positionViewAtBeginning(); return }
+        if (!anchorId.length) return
+        var index = -1
+        for (var i = 0; i < rustrx.timeline.count; i++)
+            if (rustrx.timeline.get(i).id === anchorId) { index = i; break }
+        if (index < 0) { cp("anchor-gone"); return }
+        // into view first, then exactly to its old distance from the bottom
+        list.positionViewAtIndex(index, ListView.Contain)
+        for (var y = list.contentY; y < list.contentY + list.height; y += 8) {
+            if (list.indexAt(list.width / 2, y) !== index) continue
+            var item = list.itemAt(list.width / 2, y)
+            if (item) list.contentY = item.y + item.height + anchorOffset - list.height
+            break
+        }
+        cp("anchor-apply", "index=" + index)
+    }
+    // once the keyboard has stopped moving (its animation changes the height)
+    Timer { id: anchorSettle; interval: 150; onTriggered: if (page.anchorPending) page.applyAnchor() }
+    // the first wait, for a keyboard that does not move at all
+    Timer { id: anchorFirst; interval: 300; onTriggered: if (page.anchorPending) page.applyAnchor() }
+    Connections {
+        target: pageStack
+        onPanelSizeChanged: if (page.anchorPending && page.status === PageStatus.Active) { anchorFirst.stop(); anchorSettle.restart() }
     }
 
     onStatusChanged: {
-        if (status === PageStatus.Deactivating)
-            returnY = list.contentY
-        if (status === PageStatus.Active && !isNaN(returnY))
-            restoreY.restart()
+        cpFresh = true
+        cp("status")
+        if (status === PageStatus.Deactivating) {
+            takeAnchor()
+            anchorPending = true
+        }
+        if (status === PageStatus.Active && anchorPending)
+            anchorFirst.restart()
         if (status === PageStatus.Active) {
             app.lastRoom = roomId
             // opened by Answer on an incoming call: join it
             if (rustrx.takePendingCall() === roomId)
                 rustrx.command({ cmd: "call_start", room_id: roomId })
-            markRead()
+            // read only at the newest end: marking moves the read marker's
+            // row, which shifted what someone scrolled up was reading
+            if (list.atYBeginning) markRead()
             // the room's page, one swipe to the right; attached once the
             // transition is over (inside it the stack reports a binding loop)
             if (!infoAttached) attachInfo.start()
@@ -156,8 +207,9 @@ Page {
         id: composerLater
         interval: 350
         onTriggered: {
-            list.positionViewAtBeginning()
+            page.viewAtBeginning("composer")
             if (page.inputArea) page.inputArea.forceActiveFocus()
+            page.cp("composer-focused")
         }
     }
 
@@ -304,17 +356,24 @@ Page {
     Connections {
         target: rustrx.timeline
         onCountChanged: {
+            if (page.cpOn) page.cp("count", "n=" + rustrx.timeline.count)
             if (!page.positioned && rustrx.timeline.count > 0) {
                 page.positioned = true
                 for (var i = 0; i < rustrx.timeline.count; i++) {
                     if (rustrx.timeline.get(i).kind === "readmarker") {
-                        list.positionViewAtIndex(i, ListView.Center)
+                        page.viewAt("readmarker", i, ListView.Center)
                         break
                     }
                 }
             }
             if (list.atYBeginning) markRead()
         }
+        onRowsInserted: if (page.cpOn) page.cp("ins", "rows=" + first + ".." + last)
+        onRowsRemoved: if (page.cpOn) page.cp("rem", "rows=" + first + ".." + last)
+        onRowsMoved: if (page.cpOn) page.cp("mov", "rows=" + start + ".." + end + ">" + row)
+        onDataChanged: if (page.cpOn) page.cp("data", "rows=" + topLeft.row + ".." + bottomRight.row)
+        onModelReset: page.cp("reset")
+        onLayoutChanged: page.cp("layout")
     }
 
     SilicaListView {
@@ -331,6 +390,15 @@ Page {
         currentIndex: -1
         spacing: Theme.paddingSmall
         clip: true
+
+        onContentYChanged: if (page.cpOn && (page.cpFresh || isNaN(page.cpLastY) || Math.abs(contentY - page.cpLastY) > 20)) {
+            page.cpFresh = false
+            page.cp("y")
+        }
+        onOriginYChanged: page.cp("oy")
+        onContentHeightChanged: if (page.cpOn && (isNaN(page.cpLastCh) || Math.abs(contentHeight - page.cpLastCh) > 20)) page.cp("ch")
+        onHeightChanged: page.cp("h")
+        onMovementEnded: page.cp("moved")
 
         // the oldest end is at the top in this layout
         onAtYEndChanged: {
@@ -405,6 +473,7 @@ Page {
 
         header: Column {
             width: list.width
+            onHeightChanged: page.cp("hdr")
 
             Item { width: 1; height: Theme.paddingMedium }
 
@@ -549,6 +618,11 @@ Page {
                     // a tap on Send (or anywhere else) must not take the focus and
                     // close the keyboard, as in Jolla's Messages
                     focusOutBehavior: FocusBehavior.KeepFocus
+                    // no scrolling the chat to the field when it gets its focus
+                    // back (every return from a page above, and with every step
+                    // of the keyboard's animation): the chat keeps its place
+                    autoScrollEnabled: false
+                    onActiveFocusChanged: page.cp("inputfocus", "af=" + activeFocus)
                     Component.onCompleted: {
                         page.inputArea = input
                         text = rustrx.draft(roomId)
@@ -589,6 +663,13 @@ Page {
 
         delegate: MessageDelegate {
             roomId: page.roomId
+            // a row that grows or shrinks (a picture, a menu)
+            property real cpH
+            onHeightChanged: {
+                if (page.cpOn && cpH > 0 && Math.abs(height - cpH) > 20)
+                    page.cp("row", "i=" + index + " " + Math.round(cpH) + ">" + Math.round(height))
+                cpH = height
+            }
             onReply: {
                 if (editId.length) page.cancelEdit()
                 if (reactToId.length) page.cancelTextReaction()
@@ -677,6 +758,7 @@ Page {
         Qt.inputMethod.show()
     }
     onKeyboardSizeChanged: {
+        if (cpOn && (keyboardSize === 0 || Math.abs(keyboardSize - cpLastKb) > 40)) { cpLastKb = keyboardSize; cp("kb") }
         // the keyboard's own height, for the picker next time
         if (Qt.inputMethod.visible && !emojiPanel.open && keyboardSize > 0)
             emojiHeight = keyboardSize
@@ -728,6 +810,68 @@ Page {
     // the keyboard back (a tap into the field): it takes the picker's place
     Connections {
         target: Qt.inputMethod
-        onVisibleChanged: if (Qt.inputMethod.visible && emojiPanel.open) page.emojiToKeys = true
+        onVisibleChanged: {
+            page.cp("im", "vis=" + Qt.inputMethod.visible)
+            if (Qt.inputMethod.visible && emojiPanel.open) page.emojiToKeys = true
+        }
+    }
+
+    // Chat position trace: every move of the list with what caused it, in
+    // the app log. dconf write /apps/harbour-rustrx/debugChatPos true
+    ConfigurationValue { id: debugChatPos; key: "/apps/harbour-rustrx/debugChatPos"; defaultValue: false }
+    readonly property bool cpOn: debugChatPos.value === true
+    property real cpLastY: NaN
+    property real cpLastCh: NaN
+    property real cpLastKb
+    // the first move after a status change is always logged
+    property bool cpFresh
+    onEmojiLiftChanged: if (cpOn && (!emojiLiftAnimated || emojiLift === 0 || emojiLift >= emojiHeight)) cp("lift")
+
+    function viewAt(tag, index, mode) {
+        cp("pos<" + tag, "i=" + index)
+        list.positionViewAtIndex(index, mode)
+        cp("pos>" + tag)
+    }
+    function viewAtBeginning(tag) {
+        cp("pos<" + tag, "beginning")
+        list.positionViewAtBeginning()
+        cp("pos>" + tag)
+    }
+    function cpStatus(s) {
+        return s === PageStatus.Inactive ? "inactive" : s === PageStatus.Activating ? "activating"
+             : s === PageStatus.Active ? "active" : s === PageStatus.Deactivating ? "deactivating" : String(s)
+    }
+    // the row at a content y, stepping past the spacing and footer gaps
+    function cpRow(y, step) {
+        for (var d = 0; d <= 40; d += 8) {
+            var i = list.indexAt(list.contentX + list.width / 2, y + step * d)
+            if (i >= 0) return i
+        }
+        return -1
+    }
+    function cp(ev, extra) {
+        if (!cpOn) return
+        var top = cpRow(list.contentY + 1, 1)
+        var bot = cpRow(list.contentY + list.height - 1, -1)
+        // the composer covers the bottom edge: the row right above it
+        if (bot < 0 && list.headerItem && list.headerItem.y > list.contentY)
+            bot = cpRow(list.headerItem.y - 1, -1)
+        var tb = ""
+        if (top >= 0) {
+            var r = rustrx.timeline.get(top)
+            tb = r.kind === "event" ? (r.body || "").replace(/\s+/g, " ").slice(0, 16) : r.kind
+        }
+        var f = app.activeFocusItem
+        var fn = f === undefined ? "n/a" : f ? (f.objectName || String(f).split("(")[0]) : "none"
+        console.log("chatpos: " + ev + " y=" + Math.round(list.contentY) + " oy=" + Math.round(list.originY)
+                    + " ch=" + Math.round(list.contentHeight) + " h=" + Math.round(list.height)
+                    + " hdr=" + (list.headerItem ? Math.round(list.headerItem.height) : -1)
+                    + " kb=" + Math.round(keyboardSize) + " lift=" + Math.round(emojiLift)
+                    + " top=" + top + " \"" + tb + "\" bot=" + bot + " status=" + cpStatus(status)
+                    + " focus=" + fn + " inp=" + (inputArea && inputArea.activeFocus ? 1 : 0)
+                    + " src=" + (list.dragging ? "drag" : list.flicking ? "flick" : "-")
+                    + (extra ? " " + extra : ""))
+        cpLastY = list.contentY
+        cpLastCh = list.contentHeight
     }
 }
