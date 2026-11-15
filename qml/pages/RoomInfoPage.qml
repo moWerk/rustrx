@@ -105,7 +105,8 @@ Page {
     SilicaListView {
         id: list
         anchors.fill: parent
-        model: memberList
+        // the settings only; the members have a page of their own
+        model: []
 
         currentIndex: -1   // or the view re-anchors to the first member when the list arrives
 
@@ -185,30 +186,55 @@ Page {
                              : qsTrId("rustrx-he-room")
             }
 
-            // the room's threads, close to the top where they are found
-            BackgroundItem {
-                visible: !page.isSpace
-                width: parent.width
-                height: visible ? Theme.itemSizeSmall : 0
-                onClicked: pageStack.push(Qt.resolvedUrl("ThreadsPage.qml"), { roomId: roomId, roomName: info.name || "" })
-                Row {
-                    x: Theme.horizontalPageMargin
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Theme.paddingMedium
-                    Image {
-                        anchors.verticalCenter: parent.verticalCenter
-                        sourceSize.width: Theme.iconSizeMedium
-                        sourceSize.height: Theme.iconSizeMedium
-                        source: "image://theme/icon-m-menu?" + (parent.parent.highlighted ? Theme.highlightColor : Theme.primaryColor)
+            // the room's threads and members, close to the top where they are
+            // found, each on a page of its own
+            Item { width: 1; height: Theme.paddingMedium }
+            Repeater {
+                model: [
+                    //% "Threads"
+                    { key: "threads", text: qsTrId("rustrx-bt-threads"), icon: "icon-m-menu", show: !page.isSpace },
+                    //: %n the room's members
+                    //% "Members (%n)"
+                    { key: "members", text: qsTrId("rustrx-bt-members", page.memberList.length), icon: "icon-m-people", show: true }
+                ]
+                BackgroundItem {
+                    id: entry
+                    visible: modelData.show
+                    width: parent.width
+                    height: visible ? Theme.itemSizeMedium : 0
+                    enabled: modelData.key !== "members" || page.membersLoaded
+                    onClicked: {
+                        if (modelData.key === "threads")
+                            pageStack.push(Qt.resolvedUrl("ThreadsPage.qml"), { roomId: roomId, roomName: info.name || "" })
+                        else
+                            pageStack.push(Qt.resolvedUrl("MembersPage.qml"), { roomId: roomId, roomName: info.name || "", members: page.memberList })
                     }
-                    Label {
+                    Row {
+                        x: Theme.horizontalPageMargin
                         anchors.verticalCenter: parent.verticalCenter
-                        //% "Threads"
-                        text: qsTrId("rustrx-bt-threads")
-                        color: parent.parent.highlighted ? Theme.highlightColor : Theme.primaryColor
+                        spacing: Theme.paddingLarge
+                        Image {
+                            anchors.verticalCenter: parent.verticalCenter
+                            sourceSize.width: Theme.iconSizeMedium
+                            sourceSize.height: Theme.iconSizeMedium
+                            source: "image://theme/" + modelData.icon + "?" + (entry.highlighted ? Theme.highlightColor : Theme.primaryColor)
+                            opacity: entry.enabled ? 1 : Theme.opacityLow
+                        }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.text
+                            color: entry.highlighted ? Theme.highlightColor : Theme.primaryColor
+                            opacity: entry.enabled ? 1 : Theme.opacityLow
+                        }
+                    }
+                    BusyIndicator {
+                        anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                        size: BusyIndicatorSize.ExtraSmall
+                        running: modelData.key === "members" && !page.membersLoaded
                     }
                 }
             }
+            Item { width: 1; height: Theme.paddingMedium }
 
             // name and topic: fields for moderators, labels for everyone else.
             // Nothing is sent on its own: the name on Enter, the topic by its
@@ -424,74 +450,7 @@ Page {
                 onClicked: rustrx.command({ cmd: "set_low_priority", room_id: roomId, value: !checked })
             }
 
-            SectionHeader {
-                //: %n the number of members
-                //% "%n members"
-                text: qsTrId("rustrx-se-members", memberList.length)
-            }
 
-        }
-
-        // outside the header: a header that shrinks would leave the view scrolled
-        BusyIndicator {
-            anchors.centerIn: parent
-            size: BusyIndicatorSize.Large
-            running: !membersLoaded
-        }
-
-        delegate: ListItem {
-            id: row
-            contentHeight: Theme.itemSizeMedium
-            // nothing to do with oneself here (direct chat, ignore): no menu
-            menu: isSelf ? null : memberMenu
-            readonly property bool isSelf: modelData.user_id === rustrx.userId
-
-            Column {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                anchors.verticalCenter: parent.verticalCenter
-                Label {
-                    width: parent.width
-                    truncationMode: TruncationMode.Fade
-                    text: (modelData.name || modelData.user_id)
-                          + (powerLabel(modelData.power).length ? "  ·  " + powerLabel(modelData.power) : "")
-                    color: row.highlighted ? Theme.highlightColor : Theme.primaryColor
-                }
-                Label {
-                    width: parent.width
-                    truncationMode: TruncationMode.Fade
-                    text: modelData.user_id
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    color: row.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
-                }
-            }
-
-            Component {
-                id: memberMenu
-                ContextMenu {
-                    MenuItem {
-                        visible: !row.isSelf
-                        //% "Direct chat"
-                        text: qsTrId("rustrx-me-direct-chat")
-                        onClicked: {
-                            pendingDm = modelData.user_id
-                            rustrx.command({ cmd: "create_dm", user_id: modelData.user_id })
-                        }
-                    }
-                    MenuItem {
-                        visible: !row.isSelf
-                        //% "Ignore this person"
-                        text: qsTrId("rustrx-me-ignore")
-                        onClicked: {
-                            var uid = modelData.user_id, core = rustrx
-                            //% "Ignoring"
-                            row.remorseAction(qsTrId("rustrx-re-ignoring"), function () {
-                                core.command({ cmd: "ignore_user", user_id: uid })
-                            })
-                        }
-                    }
-                }
-            }
         }
 
         VerticalScrollDecorator { }

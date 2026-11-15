@@ -40,7 +40,7 @@ Page {
         }
     }
 
-    function escape(t) { return (t || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\s+/g, " ") }
+    function escapeText(t) { return (t || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\s+/g, " ") }
 
     SilicaListView {
         id: list
@@ -85,7 +85,7 @@ Page {
                     textFormat: Text.StyledText
                     font.bold: row.fresh > 0
                     color: row.highlighted ? Theme.highlightColor : Theme.primaryColor
-                    text: rustrx.emojify(page.escape(row.t.root.body), Math.round(font.pixelSize * 1.2))
+                    text: rustrx.emojify(page.escapeText(row.t.root.body), Math.round(font.pixelSize * 1.2))
                 }
                 // replies, new ones, the latest
                 Label {
@@ -99,8 +99,8 @@ Page {
                         if (row.fresh > 0)
                             s += " · <b><font color=\"" + Theme.highlightColor + "\">" + qsTrId("rustrx-la-thread-new", row.fresh) + "</font></b>"
                         if (row.t.latest && row.t.latest.body)
-                            s += " · " + page.escape(row.t.latest.sender_name) + ": "
-                                 + rustrx.emojify(page.escape(row.t.latest.body), Math.round(font.pixelSize * 1.25))
+                            s += " · " + page.escapeText(row.t.latest.sender_name) + ": "
+                                 + rustrx.emojify(page.escapeText(row.t.latest.body), Math.round(font.pixelSize * 1.25))
                         return s
                     }
                 }
