@@ -35,8 +35,10 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `open_room` | `room_id` | `timeline` (repeatedly), `typing` |
 | `close_room` | | |
 | `paginate_back` | `room_id`, `count?` (30) | `paginated` |
-| `send_text` | `room_id`, `body`, `reply_to?`, `markdown?` (true), `emotes?` (shortcode → mxc: custom emoji in the HTML) | `timeline` |
-| `send_sticker` | `room_id`, `url` (mxc), `body`, `info?` | `timeline` |
+| `send_text` | `room_id`, `body`, `reply_to?`, `markdown?` (true), `emotes?` (shortcode → mxc: custom emoji in the HTML), `thread_root?` | `timeline` |
+| `send_sticker` | `room_id`, `url` (mxc), `body`, `info?`, `thread_root?` | `timeline` |
+| `open_thread` | `room_id`, `root` | `thread_timeline` (live until `close_thread`) |
+| `close_thread` | | |
 | `send_file` | `room_id`, `path`, `caption?`, `w?`, `h?`, `thumb_path?`, `thumb_w?`, `thumb_h?`, `voice?`, `duration_ms?` | `timeline` |
 | `react` | `room_id`, `event_id`, `key` (toggles) | `timeline` |
 | `redact` | `room_id`, `event_id?` or `txn_id?` (discards a local echo), `reason?` | `timeline` |
@@ -53,7 +55,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `room_link` | `room_id` | `room_link` |
 | `set_join_rule` | `room_id`, `rule` (invite, knock, public, restricted, knock_restricted) | `rooms` |
 | `space_open` / `space_close` | `space_id` | `space_rooms` (live until closed) |
-| `space_add_child` / `space_remove_child` | `space_id`, `room_id` | `space_rooms` |
+| `space_add_child` / `space_remove_child` | `space_id`, `room_id` | `thread_timeline` | `room_id`, `root`, `items` (as `timeline`; a thread root carries `thread`: `count`, `latest_sender`, `latest_body`) |
+| `space_rooms` |
 | `space_leave` | `space_id`, `with_rooms?` | `rooms` |
 | `knock_answer` | `room_id`, `user_id`, `accept`, `ban?`, `reason?` | `space_rooms` | `space_id`, `loading`, `rooms` (`room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `is_space`, `members`, `children`, `join_rule`, `state`, `suggested`, `via`) |
 | `room_preview` | `id`, `ok`, and when ok: `room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `members`, `is_space`, `join_rule`, `state`; else `error` |

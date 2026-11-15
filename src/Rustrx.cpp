@@ -208,8 +208,12 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     , m_spaces(new RoomModel(this))
     , m_targets(new RoomModel(this))
     , m_timeline(new TimelineModel(this))
+    , m_thread(new TimelineModel(this))
 {
     s_instance = this;
+    connect(m_thread, &TimelineModel::emoteWanted, this, [this](const QString &mxc) {
+        command({ { "cmd", "fetch_emote" }, { "mxc", mxc } });
+    });
     connect(m_timeline, &TimelineModel::emoteWanted, this, [this](const QString &mxc) {
         command({ { "cmd", "fetch_emote" }, { "mxc", mxc } });
     });
@@ -582,6 +586,7 @@ void Rustrx::command(const QVariantMap &cmd)
     // the emote pictures live in the media folder
     if (cmd.value("cmd").toString() == QLatin1String("clear_media")) {
         m_timeline->clearEmotes();
+        m_thread->clearEmotes();
         m_emotePaths.clear();
         m_emotesAsked.clear();
     }
@@ -636,10 +641,26 @@ void Rustrx::closeRoom()
     emit openRoomChanged();
 }
 
+void Rustrx::openThread(const QString &roomId, const QString &root)
+{
+    m_threadRoot = root;
+    m_thread->clear();
+    command({ { "cmd", "open_thread" }, { "room_id", roomId }, { "root", root } });
+}
+
+void Rustrx::closeThread()
+{
+    m_threadRoot.clear();
+    m_thread->clear();
+    command({ { "cmd", "close_thread" } });
+}
+
 void Rustrx::sendText(const QString &roomId, const QString &body, const QString &replyTo,
-                      const QVariantMap &emotes)
+                      const QVariantMap &emotes, const QString &threadRoot)
 {
     QVariantMap cmd{{"cmd", "send_text"}, {"room_id", roomId}, {"body", body}};
+    if (!threadRoot.isEmpty())
+        cmd.insert("thread_root", threadRoot);
     if (!replyTo.isEmpty())
         cmd.insert("reply_to", replyTo);
     if (!emotes.isEmpty())
@@ -729,12 +750,15 @@ void Rustrx::setOwnAvatar(const QString &path)
         command({{"cmd", "set_own_avatar"}, {"path", out}});
 }
 
-void Rustrx::sendFile(const QString &roomId, const QString &path, const QString &caption)
+void Rustrx::sendFile(const QString &roomId, const QString &path, const QString &caption,
+                      const QString &threadRoot)
 {
     QString p = path;
     if (p.startsWith(QLatin1String("file://")))
         p = QUrl(p).toLocalFile();
     QVariantMap cmd{{"cmd", "send_file"}, {"room_id", roomId}, {"path", p}};
+    if (!threadRoot.isEmpty())
+        cmd.insert("thread_root", threadRoot);
     if (!caption.trimmed().isEmpty())
         cmd.insert("caption", caption.trimmed());
 
@@ -1043,14 +1067,21 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     } else if (type == QLatin1String("media")) {
         if (ev.value("exported").toBool())
             emit mediaExported(ev.value("event_id").toString(), ev.value("path").toString());
-        else
+        else {
             m_timeline->setMediaPath(ev.value("event_id").toString(), ev.value("thumb").toBool(),
                                      ev.value("path").toString());
+            m_thread->setMediaPath(ev.value("event_id").toString(), ev.value("thumb").toBool(),
+                                   ev.value("path").toString());
+        }
     } else if (type == QLatin1String("emote")) {
         const QString mxc = ev.value("mxc").toString(), path = ev.value("path").toString();
         m_timeline->setEmotePath(mxc, path);
+        m_thread->setEmotePath(mxc, path);
         m_emotePaths.insert(mxc, path);
         emit emoteReady(mxc, QStringLiteral("file://") + path);
+    } else if (type == QLatin1String("thread_timeline")) {
+        if (ev.value("root").toString() == m_threadRoot)
+            m_thread->setItems(ev.value("items").toList());
     } else if (type == QLatin1String("space_rooms")) {
         emit spaceRooms(ev.value("space_id").toString(), ev.value("rooms").toList(), ev.value("loading").toBool());
     } else if (type == QLatin1String("room_preview")) {

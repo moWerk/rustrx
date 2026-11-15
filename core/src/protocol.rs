@@ -31,9 +31,14 @@ pub(crate) enum Command {
         reply_to: Option<String>,
         markdown: Option<bool>,
         emotes: Option<std::collections::HashMap<String, String>>,
+        /// into this thread (its root event)
+        thread_root: Option<String>,
     },
     /// A sticker from an image pack.
-    SendSticker { room_id: String, url: String, body: String, info: Option<serde_json::Value> },
+    SendSticker { room_id: String, url: String, body: String, info: Option<serde_json::Value>, thread_root: Option<String> },
+    /// A thread's timeline beside the room's; answered by "thread_timeline".
+    OpenThread { room_id: String, root: String },
+    CloseThread,
     /// A file; pictures carry their size and a thumbnail from the UI, voice
     /// messages their duration.
     SendFile {
@@ -47,6 +52,7 @@ pub(crate) enum Command {
         thumb_h: Option<u64>,
         voice: Option<bool>,
         duration_ms: Option<u64>,
+        thread_root: Option<String>,
     },
     React { room_id: String, event_id: String, key: String },
     /// A sent event (event_id) is redacted, a local echo (txn_id) discarded.

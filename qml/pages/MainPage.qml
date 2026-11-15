@@ -204,16 +204,18 @@ Page {
                         if (page.sortOpen) page.dropLooseFilter()
                         page.sortOpen = !page.sortOpen
                     }
-                    // three bars, each narrower than the one above
+                    // three bars, each narrower than the one above; with four tabs
+                    // as much smaller as their titles are
+                    readonly property real scale_: tabModel.count >= 4 ? Math.round(Theme.fontSizeMedium * 0.9) / Theme.fontSizeLarge : 1
                     Column {
                         anchors.centerIn: parent
                         // half again as tall and wide as at first, the bars as thin
-                        spacing: Math.round(Theme.paddingSmall * 1.1)
+                        spacing: Math.round(Theme.paddingSmall * 1.1 * filterButton.scale_)
                         Repeater {
                             model: 3
                             Rectangle {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                width: Theme.iconSizeExtraSmall * 1.5 * (1 - index / 3)
+                                width: Theme.iconSizeExtraSmall * 1.5 * filterButton.scale_ * (1 - index / 3)
                                 height: Math.max(2, Math.round(Theme.paddingSmall / 2))
                                 radius: height / 2
                                 color: filterButton.pressed || page.sortOpen

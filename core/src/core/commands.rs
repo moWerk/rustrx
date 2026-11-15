@@ -74,9 +74,12 @@ impl Core {
                 self.emit(json!({"ev": "paginated", "room_id": room.room_id().as_str(), "at_start": more}));
                 Ok(())
             }
-            SendText { room_id, body, reply_to, markdown, emotes } => {
+            SendText { room_id, body, reply_to, markdown, emotes, thread_root } => {
                 let room = self.room(&room_id).await?;
-                let tl = self.timeline_for(&room).await?;
+                let tl = match given(&thread_root) {
+                    Some(root) => self.thread_timeline(&room, root).await?,
+                    None => self.timeline_for(&room).await?,
+                };
                 let mut content = if markdown.unwrap_or(true) {
                     RoomMessageEventContent::text_markdown(&body)
                 } else {
@@ -96,11 +99,14 @@ impl Core {
                 }
                 Ok(())
             }
-            SendFile { room_id, path, caption, w, h, thumb_path, thumb_w, thumb_h, voice, duration_ms } => {
+            SendFile { room_id, path, caption, w, h, thumb_path, thumb_w, thumb_h, voice, duration_ms, thread_root } => {
                 let room = self.room(&room_id).await?;
                 let path = PathBuf::from(path);
                 let mime = mime_guess::from_path(&path).first_or_octet_stream();
-                let tl = self.timeline_for(&room).await?;
+                let tl = match given(&thread_root) {
+                    Some(root) => self.thread_timeline(&room, root).await?,
+                    None => self.timeline_for(&room).await?,
+                };
                 let dim = |n: Option<u64>| n.and_then(|n| UInt::try_from(n).ok());
                 let mut config = AttachmentConfig::default();
                 if let (Some(w), Some(h)) = (dim(w), dim(h)) {
@@ -141,7 +147,7 @@ impl Core {
             }
             React { room_id, event_id, key } => {
                 let room = self.room(&room_id).await?;
-                let tl = self.timeline_for(&room).await?;
+                let tl = self.timeline_holding(&room, Some(&event_id), None).await?;
                 let id = TimelineEventItemId::EventId(EventId::parse(&event_id)?);
                 tl.toggle_reaction(&id, &key).await?;
                 Ok(())
@@ -149,13 +155,13 @@ impl Core {
             Redact { room_id, event_id, txn_id, reason } => {
                 // a sent event is redacted; a local echo (txn_id) is discarded
                 let room = self.room(&room_id).await?;
-                let tl = self.timeline_for(&room).await?;
+                let tl = self.timeline_holding(&room, event_id.as_deref(), txn_id.as_deref()).await?;
                 tl.redact(&Self::item_id(event_id, txn_id)?, given(&reason)).await?;
                 Ok(())
             }
             Edit { room_id, event_id, txn_id, body } => {
                 let room = self.room(&room_id).await?;
-                let tl = self.timeline_for(&room).await?;
+                let tl = self.timeline_holding(&room, event_id.as_deref(), txn_id.as_deref()).await?;
                 let content: RoomMessageEventContentWithoutRelation =
                     RoomMessageEventContent::text_markdown(&body).into();
                 tl.edit(&Self::item_id(event_id, txn_id)?, EditedContent::RoomMessage(content)).await?;
@@ -193,7 +199,7 @@ impl Core {
             }
             EventSource { room_id, event_id } => {
                 let room = self.room(&room_id).await?;
-                let tl = self.timeline_for(&room).await?;
+                let tl = self.timeline_holding(&room, Some(&event_id), None).await?;
                 let item = tl
                     .item_by_event_id(&EventId::parse(&event_id)?)
                     .await
@@ -362,7 +368,14 @@ impl Core {
             FetchEmote { mxc } => self.fetch_emote(&mxc).await,
             ImagePacks { room_id } => self.image_packs(&room_id).await,
             AddUserEmote { shortcode, url } => self.add_user_emote(&shortcode, &url).await,
-            SendSticker { room_id, url, body, info } => self.send_sticker(&room_id, &url, &body, info).await,
+            SendSticker { room_id, url, body, info, thread_root } => {
+                self.send_sticker(&room_id, &url, &body, info, given(&thread_root)).await
+            }
+            OpenThread { room_id, root } => self.open_thread(&room_id, &root).await,
+            CloseThread => {
+                self.close_thread().await;
+                Ok(())
+            }
             SetFavourite { room_id, value } => {
                 let room = self.room(&room_id).await?;
                 room.set_is_favourite(value.unwrap_or(true), None).await?;

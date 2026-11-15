@@ -62,6 +62,8 @@ class Rustrx : public QObject
     // every joined room and chat, whatever the filter: what sharing offers
     Q_PROPERTY(RoomModel *targets READ targets CONSTANT)
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
+    // the open thread's messages (root and replies), beside the room's
+    Q_PROPERTY(TimelineModel *thread READ thread CONSTANT)
     // open requests to join the rooms and spaces we may invite to, each
     // { room_id, room_name, is_space, event_id, user_id, name, reason, ts, seen }
     Q_PROPERTY(QVariantList knockRequests READ knockRequests NOTIFY knockRequestsChanged)
@@ -108,6 +110,10 @@ public:
     RoomModel *spaces() const { return m_spaces; }
     RoomModel *targets() const { return m_targets; }
     TimelineModel *timeline() const { return m_timeline; }
+    TimelineModel *thread() const { return m_thread; }
+    // a thread beside the open room: its messages come into `thread`
+    Q_INVOKABLE void openThread(const QString &roomId, const QString &root);
+    Q_INVOKABLE void closeThread();
     QVariantList knockRequests() const;
     QString coreVersion() const;
     bool downscaleImages() const;
@@ -145,8 +151,9 @@ public:
     Q_INVOKABLE void openRoom(const QString &roomId);
     Q_INVOKABLE void closeRoom();
     // emotes: the custom emoji the text uses, shortcode to mxc address
+    // threadRoot: into that thread
     Q_INVOKABLE void sendText(const QString &roomId, const QString &body, const QString &replyTo,
-                              const QVariantMap &emotes = QVariantMap());
+                              const QVariantMap &emotes = QVariantMap(), const QString &threadRoot = QString());
     // a custom emoji's cached picture (file://), or "" while it is fetched
     // (emoteReady follows)
     Q_INVOKABLE QString emotePath(const QString &mxc);
@@ -154,7 +161,8 @@ public:
     // and one emoji's picture ("" when there is none)
     Q_INVOKABLE QString emojify(const QString &html, int height) const;
     Q_INVOKABLE QString emojiUrl(const QString &emoji) const;
-    Q_INVOKABLE void sendFile(const QString &roomId, const QString &path, const QString &caption = QString());
+    Q_INVOKABLE void sendFile(const QString &roomId, const QString &path, const QString &caption = QString(),
+                              const QString &threadRoot = QString());
     // a picture from the phone as the room's picture: upright, at most 512 px
     Q_INVOKABLE void setRoomAvatar(const QString &roomId, const QString &path);
     // a picture from the phone as one's own picture, prepared the same way
@@ -388,6 +396,8 @@ private:
     QHash<QString, QString> m_emotePaths;
     QSet<QString> m_emotesAsked;
     TimelineModel *m_timeline;
+    TimelineModel *m_thread;
+    QString m_threadRoot;
     QElapsedTimer m_since;   // start-up timing in the journal
     bool m_firstRooms = true;
 };

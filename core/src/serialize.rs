@@ -392,6 +392,22 @@ fn content_json(o: &mut Map<String, Value>, content: &TimelineItemContent, own: 
             if let Some(root) = &m.thread_root {
                 put(o, "thread_root", root.as_str());
             }
+            // a thread's root: how many replies, and the latest
+            if let Some(summary) = &m.thread_summary {
+                let mut t = Map::new();
+                put(&mut t, "count", summary.num_replies);
+                if let TimelineDetails::Ready(latest) = &summary.latest_event {
+                    let who = match &latest.sender_profile {
+                        TimelineDetails::Ready(p) => p.display_name.clone().unwrap_or_else(|| latest.sender.localpart().to_owned()),
+                        _ => latest.sender.localpart().to_owned(),
+                    };
+                    put(&mut t, "latest_sender", who);
+                    if let Some(msg) = latest.content.as_message() {
+                        put(&mut t, "latest_body", msg.body());
+                    }
+                }
+                put(o, "thread", Value::Object(t));
+            }
             match &m.kind {
                 MsgLikeKind::Message(msg) => message_json(o, msg),
                 MsgLikeKind::Sticker(s) => {

@@ -431,4 +431,5 @@ ApplicationWindow {
 
     // custom emoji in messages: a little taller than the text, like an emoji
     Binding { target: rustrx.timeline; property: "emoteSize"; value: Math.round(Theme.fontSizeMedium * 1.25) }
+    Binding { target: rustrx.thread; property: "emoteSize"; value: Math.round(Theme.fontSizeMedium * 1.25) }
 }

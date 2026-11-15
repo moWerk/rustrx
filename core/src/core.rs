@@ -100,6 +100,8 @@ struct State {
     knocks_watched: std::collections::HashSet<OwnedRoomId>,
     /// the SDK's space service (this login)
     space_service: Option<Arc<matrix_sdk_ui::spaces::SpaceService>>,
+    /// the thread shown beside the open room, if any
+    thread: Option<threads::OpenThread>,
     /// open space pages: the task that sends each one's rooms
     space_lists: HashMap<String, JoinHandle<()>>,
 }
@@ -128,6 +130,9 @@ impl State {
         self.sas.clear();
         self.avatars_tried.clear();
         self.knocks_watched.clear();
+        if let Some(thread) = self.thread.take() {
+            tasks.push(thread.task_handle());
+        }
         self.space_service = None;
         for (_, task) in self.space_lists.drain() {
             task.abort();
@@ -162,6 +167,7 @@ mod call;
 mod commands;
 mod knock;
 mod spaces;
+mod threads;
 pub(crate) use spaces::join_rule_name;
 mod packs;
 mod session;

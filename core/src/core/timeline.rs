@@ -120,6 +120,8 @@ impl Core {
         }
         let timeline = Arc::new(
             room.timeline_builder()
+                // thread replies live in their thread; the root shows a summary
+                .with_focus(matrix_sdk_ui::timeline::TimelineFocus::Live { hide_threaded_events: true })
                 .track_read_marker_and_receipts(TimelineReadReceiptTracking::MessageLikeEvents)
                 .build()
                 .await?,
@@ -155,7 +157,7 @@ impl Core {
     pub(crate) async fn get_media(&'static self, room_id: &str, event_id: &str, thumb: bool, dest_dir: Option<String>) -> Result<()> {
         let room = self.room(room_id).await?;
         let client = self.client().await?;
-        let tl = self.timeline_for(&room).await?;
+        let tl = self.timeline_holding(&room, Some(event_id), None).await?;
         let item = tl.item_by_event_id(&EventId::parse(&event_id)?).await.context("event not in timeline")?;
         let (bytes, mime) = match item.content().as_message().map(|m| m.msgtype()) {
             Some(MessageType::Image(c)) => (

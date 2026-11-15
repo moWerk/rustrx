@@ -603,6 +603,8 @@ Page {
                 rustrx.sendText(page.roomId, text, "")
             }
             onReactMore: { page.reactMoreText = text; page.showEmoji("react", eventId) }
+            onOpenThread: pageStack.push(Qt.resolvedUrl("ThreadPage.qml"),
+                                         { roomId: page.roomId, roomName: page.roomName, rootId: eventId, compose: compose })
         }
 
         ViewPlaceholder {

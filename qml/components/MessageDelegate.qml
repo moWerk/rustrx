@@ -35,6 +35,12 @@ ListItem {
     signal resend(string txnId, string text)
     // "more" in the reactions: the room's emoji picker, for this message
     signal reactMore(string eventId, string text)
+    // this message's thread: open it (and type into it, from the menu)
+    signal openThread(string eventId, bool compose)
+    // shown in a thread's page: no thread of its own there
+    property bool inThread
+    // a thread's root: how many replies and the latest
+    readonly property var threadSummary: model.thread ? model.thread : null
 
     readonly property bool isEvent: model.kind === "event"
     readonly property bool own: model.is_own === true
@@ -492,6 +498,47 @@ ListItem {
                             }
                         }
                     }
+                    // the replies in this message's thread: a tap opens it
+                    BackgroundItem {
+                        id: threadLine
+                        visible: !inThread && threadSummary !== null && threadSummary.count > 0
+                        width: Math.min(innerMax, threadRow.width + 2 * Theme.paddingSmall)
+                        height: visible ? threadRow.height + 2 * Theme.paddingSmall : 0
+                        onClicked: msg.openThread(msg.eventId, false)
+                        Row {
+                            id: threadRow
+                            x: Theme.paddingSmall
+                            y: Theme.paddingSmall
+                            spacing: Theme.paddingSmall
+                            // the thread mark: Silica's menu lines
+                            Image {
+                                anchors.verticalCenter: parent.verticalCenter
+                                sourceSize.width: Theme.iconSizeSmall
+                                sourceSize.height: Theme.iconSizeSmall
+                                source: "image://theme/icon-m-menu?" + Theme.highlightColor
+                            }
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Math.min(implicitWidth, innerMax - Theme.iconSizeSmall - 3 * Theme.paddingSmall)
+                                truncationMode: TruncationMode.Fade
+                                font.pixelSize: Theme.fontSizeExtraSmall
+                                color: threadLine.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor
+                                textFormat: Text.StyledText
+                                text: {
+                                    if (!threadSummary) return ""
+                                    //: %n replies in a thread
+                                    //% "%n replies"
+                                    var t = qsTrId("rustrx-la-thread-replies", threadSummary.count)
+                                    if (threadSummary.latest_sender)
+                                        t += " · " + escapeText(threadSummary.latest_sender) + ": "
+                                             + rustrx.emojify(escapeText((threadSummary.latest_body || "").replace(/\s+/g, " ")),
+                                                              Math.round(font.pixelSize * 1.25))
+                                    return t
+                                }
+                            }
+                        }
+                    }
+
                     // the reactions' width in one line, so the bubble is no wider than they need
                     Row {
                         id: reactionMeasure
@@ -607,6 +654,16 @@ ListItem {
                 text: qsTrId("rustrx-me-reply")
                 visible: canAct && !failed
                 onClicked: msg.reply(model.event_id, (model.sender_name || model.sender) + ": " + (model.body || ""))
+            }
+            MenuItem {
+                //% "Reply in thread"
+                text: qsTrId("rustrx-me-reply-thread")
+                visible: canAct && !failed && !inThread && !model.thread_root
+                onClicked: {
+                    var id = msg.eventId
+                    msg.closeMenu()
+                    msg.openThread(id, true)
+                }
             }
             MenuItem {
                 //% "Edit"

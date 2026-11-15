@@ -154,9 +154,13 @@ impl Core {
         url: &str,
         body: &str,
         info: Option<Value>,
+        thread_root: Option<&str>,
     ) -> Result<()> {
         let room = self.room(room_id).await?;
-        let tl = self.timeline_for(&room).await?;
+        let tl = match thread_root {
+            Some(root) => self.thread_timeline(&room, root).await?,
+            None => self.timeline_for(&room).await?,
+        };
         let url = OwnedMxcUri::from(url);
         url.validate()?;
         let info: ImageInfo = info
