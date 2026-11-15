@@ -319,7 +319,8 @@ Page {
                     color: Theme.secondaryHighlightColor
                     //: %1 the original text
                     //% "Editing: %1"
-                    text: qsTrId("rustrx-la-editing").arg(editText)
+                    text: qsTrId("rustrx-la-editing").arg(editText.replace(/\s+/g, " "))
+                    maximumLineCount: 1
                     MouseArea { anchors.fill: parent; onClicked: page.cancelEdit() }
                 }
                 IconButton {
@@ -343,7 +344,8 @@ Page {
                     color: Theme.secondaryHighlightColor
                     //: %1 the quoted text
                     //% "Replying to: %1"
-                    text: qsTrId("rustrx-la-replying-to").arg(replyToText)
+                    text: qsTrId("rustrx-la-replying-to").arg(replyToText.replace(/\s+/g, " "))
+                    maximumLineCount: 1
                     MouseArea { anchors.fill: parent; onClicked: { replyToId = ""; replyToText = "" } }
                 }
                 IconButton {
