@@ -370,7 +370,6 @@ Page {
                 onClicked: pageStack.push(Qt.resolvedUrl("VoicePage.qml"), { roomId: roomId, takeCaption: page.takeCaption })
             }
         }
-        }
 
         // in a bottom-to-top list the footer is drawn at the top: a line while
         // older messages load, nothing once the beginning is reached
