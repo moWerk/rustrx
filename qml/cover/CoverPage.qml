@@ -17,12 +17,36 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 
-// The app icon faint in the back; the connection state and the unread
-// count in front.
+// The overview: the app icon faint in the back; the connection state and
+// the unread count in front. In a chat (dodoradio's design): the room's
+// picture in the back, its name on top, its latest unread message or the
+// unread count in the middle, and at the bottom the app's name, or the
+// connection state when it is not connected.
 CoverBackground {
     id: cover
 
+    readonly property bool inChat: rustrx.loggedIn && rustrx.openRoomId.length > 0
+    property var chat: ({})
+    function refreshChat() { chat = inChat ? (rustrx.roomInfo(rustrx.openRoomId) || {}) : {} }
+    onInChatChanged: refreshChat()
+    Connections { target: rustrx; onOpenRoomChanged: cover.refreshChat() }
+    Connections { target: rustrx.rooms; onDataChanged: if (cover.inChat) cover.refreshChat() }
+    Connections { target: rustrx.people; onDataChanged: if (cover.inChat) cover.refreshChat() }
+    // the same number as the room's badge in the list
+    readonly property int chatUnread: chat.notifications > 0 ? chat.notifications : (chat.unread || 0)
+
     Image {
+        anchors.fill: parent
+        visible: cover.inChat && !!cover.chat.avatar
+        source: visible ? "file://" + cover.chat.avatar + "?v=" + (cover.chat.avatar_v || 0) : ""
+        sourceSize.width: width
+        fillMode: Image.PreserveAspectCrop
+        opacity: 0.3
+        asynchronous: true
+    }
+
+    Image {
+        visible: !cover.inChat || !cover.chat.avatar
         anchors {
             horizontalCenter: parent.horizontalCenter
             // the icon's bottom as far from the tile's bottom as the cover
@@ -44,6 +68,7 @@ CoverBackground {
     }
 
     Column {
+        visible: !cover.inChat
         anchors {
             left: parent.left
             right: parent.right
@@ -122,6 +147,88 @@ CoverBackground {
                 default: return qsTrId("rustrx-la-cover-offline")
                 }
             }
+        }
+    }
+
+    Item {
+        visible: cover.inChat
+        anchors {
+            fill: parent
+            margins: Theme.paddingLarge
+            // above the cover actions' strip
+            bottomMargin: Theme.itemSizeSmall
+        }
+
+        Label {
+            id: chatName
+            width: parent.width
+            text: cover.chat.name || ""
+            font.pixelSize: Theme.fontSizeMedium
+            color: Theme.highlightColor
+            wrapMode: Text.Wrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+        }
+
+        // the latest unread message, or only the count when notifications
+        // leave message texts out (Settings > Privacy)
+        Column {
+            anchors { top: chatName.bottom; topMargin: Theme.paddingMedium; bottom: chatState.top; bottomMargin: Theme.paddingSmall }
+            width: parent.width
+            spacing: Theme.paddingSmall
+            visible: cover.chatUnread > 0
+            readonly property bool withText: service.notifyText && !!cover.chat.preview
+
+            Label {
+                id: chatSender
+                width: parent.width
+                // in a direct chat the room's name already says who wrote
+                visible: parent.withText && !cover.chat.is_dm && !!cover.chat.preview_sender
+                text: cover.chat.preview_sender || ""
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryHighlightColor
+                truncationMode: TruncationMode.Fade
+            }
+            Label {
+                visible: parent.withText
+                width: parent.width
+                height: parent.height - (chatSender.visible ? chatSender.height + parent.spacing : 0)
+                text: (cover.chat.preview || "").replace(/\s+/g, " ")
+                font.pixelSize: Theme.fontSizeSmall
+                wrapMode: Text.Wrap
+                elide: Text.ElideRight
+            }
+            Row {
+                visible: !parent.withText
+                width: parent.width
+                spacing: Theme.paddingMedium
+                Label {
+                    id: chatCount
+                    text: cover.chatUnread >= 1000 ? Math.floor(cover.chatUnread / 1000) + "K" : cover.chatUnread
+                    font.pixelSize: Theme.fontSizeHuge
+                }
+                Label {
+                    anchors.verticalCenter: chatCount.verticalCenter
+                    width: parent.width - chatCount.width - parent.spacing
+                    wrapMode: Text.Wrap
+                    text: qsTrId("rustrx-la-cover-unread-messages")
+                    font.pixelSize: Theme.fontSizeSmall * 0.8
+                }
+            }
+        }
+
+        // "Rustrx" while connected, which is the usual case; otherwise what
+        // is wrong
+        Label {
+            id: chatState
+            anchors.bottom: parent.bottom
+            width: parent.width
+            truncationMode: TruncationMode.Fade
+            font.pixelSize: Theme.fontSizeExtraSmall
+            color: rustrx.syncState === "running" ? Theme.secondaryColor : Theme.highlightColor
+            text: rustrx.syncState === "running" ? "Rustrx"
+                : rustrx.syncState === "idle" ? qsTrId("rustrx-la-cover-connecting")
+                : qsTrId("rustrx-la-cover-offline")
         }
     }
 
