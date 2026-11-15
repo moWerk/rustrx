@@ -90,6 +90,8 @@ DockedPanel {
             var f = panel.emoteFiles
             f[mxc] = path
             panel.emoteFiles = f
+            // the same object again: the bindings are told by hand
+            panel.emoteFilesChanged()
         }
     }
 

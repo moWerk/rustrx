@@ -84,5 +84,13 @@ UI: the picker gets a tab per pack after the Unicode groups; with an
 empty field and a pack image whose usage includes "sticker", a tap sends
 it; the menu entry says "Stickers and emoji" then.
 
-Gap: a `/me` message (m.emote) carries no HTML into the timeline yet, so a
-custom emoji there still shows as its shortcode.
+Gaps:
+- a `/me` message (m.emote) carries no HTML into the timeline yet, so a
+  custom emoji there still shows as its shortcode;
+- an edit sends the body only, so a custom emoji in an edited message
+  loses its picture;
+- `image_packs` reads the room's whole state at every opening (the state
+  API has no type filter): to be cached per room for the session, and
+  skipped in very large rooms, before 0.4.4 is released;
+- a custom emoji reaction carries no shortcode into the timeline, so
+  "Add to my emoji" names it after its picture's id.

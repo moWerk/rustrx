@@ -312,6 +312,9 @@ QVariantList TimelineModel::emotesOf(const QVariantMap &item) const
             return;
         seen.insert(url);
         name.remove(QLatin1Char(':'));
+        // a reaction carries no shortcode here: the picture's id gives one
+        if (name.trimmed().isEmpty())
+            name = url.section(QLatin1Char('/'), -1).left(12);
         out << QVariantMap{ { "url", url }, { "shortcode", name.trimmed() },
                             { "path", m_emotes.contains(url) ? QStringLiteral("file://") + m_emotes.value(url).path : QString() } };
     };
