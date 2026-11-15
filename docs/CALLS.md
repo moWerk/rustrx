@@ -105,7 +105,21 @@ the WebView route is the realistic one.
 4. Audio: autoplay was blocked ("AudioContext was prevented from
    starting"); the page now allows it (`media.autoplay.*`). Routing still
    open.
-5. Lifecycle: still open.
+5. Lifecycle: still open. Seen at night: Rustrx started by D-Bus while
+   the phone is locked closes itself right after its first page change
+   ("cannot pop while transition is in progress") and the stand-in
+   takes over; tests need the display on.
+
+**A way past Gecko 115:** the community port sailfish-browser-next153
+(OpenRepos, aviarus, 3.0.0-7 of 2026-08-29, tested on the Jolla Phone
+2026) installs Gecko 153 beside the system's, with its own WebView
+module `SailfishNext153.WebView` / `SailfishNext153.WebEngine`
+(package `sailfish-components-webview-qt5-next153`). The package now
+carries the call page twice: `CallPage.qml` on the system WebView and
+`CallPageNext153.qml`, generated from it at build time with the two
+imports swapped. Rustrx uses the second where that module is installed
+(`app.callPage()`, logged as "calls: web engine"). Untested: install
+the next153 WebView on a test phone, then an encrypted call.
 
 Server notes: matrix.org's LiveKit service refuses one optional
 cross-origin request (`delegate_delayed_leave`); Element Call goes on.

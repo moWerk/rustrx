@@ -276,7 +276,7 @@ ApplicationWindow {
     // command); and the dev commands meant for the UI (Rustrx::dev)
     Connections {
         target: rustrx
-        onCallUrl: pageStack.push(Qt.resolvedUrl("pages/CallPage.qml"), { roomId: roomId, url: url })
+        onCallUrl: pageStack.push(app.callPage(), { roomId: roomId, url: url })
         onDevUi: {
             if (request.ui === "activate") {
                 app.activate()
@@ -287,6 +287,20 @@ ApplicationWindow {
                 if (pageStack.depth > 1) pageStack.pop()
             }
         }
+    }
+
+    // the call page on the add-on Gecko 153 WebView where it is installed
+    // (OpenRepos, sailfish-components-webview-qt5-next153): Gecko 115 can
+    // not do encrypted calls. Otherwise the system's WebView.
+    property string _callPage
+    function callPage() {
+        if (!_callPage) {
+            var next = Qt.resolvedUrl("pages/CallPageNext153.qml")
+            var c = Qt.createComponent(next)
+            _callPage = c.status === Component.Ready ? next : Qt.resolvedUrl("pages/CallPage.qml")
+            console.log("calls: web engine", c.status === Component.Ready ? "Gecko 153 add-on" : "system")
+        }
+        return _callPage
     }
 
     function showRoom(roomId) {
