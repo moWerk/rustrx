@@ -102,95 +102,122 @@ Item {
         color: Theme.rgba(Theme.highlightDimmerColor, 0.9)
     }
 
-    Column {
-        id: top
+    // A swipe down closes the picker, as it closes the keyboard: pulled past
+    // the top of the emoji (or anywhere on the rows above them) by more than
+    // a row's height, it slides away on release; less springs back.
+    readonly property real pull: Math.max(0, topDrag.dragging ? -topDrag.contentY : 0,
+                                          grid.dragging ? grid.originY - grid.contentY : 0)
+    property bool pulledFar
+    onPullChanged: if (pull > Theme.itemSizeSmall) pulledFar = true
+    function releasePull() {
+        if (pulledFar && !topDrag.dragging && !grid.dragging) open = false
+        if (!topDrag.dragging && !grid.dragging) pulledFar = false
+    }
+
+    // the rows above the emoji: their buttons take taps, this a pull down
+    Flickable {
+        id: topDrag
         width: parent.width
+        height: top.height
+        contentHeight: height
+        flickableDirection: Flickable.VerticalFlick
+        boundsBehavior: Flickable.DragOverBounds
+        onDraggingChanged: panel.releasePull()
 
-        // reacting: any text can be a reaction too (as in nheko and SchildiChat)
-        BackgroundItem {
-            visible: panel.mode === "react"
+        Column {
+            id: top
             width: parent.width
-            height: visible ? Theme.itemSizeExtraSmall : 0
-            onClicked: { panel.open = false; panel.textReaction() }
-            Label {
-                anchors.centerIn: parent
-                //% "React with text"
-                text: qsTrId("rustrx-bt-react-text")
-                color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
-            }
-        }
 
-        // the five most used, the same as in a message's reactions
-        Row {
-            anchors.horizontalCenter: parent.horizontalCenter
-            Repeater {
-                model: app.favouriteEmoji
-                BackgroundItem {
-                    width: panel.width / panel.columns
-                    height: Theme.itemSizeSmall
-                    onClicked: panel.choose(modelData)
-                    Label { anchors.centerIn: parent; text: modelData; font.pixelSize: Theme.fontSizeLarge }
+            // reacting: any text can be a reaction too (as in nheko and SchildiChat)
+            BackgroundItem {
+                visible: panel.mode === "react"
+                width: parent.width
+                height: visible ? Theme.itemSizeExtraSmall : 0
+                onClicked: { panel.open = false; panel.textReaction() }
+                Label {
+                    anchors.centerIn: parent
+                    //% "React with text"
+                    text: qsTrId("rustrx-bt-react-text")
+                    color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
                 }
             }
-        }
 
-        // the groups, one emoji each, then the packs, their picture each;
-        // they scroll sideways when there are many
-        SilicaFlickable {
-            width: parent.width
-            height: Theme.itemSizeExtraSmall
-            contentWidth: tabs.width
-            flickableDirection: Flickable.HorizontalFlick
-            clip: true
+            // the five most used, the same as in a message's reactions
             Row {
-                id: tabs
-                readonly property real tabWidth: Math.max(Theme.itemSizeExtraSmall,
-                    panel.width / (panel.unicodeGroups + panel.shownPacks.length))
+                anchors.horizontalCenter: parent.horizontalCenter
                 Repeater {
-                    model: panel.unicodeGroups + panel.shownPacks.length
+                    model: app.favouriteEmoji
                     BackgroundItem {
-                        readonly property bool isPack: index >= panel.unicodeGroups
-                        width: tabs.tabWidth
-                        height: Theme.itemSizeExtraSmall
-                        highlighted: down || panel.group === index
-                        onClicked: { panel.group = index; grid.positionViewAtBeginning() }
-                        Label {
-                            visible: !isPack
-                            anchors.centerIn: parent
-                            text: isPack ? "" : panel.groupIcons[index]
-                            font.pixelSize: Theme.fontSizeMedium
-                            opacity: panel.group === index ? 1.0 : Theme.opacityHigh
-                        }
-                        Image {
-                            visible: isPack
-                            anchors.centerIn: parent
-                            width: Theme.iconSizeSmall
-                            height: width
-                            fillMode: Image.PreserveAspectFit
-                            sourceSize.height: height
-                            opacity: panel.group === index ? 1.0 : Theme.opacityHigh
-                            source: isPack ? panel.picture(panel.shownPacks[index - panel.unicodeGroups].avatar || "") : ""
+                        width: panel.width / panel.columns
+                        height: Theme.itemSizeSmall
+                        onClicked: panel.choose(modelData)
+                        Label { anchors.centerIn: parent; text: modelData; font.pixelSize: Theme.fontSizeLarge }
+                    }
+                }
+            }
+
+            // the groups, one emoji each, then the packs, their picture each;
+            // they scroll sideways when there are many
+            SilicaFlickable {
+                width: parent.width
+                height: Theme.itemSizeExtraSmall
+                contentWidth: tabs.width
+                flickableDirection: Flickable.HorizontalFlick
+                clip: true
+                Row {
+                    id: tabs
+                    readonly property real tabWidth: Math.max(Theme.itemSizeExtraSmall,
+                        panel.width / (panel.unicodeGroups + panel.shownPacks.length))
+                    Repeater {
+                        model: panel.unicodeGroups + panel.shownPacks.length
+                        BackgroundItem {
+                            readonly property bool isPack: index >= panel.unicodeGroups
+                            width: tabs.tabWidth
+                            height: Theme.itemSizeExtraSmall
+                            highlighted: down || panel.group === index
+                            onClicked: { panel.group = index; grid.positionViewAtBeginning() }
+                            Label {
+                                visible: !isPack
+                                anchors.centerIn: parent
+                                text: isPack ? "" : panel.groupIcons[index]
+                                font.pixelSize: Theme.fontSizeMedium
+                                opacity: panel.group === index ? 1.0 : Theme.opacityHigh
+                            }
+                            Image {
+                                visible: isPack
+                                anchors.centerIn: parent
+                                width: Theme.iconSizeSmall
+                                height: width
+                                fillMode: Image.PreserveAspectFit
+                                sourceSize.height: height
+                                opacity: panel.group === index ? 1.0 : Theme.opacityHigh
+                                source: isPack ? panel.picture(panel.shownPacks[index - panel.unicodeGroups].avatar || "") : ""
+                            }
                         }
                     }
                 }
             }
-        }
 
-        Label {
-            visible: panel.onPack
-            x: Theme.horizontalPageMargin
-            width: parent.width - 2 * x
-            height: visible ? implicitHeight : 0
-            truncationMode: TruncationMode.Fade
-            font.pixelSize: Theme.fontSizeExtraSmall
-            color: Theme.secondaryHighlightColor
-            text: panel.onPack ? panel.shownPacks[panel.group - panel.unicodeGroups].name : ""
+            Label {
+                visible: panel.onPack
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                height: visible ? implicitHeight : 0
+                truncationMode: TruncationMode.Fade
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryHighlightColor
+                text: panel.onPack ? panel.shownPacks[panel.group - panel.unicodeGroups].name : ""
+            }
         }
     }
 
     SilicaGridView {
         id: grid
-        anchors { top: top.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: topDrag.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        onDraggingChanged: panel.releasePull()
+        // past its top: the pull that closes the picker (Silica stops at
+        // the bounds when there is no pulley menu)
+        boundsBehavior: Flickable.DragOverBounds
         clip: true
         cellWidth: width / panel.columns
         cellHeight: Theme.itemSizeSmall
