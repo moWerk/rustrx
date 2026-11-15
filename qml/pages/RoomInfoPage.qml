@@ -92,9 +92,16 @@ Page {
         id: list
         anchors.fill: parent
         model: memberList
+
         currentIndex: -1   // or the view re-anchors to the first member when the list arrives
 
         PullDownMenu {
+            MenuItem {
+                //: experimental: a call through Element Call
+                //% "Call (test)"
+                text: qsTrId("rustrx-me-call-test")
+                onClicked: rustrx.command({ cmd: "call_start", room_id: roomId })
+            }
             MenuItem {
                 visible: canEdit && !info.is_dm
                 //% "Change the room's picture"

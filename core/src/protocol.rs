@@ -129,6 +129,13 @@ pub(crate) enum Command {
     UnignoreUser { user_id: String },
     StorageInfo,
     ClearMedia,
+    // --- calls (Element Call in a WebView) ---
+    /// Answered by "call_url"; then "call_message" events for the page.
+    /// `skip_lobby` joins at once, without Element Call's lobby (tests).
+    CallStart { room_id: String, voice: Option<bool>, skip_lobby: Option<bool> },
+    /// A widget API postMessage from the page, passed to the driver as is.
+    CallMessage { data: String },
+    CallEnd,
 }
 
 /// A non-empty string, or nothing (the UI sends "" for "no reply" and the like).

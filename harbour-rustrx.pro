@@ -44,6 +44,7 @@ INSTALLS += autostart
 # secrets/secrets.pro (built by the spec): the sailfish-secrets plugin
 DISTFILES += qml/harbour-rustrx.qml \
     qml/Service.qml \
+    qml/call-bridge.js \
     qml/pages/*.qml \
     qml/components/*.qml \
     qml/cover/*.qml \

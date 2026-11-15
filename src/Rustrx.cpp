@@ -29,6 +29,7 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QImageReader>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaObject>
@@ -529,6 +530,47 @@ void Rustrx::eventCallback(void *ctx, const char *json)
                               Q_ARG(QVariantMap, doc.object().toVariantMap()));
 }
 
+QString Rustrx::dev(const QString &json)
+{
+    const QString flag = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+            + QStringLiteral("/dev-commands");
+    if (!QFile::exists(flag))
+        return QStringLiteral("{\"error\":\"dev commands are off\"}");
+    const QVariantMap req = QJsonDocument::fromJson(json.toUtf8()).object().toVariantMap();
+    qInfo().noquote() << "dev" << req.value("cmd", req.value("ui", req.keys().value(0))).toString();
+    QJsonObject out;
+    out["stand_in"] = m_standIn;
+    // the stand-in has no window: no pages, no call page
+    if (m_standIn && (req.contains("ui") || req.value("cmd").toString().startsWith(QLatin1String("call_")))) {
+        out["error"] = QStringLiteral("the stand-in is running, not the app");
+        return QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Compact));
+    }
+    if (req.contains("cmd")) {
+        command(req);
+        out["ok"] = true;
+    } else if (req.contains("rooms")) {
+        QJsonArray rooms;
+        for (auto it = m_roomsById.cbegin(); it != m_roomsById.cend(); ++it) {
+            QJsonObject r;
+            for (const char *key : { "room_id", "name", "is_dm", "encrypted", "unread", "notifications", "state" })
+                r[key] = QJsonValue::fromVariant(it.value().value(key));
+            rooms.append(r);
+        }
+        out["rooms"] = rooms;
+    } else if (req.contains("state")) {
+        out["logged_in"] = m_loggedIn;
+        out["sync"] = m_syncState;
+        out["open_room"] = m_openRoomId;
+        out["active"] = qGuiApp && qGuiApp->applicationState() == Qt::ApplicationActive;
+    } else if (req.contains("ui")) {
+        emit devUi(req);
+        out["ok"] = true;
+    } else {
+        out["error"] = QStringLiteral("unknown request");
+    }
+    return QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Compact));
+}
+
 void Rustrx::command(const QVariantMap &cmd)
 {
     // the emote pictures live in the media folder
@@ -1019,6 +1061,12 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit storageInfo(ev);
     } else if (type == QLatin1String("keys_imported")) {
         emit keysImported(ev.value("imported").toInt(), ev.value("total").toInt());
+    } else if (type == QLatin1String("call_url")) {
+        emit callUrl(ev.value("room_id").toString(), ev.value("url").toString());
+    } else if (type == QLatin1String("call_message")) {
+        emit callMessage(ev.value("data").toString());
+    } else if (type == QLatin1String("call_ended")) {
+        emit callEnded(ev.value("room_id").toString());
     } else if (type == QLatin1String("event_source")) {
         emit eventSource(ev.value("event_id").toString(), ev.value("json").toString(), ev.value("edit").toString());
     }

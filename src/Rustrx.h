@@ -163,6 +163,8 @@ public:
     Q_INVOKABLE void setDraft(const QString &roomId, const QString &text);
 
 signals:
+    // a dev command for the UI (see dev())
+    void devUi(const QVariantMap &request);
     void stateChanged();
     // the image packs offered in a room (custom emoji and stickers)
     void imagePacks(const QString &roomId, const QVariantList &packs);
@@ -207,6 +209,10 @@ signals:
     void notificationMode(const QString &roomId, const QString &mode);
     void keysExported(const QString &path);
     void keysImported(int imported, int total);
+    // a call: the Element Call page to show, widget API messages for it, its end
+    void callUrl(const QString &roomId, const QString &url);
+    void callMessage(const QString &data);
+    void callEnded(const QString &roomId);
     // a message's source: its JSON as received, and its latest edit's
     void eventSource(const QString &eventId, const QString &json, const QString &edit);
     // sizes in bytes: store, media_files, and the SDK's per-store sizes
@@ -242,6 +248,14 @@ public slots:
     Q_SCRIPTABLE void open() { if (!handOver()) emit activateRequested(); }
     // the stand-in's notification: Quit (after QML has closed that notification)
     Q_SCRIPTABLE void quit();
+    // D-Bus net.mowerk.harbour_rustrx.dev, for tests from a shell (ssh),
+    // answered only while a file "dev-commands" is in the data folder (no
+    // package puts it there). A JSON object in, a JSON answer out:
+    // {"cmd": ...} goes to the core as if from the UI; {"rooms": true}
+    // lists the rooms; {"state": true} tells the open room and the
+    // connection; {"ui": "open_room" (room_id) | "back" | "activate"}
+    // goes to the UI.
+    Q_SCRIPTABLE QString dev(const QString &json);
 public:
     Q_INVOKABLE void closeWindow() { emit closeRequested(); }
     Q_INVOKABLE QString takePendingRoom() { const QString r = m_pendingRoom; m_pendingRoom.clear(); return r; }
