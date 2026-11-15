@@ -47,7 +47,40 @@ const POLYFILL = "(" + function () {
     };
     Segmenter.supportedLocalesOf = function (l) { return Array.isArray(l) ? l : (l ? [l] : []); };
     Object.defineProperty(Intl, "Segmenter", { value: Segmenter, writable: true, configurable: true });
+} + ")();"
+// The page's own errors and warnings, handed to the frame script as an
+// event (the engine's console service does not see them), and once which
+// of the features per-participant encryption needs are there.
++ "(" + function () {
+    function report(level, text) {
+        try { window.dispatchEvent(new CustomEvent("rustrx-console", { detail: level + "|" + String(text).slice(0, 800) })); } catch (e) {}
+    }
+    function show(x) {
+        try {
+            if (x instanceof Error) return x.name + ": " + x.message + " @ " + String(x.stack || "").split("\n").slice(0, 3).join(" | ");
+            return typeof x === "object" ? JSON.stringify(x) : String(x);
+        } catch (e) { return String(x); }
+    }
+    ["error", "warn"].forEach(function (level) {
+        var orig = console[level];
+        console[level] = function () {
+            report(level, Array.prototype.map.call(arguments, show).join(" "));
+            return orig.apply(console, arguments);
+        };
+    });
+    window.addEventListener("error", function (e) { report("uncaught", show(e.error || e.message)); });
+    window.addEventListener("unhandledrejection", function (e) { report("rejection", show(e.reason)); });
+    report("features", "RTCRtpScriptTransform=" + (typeof RTCRtpScriptTransform)
+        + " sender.transform=" + (typeof RTCRtpSender !== "undefined" && "transform" in RTCRtpSender.prototype)
+        + " createEncodedStreams=" + (typeof RTCRtpSender !== "undefined" && "createEncodedStreams" in RTCRtpSender.prototype)
+        + " Worker=" + (typeof Worker));
 } + ")();";
+
+addEventListener("rustrx-console", function (e) {
+    var d = String(Components.utils.waiveXrays(e).detail || "");
+    var i = d.indexOf("|");
+    try { sendAsyncMessage("rustrx:console", { level: d.slice(0, i), text: d.slice(i + 1) }); } catch (err) {}
+}, true, true);
 
 addEventListener("DOMWindowCreated", function (e) {
     var win = e.target && e.target.defaultView;

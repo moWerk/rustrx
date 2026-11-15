@@ -535,6 +535,12 @@ QString Rustrx::dev(const QString &json)
     const QVariantMap req = QJsonDocument::fromJson(json.toUtf8()).object().toVariantMap();
     qInfo().noquote() << "dev" << req.value("cmd", req.value("ui", req.keys().value(0))).toString();
     QJsonObject out;
+    out["stand_in"] = m_standIn;
+    // the stand-in has no window: no pages, no call page
+    if (m_standIn && (req.contains("ui") || req.value("cmd").toString().startsWith(QLatin1String("call_")))) {
+        out["error"] = QStringLiteral("the stand-in is running, not the app");
+        return QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Compact));
+    }
     if (req.contains("cmd")) {
         command(req);
         out["ok"] = true;

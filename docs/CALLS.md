@@ -91,7 +91,17 @@ the WebView route is the realistic one.
    in the sandboxed app; the microphone is listed, the camera row is
    empty (no device name), but the camera works: the author saw himself
    in the call. "Remember for this site" spares the next prompts.
-3. Encryption: still open (the first call was in an unencrypted room).
+3. **Encryption: blocked by Gecko 115.** In an encrypted room Element
+   Call stops with `E2EE_NOT_SUPPORTED` ("Your web browser does not
+   support encrypted calls. Supported browsers include Chrome, Safari,
+   and Firefox 117+"). The page's feature probe:
+   `RTCRtpScriptTransform=undefined`, no `transform` on RTCRtpSender, no
+   `createEncodedStreams`; the API came with Firefox 117, so the
+   preference the page sets has nothing to turn on. Calls in unencrypted
+   rooms work; encrypted rooms and most DMs wait for a newer Gecko in
+   Sailfish OS, unless another media path is found (a native WebRTC
+   stack outside the WebView, or LiveKit's E2EE in a worker without
+   insertable streams, which does not exist).
 4. Audio: autoplay was blocked ("AudioContext was prevented from
    starting"); the page now allows it (`media.autoplay.*`). Routing still
    open.
