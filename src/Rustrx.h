@@ -57,6 +57,8 @@ class Rustrx : public QObject
     Q_PROPERTY(RoomModel *favourites READ favourites CONSTANT)
     // everything in one list, for those who do not want rooms and people apart
     Q_PROPERTY(RoomModel *all READ all CONSTANT)
+    // the joined spaces (invitations to spaces stay with the rooms' invitations)
+    Q_PROPERTY(RoomModel *spaces READ spaces CONSTANT)
     // every joined room and chat, whatever the filter: what sharing offers
     Q_PROPERTY(RoomModel *targets READ targets CONSTANT)
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
@@ -103,6 +105,7 @@ public:
     RoomModel *people() const { return m_people; }
     RoomModel *favourites() const { return m_favourites; }
     RoomModel *all() const { return m_all; }
+    RoomModel *spaces() const { return m_spaces; }
     RoomModel *targets() const { return m_targets; }
     TimelineModel *timeline() const { return m_timeline; }
     QVariantList knockRequests() const;
@@ -189,6 +192,14 @@ signals:
     // starting a call opened the room's calls to everyone (permissions)
     void callsAllowed(const QString &roomId);
     void knockRequestsChanged();
+    // a space's rooms (from space_open), loading while pages come
+    void spaceRooms(const QString &spaceId, const QVariantList &rooms, bool loading);
+    // a room or space before joining: ok false when the server would not tell
+    void roomPreview(const QVariantMap &preview);
+    // asked to join (knocked)
+    void knocked(const QString &roomId);
+    // a room's or space's link to share
+    void roomLink(const QString &roomId, const QString &link);
     // a request to join that was not notified yet
     void newKnock(const QString &roomId, const QString &roomName, bool isSpace,
                   const QString &name, const QString &reason);
@@ -372,6 +383,7 @@ private:
     RoomModel *m_people;
     RoomModel *m_favourites;
     RoomModel *m_all;
+    RoomModel *m_spaces;
     RoomModel *m_targets;
     QHash<QString, QString> m_emotePaths;
     QSet<QString> m_emotesAsked;

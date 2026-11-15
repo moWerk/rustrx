@@ -48,7 +48,18 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `get_media` | `room_id`, `event_id`, `thumb?`, `dest_dir?` (a copy for other apps) | `media` |
 | `fetch_emote` | `mxc` (a custom emoji's address) | `emote` |
 | `image_packs` | `room_id` | `image_packs` |
-| `knock_answer` | `room_id`, `user_id`, `accept`, `ban?`, `reason?` | `knock_requests` |
+| `room_preview` | `id`, `via?` | `room_preview` |
+| `knock` | `id`, `reason?`, `via?` | `knocked` |
+| `room_link` | `room_id` | `room_link` |
+| `set_join_rule` | `room_id`, `rule` (invite, knock, public, restricted, knock_restricted) | `rooms` |
+| `space_open` / `space_close` | `space_id` | `space_rooms` (live until closed) |
+| `space_add_child` / `space_remove_child` | `space_id`, `room_id` | `space_rooms` |
+| `space_leave` | `space_id`, `with_rooms?` | `rooms` |
+| `knock_answer` | `room_id`, `user_id`, `accept`, `ban?`, `reason?` | `space_rooms` | `space_id`, `loading`, `rooms` (`room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `is_space`, `members`, `children`, `join_rule`, `state`, `suggested`, `via`) |
+| `room_preview` | `id`, `ok`, and when ok: `room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `members`, `is_space`, `join_rule`, `state`; else `error` |
+| `knocked` | `room_id` |
+| `room_link` | `room_id`, `link` (matrix.to with via) |
+| `knock_requests` |
 | `knock_seen` | `room_id`, `user_ids` | `knock_requests` |
 | `add_user_emote` | `shortcode`, `url` (mxc) | `knock_requests` | `room_id`, `room_name`, `is_space`, `requests` (`event_id`, `user_id`, `name`, `reason`, `ts`, `seen`), for rooms and spaces with the knock join rule where we may invite |
 | `emote_added` |
@@ -60,7 +71,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `set_notification_mode` | `room_id`, `mode` (`all`, `mentions`, `mute`, other: the account's default) | `notification_mode` |
 | `set_favourite` / `set_low_priority` | `room_id`, `value?` (true) | `rooms` |
 | `join_room` / `leave_room` | `room_id` | `rooms` |
-| `join_by_id_or_alias` | `id` | `joined` |
+| `join_by_id_or_alias` | `id`, `via?` | `joined` |
 | `create_dm` | `user_id` | `dm_ready` |
 | `create_room` | `name?`, `topic?`, `public?`, `alias?`, `encrypted?` (not public) | `joined` |
 | `room_members` | `room_id` | `members` |

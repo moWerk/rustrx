@@ -43,7 +43,10 @@ ListItem {
             return
         }
         ListView.view.currentIndex = index   // the list keeps this row in view on return
-        pageStack.push(Qt.resolvedUrl("../pages/RoomPage.qml"), { roomId: model.room_id, roomName: model.name })
+        if (model.is_space)
+            pageStack.push(Qt.resolvedUrl("../pages/SpacePage.qml"), { spaceId: model.room_id, spaceName: model.name })
+        else
+            pageStack.push(Qt.resolvedUrl("../pages/RoomPage.qml"), { roomId: model.room_id, roomName: model.name })
     }
 
     // the room's picture, or its initial where it has none
@@ -264,6 +267,11 @@ ListItem {
                     var unused = indent
                     //% "Invitation. Long press to accept or decline."
                     if (invited) return qsTrId("rustrx-la-invitation")
+                    // a space: its topic, else how many rooms it holds
+                    //: %n the rooms in a space
+                    //% "%n rooms"
+                    if (model.is_space) return model.topic && model.topic.length ? model.topic.replace(/\s+/g, " ")
+                                                                                   : qsTrId("rustrx-la-space-rooms", model.children || 0)
                     //% "Replaced by a new room. Tap to go there."
                     if (model.replaced_by && model.replaced_by.length) return qsTrId("rustrx-la-replaced")
                     if (model.preview && model.preview.length) {
@@ -350,7 +358,7 @@ ListItem {
                 }
             }
             MenuItem {
-                visible: !invited
+                visible: !invited && !model.is_space
                 //% "Remove from Favs"
                 text: model.is_fav ? qsTrId("rustrx-me-unfavourite")
                 //% "Add to Favs"

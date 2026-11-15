@@ -184,6 +184,15 @@ Page {
                 onCheckedChanged: app.separateFavs = checked
             }
 
+            TextSwitch {
+                //% "Spaces"
+                text: qsTrId("rustrx-la-separate-spaces")
+                //% "The spaces you are in (groups of rooms) as a tab: their rooms, joining them, asking to join, and requests to join them."
+                description: qsTrId("rustrx-la-separate-spaces-hint")
+                checked: app.separateSpaces
+                onCheckedChanged: app.separateSpaces = checked
+            }
+
             ComboBox {
                 width: parent.width
                 //% "Message preview"

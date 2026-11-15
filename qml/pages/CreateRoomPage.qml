@@ -17,20 +17,32 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 
-// A new room: a name, an optional topic, private and encrypted unless
-// made public (then with an address, and without encryption by default).
-// The page stays until the server has made the room, then becomes it.
+// A new room or space: a name, an optional topic, who may join (only
+// invited people, people who ask and are let in, the members of the space
+// it goes into, or anyone), encrypted unless public (a space has nothing to
+// encrypt). Made inside a space when parentId is given. The page stays
+// until the server has made it, then becomes it.
 Page {
     id: dialog
 
     property alias name: nameField.text
     property bool waiting
+    // a space instead of a room
+    property bool space
+    // the space it goes into
+    property string parentId
+    property string parentName
+
+    // the choices of "Who can join", as the core names them
+    readonly property var rules: parentId.length ? ["invite", "knock", "restricted", "public"] : ["invite", "knock", "public"]
+    readonly property string rule: rules[Math.max(0, accessBox.currentIndex)]
 
     function create() {
         waiting = true
         rustrx.command({ cmd: "create_room", name: nameField.text.trim(), topic: topicField.text.trim(),
-                         "public": publicSwitch.checked, alias: aliasField.text.trim(),
-                         encrypted: encryptSwitch.checked })
+                         "public": rule === "public", alias: aliasField.text.trim(),
+                         encrypted: !space && encryptSwitch.checked, space: space,
+                         parent: parentId, join_rule: rule })
     }
 
     Connections {
@@ -38,7 +50,10 @@ Page {
         onJoined: {
             if (!dialog.waiting) return
             dialog.waiting = false
-            pageStack.replace(Qt.resolvedUrl("RoomPage.qml"), { roomId: roomId, roomName: nameField.text.trim() })
+            if (dialog.space)
+                pageStack.replace(Qt.resolvedUrl("SpacePage.qml"), { spaceId: roomId, spaceName: nameField.text.trim() })
+            else
+                pageStack.replace(Qt.resolvedUrl("RoomPage.qml"), { roomId: roomId, roomName: nameField.text.trim() })
         }
         onErrorOccurred: if (cmd === "create_room") dialog.waiting = false
     }
@@ -52,15 +67,24 @@ Page {
             width: parent.width
 
             PageHeader {
-                //% "New room"
-                title: qsTrId("rustrx-he-new-room")
+                title: dialog.space
+                       //% "New space"
+                       ? qsTrId("rustrx-he-new-space")
+                       //% "New room"
+                       : qsTrId("rustrx-he-new-room")
+                //: %1 the space a new room or space goes into
+                //% "in %1"
+                description: dialog.parentId.length ? qsTrId("rustrx-la-in-space").arg(dialog.parentName) : ""
             }
 
             TextField {
                 id: nameField
                 width: parent.width
-                //% "Room name"
-                label: qsTrId("rustrx-la-room-name")
+                label: dialog.space
+                       //% "Space name"
+                       ? qsTrId("rustrx-la-space-name")
+                       //% "Room name"
+                       : qsTrId("rustrx-la-room-name")
                 placeholderText: label
                 EnterKey.iconSource: "image://theme/icon-m-enter-next"
                 EnterKey.onClicked: topicField.focus = true
@@ -74,27 +98,47 @@ Page {
                 placeholderText: label
             }
 
-            TextSwitch {
-                id: publicSwitch
-                //% "Public"
-                text: qsTrId("rustrx-sw-public")
-                //% "Anyone can find and join it in the room directory."
-                description: qsTrId("rustrx-la-public-hint")
-                onCheckedChanged: encryptSwitch.checked = !checked
+            ComboBox {
+                id: accessBox
+                width: parent.width
+                //% "Who can join"
+                label: qsTrId("rustrx-la-who-can-join")
+                description: dialog.rule === "knock"
+                             //% "Anyone can ask to join; you or a moderator let them in."
+                             ? qsTrId("rustrx-la-rule-knock-hint")
+                             : dialog.rule === "restricted"
+                             //% "Members of the space join without asking."
+                             ? qsTrId("rustrx-la-rule-restricted-hint")
+                             : dialog.rule === "public"
+                             //% "Anyone can find and join it in the room directory."
+                             ? qsTrId("rustrx-la-public-hint")
+                             //% "Only people you invite."
+                             : qsTrId("rustrx-la-rule-invite-hint")
+                menu: ContextMenu {
+                    Repeater {
+                        model: dialog.rules
+                        MenuItem { text: app.joinRuleName(modelData, dialog.parentName) }
+                    }
+                }
+                onCurrentIndexChanged: encryptSwitch.checked = dialog.rule !== "public"
             }
 
             TextField {
                 id: aliasField
-                visible: publicSwitch.checked
+                visible: dialog.rule === "public"
                 width: parent.width
-                //% "Address, like myroom"
-                label: qsTrId("rustrx-la-alias-new")
+                label: dialog.space
+                       //% "Address, like myspace"
+                       ? qsTrId("rustrx-la-alias-new-space")
+                       //% "Address, like myroom"
+                       : qsTrId("rustrx-la-alias-new")
                 placeholderText: label
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
             }
 
             TextSwitch {
                 id: encryptSwitch
+                visible: !dialog.space
                 checked: true
                 //% "Encrypted"
                 text: qsTrId("rustrx-sw-encrypted")

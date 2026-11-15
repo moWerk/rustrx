@@ -265,16 +265,29 @@ ListItem {
                     }
 
                     // the message this one replies to: who said it and its first lines
-                    Row {
+                    // in a bubble of its own, a shade darker than the message's,
+                    // the line its left edge
+                    Item {
                         visible: !!model.reply_to
-                        width: Math.min(quote.implicitWidth + spacing + 2, innerMax)
-                        spacing: Theme.paddingSmall
+                        width: Math.min(quote.implicitWidth + 2 + 2 * Theme.paddingSmall, innerMax)
+                        height: visible ? quote.height + 2 * Theme.paddingSmall : 0
 
-                        Rectangle { width: 2; height: quote.height; color: Theme.secondaryHighlightColor }
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Theme.paddingSmall
+                            color: Qt.rgba(0, 0, 0, 0.1)
+                        }
+                        Rectangle {
+                            width: 2
+                            height: parent.height
+                            color: Theme.secondaryHighlightColor
+                        }
 
                         Label {
                             id: quote
-                            width: parent.width - 2 - parent.spacing
+                            x: 2 + Theme.paddingSmall
+                            y: Theme.paddingSmall
+                            width: parent.width - 2 - 2 * Theme.paddingSmall
                             wrapMode: Text.Wrap
                             maximumLineCount: 3
                             elide: Text.ElideRight

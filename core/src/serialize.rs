@@ -8,7 +8,7 @@ use matrix_sdk::latest_events::LatestEventValue;
 use matrix_sdk::notification_settings::RoomNotificationMode;
 use matrix_sdk::ruma::events::receipt::ReceiptThread;
 use matrix_sdk::ruma::events::room::message::{MessageFormat, MessageType};
-use matrix_sdk::ruma::events::{AnyMessageLikeEventContent, AnySyncTimelineEvent};
+use matrix_sdk::ruma::events::{AnyMessageLikeEventContent, AnySyncTimelineEvent, StateEventType};
 use matrix_sdk::ruma::{OwnedUserId, UserId};
 use matrix_sdk::{Room, RoomState};
 use matrix_sdk_ui::timeline::{
@@ -147,6 +147,33 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
     // an upgraded room points to its successor
     let replaced_by = room.successor_room().map(|s| s.room_id.to_string());
     // who sent an invitation: their name, else their id
+    // what the user may change about who joins, and a space's rooms
+    let (can_join_rules, can_children) = match room.power_levels().await {
+        Ok(l) => (
+            l.user_can_send_state(room.own_user_id(), StateEventType::RoomJoinRules),
+            l.user_can_send_state(room.own_user_id(), StateEventType::SpaceChild),
+        ),
+        Err(_) => (false, false),
+    };
+    let state_keys = |events: Vec<matrix_sdk::deserialized_responses::RawAnySyncOrStrippedState>| -> Vec<String> {
+        events
+            .into_iter()
+            .filter_map(|ev| match ev {
+                matrix_sdk::deserialized_responses::RawAnySyncOrStrippedState::Sync(raw) => {
+                    let v: Value = serde_json::from_str(raw.json().get()).ok()?;
+                    let live = v.get("content").and_then(Value::as_object).is_some_and(|c| !c.is_empty());
+                    if live { v.get("state_key").and_then(Value::as_str).map(str::to_owned) } else { None }
+                }
+                _ => None,
+            })
+            .collect()
+    };
+    let children = if room.is_space() {
+        state_keys(room.get_state_events(StateEventType::SpaceChild).await.unwrap_or_default()).len()
+    } else {
+        0
+    };
+    let parents = state_keys(room.get_state_events(StateEventType::SpaceParent).await.unwrap_or_default());
     let inviter = if room.state() == RoomState::Invited {
         room.invite_details().await.ok().map(|i| match i.inviter {
             Some(m) => m.name().to_owned(),
@@ -185,6 +212,13 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
         "ts": room.latest_event_timestamp().map(ms),
         "state": match room.state() { RoomState::Invited => "invited", RoomState::Joined => "joined", _ => "other" },
         "encrypted": room.encryption_state().is_encrypted(),
+        "is_space": room.is_space(),
+        "join_rule": crate::core::join_rule_name(room.join_rule().as_ref()),
+        "can_join_rules": can_join_rules,
+        "can_manage_children": can_children,
+        // a space's rooms (its children), and the spaces a room says it is in
+        "children": children,
+        "parents": parents,
     })
 }
 
@@ -193,7 +227,8 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
 /// Spaces and left rooms are left out.
 /// Rooms that belong in the list: joined or invited, no spaces.
 pub(crate) fn listed(room: &Room) -> bool {
-    matches!(room.state(), RoomState::Joined | RoomState::Invited) && !room.is_space()
+    // spaces too, marked is_space: the UI keeps them apart
+    matches!(room.state(), RoomState::Joined | RoomState::Invited)
 }
 
 /// Invitations first, then by the last activity; the id breaks ties, so

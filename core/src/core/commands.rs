@@ -171,6 +171,18 @@ impl Core {
             CallStart { room_id, voice, skip_lobby } => self.call_start(&room_id, voice.unwrap_or(false), skip_lobby.unwrap_or(false)).await,
             CallMessage { data } => self.call_message(&data).await,
             CallDecline { room_id, event_id } => self.call_decline(&room_id, &event_id).await,
+            RoomPreview { id, via } => self.room_preview(&id, &via).await,
+            Knock { id, reason, via } => self.knock(&id, given(&reason), &via).await,
+            RoomLink { room_id } => self.room_link(&room_id).await,
+            SetJoinRule { room_id, rule } => self.set_join_rule(&room_id, &rule).await,
+            SpaceOpen { space_id } => self.space_open(&space_id).await,
+            SpaceClose { space_id } => {
+                self.space_close(&space_id).await;
+                Ok(())
+            }
+            SpaceAddChild { space_id, room_id } => self.space_add_child(&space_id, &room_id).await,
+            SpaceRemoveChild { space_id, room_id } => self.space_remove_child(&space_id, &room_id).await,
+            SpaceLeave { space_id, with_rooms } => self.space_leave(&space_id, with_rooms.unwrap_or(false)).await,
             KnockAnswer { room_id, user_id, accept, ban, reason } => {
                 self.knock_answer(&room_id, &user_id, accept, ban.unwrap_or(false), given(&reason)).await
             }
@@ -246,7 +258,7 @@ impl Core {
                 self.emit(json!({"ev": "keys_imported", "imported": result.imported_count, "total": result.total_count}));
                 Ok(())
             }
-            CreateRoom { name, topic, public, alias, encrypted } => {
+            CreateRoom { name, topic, public, alias, encrypted, space, parent, join_rule } => {
                 let client = self.client().await?;
                 let mut req = create_room::v3::Request::new();
                 req.name = given(&name).map(str::to_owned);
@@ -257,9 +269,31 @@ impl Core {
                     req.visibility = Visibility::Public;
                     req.room_alias_name = given(&alias).map(str::to_owned);
                 }
-                if encrypted.unwrap_or(!public) {
+                let space = space.unwrap_or(false);
+                let parent = given(&parent).map(str::to_owned);
+                // a space holds no messages: nothing to encrypt
+                if !space && encrypted.unwrap_or(!public) {
                     let content = RoomEncryptionEventContent::with_recommended_defaults();
-                    req.initial_state = vec![InitialStateEvent::with_empty_state_key(content).to_raw_any()];
+                    req.initial_state.push(InitialStateEvent::with_empty_state_key(content).to_raw_any());
+                }
+                if space {
+                    req.creation_content = Some(matrix_sdk::ruma::serde::Raw::new(&json!({"type": "m.space"}))?.cast_unchecked());
+                }
+                // who may join, when not public: invite (the preset's), ask to
+                // join, or the members of the parent space
+                {
+                    use matrix_sdk::ruma::events::room::join_rules::{AllowRule, JoinRule, Restricted, RoomJoinRulesEventContent};
+                    let rule = match given(&join_rule) {
+                        Some("knock") => Some(JoinRule::Knock),
+                        Some("restricted") => match &parent {
+                            Some(p) => Some(JoinRule::Restricted(Restricted::new(vec![AllowRule::room_membership(OwnedRoomId::try_from(p.as_str())?)]))),
+                            None => None,
+                        },
+                        _ => None,
+                    };
+                    if let Some(rule) = rule {
+                        req.initial_state.push(InitialStateEvent::with_empty_state_key(RoomJoinRulesEventContent::new(rule)).to_raw_any());
+                    }
                 }
                 // everyone may take part in calls (a call membership is a state
                 // event); the map replaces the server's, so its defaults are
@@ -272,11 +306,20 @@ impl Core {
                 for t in super::call::CALL_MEMBER_TYPES {
                     events[t] = json!(0);
                 }
-                req.power_level_content_override = Some(
-                    matrix_sdk::ruma::serde::Raw::new(&json!({ "events": events }))?.cast_unchecked(),
-                );
+                // in a space only admins post (its rooms are its state)
+                let mut levels = json!({ "events": events });
+                if space {
+                    levels["events_default"] = json!(100);
+                }
+                req.power_level_content_override = Some(matrix_sdk::ruma::serde::Raw::new(&levels)?.cast_unchecked());
                 let room = client.create_room(req).await?;
-                self.emit(json!({"ev": "joined", "room_id": room.room_id().as_str()}));
+                if let Some(p) = parent {
+                    let service = self.space_service().await?;
+                    if let Err(e) = service.add_child_to_space(room.room_id().to_owned(), OwnedRoomId::try_from(p.as_str())?).await {
+                        tracing::info!(room = %room.room_id(), "space: adding the new room: {e}");
+                    }
+                }
+                self.emit(json!({"ev": "joined", "room_id": room.room_id().as_str(), "is_space": space}));
                 Ok(())
             }
             MarkRead { room_id, private } => {
@@ -383,10 +426,15 @@ impl Core {
                 self.emit(json!({"ev": "search_results", "term": term, "users": users, "rooms": rooms}));
                 Ok(())
             }
-            JoinByIdOrAlias { id } => {
+            JoinByIdOrAlias { id, via } => {
                 let client = self.client().await?;
                 let id = RoomOrAliasId::parse(id.trim())?;
-                let room = client.join_room_by_id_or_alias(&id, &[]).await?;
+                let servers: Vec<matrix_sdk::ruma::OwnedServerName> = via
+                    .iter()
+                    .flatten()
+                    .filter_map(|s| matrix_sdk::ruma::OwnedServerName::try_from(s.as_str()).ok())
+                    .collect();
+                let room = client.join_room_by_id_or_alias(&id, &servers).await?;
                 self.emit(json!({"ev": "joined", "room_id": room.room_id().as_str()}));
                 Ok(())
             }

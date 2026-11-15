@@ -34,6 +34,8 @@ Page {
         if (kind === "rooms") return qsTrId("rustrx-he-rooms")
         //% "People"
         if (kind === "people") return qsTrId("rustrx-he-people")
+        //% "Spaces"
+        if (kind === "spaces") return qsTrId("rustrx-he-spaces")
         //% "Favs"
         return qsTrId("rustrx-he-favs")
     }
@@ -118,6 +120,7 @@ Page {
         var wanted = lastTab.value
         var kinds = app.separateLists ? ["rooms", "people"] : ["all"]
         if (app.separateFavs) kinds.push("favs")
+        if (app.separateSpaces) kinds.push("spaces")
         var same = tabModel.count === kinds.length
         for (var i = 0; same && i < kinds.length; i++) same = tabModel.get(i).kind === kinds[i]
         if (!same) {
@@ -127,7 +130,12 @@ Page {
         tabs.currentIndex = tabIndex(wanted)
         lastTab.value = wanted
     }
-    Connections { target: app; onSeparateListsChanged: page.buildTabs(); onSeparateFavsChanged: page.buildTabs() }
+    Connections {
+        target: app
+        onSeparateListsChanged: page.buildTabs()
+        onSeparateFavsChanged: page.buildTabs()
+        onSeparateSpacesChanged: page.buildTabs()
+    }
     Component.onCompleted: buildTabs()
 
     // the filter menu under the tabs; it closes whenever this page is left
@@ -180,6 +188,9 @@ Page {
                     model: tabModel
                     delegate: TabButton {
                         title: tabTitle(model.kind)
+                        // four tabs and the filter icon in one row: a size
+                        // smaller, so narrow phones fit them
+                        titleFontSize: tabModel.count >= 4 ? Theme.fontSizeMedium : Theme.fontSizeLarge
                     }
                 }
                 MouseArea {
@@ -340,11 +351,13 @@ Page {
             readonly property bool isRooms: model.kind === "rooms"
             readonly property bool isFavs: model.kind === "favs"
             readonly property bool isAll: model.kind === "all"
+            readonly property bool isSpaces: model.kind === "spaces"
 
             SilicaListView {
                 id: list
                 anchors.fill: parent
-                model: isAll ? rustrx.all : isRooms ? rustrx.rooms : isFavs ? rustrx.favourites : rustrx.people
+                model: isAll ? rustrx.all : isRooms ? rustrx.rooms : isFavs ? rustrx.favourites
+                     : isSpaces ? rustrx.spaces : rustrx.people
                 currentIndex: -1
 
                 // A list at its top stays at its top when rows arrive or move
@@ -384,7 +397,7 @@ Page {
                     }
                 }
 
-                section.property: isFavs ? "" : "section"
+                section.property: isFavs || isSpaces ? "" : "section"
                 section.delegate: SectionHeader {
                     text: section
                     visible: section.length > 0
@@ -393,9 +406,22 @@ Page {
 
                 PullDownMenu {
                     MenuItem {
+                        visible: !isSpaces
                         //% "Add Room / Contact"
                         text: qsTrId("rustrx-me-add")
                         onClicked: pageStack.push(Qt.resolvedUrl("SearchPage.qml"))
+                    }
+                    MenuItem {
+                        visible: isSpaces
+                        //% "Join a space or room"
+                        text: qsTrId("rustrx-me-join-address")
+                        onClicked: pageStack.push(Qt.resolvedUrl("JoinPage.qml"))
+                    }
+                    MenuItem {
+                        visible: isSpaces
+                        //% "New space"
+                        text: qsTrId("rustrx-me-new-space")
+                        onClicked: pageStack.push(Qt.resolvedUrl("CreateRoomPage.qml"), { space: true })
                     }
                     MenuItem {
                         //% "Settings"
@@ -488,6 +514,9 @@ Page {
                               : isFavs
                               //% "Long press a room or a person and choose Add to Favs."
                               ? qsTrId("rustrx-la-empty-favs-hint")
+                              : isSpaces
+                              //% "A space groups rooms. Make one with New space, or join one with its address in the pulley menu."
+                              ? qsTrId("rustrx-la-empty-spaces-hint")
                               //% "Start a chat with someone with Add Room / Contact in the pulley menu."
                               : qsTrId("rustrx-la-empty-people-hint")
                 }

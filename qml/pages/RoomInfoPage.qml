@@ -33,6 +33,18 @@ Page {
     // own power level, from the member list; 50 is the moderator default
     property int ownPower: 0
     readonly property bool canEdit: ownPower >= 50
+    // a space's settings: no chat things (notifications, calls, encryption)
+    readonly property bool isSpace: info.is_space === true
+    // who may join, as the core names it; the choices offered here (members
+    // of its spaces only where it is in one)
+    readonly property var rules: info.parents && info.parents.length
+                                 ? ["invite", "knock", "restricted", "knock_restricted", "public"]
+                                 : ["invite", "knock", "public"]
+    readonly property int knocks: {
+        var n = 0, all = rustrx.knockRequests
+        for (var i = 0; i < all.length; i++) if (all[i].room_id === roomId) n++
+        return n
+    }
 
     function refresh() {
         info = rustrx.roomInfo(roomId)
@@ -87,6 +99,8 @@ Page {
         target: rustrx.rooms
         onDataChanged: refresh()
     }
+    Connections { target: rustrx.spaces; onDataChanged: refresh() }
+    Connections { target: rustrx.people; onDataChanged: refresh() }
 
     SilicaListView {
         id: list
@@ -97,6 +111,7 @@ Page {
 
         PullDownMenu {
             MenuItem {
+                visible: !page.isSpace
                 //: experimental: a call through Element Call
                 //% "Call (test)"
                 text: qsTrId("rustrx-me-call-test")
@@ -114,8 +129,23 @@ Page {
                 onClicked: pageStack.push(inviteDialog)
             }
             MenuItem {
-                //% "Leave room"
-                text: qsTrId("rustrx-me-leave-room")
+                visible: page.isSpace
+                //% "Leave the space and its rooms"
+                text: qsTrId("rustrx-me-leave-space-rooms")
+                onClicked: {
+                    var id = roomId, core = rustrx
+                    leaveRemorse.execute(qsTrId("rustrx-re-leaving"), function () {
+                        core.command({ cmd: "space_leave", space_id: id, with_rooms: true })
+                        pageStack.pop(pageStack.find(function (p) { return p.objectName === "main" }))
+                    })
+                }
+            }
+            MenuItem {
+                text: page.isSpace
+                      //% "Leave space"
+                      ? qsTrId("rustrx-me-leave-space")
+                      //% "Leave room"
+                      : qsTrId("rustrx-me-leave-room")
                 onClicked: {
                     var id = roomId, core = rustrx
                     //% "Leaving"
@@ -148,8 +178,11 @@ Page {
 
             PageHeader {
                 title: info.name || ""
-                //% "Room"
-                description: info.is_dm ? "" : qsTrId("rustrx-he-room")
+                description: info.is_dm ? "" : page.isSpace
+                             //% "Space"
+                             ? qsTrId("rustrx-he-space")
+                             //% "Room"
+                             : qsTrId("rustrx-he-room")
             }
 
             // name and topic: fields for moderators, labels for everyone else.
@@ -159,8 +192,9 @@ Page {
                 id: nameField
                 visible: canEdit && !info.is_dm
                 width: parent.width
+                label: page.isSpace ? qsTrId("rustrx-la-space-name")
                 //% "Room name"
-                label: qsTrId("rustrx-la-room-name")
+                                    : qsTrId("rustrx-la-room-name")
                 placeholderText: label
                 text: info.name || ""
                 EnterKey.enabled: text.trim().length > 0 && text.trim() !== (info.name || "")
@@ -262,7 +296,48 @@ Page {
                 label: qsTrId("rustrx-la-alias")
                 value: info.alias || ""
             }
+            // who may join: anyone, people who ask, members of its spaces,
+            // or invited people only
+            ComboBox {
+                id: ruleBox
+                visible: !info.is_dm
+                enabled: info.can_join_rules === true
+                width: parent.width
+                label: qsTrId("rustrx-la-who-can-join")
+                description: info.can_join_rules === true ? ""
+                             //% "Only admins can change it."
+                             : qsTrId("rustrx-la-rule-admins-only")
+                currentIndex: Math.max(0, page.rules.indexOf(info.join_rule || "invite"))
+                menu: ContextMenu {
+                    Repeater {
+                        model: page.rules
+                        MenuItem { text: app.joinRuleName(modelData, "") }
+                    }
+                }
+                onCurrentIndexChanged: {
+                    var r = page.rules[currentIndex]
+                    if (info.join_rule && r !== info.join_rule && info.can_join_rules === true)
+                        rustrx.command({ cmd: "set_join_rule", room_id: roomId, rule: r })
+                }
+            }
+            // people asking to join it
+            BackgroundItem {
+                width: parent.width
+                height: visible ? Theme.itemSizeSmall : 0
+                visible: page.knocks > 0
+                onClicked: pageStack.push(Qt.resolvedUrl("KnockPage.qml"))
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * x
+                    anchors.verticalCenter: parent.verticalCenter
+                    truncationMode: TruncationMode.Fade
+                    color: Theme.highlightColor
+                    font.pixelSize: Theme.fontSizeSmall
+                    text: qsTrId("rustrx-la-banner-knocks", page.knocks)
+                }
+            }
             DetailItem {
+                visible: !page.isSpace
                 //% "Encryption"
                 label: qsTrId("rustrx-la-encryption")
                 //% "On"
@@ -282,6 +357,7 @@ Page {
 
             ComboBox {
                 id: notifyBox
+                visible: !page.isSpace
                 //% "Notifications"
                 label: qsTrId("rustrx-la-notifications")
                 enabled: page.notifyMode.length > 0
@@ -305,6 +381,7 @@ Page {
             }
 
             TextSwitch {
+                visible: !page.isSpace
                 //% "Favourite"
                 text: qsTrId("rustrx-sw-favourite")
                 checked: info.is_fav === true
@@ -312,7 +389,7 @@ Page {
                 onClicked: rustrx.command({ cmd: "set_favourite", room_id: roomId, value: !checked })
             }
             TextSwitch {
-                visible: !info.is_dm
+                visible: !info.is_dm && !page.isSpace
                 //% "Low priority"
                 text: qsTrId("rustrx-sw-low-priority")
                 //% "Sorted below the other rooms"

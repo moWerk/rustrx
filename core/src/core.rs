@@ -98,6 +98,10 @@ struct State {
     call: Option<call::CallSession>,
     /// rooms and spaces whose requests to join are watched (this login)
     knocks_watched: std::collections::HashSet<OwnedRoomId>,
+    /// the SDK's space service (this login)
+    space_service: Option<Arc<matrix_sdk_ui::spaces::SpaceService>>,
+    /// open space pages: the task that sends each one's rooms
+    space_lists: HashMap<String, JoinHandle<()>>,
 }
 
 /// What a logout has to stop, taken out of the state so the lock is not
@@ -124,6 +128,10 @@ impl State {
         self.sas.clear();
         self.avatars_tried.clear();
         self.knocks_watched.clear();
+        self.space_service = None;
+        for (_, task) in self.space_lists.drain() {
+            task.abort();
+        }
         self.latest_listened.clear();
         Teardown { client: self.client.take(), service: self.sync_service.take(), tasks }
     }
@@ -153,6 +161,8 @@ pub(crate) struct Core {
 mod call;
 mod commands;
 mod knock;
+mod spaces;
+pub(crate) use spaces::join_rule_name;
 mod packs;
 mod session;
 mod sync;

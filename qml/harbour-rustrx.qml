@@ -54,6 +54,8 @@ ApplicationWindow {
     // the favourites as a tab of their own (default), or not
     property alias separateFavs: cfgSeparateFavs.value
     ConfigurationValue { id: cfgSeparateFavs; key: "/apps/harbour-rustrx/separateFavs"; defaultValue: true }
+    property alias separateSpaces: cfgSeparateSpaces.value
+    ConfigurationValue { id: cfgSeparateSpaces; key: "/apps/harbour-rustrx/separateSpaces"; defaultValue: true }
     // how many lines of the last message the room list shows (1 to 3)
     property alias previewLines: cfgPreviewLines.value
     ConfigurationValue { id: cfgPreviewLines; key: "/apps/harbour-rustrx/previewLines"; defaultValue: 1 }
@@ -282,15 +284,28 @@ ApplicationWindow {
             id = decodeURIComponent(m[1].split("/")[0])
         }
         if (!rustrx.loggedIn) return true
+        // the servers that know the room ("via"), for one on another server
+        var via = []
+        var q = uri.indexOf("?")
+        if (q >= 0) {
+            var params = uri.slice(q + 1).split("&")
+            for (var i = 0; i < params.length; i++) {
+                var kv = params[i].split("=")
+                if (kv[0] === "via" && kv[1]) via.push(decodeURIComponent(kv[1]))
+            }
+        }
         if (id.charAt(0) === "@") {
             pendingJoin = "dm"
             rustrx.command({ cmd: "create_dm", user_id: id })
-        } else if (id.charAt(0) === "!" && rustrx.roomInfo(id).name) {
-            showRoom(id)
+        } else if (id.charAt(0) === "!" && rustrx.roomInfo(id).name && rustrx.roomInfo(id).state === "joined") {
+            if (rustrx.roomInfo(id).is_space)
+                pageStack.push(Qt.resolvedUrl("pages/SpacePage.qml"), { spaceId: id, spaceName: rustrx.roomInfo(id).name })
+            else
+                showRoom(id)
         } else {
-            // an alias, or a room we are not in: joining opens it
-            pendingJoin = id
-            rustrx.command({ cmd: "join_by_id_or_alias", id: id })
+            // an alias, or a room or space we are not in: what it is first,
+            // then join or ask to join
+            pageStack.push(Qt.resolvedUrl("pages/JoinPage.qml"), { address: id, via: via })
         }
         return true
     }
@@ -361,6 +376,25 @@ ApplicationWindow {
             console.log("calls: web engine", c.status === Component.Ready ? "Gecko 153 add-on" : "system")
         }
         return _callPage
+    }
+
+    // a join rule as people say it; space: the space's name where the rule
+    // lets its members in
+    function joinRuleName(rule, space) {
+        //% "Only invited people"
+        if (rule === "invite") return qsTrId("rustrx-la-rule-invite")
+        //% "Ask to join"
+        if (rule === "knock") return qsTrId("rustrx-la-rule-knock")
+        //% "Anyone"
+        if (rule === "public") return qsTrId("rustrx-la-rule-public")
+        //: %1 a space
+        //% "Members of %1"
+        if (rule === "restricted") return space && space.length ? qsTrId("rustrx-la-rule-restricted").arg(space)
+        //% "Members of its spaces"
+                                                                  : qsTrId("rustrx-la-rule-restricted-any")
+        //% "Space members, others ask"
+        if (rule === "knock_restricted") return qsTrId("rustrx-la-rule-knock-restricted")
+        return rule
     }
 
     function showKnocks() {

@@ -205,6 +205,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     , m_people(new RoomModel(this))
     , m_favourites(new RoomModel(this))
     , m_all(new RoomModel(this))
+    , m_spaces(new RoomModel(this))
     , m_targets(new RoomModel(this))
     , m_timeline(new TimelineModel(this))
 {
@@ -849,7 +850,7 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
 {
     if (&rooms != &m_lastRooms)
         m_lastRooms = rooms;
-    QVariantList groups, dms, favs, everything, targets;
+    QVariantList groups, dms, favs, everything, targets, spaces;
     const bool hideMutedOn = hideMuted();
     int unread = 0, chats = 0;
     m_roomsById.clear();
@@ -862,6 +863,13 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
         //% "Invitations"
         r.insert("section", invited ? qtTrId("rustrx-se-invitations") : QString());
         m_roomsById.insert(id, r);
+        // a joined space goes to the spaces only (an invitation to one stays
+        // with the invitations)
+        if (r.value("is_space").toBool() && !invited) {
+            r.insert("section", QString());
+            spaces.append(r);
+            continue;
+        }
         // the same number the row badge shows: notifications, else unread messages
         const int rowUnread = r.value("notifications").toInt() > 0 ? r.value("notifications").toInt()
                                                                    : r.value("unread").toInt();
@@ -933,6 +941,8 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
     // rooms and people together, in the same order
     sortRooms(everything);
     m_all->setRooms(everything);
+    sortRooms(spaces);
+    m_spaces->setRooms(spaces);
     sortRooms(targets);
     m_targets->setRooms(targets);
     if (unread != m_unreadTotal || chats != m_unreadChats) {
@@ -997,6 +1007,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_favourites->setRooms({});
         m_all->setRooms({});
         m_targets->setRooms({});
+        m_spaces->setRooms({});
         m_knocks.clear();
         m_knocksNotified.clear();
         emit knockRequestsChanged();
@@ -1040,6 +1051,14 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_timeline->setEmotePath(mxc, path);
         m_emotePaths.insert(mxc, path);
         emit emoteReady(mxc, QStringLiteral("file://") + path);
+    } else if (type == QLatin1String("space_rooms")) {
+        emit spaceRooms(ev.value("space_id").toString(), ev.value("rooms").toList(), ev.value("loading").toBool());
+    } else if (type == QLatin1String("room_preview")) {
+        emit roomPreview(ev);
+    } else if (type == QLatin1String("knocked")) {
+        emit knocked(ev.value("room_id").toString());
+    } else if (type == QLatin1String("room_link")) {
+        emit roomLink(ev.value("room_id").toString(), ev.value("link").toString());
     } else if (type == QLatin1String("knock_requests")) {
         const QString roomId = ev.value("room_id").toString();
         const QVariantList requests = ev.value("requests").toList();

@@ -78,8 +78,24 @@ pub(crate) enum Command {
     SetLowPriority { room_id: String, value: Option<bool> },
     JoinRoom { room_id: String },
     LeaveRoom { room_id: String },
-    /// A room id or alias; answered by "joined".
-    JoinByIdOrAlias { id: String },
+    /// A room id or alias (and the servers that know it, from a link);
+    /// answered by "joined".
+    JoinByIdOrAlias { id: String, via: Option<Vec<String>> },
+    /// What a room or space not joined is; answered by "room_preview".
+    RoomPreview { id: String, via: Option<Vec<String>> },
+    /// Ask to join a room or space whose join rule is "knock"; answered by "knocked".
+    Knock { id: String, reason: Option<String>, via: Option<Vec<String>> },
+    /// The room's matrix.to link with its servers; answered by "room_link".
+    RoomLink { room_id: String },
+    /// Who may join: "invite", "knock", "public", "restricted", "knock_restricted".
+    SetJoinRule { room_id: String, rule: String },
+    /// A space's rooms, live; answered by "space_rooms" until space_close.
+    SpaceOpen { space_id: String },
+    SpaceClose { space_id: String },
+    SpaceAddChild { space_id: String, room_id: String },
+    SpaceRemoveChild { space_id: String, room_id: String },
+    /// Leave a space; with_rooms also leaves its rooms and subspaces.
+    SpaceLeave { space_id: String, with_rooms: Option<bool> },
     /// Answered by "dm_ready".
     CreateDm { user_id: String },
     /// Answered by "joined".
@@ -89,6 +105,12 @@ pub(crate) enum Command {
         public: Option<bool>,
         alias: Option<String>,
         encrypted: Option<bool>,
+        /// a space instead of a room
+        space: Option<bool>,
+        /// the space the new room or space goes into
+        parent: Option<String>,
+        /// "invite", "knock", "public", "restricted" (members of the parent space)
+        join_rule: Option<String>,
     },
     /// Answered by "members".
     RoomMembers { room_id: String },
