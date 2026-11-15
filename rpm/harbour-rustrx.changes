@@ -1,3 +1,25 @@
+* Sun Nov 15 2026 moWerk <mo@mowerk.net> - 0.4.4
+- New: calls through Element Call (unencrypted rooms; encrypted ones
+  need a newer browser engine); incoming calls ring with Answer and
+  Decline; a running call shows in the room and the room list.
+- New: threads: replies marked in the room, a thread's page, Reply in
+  thread, the room's threads in its settings, new replies marked.
+- New: spaces: a Spaces tab, a space's rooms and subspaces, making
+  spaces and rooms in them, adding and removing rooms, leaving.
+- New: who can join a room or space; requests to join (knocking) with a
+  notification and a list to answer; asking to join; a preview before
+  joining by address or link.
+- New: emoji as Twemoji pictures; an emoji picker in the keyboard's
+  place behind a smiley button; custom emoji and stickers from image
+  packs; "Add to my emoji"; text reactions.
+- New: the push-up menu sends on its own or attaches to a drafted
+  message; a chat cover; a first start notice about the prototype and
+  its debug log.
+- Fixed: message HTML as the spec has it (spoilers hidden, no outside
+  pictures loaded); reply quotes always show; sharing offers every chat;
+  back from a picture the chat stays where it was; invitation banners
+  answered elsewhere go.
+
 * Sun Nov 15 2026 moWerk <mo@mowerk.net> - 0.4.3
 - Fixed: the keyboard stays up after Send and when a message comes in.
 - Fixed: a room opens at the newest message, not where another client

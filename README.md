@@ -41,8 +41,9 @@ without sailfish-secrets. Calls are being looked into. It also works well as the
   so.
 - Native sliding sync where the server has it (matrix.org does), classic
   sync otherwise. Sync comes back by itself after a Wi-Fi drop.
-- Rooms, People and Favs as three tabs, paged the way Jolla's Settings are,
-  or, if you prefer, one "Chats" list with or without the Favs tab.
+- Rooms, People, Favs and Spaces as tabs, paged the way Jolla's Settings
+  are, or, if you prefer, one "Chats" list with or without the Favs and
+  Spaces tabs.
   Invitations sit on top. Rows show the avatar with the unread count as a
   badge that grows to the full count, one to three lines of the last
   message, its age, a star for favourites, and in front of the message a
@@ -64,6 +65,26 @@ without sailfish-secrets. Calls are being looked into. It also works well as the
   failed. A double tap replies. Messages sit in bubbles, without avatars:
   the sender's name is inside. The header shows the room's picture and who
   is typing, "read by ..." shows read receipts. Drafts are kept per room.
+- Threads: replies in a thread are marked in the room and open their
+  thread; a thread's page shows it alone with its own text field; "Reply
+  in thread" in a message's menu; the room's threads, with the new
+  replies marked, in its settings.
+- Spaces: a tab with your spaces, each with its rooms and subspaces,
+  joined or not; making spaces and rooms in them, adding and removing
+  rooms, leaving a space alone or with its rooms. Who can join a room or
+  space (invited only, ask to join, members of the space, anyone);
+  requests to join with a notification and a list to accept, decline or
+  ban; asking to join yourself; a preview before joining by address or
+  link.
+- Calls through Element Call in a WebView, with the SDK's widget driver
+  behind it: incoming calls ring (VoIP ringtone, Answer, Decline), a
+  running call shows in the room and the list. Unencrypted rooms only
+  for now: Sailfish OS 5.2's Gecko 115 cannot do Element Call's
+  encryption.
+- Emoji as Twemoji pictures; an emoji picker in the keyboard's place
+  behind a smiley button (your five most used on top, a swipe down closes
+  it); custom emoji and stickers from Matrix image packs, "Add to my
+  emoji" for one you see; reactions with any text.
 - A push-up menu to take a photo (autofocus, a preview before sending), send
   a picture or file, or record a voice message (Ogg/Opus). Pictures go out
   upright and scaled down, with the composer text as caption, and show in
@@ -120,11 +141,11 @@ when a process exits after hiding or recreating its window.
 
 ## Status
 
-0.4.3. From "let's build a client" to 0.2.0 in one evening, used daily on
+0.4.4. From "let's build a client" to 0.2.0 in one evening, used daily on
 the Jolla Phone 2026 since, and developed and maintained for the long run.
 Tested with two accounts, on matrix.org and on tchncs.de (single sign-on
 through its account service); QR and OIDC login wait for a server that
-offers them (matrix.org has no MSC4108 yet). Not yet there: spaces, threads, pinned messages, forwarding,
+offers them (matrix.org has no MSC4108 yet). Not yet there: encrypted calls, pinned messages, forwarding,
 mention completion, QR verification. Push through UnifiedPush
 ([Foghorn](https://git.agnos.is/projectmoon/foghorn) and its Leghorn crate)
 is planned as a lighter second option next to the stand-in.
