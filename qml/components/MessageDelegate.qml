@@ -33,6 +33,8 @@ ListItem {
     signal reply(string eventId, string text)
     signal edit(string eventId, string text)
     signal resend(string txnId, string text)
+    // "more" in the reactions: the room's emoji picker, for this message
+    signal reactMore(string eventId)
 
     readonly property bool isEvent: model.kind === "event"
     readonly property bool own: model.is_own === true
@@ -60,7 +62,6 @@ ListItem {
     }
     readonly property bool canAct: isEvent && msgType !== "membership" && msgType !== "state" && msgType !== "redacted"
     // the reactions offered in the menu; the first stays where it always was
-    readonly property var quickReactions: ["👍", "❤️", "😂", "😮", "😢", "🎉"]
 
     // plain bodies: escape, link the addresses, keep the line breaks
     function linkify(t) {
@@ -484,20 +485,32 @@ ListItem {
     Component {
         id: contextMenu
         ContextMenu {
-            // the reactions first: six at a tap, the menu closes after one
+            // the reactions first: the five most used at a tap, the menu
+            // closes after one; "more" opens the emoji picker for this message
             Row {
                 visible: canAct && !failed
                 anchors.horizontalCenter: parent.horizontalCenter
                 Repeater {
-                    model: msg.quickReactions
+                    model: app.favouriteEmoji
                     BackgroundItem {
                         width: Theme.itemSizeSmall
                         height: Theme.itemSizeSmall
                         onClicked: {
+                            app.countEmoji(modelData)
                             rustrx.command({ cmd: "react", room_id: roomId, event_id: msg.eventId, key: modelData })
                             msg.closeMenu()
                         }
                         Label { anchors.centerIn: parent; text: modelData; font.pixelSize: Theme.fontSizeLarge }
+                    }
+                }
+                IconButton {
+                    width: Theme.itemSizeSmall
+                    height: Theme.itemSizeSmall
+                    icon.source: "image://theme/icon-m-add"
+                    onClicked: {
+                        var id = msg.eventId
+                        msg.closeMenu()
+                        msg.reactMore(id)
                     }
                 }
             }
