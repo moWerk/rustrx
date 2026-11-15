@@ -73,3 +73,6 @@ What the core needs:
 UI: the picker gets a tab per pack after the Unicode groups; with an
 empty field and a pack image whose usage includes "sticker", a tap sends
 it; the menu entry says "Stickers and emoji" then.
+
+Gap: a `/me` message (m.emote) carries no HTML into the timeline yet, so a
+custom emoji there still shows as its shortcode.

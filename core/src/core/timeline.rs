@@ -203,13 +203,24 @@ impl Core {
             None => {
                 let client = self.client().await?;
                 let url = OwnedMxcUri::from(mxc);
-                url.validate()?;
+                if url.validate().is_err() {
+                    tracing::info!(%mxc, "emote: not an mxc address");
+                    return Ok(());
+                }
                 // small: it is drawn at the height of a line
                 let request = MediaRequestParameters {
                     source: MediaSource::Plain(url),
                     format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(uint!(96), uint!(96))),
                 };
-                let bytes = client.media().get_media_content(&request, true).await?;
+                // a picture that cannot be had stays its name: logged, no error
+                // (a room with one would otherwise complain at every opening)
+                let bytes = match client.media().get_media_content(&request, true).await {
+                    Ok(b) => b,
+                    Err(e) => {
+                        tracing::info!(%mxc, "emote: {e}");
+                        return Ok(());
+                    }
+                };
                 let ext = sniff_extension(&bytes).unwrap_or("png");
                 tokio::fs::create_dir_all(&dir).await?;
                 let path = dir.join(format!("{safe}.{ext}"));

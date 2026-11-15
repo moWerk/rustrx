@@ -426,30 +426,31 @@ ListItem {
                         Repeater {
                             model: reactionList
                             // a tap toggles our own reaction with this key
-                            Row {
-                                spacing: Theme.paddingSmall / 2
-                                // a custom emoji (its mxc address is the key)
-                                Image {
-                                    visible: modelData.emote !== undefined
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    height: visible ? chip.height : 0
-                                    width: height
-                                    fillMode: Image.PreserveAspectFit
-                                    sourceSize.height: chip.height
-                                    source: modelData.emote || ""
-                                }
-                                Label {
-                                    id: chip
-                                    text: (modelData.emote !== undefined ? "" : reactionText(modelData.key) + " ") + modelData.count
-                                    font.pixelSize: Theme.fontSizeExtraSmall
-                                    color: modelData.me ? Theme.highlightColor : Theme.secondaryColor
+                            Item {
+                                width: chipRow.width
+                                height: chipRow.height
+                                Row {
+                                    id: chipRow
+                                    spacing: Theme.paddingSmall / 2
+                                    // a custom emoji (its mxc address is the key)
+                                    Image {
+                                        visible: modelData.emote !== undefined
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        height: visible ? chip.height : 0
+                                        width: height
+                                        fillMode: Image.PreserveAspectFit
+                                        sourceSize.height: chip.height
+                                        source: modelData.emote || ""
+                                    }
+                                    Label {
+                                        id: chip
+                                        text: (modelData.emote !== undefined ? "" : reactionText(modelData.key) + " ") + modelData.count
+                                        font.pixelSize: Theme.fontSizeExtraSmall
+                                        color: modelData.me ? Theme.highlightColor : Theme.secondaryColor
+                                    }
                                 }
                                 MouseArea {
-                                    // over the whole chip
-                                    x: -Theme.paddingSmall
-                                    y: -Theme.paddingSmall
-                                    width: parent.width + 2 * Theme.paddingSmall
-                                    height: parent.height + 2 * Theme.paddingSmall
+                                    anchors { fill: parent; margins: -Theme.paddingSmall }
                                     onClicked: rustrx.command({ cmd: "react", room_id: roomId, event_id: msg.eventId, key: modelData.key })
                                 }
                             }
