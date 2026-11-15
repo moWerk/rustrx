@@ -31,6 +31,8 @@ DockedPanel {
     property int group: 0
 
     signal picked(string emoji)
+    // "React with text": the composer takes the reaction
+    signal textReaction()
 
     width: parent.width
     // about the keyboard's height, so the conversation does not jump
@@ -55,6 +57,20 @@ DockedPanel {
     Column {
         id: top
         width: parent.width
+
+        // reacting: any text can be a reaction too (as in nheko and SchildiChat)
+        BackgroundItem {
+            visible: panel.mode === "react"
+            width: parent.width
+            height: visible ? Theme.itemSizeExtraSmall : 0
+            onClicked: { panel.open = false; panel.textReaction() }
+            Label {
+                anchors.centerIn: parent
+                //% "React with text"
+                text: qsTrId("rustrx-bt-react-text")
+                color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
+            }
+        }
 
         // the five most used, the same as in a message's reactions
         Row {

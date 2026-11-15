@@ -32,6 +32,9 @@ Page {
     // editing one of our own messages: the composer holds its text
     property string editId
     property string editText
+    // a text reaction to this message: Send reacts with what is typed
+    property string reactToId
+    property string reactToText
     // who else is typing here, for the header
     property var typingNames: []
     property bool paginating
@@ -45,7 +48,7 @@ Page {
         rustrx.openRoom(roomId)
     }
     Component.onDestruction: {
-        if (inputArea && !editId.length) rustrx.setDraft(roomId, inputArea.text)
+        if (inputArea && !editId.length && !reactToId.length) rustrx.setDraft(roomId, inputArea.text)
         if (rustrx.openRoomId === roomId) rustrx.closeRoom()
     }
 
@@ -79,7 +82,7 @@ Page {
 
     // whatever is in the composer, taken out of it
     function takeCaption() {
-        if (!inputArea || editId.length) return ""
+        if (!inputArea || editId.length || reactToId.length) return ""
         var t = inputArea.text.trim()
         inputArea.text = ""
         rustrx.setDraft(roomId, "")
@@ -88,6 +91,7 @@ Page {
 
     function startEdit(eventId, text) {
         replyToId = ""; replyToText = ""
+        reactToId = ""; reactToText = ""
         editId = eventId; editText = text
         if (inputArea) { inputArea.text = text; inputArea.cursorPosition = text.length }
         showComposer()
@@ -112,10 +116,40 @@ Page {
         if (inputArea) inputArea.text = rustrx.draft(roomId)
     }
 
+    // the composer takes a text reaction; the draft waits meanwhile
+    function startTextReaction(eventId, text) {
+        if (editId.length) cancelEdit()
+        replyToId = ""; replyToText = ""
+        if (inputArea) rustrx.setDraft(roomId, inputArea.text)
+        reactToId = eventId; reactToText = text
+        if (inputArea) inputArea.text = ""
+        showComposer()
+    }
+    function cancelTextReaction() {
+        reactToId = ""; reactToText = ""
+        if (inputArea) inputArea.text = rustrx.draft(roomId)
+    }
+
     function send() {
         if (!inputArea) return
         var text = inputArea.text.trim()
         if (text.length === 0) return
+        // "/react <text>" while replying reacts to that message (as in nheko)
+        var command = text.match(/^\/react\s+([\s\S]+)$/)
+        if (command && replyToId.length) {
+            rustrx.command({ cmd: "react", room_id: roomId, event_id: replyToId, key: command[1].trim() })
+            inputArea.text = ""
+            rustrx.setDraft(roomId, "")
+            replyToId = ""; replyToText = ""
+            inputArea.forceActiveFocus()
+            return
+        }
+        if (reactToId.length) {
+            rustrx.command({ cmd: "react", room_id: roomId, event_id: reactToId, key: text })
+            cancelTextReaction()
+            inputArea.forceActiveFocus()
+            return
+        }
         if (editId.length) {
             if (text !== editText) rustrx.command({ cmd: "edit", room_id: roomId, event_id: editId, body: text })
             editId = ""; editText = ""
@@ -340,6 +374,31 @@ Page {
             }
 
             Item {
+                visible: reactToId.length > 0
+                width: parent.width
+                height: visible ? Theme.itemSizeExtraSmall : 0
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - x - clearReact.width
+                    anchors.verticalCenter: parent.verticalCenter
+                    truncationMode: TruncationMode.Fade
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.secondaryHighlightColor
+                    //: %1 the message reacted to
+                    //% "Reacting to: %1"
+                    text: qsTrId("rustrx-la-reacting-to").arg(reactToText.replace(/\s+/g, " "))
+                    maximumLineCount: 1
+                    MouseArea { anchors.fill: parent; onClicked: page.cancelTextReaction() }
+                }
+                IconButton {
+                    id: clearReact
+                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                    icon.source: "image://theme/icon-m-clear"
+                    onClicked: page.cancelTextReaction()
+                }
+            }
+
+            Item {
                 visible: replyToId.length > 0
                 width: parent.width
                 height: visible ? Theme.itemSizeExtraSmall : 0
@@ -384,7 +443,7 @@ Page {
                         text = rustrx.draft(roomId)
                     }
                     onTextChanged: {
-                        if (editId.length) return   // an edit is not a draft
+                        if (editId.length || reactToId.length) return   // an edit or a reaction is not a draft
                         draftSave.restart()
                         if (text.length === 0 || !app.sendTyping) return
                         if (!typingTimer.running)
@@ -392,7 +451,7 @@ Page {
                         typingTimer.restart()
                     }
                     // the draft is written once typing pauses, not per keystroke
-                    Timer { id: draftSave; interval: 800; onTriggered: if (!editId.length) rustrx.setDraft(roomId, input.text) }
+                    Timer { id: draftSave; interval: 800; onTriggered: if (!editId.length && !reactToId.length) rustrx.setDraft(roomId, input.text) }
                 }
 
                 // a text button, as in Jolla's Messages
@@ -404,10 +463,12 @@ Page {
                     Label {
                         id: sendLabel
                         anchors.centerIn: parent
+                        //% "React"
+                        text: reactToId.length ? qsTrId("rustrx-bt-react")
                         //% "Save"
-                        text: editId.length ? qsTrId("rustrx-bt-save")
+                            : editId.length ? qsTrId("rustrx-bt-save")
                         //% "Send"
-                                            : qsTrId("rustrx-bt-send")
+                            : qsTrId("rustrx-bt-send")
                         color: input.text.trim().length === 0 ? Theme.secondaryColor
                              : sendButton.highlighted ? Theme.highlightColor : Theme.primaryColor
                     }
@@ -419,6 +480,7 @@ Page {
             roomId: page.roomId
             onReply: {
                 if (editId.length) page.cancelEdit()
+                if (reactToId.length) page.cancelTextReaction()
                 replyToId = eventId
                 replyToText = text
                 page.showComposer()
@@ -429,7 +491,7 @@ Page {
                 rustrx.command({ cmd: "redact", room_id: page.roomId, txn_id: txnId })
                 rustrx.sendText(page.roomId, text, "")
             }
-            onReactMore: page.showEmoji("react", eventId)
+            onReactMore: { page.reactMoreText = text; page.showEmoji("react", eventId) }
         }
 
         ViewPlaceholder {
@@ -470,8 +532,11 @@ Page {
         inputArea.text = t.slice(0, at) + emoji + t.slice(at)
         inputArea.cursorPosition = at + emoji.length
     }
+    // the message the picker reacts to, for "React with text"
+    property string reactMoreText
     EmojiPanel {
         id: emojiPanel
+        onTextReaction: page.startTextReaction(eventId, page.reactMoreText)
         onPicked: {
             if (mode === "react")
                 rustrx.command({ cmd: "react", room_id: page.roomId, event_id: eventId, key: emoji })

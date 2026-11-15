@@ -20,6 +20,26 @@ Noto Color Emoji draws), the panel (`qml/components/EmojiPanel.qml`),
 most used (counted in `/apps/harbour-rustrx/emojiCounts`) shared with a
 message's reactions, "more" in the reactions opens the picker.
 
+## Showing custom emoji and text reactions (0.4.4)
+
+Found by dodoradio: custom emoji in messages showed nothing, the raw
+HTML had an `<img>` with an `mxc://` address that Qt cannot load.
+
+- `TimelineModel` rewrites a message's HTML for `Text.StyledText`: an
+  `<img>` with an `mxc://` address becomes the cached picture at a little
+  more than the text's height (`emoteSize`), its name (`alt`) until it is
+  there; any other `<img>` becomes its name, so a message never makes the
+  phone load from an address (the spec allows only `mxc://`). The quoted
+  reply fallback (`<mx-reply>`) goes.
+- The core's `fetch_emote` caches each picture once, as a 96 px
+  thumbnail, in `media/emotes/` (emptied with the media cache).
+- A reaction with a custom emoji (its key an `mxc://` address, MSC4027)
+  shows the picture; long text reactions are cut at 24 characters.
+- Text reactions: "React with text" at the top of the picker when
+  reacting (as in SchildiChat), the composer then says "Reacting to"
+  and Send reacts with the text; `/react <text>` while replying does the
+  same (as in nheko).
+
 ## Part 2: custom emoji and stickers
 
 Matrix has them as image packs (MSC2545, what Element, Cinny, FluffyChat
