@@ -190,7 +190,7 @@ Page {
                         title: tabTitle(model.kind)
                         // four tabs and the filter icon in one row: a size
                         // smaller, so narrow phones fit them
-                        titleFontSize: tabModel.count >= 4 ? Theme.fontSizeMedium : Theme.fontSizeLarge
+                        titleFontSize: tabModel.count >= 4 ? Math.round(Theme.fontSizeMedium * 0.9) : Theme.fontSizeLarge
                     }
                 }
                 MouseArea {
