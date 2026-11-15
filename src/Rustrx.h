@@ -54,6 +54,8 @@ class Rustrx : public QObject
     Q_PROPERTY(RoomModel *favourites READ favourites CONSTANT)
     // everything in one list, for those who do not want rooms and people apart
     Q_PROPERTY(RoomModel *all READ all CONSTANT)
+    // every joined room and chat, whatever the filter: what sharing offers
+    Q_PROPERTY(RoomModel *targets READ targets CONSTANT)
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
     Q_PROPERTY(QString coreVersion READ coreVersion CONSTANT)
     Q_PROPERTY(bool downscaleImages READ downscaleImages WRITE setDownscaleImages NOTIFY settingsChanged)
@@ -95,6 +97,7 @@ public:
     RoomModel *people() const { return m_people; }
     RoomModel *favourites() const { return m_favourites; }
     RoomModel *all() const { return m_all; }
+    RoomModel *targets() const { return m_targets; }
     TimelineModel *timeline() const { return m_timeline; }
     QString coreVersion() const;
     bool downscaleImages() const;
@@ -289,6 +292,7 @@ private:
     RoomModel *m_people;
     RoomModel *m_favourites;
     RoomModel *m_all;
+    RoomModel *m_targets;
     TimelineModel *m_timeline;
     QElapsedTimer m_since;   // start-up timing in the journal
     bool m_firstRooms = true;

@@ -203,6 +203,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     , m_people(new RoomModel(this))
     , m_favourites(new RoomModel(this))
     , m_all(new RoomModel(this))
+    , m_targets(new RoomModel(this))
     , m_timeline(new TimelineModel(this))
 {
     s_instance = this;
@@ -749,7 +750,7 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
 {
     if (&rooms != &m_lastRooms)
         m_lastRooms = rooms;
-    QVariantList groups, dms, favs, everything;
+    QVariantList groups, dms, favs, everything, targets;
     const bool hideMutedOn = hideMuted();
     int unread = 0, chats = 0;
     m_roomsById.clear();
@@ -785,6 +786,8 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
             // and people; joining the two lists would put every room first
             everything.append(r);
         }
+        if (!invited)
+            targets.append(r);
         if (shown && fav && !invited) {
             // the Favs tab mixes rooms and people, by activity, no sections
             QVariantMap f = r;
@@ -831,6 +834,8 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
     // rooms and people together, in the same order
     sortRooms(everything);
     m_all->setRooms(everything);
+    sortRooms(targets);
+    m_targets->setRooms(targets);
     if (unread != m_unreadTotal || chats != m_unreadChats) {
         m_unreadTotal = unread;
         m_unreadChats = chats;
@@ -892,6 +897,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_people->setRooms({});
         m_favourites->setRooms({});
         m_all->setRooms({});
+        m_targets->setRooms({});
         m_notificationCounts.clear();
         m_roomsById.clear();
         m_homeserver.clear();
