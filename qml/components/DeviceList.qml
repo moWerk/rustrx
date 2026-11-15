@@ -17,26 +17,40 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 
-// The account's sessions. Removing one asks for the password, as the
-// server requires.
-Page {
-    id: page
+// The account's sessions, listed in place (Settings). Removing one asks
+// for the password, as the server requires.
+Column {
+    id: devicesColumn
+
+    property bool loading: true
+    property string loadError
 
     Component.onCompleted: rustrx.command({ cmd: "devices" })
 
     ListModel { id: deviceModel }
 
-    SilicaListView {
-        id: list
-        anchors.fill: parent
+    BusyIndicator {
+        anchors.horizontalCenter: parent.horizontalCenter
+        size: BusyIndicatorSize.Medium
+        running: devicesColumn.loading
+        visible: running
+    }
+
+    Label {
+        visible: !devicesColumn.loading && deviceModel.count === 0
+        x: Theme.horizontalPageMargin
+        width: parent.width - 2 * x
+        wrapMode: Text.Wrap
+        color: Theme.secondaryHighlightColor
+        //% "The devices could not be loaded"
+        text: qsTrId("rustrx-la-devices-failed") + (devicesColumn.loadError.length ? ": " + devicesColumn.loadError : "")
+    }
+
+    Repeater {
         model: deviceModel
-
-        //% "Devices"
-        header: PageHeader { title: qsTrId("rustrx-he-devices") }
-
-        delegate: ListItem {
+        ListItem {
             id: item
-            width: parent.width
+            width: devicesColumn.width
             contentHeight: Theme.itemSizeMedium
             menu: model.current ? null : removeMenu
 
@@ -81,14 +95,6 @@ Page {
                 }
             }
         }
-
-        ViewPlaceholder {
-            enabled: list.count === 0
-            //% "Loading devices…"
-            text: qsTrId("rustrx-la-loading-devices")
-        }
-
-        VerticalScrollDecorator { }
     }
 
     Component {
@@ -127,9 +133,11 @@ Page {
     Connections {
         target: rustrx
         onDevices: {
+            devicesColumn.loading = false
             deviceModel.clear()
             for (var i = 0; i < devices.length; i++) deviceModel.append(devices[i])
         }
         onDeviceDeleted: rustrx.command({ cmd: "devices" })
+        onErrorOccurred: if (cmd === "devices") { devicesColumn.loading = false; devicesColumn.loadError = message }
     }
 }

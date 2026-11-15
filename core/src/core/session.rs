@@ -15,7 +15,13 @@ impl Core {
             std::fs::create_dir_all(self.data_dir.join("avatars")).ok();
             match self.restore().await {
                 Ok(true) => {}
-                Ok(false) => self.emit(json!({"ev": "ready", "logged_in": false, "proto": PROTO})),
+                Ok(false) => {
+                    // a session the server ended earlier: whose store is kept
+                    let kept = std::fs::read_to_string(self.relogin_path()).ok()
+                        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+                        .and_then(|v| v["user_id"].as_str().map(str::to_owned));
+                    self.emit(json!({"ev": "ready", "logged_in": false, "proto": PROTO, "kept_user": kept}))
+                }
                 Err(e) => {
                     self.error("restore", &e);
                     self.emit(json!({"ev": "ready", "logged_in": false, "proto": PROTO}));
@@ -48,7 +54,50 @@ impl Core {
     }
 
     /// `known`: the sync flavour from a previous login, which skips discovery.
+    /// The passphrase for the store, if it is (to be) encrypted. A new store
+    /// is encrypted when sailfish-secrets gave a key; a file in it marks it,
+    /// with a fingerprint of the key (a hash; the key cannot be read from
+    /// it). A store from before stays as it is.
+    /// - no key now (sailfish-secrets locked before the first unlock, or not
+    ///   reachable): nothing is removed; the store cannot open this time
+    /// - a key that is not the store's (the secret was lost and made anew):
+    ///   the store can never be read again and goes
+    fn store_passphrase(&self) -> Result<Option<String>> {
+        let dir = self.data_dir.join("store");
+        let marker = dir.join("rustrx-encrypted");
+        let existing = std::fs::read_dir(&dir).map(|mut d| d.next().is_some()).unwrap_or(false);
+        let key = crate::store_key();
+        let fingerprint = |k: &str| {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            k.hash(&mut h);
+            format!("{:016x}", h.finish())
+        };
+        if existing {
+            let Ok(mark) = std::fs::read_to_string(&marker) else {
+                tracing::info!("store: unencrypted (made before sailfish-secrets was used)");
+                return Ok(None);
+            };
+            let Some(key) = key else {
+                bail!("the encrypted store's key is not available (sailfish-secrets locked or unreachable)");
+            };
+            if mark.trim() == fingerprint(key) {
+                tracing::info!("store: encrypted, key from sailfish-secrets");
+                return Ok(Some(key.to_owned()));
+            }
+            tracing::warn!("store: encrypted with a key that is gone; it cannot be read and goes");
+            std::fs::remove_dir_all(&dir).ok();
+        }
+        let Some(key) = key else { return Ok(None) };
+        std::fs::create_dir_all(&dir).ok();
+        std::fs::write(&marker, fingerprint(key)).ok();
+        tracing::info!("store: new and encrypted, key from sailfish-secrets");
+        Ok(Some(key.to_owned()))
+    }
+
     pub(crate) async fn build_client_with(&self, server: &str, with_store: bool, known: Option<bool>) -> Result<Client> {
+        tracing::info!(%server, with_store, ?known, "client: building");
+        let passphrase = if with_store { self.store_passphrase()? } else { None };
         let make = |version: VersionBuilder| {
             let mut b = Client::builder()
                 .sliding_sync_version_builder(version)
@@ -60,7 +109,7 @@ impl Core {
                 .handle_refresh_tokens()
                 .user_agent(USER_AGENT);
             if with_store {
-                b = b.sqlite_store(self.data_dir.join("store"), None);
+                b = b.sqlite_store(self.data_dir.join("store"), passphrase.as_deref());
             }
             if server.starts_with("http://") || server.starts_with("https://") {
                 b.homeserver_url(server)
@@ -81,6 +130,7 @@ impl Core {
                 }
             }
         };
+        tracing::info!("client: built");
         // a picture or file on its way shows how much of it is uploaded
         client.send_queue().enable_upload_progress(true);
         Ok(client)
@@ -153,6 +203,10 @@ impl Core {
                 },
                 // on a task of its own: the teardown aborts this one
                 Ok(SessionChange::UnknownToken(data)) => {
+                    if !Self::session_gone(&client).await {
+                        tracing::warn!("token refresh failed without an answer from the server; the session stays");
+                        continue;
+                    }
                     self.rt.spawn(self.session_expired(data.soft_logout));
                     break;
                 }
@@ -162,9 +216,54 @@ impl Core {
         }
     }
 
+    /// Whether the server really ended the session. The SDK reports an unknown
+    /// token whenever a refresh fails, also when the refresh never reached the
+    /// server (no network after a sleep, a proxy error): that logged people
+    /// out. Refreshing again tells: gone only if the server answers with a
+    /// Matrix error (the refresh token refused) or there is no refresh token.
+    async fn session_gone(client: &Client) -> bool {
+        match client.refresh_access_token().await {
+            Ok(_) => false,
+            Err(matrix_sdk::RefreshTokenError::MatrixAuth(e)) => e.client_api_error_kind().is_some(),
+            Err(matrix_sdk::RefreshTokenError::RefreshTokenRequired) => true,
+            // the SDK reports an OAuth session as gone only for invalid_grant
+            Err(matrix_sdk::RefreshTokenError::OAuth(_)) => true,
+        }
+    }
+
+    /// What a session that ended on the server's side leaves for the next
+    /// login: who it was and on which device ("relogin.json").
+    fn relogin_path(&self) -> PathBuf {
+        self.data_dir.join("relogin.json")
+    }
+
+    /// Before a login: the device to log in to again, if the kept store
+    /// belongs to this user (the store, keys and history then stay). A store
+    /// of another user, or one that cannot be matched (single sign-on with
+    /// only a server given), is wiped first, so accounts never share one.
+    fn kept_device(&self, user: Option<&str>) -> Option<String> {
+        let wanted = user.map(|u| u.trim().to_lowercase()).filter(|u| u.starts_with('@'));
+        if let Ok(raw) = std::fs::read_to_string(self.relogin_path()) {
+            let kept: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
+            let kept_user = kept["user_id"].as_str().unwrap_or("").to_lowercase();
+            let device = kept["device_id"].as_str().map(str::to_owned);
+            if wanted.as_deref() == Some(kept_user.as_str()) && device.is_some() {
+                tracing::info!("login: the kept store and device of this user");
+                return device;
+            }
+            tracing::info!("login: another user or none given, the kept store goes");
+            self.wipe_local_data();
+            return None;
+        }
+        // after a soft logout of an earlier version: the device only
+        std::fs::read_to_string(self.data_dir.join("device_id")).ok().map(|d| d.trim().to_owned())
+    }
+
     /// Local side of a logout the server already did: stop syncing, drop
-    /// the saved session, tell the UI. A soft logout keeps the crypto store
-    /// for a new login on the same device.
+    /// the saved session, tell the UI. The store, the media and the device
+    /// stay: logging in again as the same user goes on where it was, keys
+    /// and history included (a lost refresh answer ended sessions on
+    /// servers that rotate their tokens).
     pub(crate) async fn session_expired(&'static self, soft_logout: bool) {
         let teardown = {
             let mut st = self.state.lock().await;
@@ -176,21 +275,21 @@ impl Core {
         tracing::warn!(soft_logout, "the server no longer accepts this session");
         let client = teardown.stop().await;
         std::fs::remove_file(self.session_path()).ok();
-        if soft_logout {
-            // the crypto store belongs to this device: the next login asks for it again
-            if let Some(device) = client.as_ref().and_then(|c| c.device_id()) {
-                std::fs::write(self.data_dir.join("device_id"), device.as_str()).ok();
-            }
+        let user = client.as_ref().and_then(|c| c.user_id()).map(|u| u.to_string());
+        if let (Some(user), Some(device)) = (user.as_deref(), client.as_ref().and_then(|c| c.device_id())) {
+            let kept = json!({"user_id": user, "device_id": device.as_str()});
+            std::fs::write(self.relogin_path(), kept.to_string()).ok();
         } else {
             self.wipe_local_data();
         }
-        self.emit(json!({"ev": "logged_out", "reason": "session_expired", "soft_logout": soft_logout}));
+        self.emit(json!({"ev": "logged_out", "reason": "session_expired", "soft_logout": soft_logout, "user_id": user}));
     }
 
     /// Everything of the account on this phone: store, decrypted media, avatars.
     pub(crate) fn wipe_local_data(&self) {
         std::fs::remove_dir_all(self.data_dir.join("store")).ok();
         std::fs::remove_file(self.data_dir.join("device_id")).ok();
+        std::fs::remove_file(self.relogin_path()).ok();
         for dir in ["media", "avatars"] {
             std::fs::remove_dir_all(self.data_dir.join(dir)).ok();
             std::fs::create_dir_all(self.data_dir.join(dir)).ok();
@@ -228,7 +327,11 @@ impl Core {
         }
         // a server with an account service (MAS, matrix.org since 2025) signs
         // new people up in the browser; the password login works afterwards
-        let signup = match client.oauth().server_metadata().await {
+        let meta = client.oauth().server_metadata().await;
+        // an account service: logins belong in the browser (single sign-on);
+        // tchncs.de refused a correct password over m.login.password
+        let account_service = meta.is_ok();
+        let signup = match meta {
             Ok(meta) if meta.prompt_values_supported.iter().any(|p| p.as_str() == "create") => {
                 meta.issuer.join("register").ok().map(|u| u.to_string())
             }
@@ -241,6 +344,7 @@ impl Core {
             "homeserver": client.homeserver().to_string(),
             "password": password,
             "sso": sso,
+            "account_service": account_service,
             "idps": idps,
             "sliding_sync": !matches!(client.sliding_sync_version(), Version::None),
         }));
@@ -253,9 +357,12 @@ impl Core {
         }
         let result: Result<Client> = async {
             let server = Self::server_of(Some(&user), &homeserver)?;
+            // before the store opens: this user's kept store, or a clean one
+            let device = self.kept_device(Some(&user));
+            tracing::info!(%server, "login: building the client");
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
-            // after a soft logout: the same device again, so the kept crypto store fits
-            let device = std::fs::read_to_string(self.data_dir.join("device_id")).ok();
+            tracing::info!("login: client built, sending the password");
+            // the same device again, so the kept crypto store fits
             let mut login = client
                 .matrix_auth()
                 .login_username(user.trim(), &password)
@@ -266,6 +373,7 @@ impl Core {
             }
             login.send().await.map_err(|e| anyhow!("{e}"))?;
             std::fs::remove_file(self.data_dir.join("device_id")).ok();
+            std::fs::remove_file(self.relogin_path()).ok();
             Ok(client)
         }
         .await;
@@ -284,10 +392,15 @@ impl Core {
         }
         let result: Result<Client> = async {
             let server = Self::server_of(user.as_deref(), &homeserver)?;
+            // before the store opens: this user's kept store, or a clean one
+            let device = self.kept_device(user.as_deref());
+            tracing::info!(%server, "sso: building the client");
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
+            tracing::info!("sso: client built, asking for the sign-on page");
             let mut builder = client
                 .matrix_auth()
                 .login_sso(|url| async move {
+                    tracing::info!("sso: sign-on page ready, waiting for the browser");
                     crate::instance().emit(json!({"ev": "open_url", "url": url}));
                     Ok(())
                 })
@@ -296,7 +409,12 @@ impl Core {
             if let Some(idp) = given(&idp) {
                 builder = builder.identity_provider_id(idp);
             }
+            if let Some(d) = device.as_deref() {
+                builder = builder.device_id(d);
+            }
             builder.send().await.map_err(|e| anyhow!("{e}"))?;
+            std::fs::remove_file(self.data_dir.join("device_id")).ok();
+            std::fs::remove_file(self.relogin_path()).ok();
             Ok(client)
         }
         .await;

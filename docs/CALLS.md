@@ -86,3 +86,70 @@ the WebView route is the realistic one.
 - Native call UI over the WebView where Element Call allows it
   (`header=none`, `controlledAudioDevices`), Sailfish-style hang up and
   mute.
+
+## The phone's own call screen (research, 2026-11-15)
+
+Goal: a Matrix call shows up like a phone call, in Jolla's call screen
+(voicecall-ui-jolla) with its answer and decline, lock screen, ringtone,
+call history, earpiece and proximity handling, while the media stays with
+Element Call in Rustrx's WebView.
+
+What the Jolla Phone 2026 (5.2.0.22) has: voicecall-qt5 0.9.0 with the
+Telepathy provider plugin, telepathy-mission-control 5.16, telepathy-qt5
+0.9.8 including `libtelepathy-qt5-service` (the library for writing a
+connection manager), ring (cellular) and gabble as managers.
+
+How voicecall takes calls (sailfishos/voicecall,
+plugins/providers/telepathy/src):
+
+- It registers as the Telepathy client handler `voicecall` for audio
+  call channels (`ChannelClassSpec::audioCall()`, Call1, and the old
+  StreamedMedia), `telepathyproviderplugin.cpp:74-86`.
+- It makes a provider for every account whose protocol is `tel` or `sip`
+  and ignores all others, `telepathyproviderplugin.cpp:293`. A provider
+  counts while its account is enabled, online and connected,
+  `telepathyprovider.cpp:241`.
+- Dialing from the phone app on a `sip` account requests a Call1 audio
+  channel for the address, `telepathyprovider.cpp:135`.
+- For a Call1 channel it sets up Farstream media only if the channel asks
+  the handler to stream (`handlerStreamingRequired()`, the inverse of the
+  channel's `HardwareStreaming`), `callchannelhandler.cpp:308`. With
+  `HardwareStreaming = true`, as ring does for cellular calls, voicecall
+  only drives the call's state and the screen.
+
+Checked on the phone: mission-control accepts an account for a
+third-party manager. With a test manager file
+(`/usr/share/telepathy/managers/<name>.manager`), `mc-tool add` made the
+account in the default keyfile storage (`accounts.cfg`), no libaccounts
+provider needed. Test account and file removed again.
+
+So the route is a small Telepathy connection manager for Rustrx:
+
+- A separate binary (telepathy-qt service classes), started by D-Bus
+  activation, outside the app's sandbox: `rustrx.manager` with a `sip`
+  protocol (voicecall takes no other name), a D-Bus service file, and one
+  account made on first use.
+- Incoming: when a call notification (`m.rtc.notification`) arrives for a
+  DM, Rustrx (app or stand-in) tells the manager, which announces an
+  incoming Call1 channel (`HardwareStreaming = true`, the caller as the
+  target). voicecall shows its incoming call screen and rings.
+- Answer in the call screen = `Accept` on our channel: the manager tells
+  Rustrx, which joins the call in the WebView. Hang up or decline =
+  `Hangup`: Rustrx leaves or declines. A hang up in Element Call closes
+  the channel.
+- Outgoing from Rustrx: the manager announces an outgoing channel, so
+  the call screen shows the running call too.
+- Call history: voicecall's commhistory plugin logs these calls like
+  phone calls (the Matrix ID as the "number").
+
+Open points to test, in this order:
+
+1. Does the WebView keep sending and playing audio while voicecall's
+   screen is in front and Rustrx is in the background?
+2. Audio routing: voicecall and ohm switch the audio to the call route
+   (earpiece) for the channel; does Gecko's stream follow, or does it
+   need `media.role=phone`?
+3. The `sip` name: the call screen and history show the address as a
+   SIP one; can the address be the Matrix ID, or a display name?
+4. A Harbour app could not ship this (own D-Bus service names, a
+   Telepathy manager); Rustrx is an OpenRepos app, so it can.

@@ -27,9 +27,16 @@ Page {
     property string errorText
 
     Component.onCompleted: {
-        if (rustrx.logoutReason === "session_expired")
+        // a session the server ended: the same user again keeps messages and keys
+        if (rustrx.keptUser.length) {
+            userField.text = rustrx.keptUser
+            //: %1 the Matrix ID
+            //% "The server ended the session. Log in again as %1: your messages and keys are still on this phone."
+            errorText = qsTrId("rustrx-la-session-kept").arg(rustrx.keptUser)
+        } else if (rustrx.logoutReason === "session_expired") {
             //% "The server no longer accepts the saved session. Log in again."
             errorText = qsTrId("rustrx-la-session-expired")
+        }
     }
 
     function login() {
@@ -41,6 +48,17 @@ Page {
         if (userField.text.indexOf(":") < 0 && serverField.text.length === 0) return
         rustrx.probeServer(userField.text, serverField.text)
     }
+    // asked again a moment after typing stops, so single sign-on shows up
+    // without leaving the field first
+    Timer { id: probeLater; interval: 800; onTriggered: page.probe() }
+    function probeSoon() {
+        var id = /^@[^:\s]+:[^.\s]+\.[^\s]+$/.test(userField.text.trim())
+        if (id || serverField.text.trim().indexOf(".") > 0) probeLater.restart()
+    }
+
+    // the sign-on page's address, shown while the browser login runs: the
+    // browser does not open on every device, then it is opened or copied by hand
+    property string ssoUrl
 
     SilicaFlickable {
         anchors.fill: parent
@@ -49,6 +67,8 @@ Page {
         Column {
             id: column
             width: parent.width
+            // room between the buttons and the texts around them
+            spacing: Theme.paddingMedium
 
             PageHeader { title: "Rustrx" }
 
@@ -61,9 +81,17 @@ Page {
                 //% "Matrix ID"
                 label: qsTrId("rustrx-la-matrix-id")
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+                // a Matrix ID starts with @, which the Sailfish keyboard hides
+                // among its symbols: it is there already (a pasted full ID
+                // does not end up with two)
+                text: "@"
                 EnterKey.iconSource: "image://theme/icon-m-enter-next"
                 EnterKey.onClicked: passwordField.focus = true
                 onActiveFocusChanged: if (!activeFocus) probe()
+                onTextChanged: {
+                    if (text.indexOf("@@") === 0) text = text.slice(1)
+                    page.probeSoon()
+                }
             }
 
             TextField {
@@ -77,6 +105,7 @@ Page {
                 EnterKey.iconSource: "image://theme/icon-m-enter-next"
                 EnterKey.onClicked: passwordField.focus = true
                 onActiveFocusChanged: if (!activeFocus) probe()
+                onTextChanged: page.probeSoon()
             }
 
             PasswordField {
@@ -85,7 +114,7 @@ Page {
                 //% "Password"
                 placeholderText: qsTrId("rustrx-ph-password")
                 label: placeholderText
-                EnterKey.enabled: text.length > 0 && userField.text.length > 0 && !rustrx.loggingIn
+                EnterKey.enabled: text.length > 0 && userField.text.length > 1 && !rustrx.loggingIn
                 EnterKey.iconSource: "image://theme/icon-m-enter-accept"
                 EnterKey.onClicked: login()
             }
@@ -141,7 +170,7 @@ Page {
                 text: rustrx.loggingIn ? qsTrId("rustrx-bt-logging-in")
                 //% "Log in"
                                        : qsTrId("rustrx-bt-log-in")
-                enabled: !rustrx.loggingIn && userField.text.length > 0 && passwordField.text.length > 0
+                enabled: !rustrx.loggingIn && userField.text.length > 1 && passwordField.text.length > 0
                 onClicked: login()
             }
 
@@ -154,6 +183,18 @@ Page {
             //% "Other ways to log in"
             SectionHeader { text: qsTrId("rustrx-se-other-ways") }
 
+            Label {
+                visible: server.probed && server.sso && server.accountService === true
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                color: Theme.highlightColor
+                font.pixelSize: Theme.fontSizeSmall
+                //: %1 the server name
+                //% "%1 manages its logins in the browser. If the password is not accepted, log in with single sign-on."
+                text: qsTrId("rustrx-la-account-service").arg(server.name)
+            }
+
             Button {
                 anchors.horizontalCenter: parent.horizontalCenter
                 //% "Log in with single sign-on"
@@ -161,7 +202,52 @@ Page {
                 enabled: !rustrx.loggingIn && server.sso
                 onClicked: {
                     errorText = ""
+                    page.ssoUrl = ""
                     rustrx.loginSso(userField.text, serverField.text, "")
+                }
+            }
+
+            // while the browser login runs: the address, to open again or copy
+            Column {
+                visible: rustrx.loggingIn && page.ssoUrl.length > 0
+                width: parent.width
+                spacing: Theme.paddingMedium
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * x
+                    wrapMode: Text.Wrap
+                    color: Theme.highlightColor
+                    font.pixelSize: Theme.fontSizeSmall
+                    //% "Waiting for the login in the browser. If the browser did not open, open the link again or copy it into the browser."
+                    text: qsTrId("rustrx-la-sso-waiting")
+                }
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * x
+                    wrapMode: Text.WrapAnywhere
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                    color: Theme.secondaryColor
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    text: page.ssoUrl
+                }
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: Theme.paddingLarge
+                    Button {
+                        //% "Open again"
+                        text: qsTrId("rustrx-bt-sso-open-again")
+                        onClicked: Qt.openUrlExternally(page.ssoUrl)
+                    }
+                    Button {
+                        //% "Copy link"
+                        text: qsTrId("rustrx-bt-sso-copy")
+                        onClicked: {
+                            Clipboard.text = page.ssoUrl
+                            //% "Link copied"
+                            Notices.show(qsTrId("rustrx-no-link-copied"), Notice.Short)
+                        }
+                    }
                 }
             }
 
@@ -221,8 +307,11 @@ Page {
     Connections {
         target: rustrx
         onLoginError: errorText = message
+        // the sign-on page's address (the window's openUrl handler opens it too)
+        onBrowserUrl: if (rustrx.loggingIn) page.ssoUrl = url
         onServerInfo: {
             server = { probed: true, name: info.server, password: info.password, sso: info.sso,
+                       accountService: info.account_service === true,
                        idps: info.idps, sliding: info.sliding_sync, signup: info.signup_url || "" }
         }
         onErrorOccurred: if (cmd === "probe_server") errorText = message

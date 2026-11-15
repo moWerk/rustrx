@@ -89,7 +89,22 @@ Page {
     function startEdit(eventId, text) {
         replyToId = ""; replyToText = ""
         editId = eventId; editText = text
-        if (inputArea) { inputArea.text = text; inputArea.forceActiveFocus(); inputArea.cursorPosition = text.length }
+        if (inputArea) { inputArea.text = text; inputArea.cursorPosition = text.length }
+        showComposer()
+    }
+
+    // Reply and Edit come from a message's menu: while it was open the list
+    // scrolled to keep it in view, and the text field (the list's header, at
+    // the bottom) went out of sight. Once the menu has closed, back to the
+    // bottom with the field focused.
+    function showComposer() { composerLater.restart() }
+    Timer {
+        id: composerLater
+        interval: 350
+        onTriggered: {
+            list.positionViewAtBeginning()
+            if (page.inputArea) page.inputArea.forceActiveFocus()
+        }
     }
 
     function cancelEdit() {
@@ -105,6 +120,7 @@ Page {
             if (text !== editText) rustrx.command({ cmd: "edit", room_id: roomId, event_id: editId, body: text })
             editId = ""; editText = ""
             inputArea.text = rustrx.draft(roomId)
+            inputArea.forceActiveFocus()
             return
         }
         rustrx.sendText(roomId, text, replyToId)
@@ -114,6 +130,7 @@ Page {
         replyToText = ""
         typingTimer.stop()
         if (app.sendTyping) rustrx.command({ cmd: "typing", room_id: roomId, typing: false })
+        inputArea.forceActiveFocus()
     }
 
     Timer {
@@ -128,11 +145,52 @@ Page {
         onTyping: if (roomId === page.roomId) page.typingNames = names
     }
 
+    // the room's picture beside its name in the header, kept current with
+    // the room list (a new picture comes with the sync)
+    property var roomInfo: rustrx.roomInfo(roomId)
+    Connections { target: rustrx.rooms; onDataChanged: page.roomInfo = rustrx.roomInfo(page.roomId) }
+    Connections { target: rustrx.people; onDataChanged: page.roomInfo = rustrx.roomInfo(page.roomId) }
+    readonly property bool hasPicture: !!(roomInfo && roomInfo.avatar)
+
     // the header stays put; the list runs underneath it
     PageHeader {
         id: header
         title: roomName
-        description: rustrx.syncState !== "running"
+        // room for the picture right of the name, as tall as the name's letters
+        readonly property real pictureSize: Math.round(_titleItem.font.pixelSize * 0.9)
+        rightMargin: Theme.horizontalPageMargin + (page.hasPicture ? pictureSize + Theme.paddingMedium : 0)
+
+        Image {
+            visible: page.hasPicture && status === Image.Ready
+            anchors {
+                right: parent.right
+                rightMargin: Theme.horizontalPageMargin
+                verticalCenter: header._titleItem.verticalCenter
+            }
+            width: header.pictureSize
+            height: width
+            asynchronous: true
+            fillMode: Image.PreserveAspectCrop
+            sourceSize.width: width * 2
+            sourceSize.height: height * 2
+            source: page.hasPicture ? "file://" + page.roomInfo.avatar + "?v=" + (page.roomInfo.avatar_v || 0) : ""
+            layer.enabled: app.roundAvatars
+            layer.effect: ShaderEffect {
+                fragmentShader: "
+                    varying highp vec2 qt_TexCoord0;
+                    uniform sampler2D source;
+                    uniform lowp float qt_Opacity;
+                    void main() {
+                        highp float d = length(qt_TexCoord0 - vec2(0.5));
+                        lowp float a = 1.0 - smoothstep(0.49, 0.5, d);
+                        gl_FragColor = texture2D(source, qt_TexCoord0) * a * qt_Opacity;
+                    }"
+            }
+        }
+        description: rustrx.syncState === "idle"
+                     //% "Connecting"
+                     ? qsTrId("rustrx-la-cover-connecting")
+                     : rustrx.syncState !== "running"
                      //% "Not connected"
                      ? qsTrId("rustrx-la-not-connected")
                      : typingNames.length === 1
@@ -173,6 +231,10 @@ Page {
         anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         verticalLayoutDirection: ListView.BottomToTop
         model: rustrx.timeline
+        // no current item: a message arriving at the newest end moved it, and
+        // the view gave it the focus, away from the composer in the header,
+        // so the keyboard closed on every message sent or received
+        currentIndex: -1
         spacing: Theme.paddingSmall
         clip: true
 
@@ -242,30 +304,56 @@ Page {
             Item { width: 1; height: Theme.paddingMedium }
 
             // editing: the message being changed, tap to cancel
-            Label {
+            // an edit or a reply in progress: the line and a clear button to
+            // drop it (a tap on the line drops it too)
+            Item {
                 visible: editId.length > 0
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                truncationMode: TruncationMode.Fade
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.secondaryHighlightColor
-                //: %1 the original text
-                //% "Editing: %1"
-                text: qsTrId("rustrx-la-editing").arg(editText)
-                MouseArea { anchors.fill: parent; onClicked: page.cancelEdit() }
+                width: parent.width
+                height: visible ? Theme.itemSizeExtraSmall : 0
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - x - clearEdit.width
+                    anchors.verticalCenter: parent.verticalCenter
+                    truncationMode: TruncationMode.Fade
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.secondaryHighlightColor
+                    //: %1 the original text
+                    //% "Editing: %1"
+                    text: qsTrId("rustrx-la-editing").arg(editText.replace(/\s+/g, " "))
+                    maximumLineCount: 1
+                    MouseArea { anchors.fill: parent; onClicked: page.cancelEdit() }
+                }
+                IconButton {
+                    id: clearEdit
+                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                    icon.source: "image://theme/icon-m-clear"
+                    onClicked: page.cancelEdit()
+                }
             }
 
-            Label {
+            Item {
                 visible: replyToId.length > 0
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                truncationMode: TruncationMode.Fade
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.secondaryHighlightColor
-                //: %1 the quoted text
-                //% "Replying to: %1"
-                text: qsTrId("rustrx-la-replying-to").arg(replyToText)
-                MouseArea { anchors.fill: parent; onClicked: { replyToId = ""; replyToText = "" } }
+                width: parent.width
+                height: visible ? Theme.itemSizeExtraSmall : 0
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - x - clearReply.width
+                    anchors.verticalCenter: parent.verticalCenter
+                    truncationMode: TruncationMode.Fade
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.secondaryHighlightColor
+                    //: %1 the quoted text
+                    //% "Replying to: %1"
+                    text: qsTrId("rustrx-la-replying-to").arg(replyToText.replace(/\s+/g, " "))
+                    maximumLineCount: 1
+                    MouseArea { anchors.fill: parent; onClicked: { replyToId = ""; replyToText = "" } }
+                }
+                IconButton {
+                    id: clearReply
+                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                    icon.source: "image://theme/icon-m-clear"
+                    onClicked: { replyToId = ""; replyToText = "" }
+                }
             }
 
             Row {
@@ -276,7 +364,13 @@ Page {
                     width: parent.width - sendButton.width
                     //% "Message"
                     placeholderText: qsTrId("rustrx-ph-message")
-                    label: roomName
+                    //: %1 the room's name
+                    //% "Typing to %1"
+                    label: app.sendTyping && app.typingHint ? qsTrId("rustrx-la-typing-to").arg(roomName) : ""
+                    labelVisible: label !== ""
+                    // a tap on Send (or anywhere else) must not take the focus and
+                    // close the keyboard, as in Jolla's Messages
+                    focusOutBehavior: FocusBehavior.KeepFocus
                     Component.onCompleted: {
                         page.inputArea = input
                         text = rustrx.draft(roomId)
@@ -319,7 +413,7 @@ Page {
                 if (editId.length) page.cancelEdit()
                 replyToId = eventId
                 replyToText = text
-                if (inputArea) inputArea.focus = true
+                page.showComposer()
             }
             onEdit: page.startEdit(eventId, text)
             onResend: {

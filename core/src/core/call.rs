@@ -40,7 +40,7 @@ impl CapabilitiesProvider for GrantAll {
 }
 
 impl Core {
-    pub(crate) async fn call_start(&'static self, room_id: &str, voice: bool) -> Result<()> {
+    pub(crate) async fn call_start(&'static self, room_id: &str, voice: bool, skip_lobby: bool) -> Result<()> {
         let room = self.room(room_id).await?;
         self.call_end().await;
 
@@ -53,11 +53,13 @@ impl Core {
             (false, true, _) => Intent::JoinExisting,
             (false, false, _) => Intent::StartCall,
         };
+        let intent_name = format!("{intent:?}");
         let encryption = if room.encryption_state().is_encrypted() {
             EncryptionSystem::PerParticipantKeys
         } else {
             EncryptionSystem::Unencrypted
         };
+        let encryption_name = format!("{encryption:?}");
         let props = VirtualElementCallWidgetProperties {
             element_call_url: ELEMENT_CALL_URL.to_owned(),
             widget_id: WIDGET_ID.to_owned(),
@@ -69,6 +71,7 @@ impl Core {
             // the phone's audio routing (earpiece, speaker, headset) stays with the system
             controlled_audio_devices: Some(true),
             hide_screensharing: Some(true),
+            skip_lobby: skip_lobby.then_some(true),
             ..Default::default()
         };
         let settings = WidgetSettings::new_virtual_element_call_widget(props, config)
@@ -98,7 +101,7 @@ impl Core {
             }
         });
         self.state.lock().await.call = Some(CallSession { handle, tasks: vec![run, forward] });
-        tracing::info!(room = %rid, "call widget started");
+        tracing::info!(room = %rid, ?intent_name, ?encryption_name, skip_lobby, "call widget started");
         self.emit(json!({"ev": "call_url", "room_id": rid.as_str(), "url": url.as_str()}));
         Ok(())
     }

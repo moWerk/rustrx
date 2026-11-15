@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use matrix_sdk::latest_events::LatestEventValue;
+use matrix_sdk::notification_settings::RoomNotificationMode;
+use matrix_sdk::ruma::events::receipt::ReceiptThread;
 use matrix_sdk::ruma::events::room::message::{MessageFormat, MessageType};
 use matrix_sdk::ruma::events::{AnyMessageLikeEventContent, AnySyncTimelineEvent};
 use matrix_sdk::ruma::{OwnedUserId, UserId};
@@ -91,17 +93,25 @@ fn event_preview(event: &AnySyncTimelineEvent) -> Option<String> {
 }
 
 fn message_preview(msg: &MessageType) -> String {
-    let first_line = |s: &str| s.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_owned();
+    // the text, line breaks kept, up to 400 characters: the list shows as
+    // many lines as the user set (1 to 3) and fades the last
+    let lines = |s: &str| {
+        let t = s.trim();
+        match t.char_indices().nth(400) {
+            Some((i, _)) => t[..i].to_owned(),
+            None => t.to_owned(),
+        }
+    };
     match msg {
-        MessageType::Text(t) => first_line(&t.body),
-        MessageType::Notice(t) => first_line(&t.body),
-        MessageType::Emote(t) => format!("* {}", first_line(&t.body)),
+        MessageType::Text(t) => lines(&t.body),
+        MessageType::Notice(t) => lines(&t.body),
+        MessageType::Emote(t) => format!("* {}", lines(&t.body)),
         MessageType::Image(_) => "Photo".to_owned(),
         MessageType::Video(_) => "Video".to_owned(),
         MessageType::Audio(_) => "Audio".to_owned(),
         MessageType::File(f) => format!("File: {}", f.filename.as_deref().unwrap_or(&f.body)),
         MessageType::Location(_) => "Location".to_owned(),
-        other => first_line(other.body()),
+        other => lines(other.body()),
     }
 }
 
@@ -116,6 +126,26 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
     let counts = room.unread_notification_counts();
     let avatar = avatar_file(avatar_dir, room);
     let (preview, preview_sender) = preview(room).await;
+    // muted: the room's notification mode
+    let muted = matches!(room.notification_mode().await, Some(RoomNotificationMode::Mute));
+    // the own last message was read by someone else
+    let own_read = match room.latest_event() {
+        LatestEventValue::Remote(ev) if ev.sender().as_deref() == Some(room.own_user_id()) => match ev.event_id() {
+            Some(id) => room
+                .load_event_receipts(
+                    matrix_sdk::ruma::events::receipt::ReceiptType::Read,
+                    &ReceiptThread::Unthreaded,
+                    &id,
+                )
+                .await
+                .map(|r| r.iter().any(|(user, _)| user != room.own_user_id()))
+                .unwrap_or(false),
+            None => false,
+        },
+        _ => false,
+    };
+    // an upgraded room points to its successor
+    let replaced_by = room.successor_room().map(|s| s.room_id.to_string());
     // who sent an invitation: their name, else their id
     let inviter = if room.state() == RoomState::Invited {
         room.invite_details().await.ok().map(|i| match i.inviter {
@@ -127,8 +157,14 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
     };
     json!({
         "inviter": inviter,
+        "muted": muted,
+        "own_read": own_read,
+        "replaced_by": replaced_by,
         "has_avatar": avatar.exists(),
         "avatar": if avatar.exists() { Some(avatar.to_string_lossy().into_owned()) } else { None },
+        // the file's age: the picture's URL changes with it, past Qt's image cache
+        "avatar_v": std::fs::metadata(&avatar).and_then(|m| m.modified()).ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()),
         "room_id": room.room_id().as_str(),
         "name": name,
         "preview": preview,

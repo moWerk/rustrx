@@ -15,6 +15,9 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Rustrx.h"
+#include "DebugLog.h"
+#include <QLibrary>
+#include <sailfishapp.h>
 #include "RoomModel.h"
 #include "TimelineModel.h"
 #include "rustrx_core.h"
@@ -26,6 +29,7 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QImageReader>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaObject>
@@ -42,6 +46,7 @@
 #include <QFile>
 #include <QDBusError>
 #include <QMutex>
+#include <QElapsedTimer>
 #include <algorithm>
 #include <QMutexLocker>
 
@@ -198,11 +203,33 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     , m_rooms(new RoomModel(this))
     , m_people(new RoomModel(this))
     , m_favourites(new RoomModel(this))
+    , m_all(new RoomModel(this))
     , m_timeline(new TimelineModel(this))
 {
     s_instance = this;
     m_since.start();
     QDir().mkpath(dataDir);
+    // the store's key from sailfish-secrets, if it works here; without it the
+    // store stays unencrypted (community ports without sailfish-secrets)
+    QElapsedTimer secretsTime;
+    secretsTime.start();
+    // the sailfish-secrets plugin, loaded only where it can be: its library
+    // is not a dependency of the package
+    QByteArray storeKey;
+    QLibrary secrets(SailfishApp::pathTo(QStringLiteral("lib/librustrx-secrets.so")).toLocalFile());
+    typedef int (*StoreKeyFn)(char *, int);
+    if (StoreKeyFn fn = reinterpret_cast<StoreKeyFn>(secrets.resolve("rustrx_secrets_store_key"))) {
+        char buf[128];
+        const int n = fn(buf, sizeof buf);
+        if (n > 0)
+            storeKey = QByteArray(buf, n);
+    } else {
+        qInfo().noquote() << "startup: no sailfish-secrets plugin:" << secrets.errorString();
+    }
+    qInfo().noquote() << "startup: store key" << (storeKey.isEmpty() ? "none" : "from sailfish-secrets")
+                      << "after" << secretsTime.elapsed() << "ms";
+    if (!storeKey.isEmpty())
+        rustrx_set_store_key(storeKey.constData());
     const int rc = rustrx_start(dataDir.toUtf8().constData(), &Rustrx::eventCallback, this);
     if (rc != 0)
         qWarning() << "rustrx_start failed:" << rc;
@@ -357,14 +384,100 @@ void Rustrx::setSortOrder(const QString &order)
     distributeRooms(m_lastRooms);
 }
 
-// The core sends the rooms by activity. Invitations stay on top and low
-// priority rooms go to the bottom in every order; within that, unread rooms
-// first or by name, else the activity order stays (the sort is stable).
+bool Rustrx::favsOnTop() const
+{
+    return QSettings().value("favsOnTop", false).toBool();
+}
+
+void Rustrx::setFavsOnTop(bool on)
+{
+    if (on == favsOnTop())
+        return;
+    QSettings().setValue("favsOnTop", on);
+    emit settingsChanged();
+    distributeRooms(m_lastRooms);
+}
+
+void Rustrx::setRoomFilter(const QString &text)
+{
+    const QString t = text.trimmed();
+    if (t == m_roomFilter)
+        return;
+    m_roomFilter = t;
+    emit roomFilterChanged();
+    distributeRooms(m_lastRooms);
+}
+
+bool Rustrx::debugLog() const
+{
+    return QSettings().value("debugLog", true).toBool();
+}
+
+void Rustrx::setDebugLog(bool on)
+{
+    if (on == debugLog())
+        return;
+    QSettings().setValue("debugLog", on);
+    DebugLog::setEnabled(on);
+    emit settingsChanged();
+}
+
+QString Rustrx::shareableLog()
+{
+    // other apps cannot read the data folder: the copy goes to Downloads
+    QString device;
+    QFile release(QStringLiteral("/etc/sailfish-release"));
+    if (release.open(QIODevice::ReadOnly)) {
+        for (const QByteArray &line : release.readAll().split('\n'))
+            if (line.startsWith("VERSION=")) device = QString::fromUtf8(line.mid(8)).remove('"');
+    }
+    const QString header = QStringLiteral("Rustrx %1, core %2, Sailfish OS %3\nwritten %4")
+            .arg(QStringLiteral(APP_VERSION), coreVersion(), device,
+                 QDateTime::currentDateTime().toString(Qt::ISODate));
+    return DebugLog::collect(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation), header);
+}
+
+bool Rustrx::hideMuted() const
+{
+    return QSettings().value("hideMuted", false).toBool();
+}
+
+void Rustrx::setHideMuted(bool on)
+{
+    if (on == hideMuted())
+        return;
+    QSettings().setValue("hideMuted", on);
+    emit settingsChanged();
+    distributeRooms(m_lastRooms);
+}
+
+bool Rustrx::lowLast() const
+{
+    return QSettings().value("lowLast", true).toBool();
+}
+
+void Rustrx::setLowLast(bool on)
+{
+    if (on == lowLast())
+        return;
+    QSettings().setValue("lowLast", on);
+    emit settingsChanged();
+    distributeRooms(m_lastRooms);
+}
+
+// The core sends the rooms by activity. Invitations stay on top; then, if
+// switched on, favourites first and low priority rooms last; within that,
+// the most unread first or by name, else the activity order stays (the sort
+// is stable).
 void Rustrx::sortRooms(QVariantList &rooms) const
 {
     const QString order = sortOrder();
+    const bool favsFirst = favsOnTop();
+    const bool lowAtEnd = lowLast();
+    // the number the badge shows: notifications, else unread messages
     const auto unread = [](const QVariantMap &r) {
-        return r.value("notifications").toInt() > 0 || r.value("unread").toInt() > 0;
+        const int n = r.value("notifications").toInt();
+        return n > 0 ? n : r.value("unread").toInt();
     };
     std::stable_sort(rooms.begin(), rooms.end(), [&](const QVariant &va, const QVariant &vb) {
         const QVariantMap a = va.toMap(), b = vb.toMap();
@@ -372,13 +485,21 @@ void Rustrx::sortRooms(QVariantList &rooms) const
         const bool ib = b.value("state").toString() == QLatin1String("invited");
         if (ia != ib)
             return ia;
-        const bool la = a.value("is_low").toBool(), lb = b.value("is_low").toBool();
-        if (la != lb)
-            return lb;
+        if (favsFirst) {
+            const bool fa = a.value("is_fav").toBool(), fb = b.value("is_fav").toBool();
+            if (fa != fb)
+                return fa;
+        }
+        if (lowAtEnd) {
+            const bool la = a.value("is_low").toBool(), lb = b.value("is_low").toBool();
+            if (la != lb)
+                return lb;
+        }
         if (order == QLatin1String("unread")) {
-            const bool ua = unread(a), ub = unread(b);
+            // the most unread on top; equal counts keep the activity order
+            const int ua = unread(a), ub = unread(b);
             if (ua != ub)
-                return ua;
+                return ua > ub;
         } else if (order == QLatin1String("name")) {
             return QString::localeAwareCompare(a.value("name").toString(), b.value("name").toString()) < 0;
         }
@@ -403,6 +524,41 @@ void Rustrx::eventCallback(void *ctx, const char *json)
         return;
     QMetaObject::invokeMethod(self, "handleEvent", Qt::QueuedConnection,
                               Q_ARG(QVariantMap, doc.object().toVariantMap()));
+}
+
+QString Rustrx::dev(const QString &json)
+{
+    const QString flag = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+            + QStringLiteral("/dev-commands");
+    if (!QFile::exists(flag))
+        return QStringLiteral("{\"error\":\"dev commands are off\"}");
+    const QVariantMap req = QJsonDocument::fromJson(json.toUtf8()).object().toVariantMap();
+    qInfo().noquote() << "dev" << req.value("cmd", req.value("ui", req.keys().value(0))).toString();
+    QJsonObject out;
+    if (req.contains("cmd")) {
+        command(req);
+        out["ok"] = true;
+    } else if (req.contains("rooms")) {
+        QJsonArray rooms;
+        for (auto it = m_roomsById.cbegin(); it != m_roomsById.cend(); ++it) {
+            QJsonObject r;
+            for (const char *key : { "room_id", "name", "is_dm", "encrypted", "unread", "notifications", "state" })
+                r[key] = QJsonValue::fromVariant(it.value().value(key));
+            rooms.append(r);
+        }
+        out["rooms"] = rooms;
+    } else if (req.contains("state")) {
+        out["logged_in"] = m_loggedIn;
+        out["sync"] = m_syncState;
+        out["open_room"] = m_openRoomId;
+        out["active"] = qGuiApp && qGuiApp->applicationState() == Qt::ApplicationActive;
+    } else if (req.contains("ui")) {
+        emit devUi(req);
+        out["ok"] = true;
+    } else {
+        out["error"] = QStringLiteral("unknown request");
+    }
+    return QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Compact));
 }
 
 void Rustrx::command(const QVariantMap &cmd)
@@ -464,6 +620,51 @@ void Rustrx::sendText(const QString &roomId, const QString &body, const QString 
     if (!replyTo.isEmpty())
         cmd.insert("reply_to", replyTo);
     command(cmd);
+}
+
+QString Rustrx::prepareAvatar(const QString &path, const QString &cmd, QSize *size)
+{
+    QString p = path;
+    if (p.startsWith(QLatin1String("file://")))
+        p = QUrl(p).toLocalFile();
+    QImageReader reader(p);
+    reader.setAutoTransform(true);
+    QImage image = reader.read();
+    if (image.isNull()) {
+        emit errorOccurred(cmd, reader.errorString());
+        return QString();
+    }
+    if (qMax(image.width(), image.height()) > 512)
+        image = image.scaled(512, 512, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    const QString cache = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/outgoing";
+    QDir().mkpath(cache);
+    // PNG keeps a transparent picture (an icon) as it is; photos go as JPEG
+    const bool alpha = image.hasAlphaChannel();
+    const QString out = cache + "/avatar-" + QString::number(QDateTime::currentMSecsSinceEpoch()) + (alpha ? ".png" : ".jpg");
+    if (!image.save(out, alpha ? "PNG" : "JPG", alpha ? -1 : 90)) {
+        emit errorOccurred(cmd, QStringLiteral("cannot write ") + out);
+        return QString();
+    }
+    if (size)
+        *size = image.size();
+    return out;
+}
+
+void Rustrx::setRoomAvatar(const QString &roomId, const QString &path)
+{
+    QSize size;
+    const QString out = prepareAvatar(path, QStringLiteral("set_room_avatar"), &size);
+    if (out.isEmpty())
+        return;
+    command({{"cmd", "set_room_avatar"}, {"room_id", roomId}, {"path", out},
+             {"w", size.width()}, {"h", size.height()}});
+}
+
+void Rustrx::setOwnAvatar(const QString &path)
+{
+    const QString out = prepareAvatar(path, QStringLiteral("set_own_avatar"), nullptr);
+    if (!out.isEmpty())
+        command({{"cmd", "set_own_avatar"}, {"path", out}});
 }
 
 void Rustrx::sendFile(const QString &roomId, const QString &path, const QString &caption)
@@ -584,7 +785,8 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
 {
     if (&rooms != &m_lastRooms)
         m_lastRooms = rooms;
-    QVariantList groups, dms, favs;
+    QVariantList groups, dms, favs, everything;
+    const bool hideMutedOn = hideMuted();
     int unread = 0, chats = 0;
     m_roomsById.clear();
     for (const QVariant &v : rooms) {
@@ -603,11 +805,23 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
             unread += rowUnread;
             ++chats;
         }
-        if (r.value("is_dm").toBool())
-            dms.append(r);
-        else
-            groups.append(r);
-        if (fav && !invited) {
+        // the search in the filter menu: only rooms whose name or address
+        // contains it (the unread counts above still count every room)
+        const bool shown = (m_roomFilter.isEmpty()
+                || r.value("name").toString().contains(m_roomFilter, Qt::CaseInsensitive)
+                || r.value("alias").toString().contains(m_roomFilter, Qt::CaseInsensitive))
+                // "Hide muted" in the filter menu (invitations always show)
+                && !(hideMutedOn && r.value("muted").toBool() && !invited);
+        if (shown) {
+            if (r.value("is_dm").toBool())
+                dms.append(r);
+            else
+                groups.append(r);
+            // the one list keeps the core's order (by activity) across rooms
+            // and people; joining the two lists would put every room first
+            everything.append(r);
+        }
+        if (shown && fav && !invited) {
             // the Favs tab mixes rooms and people, by activity, no sections
             QVariantMap f = r;
             f.insert("section", QString());
@@ -645,6 +859,9 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
     m_rooms->setRooms(groups);
     m_people->setRooms(dms);
     m_favourites->setRooms(favs);
+    // rooms and people together, in the same order
+    sortRooms(everything);
+    m_all->setRooms(everything);
     if (unread != m_unreadTotal || chats != m_unreadChats) {
         m_unreadTotal = unread;
         m_unreadChats = chats;
@@ -670,8 +887,10 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     if (type == QLatin1String("ready") || type == QLatin1String("logged_in") || type == QLatin1String("sync_state")
             || (type == QLatin1String("rooms") && m_firstRooms)) {
         qInfo().noquote() << "startup:" << type << "after" << m_since.elapsed() << "ms";
-        if (type == QLatin1String("rooms"))
+        if (type == QLatin1String("rooms")) {
             m_firstRooms = false;
+            emit roomsLoadedChanged();
+        }
     }
     if ((type == QLatin1String("ready") || type == QLatin1String("logged_in"))
             && ev.value("proto").toInt() != kProto)
@@ -679,6 +898,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     if (type == QLatin1String("ready")) {
         m_ready = true;
         m_loggedIn = ev.value("logged_in").toBool();
+        m_keptUser = ev.value("kept_user").toString();
         emit stateChanged();
     } else if (type == QLatin1String("logged_in")) {
         m_logoutReason.clear();
@@ -695,12 +915,14 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     } else if (type == QLatin1String("logged_out")) {
         m_loggedIn = false;
         m_logoutReason = ev.value("reason").toString();
+        m_keptUser = ev.value("user_id").toString();
         m_userId.clear();
         m_openRoomId.clear();
         m_timeline->clear();
         m_rooms->setRooms({});
         m_people->setRooms({});
         m_favourites->setRooms({});
+        m_all->setRooms({});
         m_notificationCounts.clear();
         m_roomsById.clear();
         m_homeserver.clear();
@@ -708,6 +930,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_verificationState = QStringLiteral("unknown");
         m_recoveryState = QStringLiteral("unknown");
         m_firstRooms = true;
+        emit roomsLoadedChanged();
         if (m_unreadTotal || m_unreadChats) {
             m_unreadTotal = m_unreadChats = 0;
             emit unreadChanged();
@@ -736,7 +959,9 @@ void Rustrx::handleEvent(const QVariantMap &ev)
             m_timeline->setMediaPath(ev.value("event_id").toString(), ev.value("thumb").toBool(),
                                      ev.value("path").toString());
     } else if (type == QLatin1String("open_url")) {
-        emit openUrl(ev.value("url").toString());
+        emit browserUrl(ev.value("url").toString());
+    } else if (type == QLatin1String("identity_reset_approval")) {
+        emit identityResetApproval(ev.value("url").toString());
     } else if (type == QLatin1String("error")) {
         const QString cmd = ev.value("cmd").toString();
         if (cmd == QLatin1String("login_password") || cmd == QLatin1String("login_sso")) {
@@ -792,5 +1017,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit callMessage(ev.value("data").toString());
     } else if (type == QLatin1String("call_ended")) {
         emit callEnded(ev.value("room_id").toString());
+    } else if (type == QLatin1String("event_source")) {
+        emit eventSource(ev.value("event_id").toString(), ev.value("json").toString(), ev.value("edit").toString());
     }
 }

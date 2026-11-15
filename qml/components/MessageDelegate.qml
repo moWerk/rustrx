@@ -70,10 +70,18 @@ ListItem {
     }
 
     property bool exporting
+    // a tap opens the copy in another app; "Save to Downloads" only saves it
+    property bool exportOpens
 
     // other apps cannot read this app's data folder: a copy goes to Downloads
     function openMedia() {
         exporting = true
+        exportOpens = true
+        rustrx.exportMedia(roomId, model.event_id)
+    }
+    function saveMedia() {
+        exporting = true
+        exportOpens = false
         rustrx.exportMedia(roomId, model.event_id)
     }
 
@@ -91,7 +99,23 @@ ListItem {
         }
     }
 
-    onClicked: {
+    // A double tap replies, without the long press (side swipes belong to
+    // the tabs and the room page). A single tap (opening a picture, playing
+    // audio) waits the system's double-tap interval first: at the first
+    // release Qt cannot know whether a second tap follows.
+    onDoubleClicked: {
+        singleTap.stop()
+        if (!canAct || failed) return
+        msg.reply(model.event_id, (model.sender_name || model.sender) + ": " + (model.body || ""))
+    }
+    onClicked: singleTap.restart()
+    Timer {
+        id: singleTap
+        interval: Qt.styleHints.mouseDoubleClickInterval
+        onTriggered: msg.tapped()
+    }
+
+    function tapped() {
         if (msgType === "audio") {
             if (!player) return
             if (playing) { player.pause(); return }
@@ -116,7 +140,8 @@ ListItem {
         onMediaExported: {
             if (!exporting || eventId !== model.event_id) return
             exporting = false
-            Qt.openUrlExternally("file://" + path)
+            if (exportOpens) Qt.openUrlExternally("file://" + path)
+            else Notices.show(qsTrId("rustrx-no-saved").arg(path))
         }
     }
 
@@ -295,7 +320,7 @@ ListItem {
                     // image, video thumbnail or sticker
                     Item {
                         visible: isMedia
-                        width: Math.min(innerMax, Screen.width * 0.6)
+                        width: Math.min(innerMax, Math.min(msg.width, Screen.width) * 0.6)
                         height: visible ? Math.min(width, Math.max(Theme.itemSizeLarge, width * (model.h && model.w ? model.h / model.w : 0.75))) : 0
 
                         Image {
@@ -376,7 +401,7 @@ ListItem {
                     // an upload on its way: how much of the file is at the server
                     Rectangle {
                         visible: uploading
-                        width: Math.min(innerMax, Screen.width * 0.6)
+                        width: Math.min(innerMax, Math.min(msg.width, Screen.width) * 0.6)
                         height: Theme.paddingSmall
                         radius: height / 2
                         color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
@@ -506,19 +531,34 @@ ListItem {
                 //% "Copy text"
                 text: qsTrId("rustrx-me-copy")
                 visible: model.body && model.body.length > 0
-                onClicked: Clipboard.text = model.body
+                onClicked: {
+                    Clipboard.text = model.body
+                    //% "Text copied"
+                    Notices.show(qsTrId("rustrx-no-text-copied"), Notice.Short)
+                }
             }
             MenuItem {
                 //% "Copy link"
                 text: qsTrId("rustrx-me-copy-link")
                 visible: canAct && !failed && msg.eventId.length > 0
-                onClicked: Clipboard.text = "https://matrix.to/#/" + encodeURIComponent(roomId) + "/" + encodeURIComponent(msg.eventId)
+                onClicked: {
+                    Clipboard.text = "https://matrix.to/#/" + encodeURIComponent(roomId) + "/" + encodeURIComponent(msg.eventId)
+                    Notices.show(qsTrId("rustrx-no-link-copied"), Notice.Short)
+                }
             }
             MenuItem {
-                //% "Save"
-                text: qsTrId("rustrx-me-save")
+                text: qsTrId("rustrx-me-save-downloads")
                 visible: isMedia || isFile
-                onClicked: openMedia()
+                onClicked: saveMedia()
+            }
+            MenuItem {
+                //% "View source"
+                text: qsTrId("rustrx-me-view-source")
+                visible: msg.eventId.length > 0
+                onClicked: {
+                    pageStack.push(Qt.resolvedUrl("../pages/SourcePage.qml"), { eventId: msg.eventId })
+                    rustrx.command({ cmd: "event_source", room_id: roomId, event_id: msg.eventId })
+                }
             }
             MenuItem {
                 //% "Report"

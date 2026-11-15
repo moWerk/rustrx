@@ -34,11 +34,15 @@ class Rustrx : public QObject
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "net.mowerk.harbour_rustrx")
     Q_PROPERTY(bool ready READ ready NOTIFY stateChanged)
+    // the first room list of this login has arrived (empty or not)
+    Q_PROPERTY(bool roomsLoaded READ roomsLoaded NOTIFY roomsLoadedChanged)
     Q_PROPERTY(bool loggedIn READ loggedIn NOTIFY stateChanged)
     Q_PROPERTY(bool loggingIn READ loggingIn NOTIFY stateChanged)
     Q_PROPERTY(QString userId READ userId NOTIFY stateChanged)
     Q_PROPERTY(QString homeserver READ homeserver NOTIFY stateChanged)
     Q_PROPERTY(QString logoutReason READ logoutReason NOTIFY stateChanged)
+    // the user whose store was kept when the server ended the session
+    Q_PROPERTY(QString keptUser READ keptUser NOTIFY stateChanged)
     Q_PROPERTY(QString syncState READ syncState NOTIFY syncStateChanged)
     Q_PROPERTY(QString verificationState READ verificationState NOTIFY encryptionChanged)
     Q_PROPERTY(QString recoveryState READ recoveryState NOTIFY encryptionChanged)
@@ -48,11 +52,21 @@ class Rustrx : public QObject
     Q_PROPERTY(RoomModel *rooms READ rooms CONSTANT)
     Q_PROPERTY(RoomModel *people READ people CONSTANT)
     Q_PROPERTY(RoomModel *favourites READ favourites CONSTANT)
+    // everything in one list, for those who do not want rooms and people apart
+    Q_PROPERTY(RoomModel *all READ all CONSTANT)
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
     Q_PROPERTY(QString coreVersion READ coreVersion CONSTANT)
     Q_PROPERTY(bool downscaleImages READ downscaleImages WRITE setDownscaleImages NOTIFY settingsChanged)
     // the order of the room lists: "activity", "unread" (unread first) or "name"
     Q_PROPERTY(QString sortOrder READ sortOrder WRITE setSortOrder NOTIFY settingsChanged)
+    // with any order: favourites first; low priority rooms last
+    Q_PROPERTY(bool favsOnTop READ favsOnTop WRITE setFavsOnTop NOTIFY settingsChanged)
+    Q_PROPERTY(bool lowLast READ lowLast WRITE setLowLast NOTIFY settingsChanged)
+    Q_PROPERTY(bool hideMuted READ hideMuted WRITE setHideMuted NOTIFY settingsChanged)
+    // the debug log in the data folder (on until 1.0; Settings)
+    Q_PROPERTY(bool debugLog READ debugLog WRITE setDebugLog NOTIFY settingsChanged)
+    // the lists show only rooms whose name or address contains this (not kept)
+    Q_PROPERTY(QString roomFilter READ roomFilter WRITE setRoomFilter NOTIFY roomFilterChanged)
     // notifications with the app closed: a stand-in, started with the session
     // and when the app is closed, wakes every few minutes
     Q_PROPERTY(bool background READ background WRITE setBackground NOTIFY settingsChanged)
@@ -64,12 +78,14 @@ public:
     ~Rustrx();
 
     bool ready() const { return m_ready; }
+    bool roomsLoaded() const { return !m_firstRooms; }
     bool loggedIn() const { return m_loggedIn; }
     bool loggingIn() const { return m_loggingIn; }
     QString userId() const { return m_userId; }
     QString homeserver() const { return m_homeserver; }
     QString syncState() const { return m_syncState; }
     QString logoutReason() const { return m_logoutReason; }
+    QString keptUser() const { return m_keptUser; }
     QString verificationState() const { return m_verificationState; }
     QString recoveryState() const { return m_recoveryState; }
     QString openRoomId() const { return m_openRoomId; }
@@ -78,12 +94,25 @@ public:
     RoomModel *rooms() const { return m_rooms; }
     RoomModel *people() const { return m_people; }
     RoomModel *favourites() const { return m_favourites; }
+    RoomModel *all() const { return m_all; }
     TimelineModel *timeline() const { return m_timeline; }
     QString coreVersion() const;
     bool downscaleImages() const;
     void setDownscaleImages(bool on);
     QString sortOrder() const;
     void setSortOrder(const QString &order);
+    bool favsOnTop() const;
+    void setFavsOnTop(bool on);
+    bool lowLast() const;
+    void setLowLast(bool on);
+    bool hideMuted() const;
+    void setHideMuted(bool on);
+    bool debugLog() const;
+    void setDebugLog(bool on);
+    // the logs in one text file in Downloads, for the share sheet; its path
+    Q_INVOKABLE QString shareableLog();
+    QString roomFilter() const { return m_roomFilter; }
+    void setRoomFilter(const QString &text);
     bool background() const;
     void setBackground(bool on);
     bool standIn() const { return m_standIn; }
@@ -104,6 +133,10 @@ public:
     Q_INVOKABLE void closeRoom();
     Q_INVOKABLE void sendText(const QString &roomId, const QString &body, const QString &replyTo);
     Q_INVOKABLE void sendFile(const QString &roomId, const QString &path, const QString &caption = QString());
+    // a picture from the phone as the room's picture: upright, at most 512 px
+    Q_INVOKABLE void setRoomAvatar(const QString &roomId, const QString &path);
+    // a picture from the phone as one's own picture, prepared the same way
+    Q_INVOKABLE void setOwnAvatar(const QString &path);
     Q_INVOKABLE void sendVoice(const QString &roomId, const QString &path, qint64 durationMs);
     Q_INVOKABLE void getMedia(const QString &roomId, const QString &eventId, bool thumb);
     // a copy in Downloads, where other apps may read it; answered by mediaExported
@@ -120,15 +153,23 @@ public:
     Q_INVOKABLE void setDraft(const QString &roomId, const QString &text);
 
 signals:
+    // a dev command for the UI (see dev())
+    void devUi(const QVariantMap &request);
     void stateChanged();
+    void roomsLoadedChanged();
     void settingsChanged();
+    void roomFilterChanged();
     void syncStateChanged();
     void encryptionChanged();
     void openRoomChanged();
     void unreadChanged();
     void loginError(const QString &message);
     void serverInfo(const QVariantMap &info);
-    void openUrl(const QString &url);
+    // a web page to show in the browser (the single sign-on page); not
+    // "openUrl", which is the D-Bus method below and shadowed it in QML
+    void browserUrl(const QString &url);
+    // an encryption reset waits for its approval on this page
+    void identityResetApproval(const QString &url);
     void errorOccurred(const QString &cmd, const QString &message);
     void verification(const QVariantMap &data);
     void sas(const QVariantMap &data);
@@ -156,6 +197,8 @@ signals:
     void callUrl(const QString &roomId, const QString &url);
     void callMessage(const QString &data);
     void callEnded(const QString &roomId);
+    // a message's source: its JSON as received, and its latest edit's
+    void eventSource(const QString &eventId, const QString &json, const QString &edit);
     // sizes in bytes: store, media_files, and the SDK's per-store sizes
     void storageInfo(const QVariantMap &info);
     // a notification was tapped: show this room
@@ -189,6 +232,14 @@ public slots:
     Q_SCRIPTABLE void open() { if (!handOver()) emit activateRequested(); }
     // the stand-in's notification: Quit (after QML has closed that notification)
     Q_SCRIPTABLE void quit();
+    // D-Bus net.mowerk.harbour_rustrx.dev, for tests from a shell (ssh),
+    // answered only while a file "dev-commands" is in the data folder (no
+    // package puts it there). A JSON object in, a JSON answer out:
+    // {"cmd": ...} goes to the core as if from the UI; {"rooms": true}
+    // lists the rooms; {"state": true} tells the open room and the
+    // connection; {"ui": "open_room" (room_id) | "back" | "activate"}
+    // goes to the UI.
+    Q_SCRIPTABLE QString dev(const QString &json);
 public:
     Q_INVOKABLE void closeWindow() { emit closeRequested(); }
     Q_INVOKABLE QString takePendingRoom() { const QString r = m_pendingRoom; m_pendingRoom.clear(); return r; }
@@ -221,6 +272,9 @@ private:
     void distributeRooms(const QVariantList &rooms);
     void sortRooms(QVariantList &rooms) const;
     QVariantList m_lastRooms;   // as the core sent them, for a new order
+    // an avatar picture upright, at most 512 px, in the cache; its path and size
+    QString prepareAvatar(const QString &path, const QString &cmd, QSize *size);
+    QString m_roomFilter;
     // the stand-in: pass what was asked for to a new app process and leave
     bool handOver();
 
@@ -231,6 +285,7 @@ private:
     QString m_homeserver;
     QString m_syncState = QStringLiteral("idle");
     QString m_logoutReason;
+    QString m_keptUser;
     QString m_verificationState = QStringLiteral("unknown");
     QString m_recoveryState = QStringLiteral("unknown");
     QString m_openRoomId;
@@ -245,6 +300,7 @@ private:
     RoomModel *m_rooms;
     RoomModel *m_people;
     RoomModel *m_favourites;
+    RoomModel *m_all;
     TimelineModel *m_timeline;
     QElapsedTimer m_since;   // start-up timing in the journal
     bool m_firstRooms = true;

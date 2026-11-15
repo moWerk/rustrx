@@ -22,7 +22,8 @@ import Sailfish.Silica 1.0
 ListItem {
     id: item
     width: ListView.view.width
-    contentHeight: Theme.iconSizeLarge + 2 * rowMargin
+    // the same air above and below; more preview lines make the row taller
+    contentHeight: Math.max(Theme.iconSizeLarge, textColumn.height) + 2 * rowMargin
     menu: contextMenu
 
     // Tunables: the air above and below a row (the stock itemSizeMedium gave
@@ -35,6 +36,12 @@ ListItem {
 
     onClicked: {
         if (invited) { openMenu(); return }
+        // an upgraded room: on to its successor (joined if need be)
+        if (model.replaced_by && model.replaced_by.length) {
+            if (rustrx.roomInfo(model.replaced_by).name) app.showRoom(model.replaced_by)
+            else app.openMatrixUri("matrix:roomid/" + model.replaced_by.slice(1))
+            return
+        }
         ListView.view.currentIndex = index   // the list keeps this row in view on return
         pageStack.push(Qt.resolvedUrl("../pages/RoomPage.qml"), { roomId: model.room_id, roomName: model.name })
     }
@@ -42,9 +49,13 @@ ListItem {
     // the room's picture, or its initial where it has none
     Rectangle {
         id: avatar
-        x: Theme.horizontalPageMargin
-        anchors.verticalCenter: parent.verticalCenter
-        width: Theme.iconSizeLarge
+        // 10 % smaller than the large icon size, centred in that slot, so the
+        // texts beside it stay where they were
+        x: Theme.horizontalPageMargin + (Theme.iconSizeLarge - width) / 2
+        // at the row's top, where a one-line row has it: rows with more
+        // preview lines grow downwards and the pictures stay in line
+        y: rowMargin + (Theme.iconSizeLarge - height) / 2
+        width: Math.round(Theme.iconSizeLarge * 0.9)
         height: width
         radius: width / 2
         color: picture.visible && !app.roundAvatars
@@ -67,7 +78,8 @@ ListItem {
             fillMode: Image.PreserveAspectCrop
             sourceSize.width: width
             sourceSize.height: height
-            source: model.avatar ? "file://" + model.avatar : ""
+            // the version makes a changed picture load past Qt's image cache
+            source: model.avatar ? "file://" + model.avatar + "?v=" + (model.avatar_v || 0) : ""
             // clip: true would cut a square; the circle is a mask
             layer.enabled: app.roundAvatars
             layer.effect: ShaderEffect {
@@ -80,6 +92,23 @@ ListItem {
                         lowp float a = 1.0 - smoothstep(0.49, 0.5, d);
                         gl_FragColor = texture2D(source, qt_TexCoord0) * a * qt_Opacity;
                     }"
+            }
+        }
+
+        // the badge's shadow, offset a little further than the digits' shadow,
+        // soft at its edge: three pills, each a little larger, stacked to
+        // about 42 % black in the middle (no blur in plain Qt Quick 2.6)
+        Repeater {
+            model: 3
+            Rectangle {
+                readonly property real spread: index * 0.96
+                visible: badge.visible
+                x: badge.x + 1.5 - spread
+                y: badge.y + 3 - spread
+                width: badge.width + 2 * spread
+                height: badge.height + 2 * spread
+                radius: height / 2
+                color: Theme.rgba("black", 0.17)
             }
         }
 
@@ -97,11 +126,20 @@ ListItem {
             // the straight middle only, so the ends stay half circles and the
             // pill grows to the left (it is anchored at the right)
             width: height + Math.max(0, badgeLabel.text.length - 1) * digitWidth.advanceWidth
-            TextMetrics { id: digitWidth; font: badgeLabel.font; text: "0" }
+            // measured at the size the digits had, so the pill keeps its
+            // geometry while the digits shrink inside it
+            TextMetrics {
+                id: digitWidth
+                font.family: app.semiboldFontFamily
+                font.pixelSize: Theme.fontSizeExtraSmall
+                text: "0"
+            }
             // the circle keeps this size; the digits grew into its padding
             height: Theme.iconSizeSmall
             radius: height / 2
-            color: model.highlights > 0 ? Theme.highlightColor : Theme.secondaryHighlightColor
+            // a shade (10 %) darker than the ambience's highlight colours, so the
+            // white digits stand out; a mention gets the brighter one
+            color: Qt.darker(model.highlights > 0 ? Theme.highlightColor : Theme.secondaryHighlightColor, 1.1)
 
             // a soft shadow under the digits, one label behind the other
             Label {
@@ -116,24 +154,33 @@ ListItem {
             Label {
                 id: badgeLabel
                 anchors.centerIn: parent
-                // digits have no descender; the text box's share for it pushes them low
-                anchors.verticalCenterOffset: -Math.round(font.pixelSize * 0.04)
+                // digits have no descender; the text box's share for it pushed
+                // them low in Sail Sans. Source Sans 3 sits higher, and the
+                // shadow below the digits adds visual weight: 1 px down
+                // centres digits and shadow together (the author's eye)
+                anchors.verticalCenterOffset: 1 - Math.round(font.pixelSize * 0.04)
                 text: model.notifications > 0 ? model.notifications : model.unread
-                font.pixelSize: Theme.fontSizeExtraSmall
-                font.bold: true
+                // a tenth smaller than the size the pill is measured for: more
+                // room around the digits inside it
+                font.pixelSize: Math.round(Theme.fontSizeExtraSmall * 0.9)
+                // the file is the Semibold cut: asking for bold on top of it
+                // would make Qt embolden it again
+                font.family: app.semiboldFontFamily
                 color: "white"
             }
         }
     }
 
     Column {
+        id: textColumn
         anchors {
             left: avatar.right
             right: age.left
-            leftMargin: Theme.paddingLarge
+            leftMargin: Theme.paddingLarge + (Theme.iconSizeLarge - avatar.width) / 2
             rightMargin: Theme.paddingMedium
-            verticalCenter: parent.verticalCenter
         }
+        // centred beside the picture in a one-line row, from the top when taller
+        y: rowMargin + Math.max(0, (Theme.iconSizeLarge - height) / 2)
 
         Label {
             width: parent.width
@@ -144,42 +191,86 @@ ListItem {
             color: item.highlighted ? Theme.highlightColor : Theme.primaryColor
         }
 
-        // the last message, a lock in front of it in encrypted rooms; the
-        // topic or the state where there is no message yet
-        Row {
+        // the last message (1 to 3 lines, the last faded). The room's state
+        // leads its first line: a stop sign when muted, a lock when
+        // encrypted, a check when one's own last message was read. Only the
+        // first line makes room for them (lineLaidOut), so the lines below
+        // start at the left edge. The topic or the state where there is no
+        // message yet.
+        Item {
             width: parent.width
-            spacing: Theme.paddingSmall
+            height: preview.height
+            readonly property color iconColor: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
+            readonly property real iconSize: Theme.fontSizeSmall * 0.8
 
-            Image {
-                id: lock
-                anchors.verticalCenter: parent.verticalCenter
-                visible: model.encrypted && !invited
-                source: "image://theme/icon-s-secure?" + (item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor)
-                sourceSize.width: Theme.fontSizeSmall * 0.8
-                sourceSize.height: Theme.fontSizeSmall * 0.8
+            Row {
+                id: statusIcons
+                spacing: Theme.paddingSmall
+                // centred on the preview's first line
+                y: (firstLine.height - height) / 2
+                // muted: Silica's stop sign; its canvas is 42 px where the
+                // lock's is 48, so it is drawn at that ratio
+                Image {
+                    visible: model.muted === true && !invited
+                    anchors.verticalCenter: parent.verticalCenter
+                    source: "image://theme/icon-s-blocked?" + parent.parent.iconColor
+                    sourceSize.width: Math.round(parent.parent.iconSize * 42 / 48)
+                    sourceSize.height: sourceSize.width
+                }
+                Image {
+                    visible: model.encrypted && !invited
+                    anchors.verticalCenter: parent.verticalCenter
+                    source: "image://theme/icon-s-secure?" + parent.parent.iconColor
+                    sourceSize.width: parent.parent.iconSize
+                    sourceSize.height: parent.parent.iconSize
+                }
+                // one's own last message was read
+                Label {
+                    visible: model.own_read === true && !invited
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "\u2713"
+                    font.pixelSize: Theme.fontSizeSmall * 0.85
+                    color: item.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor
+                }
             }
+
+            // the height of one line of the preview, to centre the icons on it
+            FontMetrics { id: firstLine; font: preview.font }
 
             Label {
-            width: parent.width - (lock.visible ? lock.width + parent.spacing : 0)
-            truncationMode: TruncationMode.Fade
-            font.pixelSize: Theme.fontSizeSmall * 0.8
-            color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
-            textFormat: Text.StyledText
-            text: {
-                //% "Invitation. Long press to accept or decline."
-                if (invited) return qsTrId("rustrx-la-invitation")
-                if (model.preview && model.preview.length) {
-                    var who = model.preview_sender
-                              ? "<font color=\"" + (item.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor)
-                                + "\">" + model.preview_sender.replace(/&/g, "&amp;").replace(/</g, "&lt;") + ":</font> " : ""
-                    return who + model.preview.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                id: preview
+                // what the first line leaves free for the icons
+                readonly property real indent: statusIcons.width > 0 ? statusIcons.width + Theme.paddingSmall : 0
+                width: parent.width
+                wrapMode: Text.Wrap
+                maximumLineCount: Math.max(1, Math.min(3, app.previewLines))
+                truncationMode: TruncationMode.Fade
+                font.pixelSize: Theme.fontSizeSmall * 0.8
+                color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
+                textFormat: Text.StyledText
+                onLineLaidOut: if (line.number === 0) { line.x += indent; line.width -= indent }
+                text: {
+                    // a new indent needs a new layout (Qt 5.6 has no forceLayout)
+                    var unused = indent
+                    //% "Invitation. Long press to accept or decline."
+                    if (invited) return qsTrId("rustrx-la-invitation")
+                    //% "Replaced by a new room. Tap to go there."
+                    if (model.replaced_by && model.replaced_by.length) return qsTrId("rustrx-la-replaced")
+                    if (model.preview && model.preview.length) {
+                        var who = model.preview_sender
+                                  ? "<font color=\"" + (item.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor)
+                                    + "\">" + model.preview_sender.replace(/&/g, "&amp;").replace(/</g, "&lt;") + ":</font> " : ""
+                        var body = model.preview.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                        // one line: the breaks become spaces; more: kept
+                        body = maximumLineCount > 1 ? body.replace(/\n/g, "<br>") : body.replace(/\s+/g, " ")
+                        return who + body
+                    }
+                    if (model.topic && model.topic.length) return model.topic.replace(/\s+/g, " ")
+                    return model.encrypted
+                            //% "Encrypted"
+                            ? qsTrId("rustrx-la-encrypted")
+                            : ""
                 }
-                if (model.topic && model.topic.length) return model.topic.replace(/\s+/g, " ")
-                return model.encrypted
-                        //% "Encrypted"
-                        ? qsTrId("rustrx-la-encrypted")
-                        : ""
-            }
             }
         }
     }
@@ -240,7 +331,13 @@ ListItem {
                 visible: invited
                 //% "Decline"
                 text: qsTrId("rustrx-me-decline")
-                onClicked: rustrx.command({ cmd: "leave_room", room_id: model.room_id })
+                onClicked: {
+                    var id = model.room_id, core = rustrx
+                    //% "Declining"
+                    item.remorseAction(qsTrId("rustrx-re-declining"), function () {
+                        core.command({ cmd: "leave_room", room_id: id })
+                    })
+                }
             }
             MenuItem {
                 visible: !invited

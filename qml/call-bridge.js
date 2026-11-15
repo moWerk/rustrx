@@ -30,3 +30,36 @@ addMessageListener("rustrx:toWidget", function (msg) {
     var m = JSON.parse(msg.data.data);
     content.postMessage(Components.utils.cloneInto(m, content), ORIGIN);
 });
+
+// Element Call's errors and warnings, and the engine's script errors, for
+// the debug log: what a call that fails says about it
+(function () {
+    var sent = 0;
+    function forward(level, text) {
+        if (sent++ > 2000) return;   // a flood would push everything else out of the log
+        try { sendAsyncMessage("rustrx:console", { level: level, text: String(text).slice(0, 600) }); } catch (e) {}
+    }
+    try {
+        Services.obs.addObserver({
+            observe: function (subject) {
+                var m = subject.wrappedJSObject;
+                if (!m || (m.level !== "error" && m.level !== "warn")) return;
+                var args = [];
+                for (var i = 0; m.arguments && i < m.arguments.length; i++) {
+                    try { args.push(typeof m.arguments[i] === "object" ? JSON.stringify(m.arguments[i]) : String(m.arguments[i])); }
+                    catch (e) { args.push(String(m.arguments[i])); }
+                }
+                forward(m.level, args.join(" "));
+            }
+        }, "console-api-log-event");
+    } catch (e) { forward("bridge", "no console observer: " + e); }
+    try {
+        Services.console.registerListener({
+            observe: function (m) {
+                if (m instanceof Components.interfaces.nsIScriptError)
+                    forward("script", m.errorMessage + " (" + m.sourceName + ":" + m.lineNumber + ")");
+            }
+        });
+    } catch (e) { forward("bridge", "no console listener: " + e); }
+    forward("bridge", "loaded");
+})();

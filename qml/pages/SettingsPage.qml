@@ -16,6 +16,9 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import Sailfish.Pickers 1.0
+import Sailfish.Share 1.0
+import "../components"
 
 // Account, encryption (verification, recovery), devices, about.
 Page {
@@ -54,16 +57,102 @@ Page {
         }
     }
 
+    // opened from the main page's line about verification or the recovery
+    // key: the encryption section at the top of the screen
+    property bool showEncryption
+    onStatusChanged: if (status === PageStatus.Active && showEncryption) {
+        showEncryption = false
+        settingsFlick.contentY = Math.max(0, Math.min(encryptionHeader.y,
+                                                       settingsFlick.contentHeight - settingsFlick.height))
+    }
+
     SilicaFlickable {
+        id: settingsFlick
         anchors.fill: parent
         contentHeight: column.height
 
         Column {
             id: column
             width: parent.width
+            // room between the buttons and the texts around them
+            spacing: Theme.paddingMedium
 
             //% "Settings"
             PageHeader { title: qsTrId("rustrx-he-settings") }
+
+            //% "Privacy"
+            SectionHeader { text: qsTrId("rustrx-se-privacy") }
+
+            TextSwitch {
+                //% "Send read receipts"
+                text: qsTrId("rustrx-la-send-receipts")
+                //% "Others see how far you have read. When off, only your own devices know."
+                description: qsTrId("rustrx-la-send-receipts-hint")
+                checked: app.sendReceipts
+                automaticCheck: false
+                onClicked: app.sendReceipts = !app.sendReceipts
+            }
+
+            TextSwitch {
+                //% "Show who has read a message"
+                text: qsTrId("rustrx-la-show-read-by")
+                //% "Names appear under the last message each person has read."
+                description: qsTrId("rustrx-la-show-read-by-hint")
+                checked: app.showReadBy
+                onCheckedChanged: app.showReadBy = checked
+            }
+
+            TextSwitch {
+                //% "Message text in notifications"
+                text: qsTrId("rustrx-la-notify-text")
+                //% "When off, a notification only says how many messages arrived."
+                description: qsTrId("rustrx-la-notify-text-hint")
+                checked: service.notifyText
+                automaticCheck: false
+                onClicked: service.notifyText = !service.notifyText
+            }
+
+            TextSwitch {
+                //% "Show others that I am typing"
+                text: qsTrId("rustrx-la-send-typing")
+                checked: app.sendTyping
+                automaticCheck: false
+                onClicked: app.sendTyping = !app.sendTyping
+            }
+
+            TextSwitch {
+                //% "Say so under the message field"
+                text: qsTrId("rustrx-la-typing-hint")
+                //% "A line under the field reminds you that the room sees you typing."
+                description: qsTrId("rustrx-la-typing-hint-hint")
+                enabled: app.sendTyping
+                checked: app.typingHint
+                automaticCheck: false
+                onClicked: app.typingHint = !app.typingHint
+            }
+
+            //% "Notifications"
+            SectionHeader { text: qsTrId("rustrx-se-notifications") }
+
+            TextSwitch {
+                //% "Keep running in the background"
+                text: qsTrId("rustrx-la-background")
+                //% "Notifications also when Rustrx is closed. It starts with the phone and stays connected without a window, shown by a line in the events view: tap it to open Rustrx, or quit it there. While the phone sleeps it checks for messages every five minutes."
+                description: qsTrId("rustrx-la-background-hint")
+                checked: rustrx.background
+                automaticCheck: false
+                onClicked: rustrx.background = !rustrx.background
+            }
+
+            TextSwitch {
+                enabled: rustrx.background
+                //% "Show the background line"
+                text: qsTrId("rustrx-la-background-line")
+                //% "The line in the events view while Rustrx runs in the background. Without it, Rustrx runs unseen: open it from its icon, and switch background mode off to end it."
+                description: qsTrId("rustrx-la-background-line-hint")
+                checked: service.showBackgroundLine
+                onCheckedChanged: service.showBackgroundLine = checked
+            }
 
             //% "Appearance"
             SectionHeader { text: qsTrId("rustrx-se-appearance") }
@@ -78,12 +167,39 @@ Page {
             }
 
             TextSwitch {
-                //% "Show who has read a message"
-                text: qsTrId("rustrx-la-show-read-by")
-                //% "Names appear under the last message each person has read."
-                description: qsTrId("rustrx-la-show-read-by-hint")
-                checked: app.showReadBy
-                onCheckedChanged: app.showReadBy = checked
+                //% "Separate people from rooms"
+                text: qsTrId("rustrx-la-separate-lists")
+                //% "Rooms and people as two tabs. When off, they share one list; the filter menu sorts and searches it."
+                description: qsTrId("rustrx-la-separate-lists-hint")
+                checked: app.separateLists
+                onCheckedChanged: app.separateLists = checked
+            }
+
+            TextSwitch {
+                //% "Separate favourites"
+                text: qsTrId("rustrx-la-separate-favs")
+                //% "The favourites as a tab of their own. When off, “Favourites on top” in the filter menu keeps them at hand."
+                description: qsTrId("rustrx-la-separate-favs-hint")
+                checked: app.separateFavs
+                onCheckedChanged: app.separateFavs = checked
+            }
+
+            ComboBox {
+                width: parent.width
+                //% "Message preview"
+                label: qsTrId("rustrx-la-preview-lines")
+                //% "Lines of the last message under a room's name."
+                description: qsTrId("rustrx-la-preview-lines-hint")
+                currentIndex: Math.max(0, Math.min(2, app.previewLines - 1))
+                menu: ContextMenu {
+                    //% "1 line"
+                    MenuItem { text: qsTrId("rustrx-me-lines-1") }
+                    //% "2 lines"
+                    MenuItem { text: qsTrId("rustrx-me-lines-2") }
+                    //% "3 lines"
+                    MenuItem { text: qsTrId("rustrx-me-lines-3") }
+                }
+                onCurrentIndexChanged: app.previewLines = currentIndex + 1
             }
 
             TextSwitch {
@@ -104,50 +220,6 @@ Page {
                 onCheckedChanged: rustrx.downscaleImages = checked
             }
 
-            //% "Notifications"
-            SectionHeader { text: qsTrId("rustrx-se-notifications") }
-
-            TextSwitch {
-                //% "Keep running in the background"
-                text: qsTrId("rustrx-la-background")
-                //% "Notifications also when Rustrx is closed. It starts with the phone and stays connected without a window, shown by a line in the events view: tap it to open Rustrx, or quit it there. While the phone sleeps it checks for messages every five minutes."
-                description: qsTrId("rustrx-la-background-hint")
-                checked: rustrx.background
-                automaticCheck: false
-                onClicked: rustrx.background = !rustrx.background
-            }
-
-            //% "Privacy"
-            SectionHeader { text: qsTrId("rustrx-se-privacy") }
-
-            TextSwitch {
-                //% "Send read receipts"
-                text: qsTrId("rustrx-la-send-receipts")
-                //% "Others see how far you have read. When off, only your own devices know."
-                description: qsTrId("rustrx-la-send-receipts-hint")
-                checked: app.sendReceipts
-                automaticCheck: false
-                onClicked: app.sendReceipts = !app.sendReceipts
-            }
-
-            TextSwitch {
-                //% "Message text in notifications"
-                text: qsTrId("rustrx-la-notify-text")
-                //% "When off, a notification only says how many messages arrived."
-                description: qsTrId("rustrx-la-notify-text-hint")
-                checked: service.notifyText
-                automaticCheck: false
-                onClicked: service.notifyText = !service.notifyText
-            }
-
-            TextSwitch {
-                //% "Show that I am typing"
-                text: qsTrId("rustrx-la-send-typing")
-                checked: app.sendTyping
-                automaticCheck: false
-                onClicked: app.sendTyping = !app.sendTyping
-            }
-
             //% "Account"
             SectionHeader { text: qsTrId("rustrx-se-account") }
 
@@ -160,6 +232,49 @@ Page {
                 //% "Homeserver"
                 label: qsTrId("rustrx-la-homeserver")
                 value: rustrx.homeserver
+            }
+
+            // one's own picture; a tap picks a new one
+            BackgroundItem {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Theme.itemSizeHuge
+                height: width
+                onClicked: pageStack.push(ownPicturePicker)
+                Rectangle {
+                    anchors.fill: parent
+                    radius: app.roundAvatars ? width / 2 : 0
+                    visible: !ownPicture.visible
+                    color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
+                    Label {
+                        anchors.centerIn: parent
+                        text: (displayName || rustrx.userId.slice(1) || "?").charAt(0).toUpperCase()
+                        font.pixelSize: Theme.fontSizeHuge
+                        color: Theme.primaryColor
+                    }
+                }
+                Image {
+                    id: ownPicture
+                    anchors.fill: parent
+                    visible: status === Image.Ready
+                    asynchronous: true
+                    fillMode: Image.PreserveAspectCrop
+                    sourceSize.width: width
+                    sourceSize.height: height
+                    // the version makes a changed picture load past Qt's image cache
+                    source: ownAvatar.length ? "file://" + ownAvatar + "?v=" + ownAvatarVersion : ""
+                    layer.enabled: app.roundAvatars
+                    layer.effect: ShaderEffect {
+                        fragmentShader: "
+                            varying highp vec2 qt_TexCoord0;
+                            uniform sampler2D source;
+                            uniform lowp float qt_Opacity;
+                            void main() {
+                                highp float d = length(qt_TexCoord0 - vec2(0.5));
+                                lowp float a = 1.0 - smoothstep(0.49, 0.5, d);
+                                gl_FragColor = texture2D(source, qt_TexCoord0) * a * qt_Opacity;
+                            }"
+                    }
+                }
             }
 
             TextField {
@@ -190,8 +305,11 @@ Page {
                 }
             }
 
-            //% "Encryption"
-            SectionHeader { text: qsTrId("rustrx-se-encryption") }
+            SectionHeader {
+                id: encryptionHeader
+                //% "Encryption"
+                text: qsTrId("rustrx-se-encryption")
+            }
 
             Label {
                 x: Theme.horizontalPageMargin
@@ -252,6 +370,51 @@ Page {
                 onClicked: {
                     recoveryResult = qsTrId("rustrx-la-restoring")
                     rustrx.command({ cmd: "recovery_recover", key: keyField.text })
+                }
+            }
+
+            // no other device and no recovery key: start over
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: rustrx.recoveryState === "incomplete" && rustrx.verificationState !== "verified"
+                //% "Reset encryption"
+                text: qsTrId("rustrx-bt-reset-identity")
+                onClicked: {
+                    var core = rustrx
+                    //% "Resetting the encryption"
+                    resetRemorse.execute(qsTrId("rustrx-re-reset-identity"), function () {
+                        //% "Resetting… the server may ask you to approve it in the browser."
+                        recoveryResult = qsTrId("rustrx-la-resetting")
+                        core.command({ cmd: "identity_reset" })
+                    })
+                }
+            }
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                visible: rustrx.recoveryState === "incomplete" && rustrx.verificationState !== "verified"
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                //% "No other device and no recovery key? A reset makes new encryption keys and a new backup with a new recovery key. Older encrypted messages stay unreadable, and your other devices have to be verified again."
+                text: qsTrId("rustrx-la-reset-identity-hint")
+            }
+            // the approval page, if the browser did not open by itself
+            Row {
+                visible: resetApprovalUrl.length > 0
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: Theme.paddingLarge
+                Button {
+                    //% "Open approval"
+                    text: qsTrId("rustrx-bt-open-approval")
+                    onClicked: Qt.openUrlExternally(resetApprovalUrl)
+                }
+                Button {
+                    text: qsTrId("rustrx-bt-sso-copy")
+                    onClicked: {
+                        Clipboard.text = resetApprovalUrl
+                        Notices.show(qsTrId("rustrx-no-link-copied"), Notice.Short)
+                    }
                 }
             }
 
@@ -345,16 +508,46 @@ Page {
             //% "Devices"
             SectionHeader { text: qsTrId("rustrx-se-devices") }
 
-            BackgroundItem {
-                width: parent.width
-                onClicked: pageStack.push(Qt.resolvedUrl("DevicesPage.qml"))
-                Label {
-                    x: Theme.horizontalPageMargin
-                    anchors.verticalCenter: parent.verticalCenter
-                    //% "Logged-in devices"
-                    text: qsTrId("rustrx-la-devices")
-                    color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
+            DeviceList { width: parent.width }
+
+            //% "Debug log"
+            SectionHeader { text: qsTrId("rustrx-se-debug-log") }
+
+            TextSwitch {
+                //% "Keep a debug log"
+                text: qsTrId("rustrx-la-debug-log")
+                //% "Rustrx notes what it does in a small file on the phone. If something goes wrong, share it with the developer, so nobody has to make it happen again. It holds room and user IDs, never message texts or passwords."
+                description: qsTrId("rustrx-la-debug-log-hint")
+                checked: rustrx.debugLog
+                automaticCheck: false
+                onClicked: rustrx.debugLog = !rustrx.debugLog
+            }
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                //% "Share the debug log"
+                text: qsTrId("rustrx-bt-share-log")
+                onClicked: {
+                    var path = rustrx.shareableLog()
+                    if (path === "")
+                        return
+                    logShare.resources = ["file://" + path]
+                    logShare.trigger()
                 }
+            }
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                //% "A copy goes to Downloads, so you can also attach it to a mail or a forum post."
+                text: qsTrId("rustrx-la-share-log-hint")
+            }
+            ShareAction {
+                id: logShare
+                mimeType: "text/plain"
+                //% "Rustrx debug log"
+                title: qsTrId("rustrx-he-share-log")
             }
 
             //% "About"
@@ -366,9 +559,29 @@ Page {
                 wrapMode: Text.Wrap
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.secondaryColor
-                //: %1 app version, %2 core version
-                //% "Rustrx %1, core %2. A Matrix client built on matrix-rust-sdk. GPLv3+, github.com/moWerk/rustrx"
-                text: qsTrId("rustrx-la-about").arg(appVersion).arg(rustrx.coreVersion)
+                linkColor: Theme.highlightColor
+                textFormat: Text.StyledText
+                onLinkActivated: Qt.openUrlExternally(link)
+                //: %1 app version, %2 core version; lines separated by <br>, keep the link
+                //% "Rustrx %1, core %2<br>A Matrix client built on <a href='https://github.com/matrix-org/matrix-rust-sdk'>matrix-rust-sdk</a><br>GPLv3+, from moWerk with love<br><a href='https://github.com/moWerk/rustrx'>github.com/moWerk/rustrx</a>"
+                text: qsTrId("rustrx-la-about-lines").arg(appVersion).arg(rustrx.coreVersion)
+            }
+
+            // how it was made, graded by LLMGD (SPEC section 3: understood and
+            // tested by the author, not read line by line, no outside review: A3;
+            // the author directs and decides the design, the LLM writes: origin O1)
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                linkColor: Theme.highlightColor
+                textFormat: Text.StyledText
+                onLinkActivated: Qt.openUrlExternally(link)
+                //: the LLM disclosure grade; keep the link and the grade as they are
+                //% "<a href='https://github.com/moWerk/llmgd-specs'>LLMGD-3</a> · origin O1: written by an LLM, directed, understood and tested on the phone by the author; not yet reviewed by others"
+                text: qsTrId("rustrx-la-about-llmgd")
             }
 
             Item { width: 1; height: Theme.paddingLarge }
@@ -377,7 +590,26 @@ Page {
         VerticalScrollDecorator { }
     }
 
+    property string ownAvatar
+    property real ownAvatarVersion
+
+    Component {
+        id: ownPicturePicker
+        ImagePickerPage {
+            //% "Your picture"
+            title: qsTrId("rustrx-he-own-picture")
+            onSelectedContentPropertiesChanged: {
+                if (!selectedContentProperties.filePath) return
+                rustrx.setOwnAvatar(selectedContentProperties.filePath)
+                //% "Setting your picture"
+                Notices.show(qsTrId("rustrx-no-own-picture"), Notice.Short)
+            }
+        }
+    }
+
     RemorsePopup { id: remorse }
+    RemorsePopup { id: resetRemorse }
+    property string resetApprovalUrl
 
     property var storage: ({})
     RemorsePopup { id: clearRemorse }
@@ -385,16 +617,26 @@ Page {
     Connections {
         target: rustrx
         onStorageInfo: page.storage = info
-        onProfile: displayName = profile.display_name || ""
+        onProfile: {
+            displayName = profile.display_name || ""
+            ownAvatar = profile.avatar || ""
+            ownAvatarVersion = profile.avatar_v || 0
+        }
         //% "Encrypted messages restored. Rooms fill in as keys arrive."
         onRecoveryDone: { recoveryResult = qsTrId("rustrx-la-restored"); keyField.text = "" }
+        onIdentityResetApproval: {
+            resetApprovalUrl = url
+            //% "Approve the reset on your server's page in the browser (within two minutes). If it did not open, use the buttons above."
+            recoveryResult = qsTrId("rustrx-la-reset-approve")
+        }
         onRecoveryKey: {
+            resetApprovalUrl = ""
             //% "Backup is on. Write this recovery key down and keep it safe; it is shown only now. Tap it to copy."
             recoveryResult = qsTrId("rustrx-la-key-shown")
             shownKey = key
         }
         onErrorOccurred: {
-            if (cmd === "recovery_recover" || cmd === "recovery_enable" || cmd === "recovery_reset")
+            if (cmd === "recovery_recover" || cmd === "recovery_enable" || cmd === "recovery_reset" || cmd === "identity_reset")
                 recoveryResult = message
         }
     }

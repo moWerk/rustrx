@@ -44,6 +44,8 @@ pub(crate) enum Command {
     Edit { room_id: String, event_id: Option<String>, txn_id: Option<String>, body: String },
     PollVote { room_id: String, event_id: String, answers: Vec<String> },
     Report { room_id: String, event_id: String, reason: Option<String> },
+    /// The event's JSON as received (and its latest edit): "event_source".
+    EventSource { room_id: String, event_id: String },
     MarkRead { room_id: String, private: Option<bool> },
     Typing { room_id: String, typing: Option<bool> },
     /// The picture (or its thumbnail) of an event, into the media cache;
@@ -73,6 +75,10 @@ pub(crate) enum Command {
     /// Answered by "members".
     RoomMembers { room_id: String },
     SetRoomName { room_id: String, name: String },
+    /// A picture file (the UI has turned it upright and scaled it down).
+    SetRoomAvatar { room_id: String, path: String, w: Option<u64>, h: Option<u64> },
+    /// One's own picture from a file (prepared by the UI as for a room).
+    SetOwnAvatar { path: String },
     SetRoomTopic { room_id: String, topic: String },
     Invite { room_id: String, user_id: String },
     /// Users and public rooms; answered by "search_results".
@@ -89,6 +95,10 @@ pub(crate) enum Command {
     RecoveryRecover { key: String },
     RecoveryEnable,
     RecoveryReset,
+    /// No other device and no recovery key: new cross-signing keys, a new
+    /// backup and recovery key; the old backup is deleted. An account service
+    /// asks for approval in the browser ("identity_reset_approval").
+    IdentityReset,
     ExportKeys { path: String, passphrase: String },
     ImportKeys { path: String, passphrase: String },
 
@@ -103,7 +113,8 @@ pub(crate) enum Command {
     ClearMedia,
     // --- calls (Element Call in a WebView) ---
     /// Answered by "call_url"; then "call_message" events for the page.
-    CallStart { room_id: String, voice: Option<bool> },
+    /// `skip_lobby` joins at once, without Element Call's lobby (tests).
+    CallStart { room_id: String, voice: Option<bool>, skip_lobby: Option<bool> },
     /// A widget API postMessage from the page, passed to the driver as is.
     CallMessage { data: String },
     CallEnd,

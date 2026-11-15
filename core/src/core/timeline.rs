@@ -149,9 +149,12 @@ impl Core {
             },
         };
         let bytes = bytes.context("media not available")?;
-        let ext = mime
-            .as_deref()
-            .and_then(|m| mime_guess::get_mime_extensions_str(m).and_then(|e| e.first().copied()))
+        // the extension from what the file is: a thumbnail is a JPEG or PNG
+        // whatever the original was, and Qt picks its image reader by the
+        // extension (a JPEG named .webp or .mp4 showed nothing); else the
+        // message's type
+        let ext = sniff_extension(&bytes)
+            .or_else(|| mime.as_deref().and_then(|m| mime_guess::get_mime_extensions_str(m).and_then(|e| e.first().copied())))
             .unwrap_or("bin");
         let safe: String = event_id.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
         // "dest_dir": a copy for other apps (the data dir is private to the sandbox),
@@ -181,5 +184,27 @@ impl Core {
                          "thumb": thumb, "exported": exported,
                          "path": path.to_string_lossy()}));
         Ok(())
+    }
+}
+
+/// The file type from its first bytes, for the types the UI shows or plays.
+fn sniff_extension(bytes: &[u8]) -> Option<&'static str> {
+    let b = bytes;
+    if b.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else if b.starts_with(&[0x89, b'P', b'N', b'G']) {
+        Some("png")
+    } else if b.starts_with(b"GIF8") {
+        Some("gif")
+    } else if b.len() >= 12 && &b[0..4] == b"RIFF" && &b[8..12] == b"WEBP" {
+        Some("webp")
+    } else if b.len() >= 12 && &b[4..8] == b"ftyp" {
+        Some("mp4")
+    } else if b.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]) {
+        Some("webm")
+    } else if b.starts_with(b"OggS") {
+        Some("ogg")
+    } else {
+        None
     }
 }

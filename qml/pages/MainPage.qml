@@ -28,6 +28,8 @@ Page {
     objectName: "main"
 
     function tabTitle(kind) {
+        //% "Chats"
+        if (kind === "all") return qsTrId("rustrx-he-chats")
         //% "Rooms"
         if (kind === "rooms") return qsTrId("rustrx-he-rooms")
         //% "People"
@@ -57,6 +59,12 @@ Page {
     onStatusChanged: {
         // back on the lists: no chat to reopen at the next start
         if (status === PageStatus.Active) app.lastRoom = ""
+        // a room (or another page) opened: the menu closes, and a search
+        // that was not kept goes with it
+        if (status === PageStatus.Deactivating) {
+            dropLooseFilter()
+            sortOpen = false
+        }
         if (debugOpenRoom.value.length || debugMarkRead.value.length || debugNavigate.value.length) debugTimer.start()
     }
     Timer { id: debugTimer; interval: 0; onTriggered: page.debugTry() }
@@ -93,31 +101,82 @@ Page {
         onStatusChanged: if (target.status === PageStatus.Active) debugForward.start()
     }
 
-    function showTab(i) { tabs.currentIndex = i }
+    // the tab with this kind ("rooms", "people", "favs", "all"), or the first
+    function tabIndex(kind) {
+        for (var i = 0; i < tabModel.count; i++)
+            if (tabModel.get(i).kind === kind) return i
+        return 0
+    }
+    // an invitation's list: people for a direct chat, else rooms (or the one list)
+    function showTab(i) { tabs.currentIndex = tabIndex(i === 1 ? "people" : "rooms") }
+
+    // the tabs as the two settings say: rooms and people apart or as one
+    // list ("Chats"), favourites as a tab of their own or not
+    function buildTabs() {
+        // read before the list changes: changing it moves the current tab,
+        // which would store another one
+        var wanted = lastTab.value
+        var kinds = app.separateLists ? ["rooms", "people"] : ["all"]
+        if (app.separateFavs) kinds.push("favs")
+        var same = tabModel.count === kinds.length
+        for (var i = 0; same && i < kinds.length; i++) same = tabModel.get(i).kind === kinds[i]
+        if (!same) {
+            tabModel.clear()
+            for (var j = 0; j < kinds.length; j++) tabModel.append({ kind: kinds[j] })
+        }
+        tabs.currentIndex = tabIndex(wanted)
+        lastTab.value = wanted
+    }
+    Connections { target: app; onSeparateListsChanged: page.buildTabs(); onSeparateFavsChanged: page.buildTabs() }
+    Component.onCompleted: buildTabs()
+
+    // the filter menu under the tabs; it closes whenever this page is left
+    property bool sortOpen
+
+    // the room search of the filter menu (see the search row there)
+    property string filterText
+    property bool filterLocked
+    onFilterTextChanged: rustrx.roomFilter = filterText.trim().length >= 2 ? filterText : ""
+    function lockFilter() {
+        if (filterText.trim().length < 2) return
+        filterLocked = true
+        Qt.inputMethod.hide()
+        focus = true
+    }
+    function clearFilter() {
+        filterLocked = false
+        filterText = ""
+    }
+    // a search that was not kept goes with the menu or when a room opens
+    function dropLooseFilter() { if (!filterLocked) filterText = "" }
 
     // the app opens on the tab it was left on
-    ConfigurationValue { id: lastTab; key: "/apps/harbour-rustrx/lastTab"; defaultValue: 0 }
+    // the kind of tab ("rooms", "people", "favs", "all"), not its place: the
+    // places change with the settings
+    ConfigurationValue { id: lastTab; key: "/apps/harbour-rustrx/lastTabKind"; defaultValue: "rooms" }
 
     TabView {
         id: tabs
         anchors.fill: parent
         model: tabModel
-        currentIndex: Math.max(0, Math.min(2, lastTab.value))
-        onCurrentIndexChanged: if (currentIndex >= 0) lastTab.value = currentIndex
+        currentIndex: 0
+        onCurrentIndexChanged: if (currentIndex >= 0 && currentIndex < tabModel.count) lastTab.value = tabModel.get(currentIndex).kind
 
         // the tabs, and at their right a filter icon that opens the sort
         // order below them
         header: Column {
             id: sortHeader
             width: parent ? parent.width : page.width
-            property bool sortOpen
 
             Item {
                 width: parent.width
                 height: tabBar.height
+                // the tabs centred on the whole page, as Silica centres them;
+                // the filter icon lies over its right edge (and gets its taps,
+                // being declared after the bar)
                 TabBar {
                     id: tabBar
-                    width: parent.width - filterButton.width
+                    width: parent.width
                     model: tabModel
                     delegate: TabButton {
                         title: tabTitle(model.kind)
@@ -125,24 +184,30 @@ Page {
                 }
                 MouseArea {
                     id: filterButton
-                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                    // centred on the tabs' row: the bar adds a top margin for a
+                    // camera cutout (Jolla Phone 2026) above it
+                    anchors { right: parent.right; verticalCenter: parent.verticalCenter; verticalCenterOffset: tabBar.topMargin / 2 }
                     width: Theme.itemSizeSmall
                     height: Theme.itemSizeSmall
-                    onClicked: sortHeader.sortOpen = !sortHeader.sortOpen
+                    onClicked: {
+                        if (page.sortOpen) page.dropLooseFilter()
+                        page.sortOpen = !page.sortOpen
+                    }
                     // three bars, each narrower than the one above
                     Column {
                         anchors.centerIn: parent
-                        spacing: Theme.paddingSmall / 2
+                        // half again as tall and wide as at first, the bars as thin
+                        spacing: Math.round(Theme.paddingSmall * 1.1)
                         Repeater {
                             model: 3
                             Rectangle {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                width: Theme.iconSizeExtraSmall * (1 - index / 3)
+                                width: Theme.iconSizeExtraSmall * 1.5 * (1 - index / 3)
                                 height: Math.max(2, Math.round(Theme.paddingSmall / 2))
                                 radius: height / 2
-                                color: filterButton.pressed || sortHeader.sortOpen
+                                color: filterButton.pressed || page.sortOpen
                                        ? Theme.highlightColor
-                                       : rustrx.sortOrder !== "activity" ? Theme.secondaryHighlightColor
+                                       : rustrx.sortOrder !== "activity" || page.filterLocked || rustrx.hideMuted ? Theme.secondaryHighlightColor
                                                                           : Theme.secondaryColor
                             }
                         }
@@ -150,26 +215,120 @@ Page {
                 }
             }
 
+            // one of three orders (a radio: the current one filled), then two
+            // switches that combine with any order; the menu stays open, a
+            // tap on the filter icon closes it
             Repeater {
-                model: sortHeader.sortOpen ? [
+                model: page.sortOpen ? [
                     //: room list order
                     //% "By activity"
                     { key: "activity", text: qsTrId("rustrx-me-sort-activity") },
                     //% "Unread first"
                     { key: "unread", text: qsTrId("rustrx-me-sort-unread") },
-                    //% "By name"
+                    //% "Alphabetical"
                     { key: "name", text: qsTrId("rustrx-me-sort-name") }
                 ] : []
                 BackgroundItem {
+                    id: orderRow
+                    readonly property bool chosen: rustrx.sortOrder === modelData.key
                     width: page.width
                     height: Theme.itemSizeExtraSmall
-                    onClicked: { rustrx.sortOrder = modelData.key; sortHeader.sortOpen = false }
+                    onClicked: rustrx.sortOrder = modelData.key
                     Label {
-                        anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                        anchors { right: radio.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }
                         text: modelData.text
                         font.pixelSize: Theme.fontSizeSmall
-                        color: rustrx.sortOrder === modelData.key || parent.highlighted ? Theme.highlightColor : Theme.primaryColor
+                        color: orderRow.chosen || orderRow.highlighted ? Theme.highlightColor : Theme.primaryColor
                     }
+                    // Silica's radio look: a dot in a ring, lit when chosen
+                    Image {
+                        id: radio
+                        anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                        source: "image://theme/icon-m-dot?" + (orderRow.chosen ? Theme.highlightColor : Theme.secondaryColor)
+                        sourceSize.width: Theme.iconSizeSmall
+                        sourceSize.height: Theme.iconSizeSmall
+                        opacity: orderRow.chosen ? 1.0 : Theme.opacityLow
+                    }
+                }
+            }
+            Separator {
+                visible: page.sortOpen
+                x: Theme.horizontalPageMargin
+                width: page.width - 2 * x
+                color: Theme.secondaryColor
+                horizontalAlignment: Qt.AlignRight
+            }
+            Repeater {
+                model: page.sortOpen ? [
+                    //: room list option, with any order
+                    //% "Favourites on top"
+                    { key: "favsOnTop", text: qsTrId("rustrx-me-sort-favs-on-top") },
+                    //% "Low priority at the bottom"
+                    { key: "lowLast", text: qsTrId("rustrx-me-sort-low-last") },
+                    //% "Hide muted"
+                    { key: "hideMuted", text: qsTrId("rustrx-me-sort-hide-muted") }
+                ] : []
+                BackgroundItem {
+                    id: optionRow
+                    readonly property bool on: rustrx[modelData.key] === true
+                    width: page.width
+                    height: Theme.itemSizeExtraSmall
+                    onClicked: rustrx[modelData.key] = !on
+                    Label {
+                        anchors { right: box.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }
+                        text: modelData.text
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: optionRow.on || optionRow.highlighted ? Theme.highlightColor : Theme.primaryColor
+                    }
+                    // on or off: Silica's check in a circle (as at the search),
+                    // lit while on
+                    Image {
+                        id: box
+                        anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                        source: "image://theme/icon-m-acknowledge?" + (optionRow.on ? Theme.highlightColor : Theme.secondaryColor)
+                        sourceSize.width: Theme.iconSizeSmall
+                        sourceSize.height: Theme.iconSizeSmall
+                        opacity: optionRow.on ? 1.0 : Theme.opacityLow
+                    }
+                }
+            }
+            Separator {
+                visible: page.sortOpen
+                x: Theme.horizontalPageMargin
+                width: page.width - 2 * x
+                color: Theme.secondaryColor
+                horizontalAlignment: Qt.AlignRight
+            }
+            // a search: from the second letter the lists narrow while typing;
+            // the check mark keeps it (then a cross removes it), else opening a
+            // room or closing the menu drops it
+            Item {
+                visible: page.sortOpen
+                width: page.width
+                height: visible ? searchField.height : 0
+                TextField {
+                    id: searchField
+                    anchors { left: parent.left; right: lockButton.left }
+                    //% "Search"
+                    placeholderText: qsTrId("rustrx-ph-room-search")
+                    label: ""
+                    readOnly: page.filterLocked
+                    inputMethodHints: Qt.ImhNoPredictiveText
+                    text: page.filterText
+                    onTextChanged: page.filterText = text
+                    EnterKey.iconSource: "image://theme/icon-m-enter-accept"
+                    EnterKey.enabled: text.trim().length >= 2
+                    EnterKey.onClicked: page.lockFilter()
+                    // a hidden field keeps its focus in QML and took the typing
+                    // with the menu closed: with the menu it lets go, keyboard too
+                    onVisibleChanged: if (!visible && activeFocus) { focus = false; Qt.inputMethod.hide() }
+                }
+                IconButton {
+                    id: lockButton
+                    anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin - Theme.paddingMedium; verticalCenter: searchField.verticalCenter; verticalCenterOffset: -Theme.paddingSmall }
+                    enabled: page.filterLocked || searchField.text.trim().length >= 2
+                    icon.source: page.filterLocked ? "image://theme/icon-m-clear" : "image://theme/icon-m-acknowledge"
+                    onClicked: page.filterLocked ? page.clearFilter() : page.lockFilter()
                 }
             }
         }
@@ -180,12 +339,41 @@ Page {
 
             readonly property bool isRooms: model.kind === "rooms"
             readonly property bool isFavs: model.kind === "favs"
+            readonly property bool isAll: model.kind === "all"
 
             SilicaListView {
                 id: list
                 anchors.fill: parent
-                model: isRooms ? rustrx.rooms : isFavs ? rustrx.favourites : rustrx.people
+                model: isAll ? rustrx.all : isRooms ? rustrx.rooms : isFavs ? rustrx.favourites : rustrx.people
                 currentIndex: -1
+
+                // A list at its top stays at its top when rows arrive or move
+                // there (the first sync, a new message, the sort order); the
+                // view would keep the old first row and push the new one up
+                // under the tabs. Once scrolled, the place is left alone.
+                property bool pinnedTop: true
+                onMovementEnded: pinnedTop = atYBeginning
+                // after the view has applied the change: inside the model's
+                // signal it still has the old rows (Qt 5.6 has no callLater)
+                function keepTop() { if (pinnedTop) keepTopLater.restart() }
+                Timer {
+                    id: keepTopLater
+                    interval: 0
+                    onTriggered: if (list.pinnedTop && !list.moving) list.positionViewAtBeginning()
+                }
+                // at the start the tab bar is laid out after the list: the
+                // header's spacer grows by its height and the first rows
+                // ended up under the tabs
+                Connections {
+                    target: tabs
+                    onTabBarHeightChanged: list.keepTop()
+                }
+                Connections {
+                    target: list.model
+                    onRowsInserted: list.keepTop()
+                    onRowsMoved: list.keepTop()
+                    onModelReset: list.keepTop()
+                }
 
                 // back from a chat: keep the row that was open in view
                 Connections {
@@ -227,7 +415,10 @@ Page {
                         width: parent.width
                         height: visible ? Theme.itemSizeSmall : 0
                         visible: rustrx.verificationState === "unverified" || rustrx.recoveryState === "incomplete"
-                        onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
+                        // the settings, scrolled to the encryption section, where
+                        // verifying from another device and the recovery key sit
+                        // together: without another device only the key helps
+                        onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { showEncryption: true })
 
                         Label {
                             x: Theme.horizontalPageMargin
@@ -248,27 +439,36 @@ Page {
                 delegate: RoomDelegate { }
 
                 // the first sync takes a moment: a spinner first, the text after
-                Timer { id: firstSyncGrace; interval: 10000; running: true }
+                // a spinner only until the first room list is in; an empty tab
+                // then says so at once
                 BusyIndicator {
                     anchors.centerIn: parent
                     size: BusyIndicatorSize.Large
-                    running: list.count === 0 && firstSyncGrace.running && rustrx.syncState !== "error"
+                    running: list.count === 0 && !rustrx.roomsLoaded && rustrx.syncState !== "error"
                 }
 
                 ViewPlaceholder {
-                    enabled: list.count === 0 && !firstSyncGrace.running
-                    text: rustrx.syncState === "running" || rustrx.syncState === "idle"
+                    enabled: list.count === 0 && (rustrx.roomsLoaded || rustrx.syncState === "error")
+                    text: rustrx.roomFilter.length
+                          //: %1 the search text
+                          //% "No rooms match “%1”"
+                          ? qsTrId("rustrx-la-no-match").arg(rustrx.roomFilter)
+                          : rustrx.syncState === "running" || rustrx.syncState === "idle"
                           //% "Nothing here yet"
                           ? qsTrId("rustrx-la-empty")
                           //% "Not connected"
                           : qsTrId("rustrx-la-not-connected")
-                    hintText: isRooms
-                              //% "Rooms you join appear here, sorted by activity."
+                    hintText: rustrx.roomFilter.length ? ""
+                              : !(rustrx.syncState === "running" || rustrx.syncState === "idle")
+                              //% "Rustrx connects again by itself once the network is back."
+                              ? qsTrId("rustrx-la-offline-hint")
+                              : isRooms || isAll
+                              //% "Join or create a room with Add Room / Contact in the pulley menu."
                               ? qsTrId("rustrx-la-empty-rooms-hint")
                               : isFavs
                               //% "Long press a room or a person and choose Add to Favs."
                               ? qsTrId("rustrx-la-empty-favs-hint")
-                              //% "Direct chats appear here."
+                              //% "Start a chat with someone with Add Room / Contact in the pulley menu."
                               : qsTrId("rustrx-la-empty-people-hint")
                 }
 

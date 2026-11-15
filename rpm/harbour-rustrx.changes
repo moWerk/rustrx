@@ -1,3 +1,44 @@
+* Sun Nov 15 2026 moWerk <mo@mowerk.net> - 0.4.3
+- Fixed: the keyboard stays up after Send and when a message comes in.
+- Fixed: a room opens at the newest message, not where another client
+  left the read marker.
+- Fixed: previews of WebP pictures and of videos; a video that can not
+  be played says why.
+- New: the local store is encrypted with a key kept in sailfish-secrets
+  where it works, as before elsewhere.
+- New: a session ended by the server keeps the store and the device, so
+  logging in again brings back keys and history.
+- New: a debug log, on until 1.0, shareable from Settings.
+- New: portrait and landscape; one's own picture in Settings; "Hide
+  muted" in the filter menu; switches for the background line and the
+  "Typing to <room>" line under the message field.
+
+* Sat Nov 14 2026 moWerk <mo@mowerk.net> - 0.4.2
+- Fixed: single sign-on opens the browser again (broken since 0.4.0); the
+  sign-on link is shown to open again or copy; sign-on is offered as soon
+  as a full Matrix ID is typed.
+- Fixed: a token refresh that fails for lack of network no longer logs
+  out (servers with short-lived tokens, such as tchncs.de).
+- New: a notification for each new invitation.
+- New: the "not verified" line opens the encryption settings; "Reset
+  encryption" for an account with no other device and no recovery key.
+- New: a hint on servers that manage logins in the browser; more space
+  between buttons and texts on the login and settings pages; an empty
+  tab says so instead of spinning.
+- Polish: smaller avatars, Semibold badge digits with a shadow, a larger
+  filter icon, "Alphabetical", lists start at the top, a larger cover icon.
+- New: "Favourites on top" and "Low priority at the bottom" in the filter
+  menu, with any order; "Unread first" sorts by count.
+- New: room pictures (set, shown on the room page and in the chat header;
+  changes by others update); View source for a message; "@" prefilled in
+  Matrix ID fields; Settings reordered with devices in place and an About
+  section with the LLMGD grade.
+- Fixed: copy and save feedback, a visible cancel for replies and edits,
+  error messages in words, remorse when declining an invitation.
+- New: room search in the filter menu; mute, lock and read status before
+  the preview; 1 to 3 preview lines; one list instead of tabs, optional;
+  double tap to reply; upgraded rooms lead to their successor.
+
 * Fri Nov 13 2026 moWerk <mo@mowerk.net> - 0.4.1
 - New: message bubbles; own messages right, others left with the sender's
   name inside, no avatars.

@@ -41,14 +41,18 @@ WebViewPage {
         id: web
         anchors.fill: parent
         url: page.url
+        onLoadingChanged: console.log("call page loading", loading, "progress", loadProgress, url.toString().split("?")[0])
         onViewInitialized: {
             web.loadFrameScript(Qt.resolvedUrl("../call-bridge.js"))
             web.addMessageListener("rustrx:fromWidget")
             web.addMessageListener("rustrx:close")
+            web.addMessageListener("rustrx:console")
         }
         onRecvAsyncMessage: {
             if (message === "rustrx:fromWidget")
                 rustrx.command({ cmd: "call_message", data: data.data })
+            else if (message === "rustrx:console")
+                console.log("call page", data.level + ":", data.text)
             else if (message === "rustrx:close" && page.status === PageStatus.Active)
                 pageStack.pop()
         }

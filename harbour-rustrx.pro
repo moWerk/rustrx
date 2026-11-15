@@ -3,7 +3,7 @@
 # /usr/share/harbour-rustrx/lib; this project is the Silica UI around it.
 TARGET = harbour-rustrx
 
-isEmpty(VERSION): VERSION = 0.4.1
+isEmpty(VERSION): VERSION = 0.4.3
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 QT += dbus multimedia
@@ -14,12 +14,14 @@ SOURCES += src/main.cpp \
     src/Rustrx.cpp \
     src/RoomModel.cpp \
     src/TimelineModel.cpp \
-    src/VoiceRecorder.cpp
+    src/VoiceRecorder.cpp \
+    src/DebugLog.cpp
 
 HEADERS += src/Rustrx.h \
     src/RoomModel.h \
     src/TimelineModel.h \
     src/VoiceRecorder.h \
+    src/DebugLog.h \
     src/rustrx_core.h
 
 # the prebuilt core: lib/librustrx.so at build time, next to the data at run time
@@ -39,6 +41,7 @@ autostart.files = systemd/harbour-rustrx.service systemd/harbour-rustrx-open.ser
 autostart.path = /usr/lib/systemd/user
 INSTALLS += autostart
 
+# secrets/secrets.pro (built by the spec): the sailfish-secrets plugin
 DISTFILES += qml/harbour-rustrx.qml \
     qml/Service.qml \
     qml/call-bridge.js \

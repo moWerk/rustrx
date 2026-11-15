@@ -55,7 +55,22 @@ Page {
     BusyIndicator {
         anchors.centerIn: parent
         size: BusyIndicatorSize.Large
-        running: !page.source.length || video.status === MediaPlayer.Loading || video.status === MediaPlayer.Buffering
+        running: !playError.visible && (!page.source.length || video.status === MediaPlayer.Loading || video.status === MediaPlayer.Buffering)
+    }
+
+    // a video the phone cannot play (a format its media stack lacks): say
+    // so, with the player's reason, instead of spinning on
+    Label {
+        id: playError
+        anchors.centerIn: parent
+        width: parent.width - 2 * Theme.horizontalPageMargin
+        visible: video.error !== MediaPlayer.NoError || video.status === MediaPlayer.InvalidMedia
+        wrapMode: Text.Wrap
+        horizontalAlignment: Text.AlignHCenter
+        color: Theme.highlightColor
+        //: %1 the player's reason
+        //% "This video cannot be played here. %1"
+        text: qsTrId("rustrx-la-video-error").arg(video.errorString)
     }
 
     Label {

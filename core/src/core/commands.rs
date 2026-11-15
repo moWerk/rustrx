@@ -165,10 +165,27 @@ impl Core {
                 Ok(())
             }
             StorageInfo => self.storage_info().await,
-            CallStart { room_id, voice } => self.call_start(&room_id, voice.unwrap_or(false)).await,
+            CallStart { room_id, voice, skip_lobby } => self.call_start(&room_id, voice.unwrap_or(false), skip_lobby.unwrap_or(false)).await,
             CallMessage { data } => self.call_message(&data).await,
             CallEnd => {
                 self.call_end().await;
+                Ok(())
+            }
+            EventSource { room_id, event_id } => {
+                let room = self.room(&room_id).await?;
+                let tl = self.timeline_for(&room).await?;
+                let item = tl
+                    .item_by_event_id(&EventId::parse(&event_id)?)
+                    .await
+                    .context("the message is not in the loaded timeline")?;
+                let pretty = |raw: &matrix_sdk::ruma::serde::Raw<_>| {
+                    serde_json::from_str::<Value>(raw.json().get())
+                        .and_then(|v| serde_json::to_string_pretty(&v))
+                        .unwrap_or_else(|_| raw.json().get().to_owned())
+                };
+                let original = item.original_json().map(&pretty).context("no source for this message yet")?;
+                let edit = item.latest_edit_json().map(&pretty);
+                self.emit(json!({"ev": "event_source", "event_id": event_id, "json": original, "edit": edit}));
                 Ok(())
             }
             ClearMedia => {
@@ -255,11 +272,16 @@ impl Core {
                 } else {
                     ReceiptType::Read
                 };
+                // The fully-read marker is where a room opens: only our own
+                // account sees it, so it moves with "receipts off" too.
+                // Without it a room opened where another client left it.
                 if is_open {
                     let tl = self.timeline_for(&room).await?;
                     tl.mark_as_read(kind).await?;
+                    tl.mark_as_read(ReceiptType::FullyRead).await?;
                 } else if let Some(event_id) = crate::serialize::latest_event_id(&room) {
-                    room.send_single_receipt(kind, ReceiptThread::Unthreaded, event_id).await?;
+                    room.send_single_receipt(kind, ReceiptThread::Unthreaded, event_id.clone()).await?;
+                    room.send_single_receipt(ReceiptType::FullyRead, ReceiptThread::Unthreaded, event_id).await?;
                 }
                 let _ = room.set_unread_flag(false).await;
                 Ok(())
@@ -375,6 +397,20 @@ impl Core {
                 room.set_name(name).await?;
                 Ok(())
             }
+            SetRoomAvatar { room_id, path, w, h } => {
+                let room = self.room(&room_id).await?;
+                let data = std::fs::read(&path)?;
+                let mime = mime_guess::from_path(&path).first_or(mime::IMAGE_JPEG);
+                let mut info = matrix_sdk::ruma::events::room::avatar::ImageInfo::new();
+                info.width = w.and_then(|n| UInt::try_from(n).ok());
+                info.height = h.and_then(|n| UInt::try_from(n).ok());
+                info.size = UInt::try_from(data.len() as u64).ok();
+                info.mimetype = Some(mime.to_string());
+                room.upload_avatar(&mime, data, Some(info)).await?;
+                std::fs::remove_file(&path).ok();
+                // the room list fetches the new picture once the sync brings it
+                Ok(())
+            }
             SetRoomTopic { room_id, topic } => {
                 let room = self.room(&room_id).await?;
                 room.set_room_topic(&topic).await?;
@@ -440,6 +476,31 @@ impl Core {
                 self.emit(json!({"ev": "recovery_key", "key": key}));
                 Ok(())
             }
+            IdentityReset => {
+                use matrix_sdk::encryption::CrossSigningResetAuthType;
+                let client = self.client().await?;
+                let recovery = client.encryption().recovery();
+                if let Some(handle) = recovery.reset_identity().await? {
+                    match handle.auth_type() {
+                        CrossSigningResetAuthType::OAuth(info) => {
+                            let url = info.approval_url.to_string();
+                            tracing::info!("identity reset: waiting for the approval in the browser");
+                            self.emit(json!({"ev": "identity_reset_approval", "url": url}));
+                            self.emit(json!({"ev": "open_url", "url": url}));
+                            // the SDK polls for two minutes
+                            handle.reset(None).await?;
+                        }
+                        CrossSigningResetAuthType::Uiaa(_) => {
+                            handle.cancel().await;
+                            bail!("this server asks for the password to reset the encryption, which Rustrx cannot do yet");
+                        }
+                    }
+                }
+                tracing::info!("identity reset: done, setting up the backup");
+                let key = recovery.enable().wait_for_backups_to_upload().await?;
+                self.emit(json!({"ev": "recovery_key", "key": key}));
+                Ok(())
+            }
             Devices => {
                 let client = self.client().await?;
                 let own = client.device_id().map(|d| d.to_string());
@@ -465,9 +526,32 @@ impl Core {
             Profile => {
                 let client = self.client().await?;
                 let name = client.account().get_display_name().await?;
+                // one's own picture, cached beside the rooms' as "_own.img"
+                let file = self.data_dir.join("avatars").join("_own.img");
+                let format = MediaFormat::Thumbnail(MediaThumbnailSettings::new(uint!(256), uint!(256)));
+                let avatar = match client.account().get_avatar(format).await {
+                    Ok(Some(bytes)) if std::fs::write(&file, &bytes).is_ok() => Some(file.to_string_lossy().into_owned()),
+                    Ok(None) => {
+                        std::fs::remove_file(&file).ok();
+                        None
+                    }
+                    _ => file.exists().then(|| file.to_string_lossy().into_owned()),
+                };
+                let version = std::fs::metadata(&file).and_then(|m| m.modified()).ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64);
                 self.emit(json!({"ev": "profile", "display_name": name,
-                                 "user_id": client.user_id().map(|u| u.to_string())}));
+                                 "user_id": client.user_id().map(|u| u.to_string()),
+                                 "avatar": avatar, "avatar_v": version}));
                 Ok(())
+            }
+            SetOwnAvatar { path } => {
+                let client = self.client().await?;
+                let data = std::fs::read(&path)?;
+                let mime = mime_guess::from_path(&path).first_or(mime::IMAGE_JPEG);
+                client.account().upload_avatar(&mime, data).await?;
+                std::fs::remove_file(&path).ok();
+                // the new picture to the settings page
+                Box::pin(self.handle(Command::Profile)).await
             }
             SetDisplayName { name } => {
                 let client = self.client().await?;

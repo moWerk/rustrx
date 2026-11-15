@@ -26,11 +26,20 @@ ApplicationWindow {
     // stack; everything else is pushed on top of the main page.
     initialPage: Component { StartPage { } }
     cover: coverSource
-    allowedOrientations: defaultAllowedOrientations
+    // portrait and landscape: the room list and the chats suit both (the
+    // camera page keeps to portrait)
+    allowedOrientations: Orientation.All
+    _defaultPageOrientations: Orientation.All
 
     // the rows' "3m" age labels follow this clock
     property real now: Date.now()
     Timer { interval: 60000; repeat: true; running: Qt.application.active; onTriggered: app.now = Date.now() }
+
+    // Source Sans 3 Semibold (Adobe, OFL), shipped unmodified: the system font
+    // is the same design but installed only in ExtraLight and Light, so bold
+    // text in it never got heavier (the unread badges)
+    FontLoader { id: semiboldFont; source: Qt.resolvedUrl("fonts/SourceSans3-Semibold.ttf") }
+    readonly property string semiboldFontFamily: semiboldFont.status === FontLoader.Ready ? semiboldFont.name : Theme.fontFamily
 
     // appearance settings, shared by every page and delegate
     property alias roundAvatars: cfgRoundAvatars.value
@@ -39,9 +48,21 @@ ApplicationWindow {
     property alias sendReceipts: cfgSendReceipts.value
     property alias sendTyping: cfgSendTyping.value
     ConfigurationValue { id: cfgRoundAvatars; key: "/apps/harbour-rustrx/roundAvatars"; defaultValue: true }
+    // rooms and people as two tabs (default), or together in one list
+    property alias separateLists: cfgSeparateLists.value
+    ConfigurationValue { id: cfgSeparateLists; key: "/apps/harbour-rustrx/separateLists"; defaultValue: true }
+    // the favourites as a tab of their own (default), or not
+    property alias separateFavs: cfgSeparateFavs.value
+    ConfigurationValue { id: cfgSeparateFavs; key: "/apps/harbour-rustrx/separateFavs"; defaultValue: true }
+    // how many lines of the last message the room list shows (1 to 3)
+    property alias previewLines: cfgPreviewLines.value
+    ConfigurationValue { id: cfgPreviewLines; key: "/apps/harbour-rustrx/previewLines"; defaultValue: 1 }
     ConfigurationValue { id: cfgShowReadBy; key: "/apps/harbour-rustrx/showReadBy"; defaultValue: true }
     ConfigurationValue { id: cfgSendReceipts; key: "/apps/harbour-rustrx/sendReceipts"; defaultValue: true }
     ConfigurationValue { id: cfgSendTyping; key: "/apps/harbour-rustrx/sendTyping"; defaultValue: true }
+    // the line under the message field that says the room sees you typing
+    property alias typingHint: cfgTypingHint.value
+    ConfigurationValue { id: cfgTypingHint; key: "/apps/harbour-rustrx/typingHint"; defaultValue: true }
     // start in the chat that was open when the app was closed (off by default)
     property alias reopenLast: cfgReopenLast.value
     property alias lastRoom: cfgLastRoom.value
@@ -117,7 +138,7 @@ ApplicationWindow {
     Connections {
         target: rustrx
         onStateChanged: route()
-        onOpenUrl: Qt.openUrlExternally(url)
+        onBrowserUrl: Qt.openUrlExternally(url)
         onVerification: {
             // an incoming request opens its page; one we started has its page already
             if (data.state === "requested" && !data.we_started) showVerification(data)
@@ -125,9 +146,14 @@ ApplicationWindow {
         onErrorOccurred: {
             // the settings page shows the recovery errors in place
             if (cmd === "recovery_recover" || cmd === "recovery_enable" || cmd === "recovery_reset") return
-            //: transient error line, %1 the command, %2 the message
-            //% "%1 failed: %2"
-            Notices.show(qsTrId("rustrx-no-command-failed").arg(cmd).arg(message), Notice.Long)
+            var what = actionLabel(cmd)
+            Notices.show(what.length
+                         //: transient error line, %1 what was tried, %2 the server's or the network's message
+                         //% "%1 failed: %2"
+                         ? qsTrId("rustrx-no-action-failed").arg(what).arg(message)
+                         //: transient error line for anything without its own name, %1 the message
+                         //% "Something went wrong: %1"
+                         : qsTrId("rustrx-no-something-failed").arg(message), Notice.Long)
         }
         // a tapped notification: bring the window up and show the room
         // (on a cold start route() has taken it already)
@@ -141,6 +167,45 @@ ApplicationWindow {
         onShareRequested: {
             var shared = rustrx.takePendingShare()
             if (shared.files || shared.text) { app.activate(); app.showShare(files, text) }
+        }
+    }
+
+    // the core's command, as the user knows the action; "" for the rare ones
+    function actionLabel(cmd) {
+        switch (cmd) {
+        //% "Sending"
+        case "send_text": case "send_file": return qsTrId("rustrx-la-act-send")
+        //% "Reacting"
+        case "react": return qsTrId("rustrx-la-act-react")
+        //% "Removing the message"
+        case "redact": return qsTrId("rustrx-la-act-redact")
+        //% "Editing"
+        case "edit": return qsTrId("rustrx-la-act-edit")
+        //% "Joining the room"
+        case "join_by_id_or_alias": case "join_room": return qsTrId("rustrx-la-act-join")
+        //% "Starting the chat"
+        case "create_dm": return qsTrId("rustrx-la-act-dm")
+        //% "Creating the room"
+        case "create_room": return qsTrId("rustrx-la-act-create-room")
+        //% "Leaving the room"
+        case "leave_room": return qsTrId("rustrx-la-act-leave")
+        //% "Inviting"
+        case "invite": return qsTrId("rustrx-la-act-invite")
+        //% "Changing the room"
+        case "set_room_name": case "set_room_topic": return qsTrId("rustrx-la-act-room")
+        //% "Changing favourites"
+        case "set_favourite": case "set_low_priority": return qsTrId("rustrx-la-act-fav")
+        //% "Changing notifications"
+        case "set_notification_mode": return qsTrId("rustrx-la-act-notify")
+        //% "Voting"
+        case "poll_vote": return qsTrId("rustrx-la-act-vote")
+        //% "Searching"
+        case "search": return qsTrId("rustrx-la-act-search")
+        //% "Loading older messages"
+        case "paginate_back": return qsTrId("rustrx-la-act-older")
+        //% "Loading the picture"
+        case "get_media": case "export_media": return qsTrId("rustrx-la-act-media")
+        default: return ""
         }
     }
 
@@ -207,6 +272,23 @@ ApplicationWindow {
 
     // a room asked for before the main page is up (the app started from a notification)
     property string pendingRoom
+    // a call's page, wherever the call was started (the room's page, a dev
+    // command); and the dev commands meant for the UI (Rustrx::dev)
+    Connections {
+        target: rustrx
+        onCallUrl: pageStack.push(Qt.resolvedUrl("pages/CallPage.qml"), { roomId: roomId, url: url })
+        onDevUi: {
+            if (request.ui === "activate") {
+                app.activate()
+            } else if (request.ui === "open_room") {
+                app.activate()
+                app.showRoom(request.room_id)
+            } else if (request.ui === "back") {
+                if (pageStack.depth > 1) pageStack.pop()
+            }
+        }
+    }
+
     function showRoom(roomId) {
         if (rustrx.openRoomId === roomId) return
         var main = pageStack.find(function (p) { return p.objectName === "main" })
