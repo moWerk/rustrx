@@ -142,6 +142,12 @@ ListItem {
     }
 
     function tapped() {
+        // a reply in a thread, shown in the room's flow: on to its thread
+        // (pictures, files, sounds and places still open themselves)
+        if (model.thread_root && !inThread && !isMedia && !isFile && msgType !== "audio" && msgType !== "location") {
+            msg.openThread(model.thread_root, false)
+            return
+        }
         if (msgType === "audio") {
             if (!player) return
             if (playing) { player.pause(); return }
@@ -502,6 +508,34 @@ ListItem {
                             }
                         }
                     }
+                    // a reply in a thread, here in the room's flow: the thread mark,
+                    // a tap opens the thread
+                    BackgroundItem {
+                        id: inThreadLine
+                        visible: !inThread && !!model.thread_root
+                        width: Math.min(innerMax, inThreadRow.width + 2 * Theme.paddingSmall)
+                        height: visible ? inThreadRow.height + Theme.paddingSmall : 0
+                        onClicked: msg.openThread(model.thread_root, false)
+                        Row {
+                            id: inThreadRow
+                            x: Theme.paddingSmall
+                            spacing: Theme.paddingSmall
+                            Image {
+                                anchors.verticalCenter: parent.verticalCenter
+                                sourceSize.width: Theme.iconSizeExtraSmall
+                                sourceSize.height: Theme.iconSizeExtraSmall
+                                source: "image://theme/icon-m-menu?" + Theme.secondaryHighlightColor
+                            }
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                font.pixelSize: Theme.fontSizeExtraSmall
+                                color: inThreadLine.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor
+                                //% "in a thread"
+                                text: qsTrId("rustrx-la-in-thread")
+                            }
+                        }
+                    }
+
                     // the replies in this message's thread: a tap opens it
                     BackgroundItem {
                         id: threadLine

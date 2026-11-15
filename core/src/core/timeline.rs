@@ -120,8 +120,9 @@ impl Core {
         }
         let timeline = Arc::new(
             room.timeline_builder()
-                // thread replies live in their thread; the root shows a summary
-                .with_focus(matrix_sdk_ui::timeline::TimelineFocus::Live { hide_threaded_events: true })
+                // every message, thread replies too (marked by their thread_root);
+                // the thread's page shows a thread alone, its root a summary
+                .with_focus(matrix_sdk_ui::timeline::TimelineFocus::Live { hide_threaded_events: false })
                 .track_read_marker_and_receipts(TimelineReadReceiptTracking::MessageLikeEvents)
                 .build()
                 .await?,
