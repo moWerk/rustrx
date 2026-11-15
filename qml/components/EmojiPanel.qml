@@ -19,9 +19,11 @@ import Sailfish.Silica 1.0
 import "../emoji-data.js" as EmojiData
 
 // The emoji picker (dodoradio's design): it takes the keyboard's place at
-// the bottom, the five most used emoji on top, then the groups. In "insert"
-// mode an emoji goes into the message at the cursor and the panel stays for
-// the next one; in "react" mode it reacts to a message and closes.
+// the bottom, the five most used emoji on top, then the groups and the
+// custom emoji packs (the user's own, the enabled ones, the room's). In
+// "insert" mode an emoji goes into the message at the cursor and the panel
+// stays for the next one; with an empty message ("stickers" on) a pack's
+// sticker is sent at once. In "react" mode it reacts to a message and closes.
 DockedPanel {
     id: panel
 
@@ -29,8 +31,14 @@ DockedPanel {
     // the message a reaction is for
     property string eventId
     property int group: 0
+    // the image packs of the room (from the core's "image_packs")
+    property var packs: []
+    // the message is empty: stickers are offered too
+    property bool stickers
 
     signal picked(string emoji)
+    // a custom emoji or sticker from a pack: { shortcode, url, body, info, emoticon, sticker }
+    signal pickedImage(var image)
     // "React with text": the composer takes the reaction
     signal textReaction()
 
@@ -47,7 +55,45 @@ DockedPanel {
     }
 
     readonly property var groupIcons: ["😀", "👋", "🐶", "🍕", "🚗", "⚽", "💡", "❤️", "🏁"]
+    readonly property int unicodeGroups: groupIcons.length
+    // the packs with something to offer here: custom emoji, or stickers when
+    // a sticker can be sent
+    readonly property var shownPacks: {
+        var out = []
+        for (var i = 0; i < packs.length; i++) {
+            var imgs = imagesFor(packs[i])
+            if (imgs.length) out.push({ name: packs[i].name, avatar: packs[i].avatar, images: imgs })
+        }
+        return out
+    }
     readonly property int columns: Math.max(6, Math.floor(width / Theme.itemSizeSmall))
+    readonly property bool onPack: group >= unicodeGroups && group - unicodeGroups < shownPacks.length
+
+    function imagesFor(pack) {
+        var out = []
+        for (var i = 0; i < pack.images.length; i++) {
+            var img = pack.images[i]
+            if (img.emoticon || (img.sticker && mode === "insert" && stickers)) out.push(img)
+        }
+        return out
+    }
+
+    // the cached picture of a custom emoji; "" until it is fetched
+    property var emoteFiles: ({})
+    function picture(url) {
+        if (emoteFiles[url]) return emoteFiles[url]
+        return rustrx.emotePath(url)
+    }
+    Connections {
+        target: rustrx
+        onEmoteReady: {
+            var f = panel.emoteFiles
+            f[mxc] = path
+            panel.emoteFiles = f
+        }
+    }
+
+    onShownPacksChanged: if (group >= unicodeGroups + shownPacks.length) group = 0
 
     Rectangle {
         anchors.fill: parent
@@ -86,24 +132,57 @@ DockedPanel {
             }
         }
 
-        // the groups, one emoji each
-        Row {
+        // the groups, one emoji each, then the packs, their picture each;
+        // they scroll sideways when there are many
+        SilicaFlickable {
             width: parent.width
-            Repeater {
-                model: panel.groupIcons.length
-                BackgroundItem {
-                    width: panel.width / panel.groupIcons.length
-                    height: Theme.itemSizeExtraSmall
-                    highlighted: down || panel.group === index
-                    onClicked: { panel.group = index; grid.positionViewAtBeginning() }
-                    Label {
-                        anchors.centerIn: parent
-                        text: panel.groupIcons[index]
-                        font.pixelSize: Theme.fontSizeMedium
-                        opacity: panel.group === index ? 1.0 : Theme.opacityHigh
+            height: Theme.itemSizeExtraSmall
+            contentWidth: tabs.width
+            flickableDirection: Flickable.HorizontalFlick
+            clip: true
+            Row {
+                id: tabs
+                readonly property real tabWidth: Math.max(Theme.itemSizeExtraSmall,
+                    panel.width / (panel.unicodeGroups + panel.shownPacks.length))
+                Repeater {
+                    model: panel.unicodeGroups + panel.shownPacks.length
+                    BackgroundItem {
+                        readonly property bool isPack: index >= panel.unicodeGroups
+                        width: tabs.tabWidth
+                        height: Theme.itemSizeExtraSmall
+                        highlighted: down || panel.group === index
+                        onClicked: { panel.group = index; grid.positionViewAtBeginning() }
+                        Label {
+                            visible: !isPack
+                            anchors.centerIn: parent
+                            text: isPack ? "" : panel.groupIcons[index]
+                            font.pixelSize: Theme.fontSizeMedium
+                            opacity: panel.group === index ? 1.0 : Theme.opacityHigh
+                        }
+                        Image {
+                            visible: isPack
+                            anchors.centerIn: parent
+                            width: Theme.iconSizeSmall
+                            height: width
+                            fillMode: Image.PreserveAspectFit
+                            sourceSize.height: height
+                            opacity: panel.group === index ? 1.0 : Theme.opacityHigh
+                            source: isPack ? panel.picture(panel.shownPacks[index - panel.unicodeGroups].avatar || "") : ""
+                        }
                     }
                 }
             }
+        }
+
+        Label {
+            visible: panel.onPack
+            x: Theme.horizontalPageMargin
+            width: parent.width - 2 * x
+            height: visible ? implicitHeight : 0
+            truncationMode: TruncationMode.Fade
+            font.pixelSize: Theme.fontSizeExtraSmall
+            color: Theme.secondaryHighlightColor
+            text: panel.onPack ? panel.shownPacks[panel.group - panel.unicodeGroups].name : ""
         }
     }
 
@@ -113,12 +192,29 @@ DockedPanel {
         clip: true
         cellWidth: width / panel.columns
         cellHeight: Theme.itemSizeSmall
-        model: EmojiData.groups[panel.group].emoji
+        model: panel.onPack ? panel.shownPacks[panel.group - panel.unicodeGroups].images
+                            : EmojiData.groups[Math.min(panel.group, panel.unicodeGroups - 1)].emoji
         delegate: BackgroundItem {
+            readonly property bool isImage: typeof modelData !== "string"
             width: grid.cellWidth
             height: grid.cellHeight
-            onClicked: panel.choose(modelData)
-            Label { anchors.centerIn: parent; text: modelData; font.pixelSize: Theme.fontSizeLarge }
+            onClicked: isImage ? panel.chooseImage(modelData) : panel.choose(modelData)
+            Label {
+                visible: !isImage
+                anchors.centerIn: parent
+                text: isImage ? "" : modelData
+                font.pixelSize: Theme.fontSizeLarge
+            }
+            Image {
+                visible: isImage
+                anchors.centerIn: parent
+                width: Theme.iconSizeMedium
+                height: width
+                fillMode: Image.PreserveAspectFit
+                sourceSize.height: height
+                asynchronous: true
+                source: isImage ? panel.picture(modelData.url) : ""
+            }
         }
         VerticalScrollDecorator {}
     }
@@ -126,6 +222,10 @@ DockedPanel {
     function choose(emoji) {
         app.countEmoji(emoji)
         picked(emoji)
+        if (mode === "react") open = false
+    }
+    function chooseImage(image) {
+        pickedImage(image)
         if (mode === "react") open = false
     }
 }

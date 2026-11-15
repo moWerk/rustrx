@@ -47,6 +47,8 @@ ListItem {
     readonly property color dimColor: own ? Theme.secondaryHighlightColor : Theme.secondaryColor
     // captured here: inside the Repeater, `model` would name the Repeater's own property
     readonly property var reactionList: model.reactions ? model.reactions : []
+    // the custom emoji in the message and its reactions ({ url, shortcode })
+    readonly property var emoteList: model.emotes ? model.emotes : []
     readonly property string eventId: model.event_id || ""
     readonly property bool failed: model.send_state === "failed"
     // a picture or file on its way: the share of it the server has (0..1)
@@ -576,6 +578,16 @@ ListItem {
                     Clipboard.text = model.body
                     //% "Text copied"
                     Notices.show(qsTrId("rustrx-no-text-copied"), Notice.Short)
+                }
+            }
+            // a custom emoji seen here, into the user's own pack (the first three)
+            Repeater {
+                model: emoteList.slice(0, 3)
+                MenuItem {
+                    //: %1 a custom emoji's shortcode
+                    //% "Add :%1: to my emoji"
+                    text: qsTrId("rustrx-me-add-emote").arg(modelData.shortcode || "emoji")
+                    onClicked: rustrx.command({ cmd: "add_user_emote", shortcode: modelData.shortcode || "emoji", url: modelData.url })
                 }
             }
             MenuItem {

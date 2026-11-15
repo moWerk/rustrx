@@ -143,6 +143,7 @@ pub(crate) struct Core {
 
 
 mod commands;
+mod packs;
 mod session;
 mod sync;
 mod timeline;

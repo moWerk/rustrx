@@ -35,7 +35,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `open_room` | `room_id` | `timeline` (repeatedly), `typing` |
 | `close_room` | | |
 | `paginate_back` | `room_id`, `count?` (30) | `paginated` |
-| `send_text` | `room_id`, `body`, `reply_to?`, `markdown?` (true) | `timeline` |
+| `send_text` | `room_id`, `body`, `reply_to?`, `markdown?` (true), `emotes?` (shortcode → mxc: custom emoji in the HTML) | `timeline` |
+| `send_sticker` | `room_id`, `url` (mxc), `body`, `info?` | `timeline` |
 | `send_file` | `room_id`, `path`, `caption?`, `w?`, `h?`, `thumb_path?`, `thumb_w?`, `thumb_h?`, `voice?`, `duration_ms?` | `timeline` |
 | `react` | `room_id`, `event_id`, `key` (toggles) | `timeline` |
 | `redact` | `room_id`, `event_id?` or `txn_id?` (discards a local echo), `reason?` | `timeline` |
@@ -46,6 +47,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `typing` | `room_id`, `typing?` | |
 | `get_media` | `room_id`, `event_id`, `thumb?`, `dest_dir?` (a copy for other apps) | `media` |
 | `fetch_emote` | `mxc` (a custom emoji's address) | `emote` |
+| `image_packs` | `room_id` | `image_packs` |
+| `add_user_emote` | `shortcode`, `url` (mxc) | `emote_added` |
 
 ### Rooms
 | cmd | fields | answered by |
@@ -101,6 +104,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `typing` | `room_id`, `names` (others typing) |
 | `media` | `room_id`, `event_id`, `thumb`, `exported`, `path` |
 | `emote` | `mxc`, `path` |
+| `image_packs` | `room_id`, `packs` (`id`, `name`, `source` user/global/room, `avatar`, `images`: `shortcode`, `url`, `body`, `info`, `emoticon`, `sticker`) |
+| `emote_added` | `shortcode` (as stored, a number added when taken), `url` |
 | `members` | `room_id`, `members`: `{user_id, name, power}` |
 | `notification_mode` | `room_id`, `mode` (`all`, `mentions`, `mute`, `default`) |
 | `joined` | `room_id` |

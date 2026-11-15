@@ -22,6 +22,8 @@
 #include <QVariantMap>
 #include <QVariantList>
 #include <QElapsedTimer>
+#include <QHash>
+#include <QSet>
 
 class RoomModel;
 class TimelineModel;
@@ -134,7 +136,12 @@ public:
     Q_INVOKABLE void probeServer(const QString &user, const QString &homeserver);
     Q_INVOKABLE void openRoom(const QString &roomId);
     Q_INVOKABLE void closeRoom();
-    Q_INVOKABLE void sendText(const QString &roomId, const QString &body, const QString &replyTo);
+    // emotes: the custom emoji the text uses, shortcode to mxc address
+    Q_INVOKABLE void sendText(const QString &roomId, const QString &body, const QString &replyTo,
+                              const QVariantMap &emotes = QVariantMap());
+    // a custom emoji's cached picture (file://), or "" while it is fetched
+    // (emoteReady follows)
+    Q_INVOKABLE QString emotePath(const QString &mxc);
     Q_INVOKABLE void sendFile(const QString &roomId, const QString &path, const QString &caption = QString());
     // a picture from the phone as the room's picture: upright, at most 512 px
     Q_INVOKABLE void setRoomAvatar(const QString &roomId, const QString &path);
@@ -157,6 +164,10 @@ public:
 
 signals:
     void stateChanged();
+    // the image packs offered in a room (custom emoji and stickers)
+    void imagePacks(const QString &roomId, const QVariantList &packs);
+    void emoteReady(const QString &mxc, const QString &path);
+    void emoteAdded(const QString &shortcode);
     void roomsLoadedChanged();
     void settingsChanged();
     void roomFilterChanged();
@@ -293,6 +304,8 @@ private:
     RoomModel *m_favourites;
     RoomModel *m_all;
     RoomModel *m_targets;
+    QHash<QString, QString> m_emotePaths;
+    QSet<QString> m_emotesAsked;
     TimelineModel *m_timeline;
     QElapsedTimer m_since;   // start-up timing in the journal
     bool m_firstRooms = true;

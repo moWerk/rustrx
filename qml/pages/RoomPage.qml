@@ -46,6 +46,30 @@ Page {
 
     Component.onCompleted: {
         rustrx.openRoom(roomId)
+        rustrx.command({ cmd: "image_packs", room_id: roomId })
+    }
+
+    // custom emoji and stickers offered here (the user's pack, the enabled
+    // ones, the room's), from the core's "image_packs"
+    property var packs: []
+    readonly property bool hasStickers: {
+        for (var i = 0; i < packs.length; i++)
+            for (var j = 0; j < packs[i].images.length; j++)
+                if (packs[i].images[j].sticker) return true
+        return false
+    }
+    // the custom emoji a text uses, shortcode to address, for its HTML
+    function emotesIn(text) {
+        var out = {}
+        if (text.indexOf(":") < 0) return out
+        for (var i = 0; i < packs.length; i++) {
+            for (var j = 0; j < packs[i].images.length; j++) {
+                var img = packs[i].images[j]
+                if (img.emoticon && out[img.shortcode] === undefined && text.indexOf(":" + img.shortcode + ":") >= 0)
+                    out[img.shortcode] = img.url
+            }
+        }
+        return out
     }
     Component.onDestruction: {
         if (inputArea && !editId.length && !reactToId.length) rustrx.setDraft(roomId, inputArea.text)
@@ -157,7 +181,7 @@ Page {
             inputArea.forceActiveFocus()
             return
         }
-        rustrx.sendText(roomId, text, replyToId)
+        rustrx.sendText(roomId, text, replyToId, emotesIn(text))
         inputArea.text = ""
         rustrx.setDraft(roomId, "")
         replyToId = ""
@@ -177,6 +201,13 @@ Page {
         target: rustrx
         onPaginated: if (roomId === page.roomId) { paginating = false; page.atStart = atStart }
         onTyping: if (roomId === page.roomId) page.typingNames = names
+        onImagePacks: if (roomId === page.roomId) page.packs = packs
+        onEmoteAdded: {
+            //: %1 the shortcode a custom emoji got in the user's own pack
+            //% "Added :%1: to your emoji"
+            Notices.show(qsTrId("rustrx-no-emote-added").arg(shortcode), Notice.Short)
+            rustrx.command({ cmd: "image_packs", room_id: page.roomId })
+        }
     }
 
     // the room's picture beside its name in the header, kept current with
@@ -320,11 +351,15 @@ Page {
                     })
                 }
             }
-            // closest to the edge, the one used most; stickers join it later
+            // closest to the edge, the one used most; with an empty message
+            // and a pack with stickers, the stickers too
             MenuItem {
+                readonly property bool withStickers: page.hasStickers && page.inputArea && page.inputArea.text.trim().length === 0
+                //% "Stickers and emoji"
+                text: withStickers ? qsTrId("rustrx-me-stickers-emoji")
                 //% "Insert emoji"
-                text: qsTrId("rustrx-me-insert-emoji")
-                onClicked: page.showEmoji("insert", "")
+                                   : qsTrId("rustrx-me-insert-emoji")
+                onClicked: { emojiPanel.stickers = withStickers; page.showEmoji("insert", "") }
             }
         }
 
@@ -536,6 +571,19 @@ Page {
     property string reactMoreText
     EmojiPanel {
         id: emojiPanel
+        packs: page.packs
+        // a pack's picture: a reaction (its address the key), a sticker sent
+        // (an empty message, and the image is one), else :shortcode: in the text
+        onPickedImage: {
+            if (mode === "react")
+                rustrx.command({ cmd: "react", room_id: page.roomId, event_id: eventId, key: image.url })
+            else if (stickers && image.sticker && (!page.inputArea || page.inputArea.text.trim().length === 0)) {
+                rustrx.command({ cmd: "send_sticker", room_id: page.roomId, url: image.url,
+                                 body: image.body || image.shortcode, info: image.info })
+                emojiPanel.open = false
+            } else
+                page.insertEmoji(":" + image.shortcode + ":")
+        }
         onTextReaction: page.startTextReaction(eventId, page.reactMoreText)
         onPicked: {
             if (mode === "react")

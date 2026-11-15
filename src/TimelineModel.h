@@ -67,6 +67,7 @@ private:
     QVariantList renderReactions(const QVariantList &reactions) const;
     void askEmotes(const QVariantMap &item);
     bool usesEmote(const QVariantMap &item, const QString &mxc) const;
+    QVariantList emotesOf(const QVariantMap &item) const;
 
     QVariantList m_items;
     QHash<QString, QString> m_media;

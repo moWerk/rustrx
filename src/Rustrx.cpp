@@ -532,8 +532,11 @@ void Rustrx::eventCallback(void *ctx, const char *json)
 void Rustrx::command(const QVariantMap &cmd)
 {
     // the emote pictures live in the media folder
-    if (cmd.value("cmd").toString() == QLatin1String("clear_media"))
+    if (cmd.value("cmd").toString() == QLatin1String("clear_media")) {
         m_timeline->clearEmotes();
+        m_emotePaths.clear();
+        m_emotesAsked.clear();
+    }
     const QByteArray json = QJsonDocument(QJsonObject::fromVariantMap(cmd)).toJson(QJsonDocument::Compact);
     const int rc = rustrx_command(json.constData());
     // one line per command in the journal; the password is not part of the message
@@ -585,12 +588,27 @@ void Rustrx::closeRoom()
     emit openRoomChanged();
 }
 
-void Rustrx::sendText(const QString &roomId, const QString &body, const QString &replyTo)
+void Rustrx::sendText(const QString &roomId, const QString &body, const QString &replyTo,
+                      const QVariantMap &emotes)
 {
     QVariantMap cmd{{"cmd", "send_text"}, {"room_id", roomId}, {"body", body}};
     if (!replyTo.isEmpty())
         cmd.insert("reply_to", replyTo);
+    if (!emotes.isEmpty())
+        cmd.insert("emotes", emotes);
     command(cmd);
+}
+
+QString Rustrx::emotePath(const QString &mxc)
+{
+    const QString path = m_emotePaths.value(mxc);
+    if (!path.isEmpty())
+        return QStringLiteral("file://") + path;
+    if (mxc.startsWith(QLatin1String("mxc://")) && !m_emotesAsked.contains(mxc)) {
+        m_emotesAsked.insert(mxc);
+        command({ { "cmd", "fetch_emote" }, { "mxc", mxc } });
+    }
+    return QString();
 }
 
 QString Rustrx::prepareAvatar(const QString &path, const QString &cmd, QSize *size)
@@ -940,7 +958,14 @@ void Rustrx::handleEvent(const QVariantMap &ev)
             m_timeline->setMediaPath(ev.value("event_id").toString(), ev.value("thumb").toBool(),
                                      ev.value("path").toString());
     } else if (type == QLatin1String("emote")) {
-        m_timeline->setEmotePath(ev.value("mxc").toString(), ev.value("path").toString());
+        const QString mxc = ev.value("mxc").toString(), path = ev.value("path").toString();
+        m_timeline->setEmotePath(mxc, path);
+        m_emotePaths.insert(mxc, path);
+        emit emoteReady(mxc, QStringLiteral("file://") + path);
+    } else if (type == QLatin1String("image_packs")) {
+        emit imagePacks(ev.value("room_id").toString(), ev.value("packs").toList());
+    } else if (type == QLatin1String("emote_added")) {
+        emit emoteAdded(ev.value("shortcode").toString());
     } else if (type == QLatin1String("open_url")) {
         emit browserUrl(ev.value("url").toString());
     } else if (type == QLatin1String("identity_reset_approval")) {
