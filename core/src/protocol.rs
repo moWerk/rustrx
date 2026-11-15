@@ -51,6 +51,9 @@ pub(crate) enum Command {
     /// The picture (or its thumbnail) of an event, into the media cache;
     /// with dest_dir a copy for other apps. Answered by "media".
     GetMedia { room_id: String, event_id: String, thumb: Option<bool>, dest_dir: Option<String> },
+    /// A custom emoji's picture (an mxc:// address from a message or a
+    /// reaction), small, into the emote cache. Answered by "emote".
+    FetchEmote { mxc: String },
 
     // --- rooms ---
     GetNotificationMode { room_id: String },

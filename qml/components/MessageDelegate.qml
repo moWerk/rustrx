@@ -34,7 +34,7 @@ ListItem {
     signal edit(string eventId, string text)
     signal resend(string txnId, string text)
     // "more" in the reactions: the room's emoji picker, for this message
-    signal reactMore(string eventId)
+    signal reactMore(string eventId, string text)
 
     readonly property bool isEvent: model.kind === "event"
     readonly property bool own: model.is_own === true
@@ -62,6 +62,11 @@ ListItem {
     }
     readonly property bool canAct: isEvent && msgType !== "membership" && msgType !== "state" && msgType !== "redacted"
     // the reactions offered in the menu; the first stays where it always was
+
+    // a reaction's key as shown: text reactions can be long
+    function reactionText(key) {
+        return key.length > 24 ? key.substring(0, 23) + "\u2026" : key
+    }
 
     // plain bodies: escape, link the addresses, keep the line breaks
     function linkify(t) {
@@ -421,10 +426,29 @@ ListItem {
                         Repeater {
                             model: reactionList
                             // a tap toggles our own reaction with this key
-                            Label {
-                                text: modelData.key + " " + modelData.count
-                                font.pixelSize: Theme.fontSizeExtraSmall
-                                color: modelData.me ? Theme.highlightColor : Theme.secondaryColor
+                            Item {
+                                width: chipRow.width
+                                height: chipRow.height
+                                Row {
+                                    id: chipRow
+                                    spacing: Theme.paddingSmall / 2
+                                    // a custom emoji (its mxc address is the key)
+                                    Image {
+                                        visible: modelData.emote !== undefined
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        height: visible ? chip.height : 0
+                                        width: height
+                                        fillMode: Image.PreserveAspectFit
+                                        sourceSize.height: chip.height
+                                        source: modelData.emote || ""
+                                    }
+                                    Label {
+                                        id: chip
+                                        text: (modelData.emote !== undefined ? "" : reactionText(modelData.key) + " ") + modelData.count
+                                        font.pixelSize: Theme.fontSizeExtraSmall
+                                        color: modelData.me ? Theme.highlightColor : Theme.secondaryColor
+                                    }
+                                }
                                 MouseArea {
                                     anchors { fill: parent; margins: -Theme.paddingSmall }
                                     onClicked: rustrx.command({ cmd: "react", room_id: roomId, event_id: msg.eventId, key: modelData.key })
@@ -439,7 +463,10 @@ ListItem {
                         spacing: Theme.paddingMedium
                         Repeater {
                             model: reactionList
-                            Label { text: modelData.key + " " + modelData.count; font.pixelSize: Theme.fontSizeExtraSmall }
+                            Label {
+                                text: (modelData.emote !== undefined ? "\u2B1C" : reactionText(modelData.key)) + " " + modelData.count
+                                font.pixelSize: Theme.fontSizeExtraSmall
+                            }
                         }
                     }
 
@@ -509,8 +536,9 @@ ListItem {
                     icon.source: "image://theme/icon-m-add"
                     onClicked: {
                         var id = msg.eventId
+                        var t = (model.sender_name || model.sender) + ": " + (model.body || "")
                         msg.closeMenu()
-                        msg.reactMore(id)
+                        msg.reactMore(id, t)
                     }
                 }
             }

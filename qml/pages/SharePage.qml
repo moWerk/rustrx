@@ -37,7 +37,9 @@ Page {
     SilicaListView {
         id: list
         anchors.fill: parent
-        model: rustrx.rooms
+        // every joined room and chat, whatever the main page's filter
+        // (rustrx.rooms left out direct chats and a note to self)
+        model: rustrx.targets
 
         header: Column {
             width: list.width
@@ -55,7 +57,6 @@ Page {
         delegate: BackgroundItem {
             width: list.width
             height: Theme.itemSizeMedium
-            visible: model.state !== "invited"
             onClicked: page.sendTo(model.room_id, model.name)
             Label {
                 x: Theme.horizontalPageMargin

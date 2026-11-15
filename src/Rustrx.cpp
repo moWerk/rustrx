@@ -204,9 +204,13 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     , m_people(new RoomModel(this))
     , m_favourites(new RoomModel(this))
     , m_all(new RoomModel(this))
+    , m_targets(new RoomModel(this))
     , m_timeline(new TimelineModel(this))
 {
     s_instance = this;
+    connect(m_timeline, &TimelineModel::emoteWanted, this, [this](const QString &mxc) {
+        command({ { "cmd", "fetch_emote" }, { "mxc", mxc } });
+    });
     m_since.start();
     QDir().mkpath(dataDir);
     // the store's key from sailfish-secrets, if it works here; without it the
@@ -569,6 +573,9 @@ QString Rustrx::dev(const QString &json)
 
 void Rustrx::command(const QVariantMap &cmd)
 {
+    // the emote pictures live in the media folder
+    if (cmd.value("cmd").toString() == QLatin1String("clear_media"))
+        m_timeline->clearEmotes();
     const QByteArray json = QJsonDocument(QJsonObject::fromVariantMap(cmd)).toJson(QJsonDocument::Compact);
     const int rc = rustrx_command(json.constData());
     // one line per command in the journal; the password is not part of the message
@@ -791,7 +798,7 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
 {
     if (&rooms != &m_lastRooms)
         m_lastRooms = rooms;
-    QVariantList groups, dms, favs, everything;
+    QVariantList groups, dms, favs, everything, targets;
     const bool hideMutedOn = hideMuted();
     int unread = 0, chats = 0;
     m_roomsById.clear();
@@ -827,6 +834,8 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
             // and people; joining the two lists would put every room first
             everything.append(r);
         }
+        if (!invited)
+            targets.append(r);
         if (shown && fav && !invited) {
             // the Favs tab mixes rooms and people, by activity, no sections
             QVariantMap f = r;
@@ -856,6 +865,11 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
             if (!notified.contains(id))
                 emit invited(id, r.value("name").toString(), r.value("inviter").toString(), r.value("is_dm").toBool());
         }
+        // an invitation answered some other way (another client, a join
+        // outside the list): its banner goes
+        for (const QString &id : notified)
+            if (!open.contains(id))
+                emit inviteGone(id);
         if (open != notified)
             settings.setValue("invitesNotified", open);
     }
@@ -868,6 +882,8 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
     // rooms and people together, in the same order
     sortRooms(everything);
     m_all->setRooms(everything);
+    sortRooms(targets);
+    m_targets->setRooms(targets);
     if (unread != m_unreadTotal || chats != m_unreadChats) {
         m_unreadTotal = unread;
         m_unreadChats = chats;
@@ -929,6 +945,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_people->setRooms({});
         m_favourites->setRooms({});
         m_all->setRooms({});
+        m_targets->setRooms({});
         m_notificationCounts.clear();
         m_roomsById.clear();
         m_homeserver.clear();
@@ -964,6 +981,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         else
             m_timeline->setMediaPath(ev.value("event_id").toString(), ev.value("thumb").toBool(),
                                      ev.value("path").toString());
+    } else if (type == QLatin1String("emote")) {
+        m_timeline->setEmotePath(ev.value("mxc").toString(), ev.value("path").toString());
     } else if (type == QLatin1String("open_url")) {
         emit browserUrl(ev.value("url").toString());
     } else if (type == QLatin1String("identity_reset_approval")) {

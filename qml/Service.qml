@@ -46,6 +46,7 @@ Item {
             service.notify(roomId, roomName, count)
         }
         onInvited: service.notifyInvite(roomId, roomName, inviter, direct)
+        onInviteGone: service.closeInvite(roomId)
         onUnreadChanged: if (rustrx.standIn) console.log("stand-in: unread", rustrx.unreadTotal, "in", rustrx.unreadChats)
         onOpenRoomChanged: if (rustrx.openRoomId.length) service.closeNotification(rustrx.openRoomId)
         onQuitRequested: standInNote.close()
@@ -100,6 +101,19 @@ Item {
         n.itemCount = 1
         n.publish()
     }
+    // an invitation answered some other way: its banner goes, also one an
+    // earlier Rustrx process posted (the app and the stand-in take turns)
+    Notification { id: lookup; appName: "Rustrx" }
+    function closeInvite(roomId) {
+        closeNotification(roomId)
+        var all = lookup.notifications()
+        for (var i = 0; i < all.length; i++) {
+            var actions = all[i].remoteActions
+            if (actions && actions.length && actions[0].arguments && actions[0].arguments[0] === roomId)
+                all[i].close()
+        }
+    }
+
     function closeNotification(roomId) {
         delete roomPending[roomId]
         var n = roomNotifications[roomId]

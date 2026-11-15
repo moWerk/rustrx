@@ -45,6 +45,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `mark_read` | `room_id`, `private?` (a private receipt) | `rooms` |
 | `typing` | `room_id`, `typing?` | |
 | `get_media` | `room_id`, `event_id`, `thumb?`, `dest_dir?` (a copy for other apps) | `media` |
+| `fetch_emote` | `mxc` (a custom emoji's address) | `emote` |
 
 ### Rooms
 | cmd | fields | answered by |
@@ -99,6 +100,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `paginated` | `room_id`, `at_start` |
 | `typing` | `room_id`, `names` (others typing) |
 | `media` | `room_id`, `event_id`, `thumb`, `exported`, `path` |
+| `emote` | `mxc`, `path` |
 | `members` | `room_id`, `members`: `{user_id, name, power}` |
 | `notification_mode` | `room_id`, `mode` (`all`, `mentions`, `mute`, `default`) |
 | `joined` | `room_id` |
