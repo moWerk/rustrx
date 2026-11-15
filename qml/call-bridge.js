@@ -7,6 +7,58 @@
  */
 const ORIGIN = "https://call.element.io";
 
+// What Element Call needs and Gecko 115 lacks, defined in the page before
+// its own scripts run. Intl.Segmenter came with Firefox 125; this one cuts
+// graphemes by code point and words at spaces, which is what a call page
+// needs it for (initials, trimming names).
+const POLYFILL = "(" + function () {
+    if (typeof Intl === "undefined" || Intl.Segmenter) return;
+    function Segmenter(locale, options) {
+        this.granularity = (options && options.granularity) || "grapheme";
+        this.locale = Array.isArray(locale) ? locale[0] : (locale || "en");
+    }
+    Segmenter.prototype.resolvedOptions = function () {
+        return { locale: this.locale, granularity: this.granularity };
+    };
+    Segmenter.prototype.segment = function (input) {
+        input = String(input);
+        var parts = [], i = 0;
+        if (this.granularity === "word" || this.granularity === "sentence") {
+            var re = this.granularity === "word" ? /(\s+|[^\s\w]|\w+)/gu : /[^.!?]+[.!?]*\s*/g, m;
+            while ((m = re.exec(input)) !== null) {
+                if (m[0].length === 0) { re.lastIndex++; continue; }
+                parts.push({ segment: m[0], index: m.index, input: input, isWordLike: /\w/u.test(m[0]) });
+            }
+        } else {
+            Array.from(input).forEach(function (ch) {
+                parts.push({ segment: ch, index: i, input: input });
+                i += ch.length;
+            });
+        }
+        var segments = {
+            containing: function (index) {
+                for (var k = 0; k < parts.length; k++)
+                    if (index >= parts[k].index && index < parts[k].index + parts[k].segment.length) return parts[k];
+                return undefined;
+            }
+        };
+        segments[Symbol.iterator] = function () { return parts[Symbol.iterator](); };
+        return segments;
+    };
+    Segmenter.supportedLocalesOf = function (l) { return Array.isArray(l) ? l : (l ? [l] : []); };
+    Object.defineProperty(Intl, "Segmenter", { value: Segmenter, writable: true, configurable: true });
+} + ")();";
+
+addEventListener("DOMWindowCreated", function (e) {
+    var win = e.target && e.target.defaultView;
+    if (!win || !win.location || win.location.origin !== ORIGIN) return;
+    try {
+        win.wrappedJSObject.eval(POLYFILL);
+    } catch (err) {
+        try { sendAsyncMessage("rustrx:console", { level: "bridge", text: "polyfill: " + err }); } catch (e2) {}
+    }
+}, true);
+
 addEventListener("message", function (e) {
     if (!content || e.origin !== ORIGIN) return;
     var m;

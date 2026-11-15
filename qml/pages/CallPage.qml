@@ -34,23 +34,58 @@ WebViewPage {
     Component.onCompleted: {
         // per-participant encryption needs RTCRtpScriptTransform; Gecko 115 has it behind a pref
         WebEngineSettings.setPreference("media.peerconnection.scripttransform.enabled", true)
+        // a call plays the others' audio without a tap first
+        WebEngineSettings.setPreference("media.autoplay.default", 0)
+        WebEngineSettings.setPreference("media.autoplay.blocking_policy", 0)
     }
     Component.onDestruction: rustrx.command({ cmd: "call_end" })
+
+    // Element Call's requests for the client itself rather than the Matrix
+    // side (Element X answers them in its UI): answered here, the SDK's
+    // driver does not know them and answered with an error
+    readonly property var clientActions: ["io.element.join", "io.element.device_mute", "set_always_on_screen",
+        "io.element.tile_layout", "io.element.spotlight", "io.element.close", "im.vector.hangup"]
+    function answerLocally(json) {
+        var m
+        try { m = JSON.parse(json) } catch (e) { return false }
+        if (m.api !== "fromWidget" || m.response !== undefined || clientActions.indexOf(m.action) < 0)
+            return false
+        m.response = {}
+        web.sendAsyncMessage("rustrx:toWidget", { data: JSON.stringify(m) })
+        return true
+    }
+
+    // the widget API's flow for the debug log: who sent which action, a
+    // request or an answer; never the contents (keys and tokens travel there)
+    function trace(from, json) {
+        try {
+            var m = JSON.parse(json)
+            console.log("call widget", from + ":", m.api, m.action, m.response !== undefined ? "answer" : "request",
+                        m.response && m.response.error ? "error " + JSON.stringify(m.response.error).slice(0, 200) : "")
+        } catch (e) {
+            console.log("call widget", from + ": unreadable message")
+        }
+    }
 
     WebView {
         id: web
         anchors.fill: parent
-        url: page.url
         onLoadingChanged: console.log("call page loading", loading, "progress", loadProgress, url.toString().split("?")[0])
         onViewInitialized: {
             web.loadFrameScript(Qt.resolvedUrl("../call-bridge.js"))
             web.addMessageListener("rustrx:fromWidget")
             web.addMessageListener("rustrx:close")
             web.addMessageListener("rustrx:console")
+            // only now: the frame script puts its polyfill into the page
+            // before Element Call's scripts run
+            web.url = page.url
         }
         onRecvAsyncMessage: {
-            if (message === "rustrx:fromWidget")
-                rustrx.command({ cmd: "call_message", data: data.data })
+            if (message === "rustrx:fromWidget") {
+                page.trace("page", data.data)
+                if (!page.answerLocally(data.data))
+                    rustrx.command({ cmd: "call_message", data: data.data })
+            }
             else if (message === "rustrx:console")
                 console.log("call page", data.level + ":", data.text)
             else if (message === "rustrx:close" && page.status === PageStatus.Active)
@@ -60,7 +95,10 @@ WebViewPage {
 
     Connections {
         target: rustrx
-        onCallMessage: web.sendAsyncMessage("rustrx:toWidget", { data: data })
+        onCallMessage: {
+            page.trace("driver", data)
+            web.sendAsyncMessage("rustrx:toWidget", { data: data })
+        }
         onCallEnded: if (roomId === page.roomId && page.status === PageStatus.Active) pageStack.pop()
     }
 }

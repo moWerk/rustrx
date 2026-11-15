@@ -14,8 +14,10 @@ use matrix_sdk::widget::{
     WidgetDriverHandle, WidgetSettings,
 };
 
-/// The hosted Element Call; the embedded package could be bundled later.
-const ELEMENT_CALL_URL: &str = "https://call.element.io";
+/// The hosted Element Call, at its room route: the bare address is its
+/// own start page ("Name of call") and ignores the widget's room. The
+/// embedded package could be bundled later.
+const ELEMENT_CALL_URL: &str = "https://call.element.io/room";
 const WIDGET_ID: &str = "rustrx-element-call";
 
 pub(crate) struct CallSession {

@@ -1,6 +1,7 @@
 # Calls in Rustrx: plan and spike
 
-Status: spike on branch `calls-spike`, built, not yet run on a device.
+Status: spike on branch `calls-spike`. First call on 2026-11-15, 01:58, on the
+Jolla Phone 2026: Element Call joined a room, camera and microphone working.
 
 ## How Matrix calls work today
 
@@ -72,6 +73,37 @@ the WebView route is the realistic one.
 5. **Lifecycle.** A call while the screen locks or the app goes to the
    cover; the stand-in (background mode) must not tear the window down
    during a call (see the lipstick crash notes).
+
+## First run on the Jolla Phone 2026 (2026-11-15)
+
+1. **Element Call loads and joins**, after three fixes:
+   - Gecko 115 has no `Intl.Segmenter` (Firefox 125): Element Call died
+     at start. The frame script defines a small one in the page before
+     its scripts run (`call-bridge.js`).
+   - The hosted Element Call must be opened at `/room`: at its bare
+     address it shows its own start page ("Name of call").
+   - `io.element.join`, `io.element.device_mute`, `set_always_on_screen`
+     and the other client actions are answered by the page, not the
+     SDK's driver (which answered them with an error), as Element X does.
+   The handshake then runs through (versions, capabilities, OpenID, the
+   call membership event, LiveKit, a WebRTC peer connection).
+2. **Microphone and camera**: Jolla's WebRTC permission dialog comes up
+   in the sandboxed app; the microphone is listed, the camera row is
+   empty (no device name), but the camera works: the author saw himself
+   in the call. "Remember for this site" spares the next prompts.
+3. Encryption: still open (the first call was in an unencrypted room).
+4. Audio: autoplay was blocked ("AudioContext was prevented from
+   starting"); the page now allows it (`media.autoplay.*`). Routing still
+   open.
+5. Lifecycle: still open.
+
+Server notes: matrix.org's LiveKit service refuses one optional
+cross-origin request (`delegate_delayed_leave`); Element Call goes on.
+
+Test tooling: `Rustrx::dev()` over D-Bus (see `src/Rustrx.h`), enabled
+by a file `dev-commands` in the data folder; `call_start` takes
+`skip_lobby`. The page logs the widget API's flow (actions only) and
+Element Call's errors to the debug log.
 
 ## After the spike, if 1-3 work
 
