@@ -384,34 +384,6 @@ void Rustrx::setDownscaleImages(bool on)
     emit settingsChanged();
 }
 
-QString Rustrx::sortOrder() const
-{
-    return QSettings().value("sortOrder", QStringLiteral("activity")).toString();
-}
-
-void Rustrx::setSortOrder(const QString &order)
-{
-    if (order == sortOrder())
-        return;
-    QSettings().setValue("sortOrder", order);
-    emit settingsChanged();
-    distributeRooms(m_lastRooms);
-}
-
-bool Rustrx::favsOnTop() const
-{
-    return QSettings().value("favsOnTop", false).toBool();
-}
-
-void Rustrx::setFavsOnTop(bool on)
-{
-    if (on == favsOnTop())
-        return;
-    QSettings().setValue("favsOnTop", on);
-    emit settingsChanged();
-    distributeRooms(m_lastRooms);
-}
-
 void Rustrx::setRoomFilter(const QString &text)
 {
     const QString t = text.trimmed();
@@ -451,43 +423,81 @@ QString Rustrx::shareableLog()
     return DebugLog::collect(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation), header);
 }
 
-bool Rustrx::hideMuted() const
-{
-    return QSettings().value("hideMuted", false).toBool();
-}
-
-void Rustrx::setHideMuted(bool on)
-{
-    if (on == hideMuted())
-        return;
-    QSettings().setValue("hideMuted", on);
-    emit settingsChanged();
-    distributeRooms(m_lastRooms);
-}
-
-bool Rustrx::lowLast() const
-{
-    return QSettings().value("lowLast", true).toBool();
-}
-
-void Rustrx::setLowLast(bool on)
-{
-    if (on == lowLast())
-        return;
-    QSettings().setValue("lowLast", on);
-    emit settingsChanged();
-    distributeRooms(m_lastRooms);
-}
-
 // The core sends the rooms by activity. Invitations stay on top; then, if
 // switched on, favourites first and low priority rooms last; within that,
 // the most unread first or by name, else the activity order stays (the sort
 // is stable).
-void Rustrx::sortRooms(QVariantList &rooms) const
+QVariant Rustrx::tabValue(const QString &kind, const QString &key, const QVariant &fallback) const
 {
-    const QString order = sortOrder();
-    const bool favsFirst = favsOnTop();
-    const bool lowAtEnd = lowLast();
+    QSettings settings;
+    const QString own = QStringLiteral("tabs/") + kind + QLatin1Char('/') + key;
+    return settings.contains(own) ? settings.value(own) : settings.value(key, fallback);
+}
+
+void Rustrx::setTabValue(const QString &key, const QVariant &value)
+{
+    QSettings().setValue(QStringLiteral("tabs/") + m_currentTab + QLatin1Char('/') + key, value);
+    emit settingsChanged();
+    distributeRooms(m_lastRooms);
+}
+
+void Rustrx::setCurrentTab(const QString &kind)
+{
+    if (kind.isEmpty() || kind == m_currentTab)
+        return;
+    m_currentTab = kind;
+    emit settingsChanged();
+}
+
+QString Rustrx::sortOrder() const
+{
+    return tabValue(m_currentTab, QStringLiteral("sortOrder"), QStringLiteral("activity")).toString();
+}
+
+void Rustrx::setSortOrder(const QString &order)
+{
+    if (order != sortOrder())
+        setTabValue(QStringLiteral("sortOrder"), order);
+}
+
+bool Rustrx::favsOnTop() const
+{
+    return tabValue(m_currentTab, QStringLiteral("favsOnTop"), false).toBool();
+}
+
+void Rustrx::setFavsOnTop(bool on)
+{
+    if (on != favsOnTop())
+        setTabValue(QStringLiteral("favsOnTop"), on);
+}
+
+bool Rustrx::hideMuted() const
+{
+    return tabValue(m_currentTab, QStringLiteral("hideMuted"), false).toBool();
+}
+
+void Rustrx::setHideMuted(bool on)
+{
+    if (on != hideMuted())
+        setTabValue(QStringLiteral("hideMuted"), on);
+}
+
+bool Rustrx::lowLast() const
+{
+    return tabValue(m_currentTab, QStringLiteral("lowLast"), true).toBool();
+}
+
+void Rustrx::setLowLast(bool on)
+{
+    if (on != lowLast())
+        setTabValue(QStringLiteral("lowLast"), on);
+}
+
+void Rustrx::sortRooms(QVariantList &rooms, const QString &kind) const
+{
+    const QString order = tabValue(kind, QStringLiteral("sortOrder"), QStringLiteral("activity")).toString();
+    const bool favsFirst = tabValue(kind, QStringLiteral("favsOnTop"), false).toBool();
+    const bool lowAtEnd = tabValue(kind, QStringLiteral("lowLast"), true).toBool();
     // the number the badge shows: notifications, else unread messages
     const auto unread = [](const QVariantMap &r) {
         const int n = r.value("notifications").toInt();
@@ -897,7 +907,9 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
     if (&rooms != &m_lastRooms)
         m_lastRooms = rooms;
     QVariantList groups, dms, favs, everything, targets, spaces;
-    const bool hideMutedOn = hideMuted();
+    // "Hide muted" is each tab's own
+    const auto hides = [this](const char *kind) { return tabValue(QLatin1String(kind), QStringLiteral("hideMuted"), false).toBool(); };
+    const bool hideRooms = hides("rooms"), hidePeople = hides("people"), hideFavs = hides("favs"), hideAll = hides("all");
     int unread = 0, chats = 0;
     m_roomsById.clear();
     for (const QVariant &v : rooms) {
@@ -925,23 +937,26 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
         }
         // the search in the filter menu: only rooms whose name or address
         // contains it (the unread counts above still count every room)
-        const bool shown = (m_roomFilter.isEmpty()
+        const bool shown = m_roomFilter.isEmpty()
                 || r.value("name").toString().contains(m_roomFilter, Qt::CaseInsensitive)
-                || r.value("alias").toString().contains(m_roomFilter, Qt::CaseInsensitive))
-                // "Hide muted" in the filter menu (invitations always show)
-                && !(hideMutedOn && r.value("muted").toBool() && !invited);
+                || r.value("alias").toString().contains(m_roomFilter, Qt::CaseInsensitive);
+        // "Hide muted" in the filter menu, as the tab has it (invitations always show)
+        const bool mutedRoom = r.value("muted").toBool() && !invited;
         if (shown) {
-            if (r.value("is_dm").toBool())
-                dms.append(r);
-            else
+            if (r.value("is_dm").toBool()) {
+                if (!(mutedRoom && hidePeople))
+                    dms.append(r);
+            } else if (!(mutedRoom && hideRooms)) {
                 groups.append(r);
+            }
             // the one list keeps the core's order (by activity) across rooms
             // and people; joining the two lists would put every room first
-            everything.append(r);
+            if (!(mutedRoom && hideAll))
+                everything.append(r);
         }
         if (!invited)
             targets.append(r);
-        if (shown && fav && !invited) {
+        if (shown && fav && !invited && !(mutedRoom && hideFavs)) {
             // the Favs tab mixes rooms and people, by activity, no sections
             QVariantMap f = r;
             f.insert("section", QString());
@@ -978,18 +993,18 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
         if (open != notified)
             settings.setValue("invitesNotified", open);
     }
-    sortRooms(groups);
-    sortRooms(dms);
-    sortRooms(favs);
+    sortRooms(groups, QStringLiteral("rooms"));
+    sortRooms(dms, QStringLiteral("people"));
+    sortRooms(favs, QStringLiteral("favs"));
     m_rooms->setRooms(groups);
     m_people->setRooms(dms);
     m_favourites->setRooms(favs);
     // rooms and people together, in the same order
-    sortRooms(everything);
+    sortRooms(everything, QStringLiteral("all"));
     m_all->setRooms(everything);
-    sortRooms(spaces);
+    sortRooms(spaces, QStringLiteral("spaces"));
     m_spaces->setRooms(spaces);
-    sortRooms(targets);
+    sortRooms(targets, QStringLiteral("rooms"));
     m_targets->setRooms(targets);
     if (unread != m_unreadTotal || chats != m_unreadChats) {
         m_unreadTotal = unread;

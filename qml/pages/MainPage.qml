@@ -128,6 +128,9 @@ Page {
             for (var j = 0; j < kinds.length; j++) tabModel.append({ kind: kinds[j] })
         }
         tabs.currentIndex = tabIndex(wanted)
+        // the index may not have moved (the first tab): say which it is
+        if (tabs.currentIndex >= 0 && tabs.currentIndex < tabModel.count)
+            rustrx.currentTab = tabModel.get(tabs.currentIndex).kind
         lastTab.value = wanted
     }
     Connections {
@@ -168,7 +171,12 @@ Page {
         anchors.fill: parent
         model: tabModel
         currentIndex: 0
-        onCurrentIndexChanged: if (currentIndex >= 0 && currentIndex < tabModel.count) lastTab.value = tabModel.get(currentIndex).kind
+        onCurrentIndexChanged: {
+            if (currentIndex < 0 || currentIndex >= tabModel.count) return
+            lastTab.value = tabModel.get(currentIndex).kind
+            // the filter menu shows and changes this tab's order and switches
+            rustrx.currentTab = tabModel.get(currentIndex).kind
+        }
 
         // the tabs, and at their right a filter icon that opens the sort
         // order below them

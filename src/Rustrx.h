@@ -72,6 +72,8 @@ class Rustrx : public QObject
     Q_PROPERTY(QString coreVersion READ coreVersion CONSTANT)
     Q_PROPERTY(bool downscaleImages READ downscaleImages WRITE setDownscaleImages NOTIFY settingsChanged)
     // the order of the room lists: "activity", "unread" (unread first) or "name"
+    // the tab the filter menu works on: its order and switches are its own
+    Q_PROPERTY(QString currentTab READ currentTab WRITE setCurrentTab NOTIFY settingsChanged)
     Q_PROPERTY(QString sortOrder READ sortOrder WRITE setSortOrder NOTIFY settingsChanged)
     // with any order: favourites first; low priority rooms last
     Q_PROPERTY(bool favsOnTop READ favsOnTop WRITE setFavsOnTop NOTIFY settingsChanged)
@@ -125,6 +127,8 @@ public:
     QString coreVersion() const;
     bool downscaleImages() const;
     void setDownscaleImages(bool on);
+    QString currentTab() const { return m_currentTab; }
+    void setCurrentTab(const QString &kind);
     QString sortOrder() const;
     void setSortOrder(const QString &order);
     bool favsOnTop() const;
@@ -365,7 +369,11 @@ private slots:
 private:
     static void eventCallback(void *ctx, const char *json);
     void distributeRooms(const QVariantList &rooms);
-    void sortRooms(QVariantList &rooms) const;
+    // a tab's ("rooms", "people", "favs", "all", "spaces") own setting; one
+    // never set starts from the setting all tabs shared before
+    QVariant tabValue(const QString &kind, const QString &key, const QVariant &fallback) const;
+    void setTabValue(const QString &key, const QVariant &value);
+    void sortRooms(QVariantList &rooms, const QString &kind) const;
     QVariantList m_lastRooms;   // as the core sent them, for a new order
     // an avatar picture upright, at most 512 px, in the cache; its path and size
     QString prepareAvatar(const QString &path, const QString &cmd, QSize *size);
@@ -386,6 +394,7 @@ private:
     QString m_openRoomId;
     QString m_pendingRoom;
     QString m_pendingCall;
+    QString m_currentTab = QStringLiteral("rooms");
     bool m_pendingKnocks = false;
     // per room: { room_name, is_space, requests }
     QMap<QString, QVariantMap> m_knocks;
