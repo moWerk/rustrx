@@ -136,6 +136,11 @@ pub(crate) enum Command {
     /// A widget API postMessage from the page, passed to the driver as is.
     CallMessage { data: String },
     CallEnd,
+    /// A request to join a room or space: accept (invite), or decline
+    /// (kick; `ban` keeps them out).
+    KnockAnswer { room_id: String, user_id: String, accept: bool, ban: Option<bool>, reason: Option<String> },
+    /// Requests looked at: not notified again.
+    KnockSeen { room_id: String, user_ids: Vec<String> },
     /// No to an incoming call's ring (`event_id` of the ring).
     CallDecline { room_id: String, event_id: String },
 }

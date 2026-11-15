@@ -410,6 +410,26 @@ Page {
 
                     Item { width: 1; height: tabs.tabBarHeight + Theme.paddingMedium }
 
+                    // people asking to join a room or space we may invite to
+                    BackgroundItem {
+                        width: parent.width
+                        height: visible ? Theme.itemSizeSmall : 0
+                        visible: rustrx.knockRequests.length > 0
+                        onClicked: pageStack.push(Qt.resolvedUrl("KnockPage.qml"))
+
+                        Label {
+                            x: Theme.horizontalPageMargin
+                            width: parent.width - 2 * x
+                            anchors.verticalCenter: parent.verticalCenter
+                            truncationMode: TruncationMode.Fade
+                            color: Theme.highlightColor
+                            font.pixelSize: Theme.fontSizeSmall
+                            //: %n open requests to join rooms or spaces
+                            //% "%n requests to join. Tap to answer."
+                            text: qsTrId("rustrx-la-banner-knocks", rustrx.knockRequests.length)
+                        }
+                    }
+
                     // one line while this device cannot read encrypted rooms
                     BackgroundItem {
                         width: parent.width

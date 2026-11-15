@@ -82,6 +82,7 @@ impl Core {
         tracing::info!(ms = t.elapsed().as_millis() as u64, rooms = cache.len(), "startup: first room list");
         self.emit(json!({"ev": "rooms", "rooms": sorted_rooms(cache.values().cloned().collect())}));
         self.listen_latest(&client).await;
+        self.watch_knocks(&client).await;
         let mut avatars_new = self.fetch_avatars(&client).await;
         let mut last_full = std::time::Instant::now();
         loop {
@@ -128,6 +129,7 @@ impl Core {
             self.emit(json!({"ev": "rooms", "rooms": sorted_rooms(cache.values().cloned().collect())}));
             Self::log_counts(&client);
             self.listen_latest(&client).await;
+            self.watch_knocks(&client).await;
             avatars_new = self.fetch_avatars(&client).await;
         }
     }

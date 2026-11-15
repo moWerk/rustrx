@@ -48,6 +48,8 @@ Item {
         onInvited: service.notifyInvite(roomId, roomName, inviter, direct)
         onInviteGone: service.closeInvite(roomId)
         onCallRing: service.ringCall(roomId, roomName, senderName, ring, eventId, expiresMs)
+        onNewKnock: service.notifyKnock(roomName, isSpace, name, reason)
+        onKnockRequestsChanged: if (rustrx.knockRequests.length === 0) knockNote.close()
         onCallAnswered: service.stopRinging(roomId)
         onUnreadChanged: if (rustrx.standIn) console.log("stand-in: unread", rustrx.unreadTotal, "in", rustrx.unreadChats)
         onOpenRoomChanged: if (rustrx.openRoomId.length) { service.closeNotification(rustrx.openRoomId); service.stopRinging(rustrx.openRoomId) }
@@ -210,6 +212,38 @@ Item {
                 "arguments": [ roomId, eventId ]
             }]
         }
+    }
+
+    // requests to join: one notification, the latest request in it, a tap
+    // opens the list
+    function notifyKnock(roomName, isSpace, name, reason) {
+        //: notification title for a request to join
+        //% "Request to join"
+        knockNote.summary = qsTrId("rustrx-no-knock")
+        knockNote.previewSummary = knockNote.summary
+        knockNote.body = isSpace
+                //: %1 who asks, %2 the space
+                //% "%1 asks to join the space %2"
+                ? qsTrId("rustrx-no-knock-space").arg(name).arg(roomName)
+                //: %1 who asks, %2 the room
+                //% "%1 asks to join %2"
+                : qsTrId("rustrx-no-knock-room").arg(name).arg(roomName)
+        knockNote.previewBody = knockNote.body
+        knockNote.itemCount = rustrx.knockRequests.length
+        knockNote.publish()
+    }
+    Notification {
+        id: knockNote
+        appName: "Rustrx"
+        appIcon: "harbour-rustrx"
+        category: "x-nemo.messaging.im"
+        remoteActions: [{
+            "name": "default",
+            "service": "net.mowerk.harbour-rustrx",
+            "path": "/net/mowerk/harbour_rustrx",
+            "iface": "net.mowerk.harbour_rustrx",
+            "method": "openKnocks"
+        }]
     }
 
     function closeNotification(roomId) {

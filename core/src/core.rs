@@ -96,6 +96,8 @@ struct State {
     login_tasks: Vec<JoinHandle<()>>,
     /// the call shown in the WebView, if any
     call: Option<call::CallSession>,
+    /// rooms and spaces whose requests to join are watched (this login)
+    knocks_watched: std::collections::HashSet<OwnedRoomId>,
 }
 
 /// What a logout has to stop, taken out of the state so the lock is not
@@ -121,6 +123,7 @@ impl State {
         self.requests.clear();
         self.sas.clear();
         self.avatars_tried.clear();
+        self.knocks_watched.clear();
         self.latest_listened.clear();
         Teardown { client: self.client.take(), service: self.sync_service.take(), tasks }
     }
@@ -149,6 +152,7 @@ pub(crate) struct Core {
 
 mod call;
 mod commands;
+mod knock;
 mod packs;
 mod session;
 mod sync;

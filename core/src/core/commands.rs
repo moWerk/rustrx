@@ -171,6 +171,10 @@ impl Core {
             CallStart { room_id, voice, skip_lobby } => self.call_start(&room_id, voice.unwrap_or(false), skip_lobby.unwrap_or(false)).await,
             CallMessage { data } => self.call_message(&data).await,
             CallDecline { room_id, event_id } => self.call_decline(&room_id, &event_id).await,
+            KnockAnswer { room_id, user_id, accept, ban, reason } => {
+                self.knock_answer(&room_id, &user_id, accept, ban.unwrap_or(false), given(&reason)).await
+            }
+            KnockSeen { room_id, user_ids } => self.knock_seen(&room_id, &user_ids).await,
             CallEnd => {
                 self.call_end().await;
                 Ok(())

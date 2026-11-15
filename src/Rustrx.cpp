@@ -314,6 +314,7 @@ bool Rustrx::handOver()
     QJsonObject o;
     o.insert("room", m_pendingRoom);
     o.insert("call", m_pendingCall);
+    o.insert("knocks", m_pendingKnocks);
     o.insert("uri", m_pendingUri);
     o.insert("share", QJsonObject::fromVariantMap(m_pendingShare));
     QFile f(handoverPath());
@@ -336,6 +337,7 @@ void Rustrx::takeHandover()
     f.remove();
     m_pendingRoom = o.value("room").toString();
     m_pendingCall = o.value("call").toString();
+    m_pendingKnocks = o.value("knocks").toBool();
     m_pendingUri = o.value("uri").toString();
     m_pendingShare = o.value("share").toObject().toVariantMap();
 }
@@ -642,6 +644,21 @@ void Rustrx::sendText(const QString &roomId, const QString &body, const QString 
     if (!emotes.isEmpty())
         cmd.insert("emotes", emotes);
     command(cmd);
+}
+
+QVariantList Rustrx::knockRequests() const
+{
+    QVariantList out;
+    for (auto it = m_knocks.constBegin(); it != m_knocks.constEnd(); ++it) {
+        for (const QVariant &v : it.value().value("requests").toList()) {
+            QVariantMap r = v.toMap();
+            r.insert("room_id", it.key());
+            r.insert("room_name", it.value().value("room_name"));
+            r.insert("is_space", it.value().value("is_space"));
+            out << r;
+        }
+    }
+    return out;
 }
 
 QString Rustrx::emojify(const QString &html, int height) const
@@ -980,6 +997,9 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_favourites->setRooms({});
         m_all->setRooms({});
         m_targets->setRooms({});
+        m_knocks.clear();
+        m_knocksNotified.clear();
+        emit knockRequestsChanged();
         m_notificationCounts.clear();
         m_roomsById.clear();
         m_homeserver.clear();
@@ -1020,6 +1040,23 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_timeline->setEmotePath(mxc, path);
         m_emotePaths.insert(mxc, path);
         emit emoteReady(mxc, QStringLiteral("file://") + path);
+    } else if (type == QLatin1String("knock_requests")) {
+        const QString roomId = ev.value("room_id").toString();
+        const QVariantList requests = ev.value("requests").toList();
+        if (requests.isEmpty())
+            m_knocks.remove(roomId);
+        else
+            m_knocks.insert(roomId, ev);
+        for (const QVariant &v : requests) {
+            const QVariantMap r = v.toMap();
+            const QString id = r.value("event_id").toString();
+            if (r.value("seen").toBool() || m_knocksNotified.contains(id))
+                continue;
+            m_knocksNotified.insert(id);
+            emit newKnock(roomId, ev.value("room_name").toString(), ev.value("is_space").toBool(),
+                          r.value("name").toString(), r.value("reason").toString());
+        }
+        emit knockRequestsChanged();
     } else if (type == QLatin1String("calls_allowed")) {
         emit callsAllowed(ev.value("room_id").toString());
     } else if (type == QLatin1String("call_ring")) {

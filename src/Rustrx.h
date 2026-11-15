@@ -23,6 +23,7 @@
 #include <QVariantList>
 #include <QElapsedTimer>
 #include <QHash>
+#include <QMap>
 #include <QSet>
 
 class RoomModel;
@@ -59,6 +60,9 @@ class Rustrx : public QObject
     // every joined room and chat, whatever the filter: what sharing offers
     Q_PROPERTY(RoomModel *targets READ targets CONSTANT)
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
+    // open requests to join the rooms and spaces we may invite to, each
+    // { room_id, room_name, is_space, event_id, user_id, name, reason, ts, seen }
+    Q_PROPERTY(QVariantList knockRequests READ knockRequests NOTIFY knockRequestsChanged)
     Q_PROPERTY(QString coreVersion READ coreVersion CONSTANT)
     Q_PROPERTY(bool downscaleImages READ downscaleImages WRITE setDownscaleImages NOTIFY settingsChanged)
     // the order of the room lists: "activity", "unread" (unread first) or "name"
@@ -101,6 +105,7 @@ public:
     RoomModel *all() const { return m_all; }
     RoomModel *targets() const { return m_targets; }
     TimelineModel *timeline() const { return m_timeline; }
+    QVariantList knockRequests() const;
     QString coreVersion() const;
     bool downscaleImages() const;
     void setDownscaleImages(bool on);
@@ -183,6 +188,12 @@ signals:
     void callAnswered(const QString &roomId);
     // starting a call opened the room's calls to everyone (permissions)
     void callsAllowed(const QString &roomId);
+    void knockRequestsChanged();
+    // a request to join that was not notified yet
+    void newKnock(const QString &roomId, const QString &roomName, bool isSpace,
+                  const QString &name, const QString &reason);
+    // the requests' notification was tapped
+    void knocksRequested();
     void roomsLoadedChanged();
     void settingsChanged();
     void roomFilterChanged();
@@ -267,6 +278,15 @@ public slots:
         emit callAnswered(roomId);
         openRoomFromNotification(roomId);
     }
+    // the requests' notification: open the app on the list of requests
+    Q_SCRIPTABLE void openKnocks()
+    {
+        m_pendingKnocks = true;
+        if (handOver())
+            return;
+        emit activateRequested();
+        emit knocksRequested();
+    }
     // Decline: the caller's clients are told (MSC4310)
     Q_SCRIPTABLE void declineCall(const QString &roomId, const QString &eventId)
     {
@@ -288,6 +308,7 @@ public:
     Q_INVOKABLE void closeWindow() { emit closeRequested(); }
     Q_INVOKABLE QString takePendingRoom() { const QString r = m_pendingRoom; m_pendingRoom.clear(); return r; }
     Q_INVOKABLE QString takePendingCall() { const QString r = m_pendingCall; m_pendingCall.clear(); return r; }
+    Q_INVOKABLE bool takePendingKnocks() { const bool r = m_pendingKnocks; m_pendingKnocks = false; return r; }
     // a link or a share that arrived before QML was loaded
     Q_INVOKABLE QString takePendingUri() { const QString r = m_pendingUri; m_pendingUri.clear(); return r; }
     Q_INVOKABLE QVariantMap takePendingShare() { const QVariantMap r = m_pendingShare; m_pendingShare.clear(); return r; }
@@ -336,6 +357,10 @@ private:
     QString m_openRoomId;
     QString m_pendingRoom;
     QString m_pendingCall;
+    bool m_pendingKnocks = false;
+    // per room: { room_name, is_space, requests }
+    QMap<QString, QVariantMap> m_knocks;
+    QSet<QString> m_knocksNotified;
     bool m_standIn = false;
     QString m_pendingUri;
     QVariantMap m_pendingShare;

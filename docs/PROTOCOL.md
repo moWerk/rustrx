@@ -48,7 +48,10 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `get_media` | `room_id`, `event_id`, `thumb?`, `dest_dir?` (a copy for other apps) | `media` |
 | `fetch_emote` | `mxc` (a custom emoji's address) | `emote` |
 | `image_packs` | `room_id` | `image_packs` |
-| `add_user_emote` | `shortcode`, `url` (mxc) | `emote_added` |
+| `knock_answer` | `room_id`, `user_id`, `accept`, `ban?`, `reason?` | `knock_requests` |
+| `knock_seen` | `room_id`, `user_ids` | `knock_requests` |
+| `add_user_emote` | `shortcode`, `url` (mxc) | `knock_requests` | `room_id`, `room_name`, `is_space`, `requests` (`event_id`, `user_id`, `name`, `reason`, `ts`, `seen`), for rooms and spaces with the knock join rule where we may invite |
+| `emote_added` |
 
 ### Rooms
 | cmd | fields | answered by |

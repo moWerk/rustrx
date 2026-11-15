@@ -121,10 +121,13 @@ ApplicationWindow {
             // started by a matrix: link or the share sheet
             var uri = rustrx.takePendingUri()
             if (uri.length) openMatrixUri(uri)
+            var knocks = rustrx.takePendingKnocks()
             var shared = rustrx.takePendingShare()
             if (shared.files || shared.text) showShare(shared.files || [], shared.text || "")
             // nothing asked for: the chat that was open when the app was closed
-            if (last.length && !asked.length && !uri.length && !(shared.files || shared.text)) showRoom(last)
+            if (last.length && !asked.length && !uri.length && !knocks && !(shared.files || shared.text)) showRoom(last)
+            // started by the requests' notification
+            if (knocks) showKnocks()
         } else if (current !== "login") {
             console.log("route: logged out on page", current, "reason", rustrx.logoutReason)
             pageStack.replaceAbove(null, Qt.resolvedUrl("pages/LoginPage.qml"))
@@ -218,6 +221,8 @@ ApplicationWindow {
         //: a call was started where only moderators could take part; the starter could change that
         //% "Everyone in this room can now take part in calls"
         onCallsAllowed: Notices.show(qsTrId("rustrx-no-calls-allowed"), Notice.Long)
+        // the requests' notification tapped
+        onKnocksRequested: if (rustrx.takePendingKnocks()) { app.activate(); app.showKnocks() }
         onMatrixUriRequested: if (rustrx.takePendingUri().length) { app.activate(); app.openMatrixUri(uri) }
         onShareRequested: {
             var shared = rustrx.takePendingShare()
@@ -357,6 +362,14 @@ ApplicationWindow {
         }
         return _callPage
     }
+
+    function showKnocks() {
+        if (pageStack.busy) { knocksRetry.restart(); return }
+        var top = pageStack.currentPage
+        if (top && top.objectName === "knocks") return
+        pageStack.push(Qt.resolvedUrl("pages/KnockPage.qml"))
+    }
+    Timer { id: knocksRetry; interval: 300; onTriggered: app.showKnocks() }
 
     function showRoom(roomId) {
         if (rustrx.openRoomId === roomId) return
