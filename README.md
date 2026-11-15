@@ -28,9 +28,11 @@ person's needs instead of looking at what other clients do. It is lean and
 text first, made for texting and sharing some pictures and files. Rooms and
 people sit apart by default, timestamps are short (5m, 3h, 2d), the room
 list can be sorted, filtered and searched, and it runs on community ports
-without sailfish-secrets. Calls are being looked into. It also works well as the client for a second account next to another one.
+without sailfish-secrets. Since 0.4.4 it also has calls (unencrypted rooms for
+now), threads, spaces with requests to join, and Twemoji with custom emoji and
+stickers. It also works well as the client for a second account next to another one.
 
-![Rustrx 0.4.2 on a Jolla Phone 2026: the chat list with three-line previews, the filter menu with sort orders and room search, a message's menu, and a conversation with its send menu](screenshots/rustrx-0.4.2.jpg)
+![Rustrx 0.4.4 on a Jolla Phone 2026: the room list with its Rooms, People, Favs and Spaces tabs, the Spaces tab with its pulley menu, a thread with its own message field, and the emoji picker with Twemoji in the keyboard's place](screenshots/rustrx-0.4.4.jpg)
 
 ## What it does
 
