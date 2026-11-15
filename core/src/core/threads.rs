@@ -139,8 +139,15 @@ impl Core {
     /// so other clients know too).
     pub(crate) async fn mark_thread_read(&self) -> Result<()> {
         let tl = self.state.lock().await.thread.as_ref().map(|t| t.timeline.clone());
-        if let Some(tl) = tl {
-            tl.mark_as_read(ReceiptType::Read).await?;
+        let Some(tl) = tl else { return Ok(()) };
+        // only the root yet: the server takes no threaded receipt on it
+        let events = tl.items().await.iter().filter(|i| i.as_event().is_some()).count();
+        if events < 2 {
+            return Ok(());
+        }
+        // a receipt is a courtesy to the other clients: refused, it is only logged
+        if let Err(e) = tl.mark_as_read(ReceiptType::Read).await {
+            tracing::info!("thread: read receipt: {e}");
         }
         Ok(())
     }
