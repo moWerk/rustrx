@@ -109,8 +109,17 @@ Page {
         anchorOffset = bottom - (r.item.y + r.item.height)
         cp("anchor-take", "id=" + anchorId.slice(0, 10) + " off=" + Math.round(anchorOffset) + " newest=" + anchorNewest)
     }
-    function applyAnchor() {
-        anchorPending = false
+    // keep: put it back but keep holding (while the page comes in and the
+    // keyboard moves); without: the last time, the hold ends
+    property bool anchorApplying
+    function applyAnchor(keep) {
+        if (!keep) anchorPending = false
+        if (anchorApplying) return
+        anchorApplying = true
+        placeAnchor()
+        anchorApplying = false
+    }
+    function placeAnchor() {
         if (anchorNewest) { cp("anchor-newest"); list.positionViewAtBeginning(); return }
         if (!anchorId.length) return
         var index = -1
@@ -133,7 +142,24 @@ Page {
     Timer { id: anchorFirst; interval: 300; onTriggered: if (page.anchorPending) page.applyAnchor() }
     Connections {
         target: pageStack
-        onPanelSizeChanged: if (page.anchorPending && page.status === PageStatus.Active) { anchorFirst.stop(); anchorSettle.restart() }
+        onPanelSizeChanged: {
+            if (!page.anchorPending || page.status === PageStatus.Inactive || page.status === PageStatus.Deactivating) return
+            page.applyAnchor(true)
+            if (page.status === PageStatus.Active) { anchorFirst.stop(); anchorSettle.restart() }
+        }
+    }
+    // while coming back, any move not made by a finger is undone at once:
+    // the chat was pulled to the newest end and came back half a second
+    // later, visibly
+    Connections {
+        target: list
+        onContentYChanged: {
+            if (page.anchorPending && !page.anchorApplying && !list.moving
+                    && (page.status === PageStatus.Activating || page.status === PageStatus.Active))
+                page.applyAnchor(true)
+        }
+        // a finger takes over: the hold ends
+        onMovementStarted: page.anchorPending = false
     }
 
     onStatusChanged: {
@@ -143,8 +169,13 @@ Page {
             takeAnchor()
             anchorPending = true
         }
-        if (status === PageStatus.Active && anchorPending)
+        // coming back: hold from the first frame
+        if (status === PageStatus.Activating && anchorPending)
+            applyAnchor(true)
+        if (status === PageStatus.Active && anchorPending) {
+            applyAnchor(true)
             anchorFirst.restart()
+        }
         if (status === PageStatus.Active) {
             app.lastRoom = roomId
             // opened by Answer on an incoming call: join it
