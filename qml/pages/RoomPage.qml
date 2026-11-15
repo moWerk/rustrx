@@ -76,7 +76,26 @@ Page {
         if (rustrx.openRoomId === roomId) rustrx.closeRoom()
     }
 
+    // Back from a page above (a picture, a video, the room's page): the
+    // chat stays where it was. Coming back, the text field takes its focus
+    // again and the list ran down to it, away from the picture tapped.
+    property real returnY: NaN
+    Timer {
+        id: restoreY
+        interval: 0
+        property int rounds
+        onTriggered: {
+            if (!isNaN(page.returnY)) list.contentY = page.returnY
+            // the focus may settle a little later: once more
+            if (++rounds < 2) { interval = 250; restart() } else { rounds = 0; interval = 0; page.returnY = NaN }
+        }
+    }
+
     onStatusChanged: {
+        if (status === PageStatus.Deactivating)
+            returnY = list.contentY
+        if (status === PageStatus.Active && !isNaN(returnY))
+            restoreY.restart()
         if (status === PageStatus.Active) {
             app.lastRoom = roomId
             // opened by Answer on an incoming call: join it
