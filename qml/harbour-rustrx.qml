@@ -60,6 +60,30 @@ ApplicationWindow {
     ConfigurationValue { id: cfgShowReadBy; key: "/apps/harbour-rustrx/showReadBy"; defaultValue: true }
     ConfigurationValue { id: cfgSendReceipts; key: "/apps/harbour-rustrx/sendReceipts"; defaultValue: true }
     ConfigurationValue { id: cfgSendTyping; key: "/apps/harbour-rustrx/sendTyping"; defaultValue: true }
+    // the emoji used most: the picker's top row and a message's reactions
+    // (five; the defaults fill up until five have been used)
+    ConfigurationValue {
+        id: cfgEmojiCounts
+        key: "/apps/harbour-rustrx/emojiCounts"
+        defaultValue: "{}"
+        onValueChanged: app.favouriteEmoji = app.computeFavourites()
+    }
+    property var favouriteEmoji: computeFavourites()
+    function computeFavourites() {
+        var counts = {}
+        try { counts = JSON.parse(cfgEmojiCounts.value || "{}") } catch (e) {}
+        var used = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a] }).slice(0, 5)
+        var defaults = ["👍", "❤️", "😂", "😮", "😢"]
+        for (var i = 0; used.length < 5 && i < defaults.length; i++)
+            if (used.indexOf(defaults[i]) < 0) used.push(defaults[i])
+        return used
+    }
+    function countEmoji(emoji) {
+        var counts = {}
+        try { counts = JSON.parse(cfgEmojiCounts.value || "{}") } catch (e) {}
+        counts[emoji] = (counts[emoji] || 0) + 1
+        cfgEmojiCounts.value = JSON.stringify(counts)
+    }
     // the line under the message field that says the room sees you typing
     property alias typingHint: cfgTypingHint.value
     ConfigurationValue { id: cfgTypingHint; key: "/apps/harbour-rustrx/typingHint"; defaultValue: true }

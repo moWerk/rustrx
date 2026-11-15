@@ -229,6 +229,8 @@ Page {
     SilicaListView {
         id: list
         anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        // the emoji panel takes the keyboard's place below the composer
+        anchors.bottomMargin: emojiPanel.visibleSize
         verticalLayoutDirection: ListView.BottomToTop
         model: rustrx.timeline
         // no current item: a message arriving at the newest end moved it, and
@@ -283,6 +285,12 @@ Page {
                             rustrx.sendFile(roomId, picker.selectedContentProperties.filePath)
                     })
                 }
+            }
+            // closest to the edge, the one used most; stickers join it later
+            MenuItem {
+                //% "Insert emoji"
+                text: qsTrId("rustrx-me-insert-emoji")
+                onClicked: page.showEmoji("insert", "")
             }
         }
 
@@ -421,6 +429,7 @@ Page {
                 rustrx.command({ cmd: "redact", room_id: page.roomId, txn_id: txnId })
                 rustrx.sendText(page.roomId, text, "")
             }
+            onReactMore: page.showEmoji("react", eventId)
         }
 
         ViewPlaceholder {
@@ -446,5 +455,33 @@ Page {
     Component {
         id: filePicker
         FilePickerPage { }
+    }
+
+    // the emoji picker in the keyboard's place: inserts at the cursor, or
+    // reacts to a message (EmojiPanel)
+    function showEmoji(mode, eventId) {
+        Qt.inputMethod.hide()
+        emojiPanel.show(mode, eventId)
+    }
+    function insertEmoji(emoji) {
+        if (!inputArea) return
+        var at = inputArea.cursorPosition
+        var t = inputArea.text
+        inputArea.text = t.slice(0, at) + emoji + t.slice(at)
+        inputArea.cursorPosition = at + emoji.length
+    }
+    EmojiPanel {
+        id: emojiPanel
+        onPicked: {
+            if (mode === "react")
+                rustrx.command({ cmd: "react", room_id: page.roomId, event_id: eventId, key: emoji })
+            else
+                page.insertEmoji(emoji)
+        }
+    }
+    // the keyboard back (a tap into the field): the panel makes way
+    Connections {
+        target: Qt.inputMethod
+        onVisibleChanged: if (Qt.inputMethod.visible) emojiPanel.open = false
     }
 }
