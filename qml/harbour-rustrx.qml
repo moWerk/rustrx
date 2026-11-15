@@ -107,6 +107,8 @@ ApplicationWindow {
         // a page transition in flight swallows the replace; come back to it
         if (pageStack.busy) { routeRetry.restart(); return }
         var current = pageStack.currentPage ? pageStack.currentPage.objectName : ""
+        // the prototype notice is up: it is answered first, then this runs again
+        if (current === "prototypeNotice") return
         if (rustrx.loggedIn) {
             // read before the main page comes in: becoming active, it forgets the room
             var last = !reopenTried && reopenLast ? lastRoom : ""
@@ -127,9 +129,31 @@ ApplicationWindow {
             console.log("route: logged out on page", current, "reason", rustrx.logoutReason)
             pageStack.replaceAbove(null, Qt.resolvedUrl("pages/LoginPage.qml"))
         }
+        if (!cfgPrototypeNoticeSeen.value) prototypeNotice.restart()
     }
 
     Timer { id: routeRetry; interval: 300; onTriggered: route() }
+
+    // the first start: the prototype notice (and the debug log in it), once;
+    // it goes only by Agree. Above whatever route() brought in, once the
+    // stack is still.
+    ConfigurationValue { id: cfgPrototypeNoticeSeen; key: "/apps/harbour-rustrx/prototypeNoticeSeen"; defaultValue: false }
+    property bool prototypeNoticeUp
+    Timer {
+        id: prototypeNotice
+        interval: 600
+        onTriggered: {
+            if (cfgPrototypeNoticeSeen.value || app.prototypeNoticeUp) return
+            if (pageStack.busy) { restart(); return }
+            app.prototypeNoticeUp = true
+            var d = pageStack.push(Qt.resolvedUrl("pages/PrototypeNotice.qml"))
+            d.accepted.connect(function () {
+                cfgPrototypeNoticeSeen.value = true
+                app.prototypeNoticeUp = false
+                routeRetry.restart()
+            })
+        }
+    }
     Timer {
         id: pendingRoomRetry
         interval: 500
