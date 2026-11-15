@@ -82,8 +82,8 @@ impl Core {
         tracing::info!(ms = t.elapsed().as_millis() as u64, rooms = cache.len(), "startup: first room list");
         self.emit(json!({"ev": "rooms", "rooms": sorted_rooms(cache.values().cloned().collect())}));
         self.listen_latest(&client).await;
-        self.watch_knocks(&client).await;
-        let mut avatars_new = self.fetch_avatars(&client).await;
+        self.watch_knocks(&client, None).await;
+        let mut avatars_new = self.fetch_avatars(&client, None).await;
         let mut last_full = std::time::Instant::now();
         loop {
             let mut changed: std::collections::HashSet<OwnedRoomId> = std::collections::HashSet::new();
@@ -108,7 +108,12 @@ impl Core {
                     Err(_) => break,
                 }
             }
-            if full || last_full.elapsed() > Duration::from_secs(60) {
+            // a minute of updates: everything once more, to catch what the
+            // stream missed
+            if last_full.elapsed() > Duration::from_secs(60) {
+                full = true;
+            }
+            if full {
                 cache.clear();
                 for room in client.rooms().into_iter().filter(crate::serialize::listed) {
                     cache.insert(room.room_id().to_owned(), room_json(&room, &avatar_dir).await);
@@ -128,9 +133,19 @@ impl Core {
             }
             self.emit(json!({"ev": "rooms", "rooms": sorted_rooms(cache.values().cloned().collect())}));
             Self::log_counts(&client);
-            self.listen_latest(&client).await;
-            self.watch_knocks(&client).await;
-            avatars_new = self.fetch_avatars(&client).await;
+            // only what changed is looked at again: on a full rebuild every
+            // room, else the rooms the update named (the list's cost no
+            // longer grows with the number of rooms on every receipt)
+            let only = if full { None } else { Some(&changed) };
+            let unknown = {
+                let st = self.state.lock().await;
+                changed.iter().any(|id| !st.latest_listened.contains(id))
+            };
+            if unknown || full {
+                self.listen_latest(&client).await;
+            }
+            self.watch_knocks(&client, only).await;
+            avatars_new = self.fetch_avatars(&client, only).await;
         }
     }
 
@@ -178,11 +193,18 @@ impl Core {
     /// Cache the avatars that are missing or changed (the picture's mxc
     /// address is kept beside it, "<room>.url"), once per picture.
     /// Returns whether a new picture arrived (the room list then needs it).
-    pub(crate) async fn fetch_avatars(&'static self, client: &Client) -> bool {
+    pub(crate) async fn fetch_avatars(
+        &'static self,
+        client: &Client,
+        only: Option<&std::collections::HashSet<OwnedRoomId>>,
+    ) -> bool {
         let avatar_dir = self.data_dir.join("avatars");
         let own = client.user_id().map(ToOwned::to_owned);
         let mut fetched = false;
         for room in client.rooms() {
+            if only.is_some_and(|o| !o.contains(room.room_id())) {
+                continue;
+            }
             // Rooms without a known picture are looked at again next time:
             // a DM's peer may only become known after a later sync.
             let Some(url) = Self::avatar_source(&room, own.as_deref()).await else { continue };

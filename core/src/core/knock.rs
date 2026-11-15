@@ -12,8 +12,15 @@ impl Core {
     /// room that starts taking requests is picked up. Each watched room
     /// reports its open requests as "knock_requests" (also when none are
     /// left).
-    pub(crate) async fn watch_knocks(&'static self, client: &Client) {
+    pub(crate) async fn watch_knocks(
+        &'static self,
+        client: &Client,
+        only: Option<&std::collections::HashSet<OwnedRoomId>>,
+    ) {
         for room in client.rooms() {
+            if only.is_some_and(|o| !o.contains(room.room_id())) {
+                continue;
+            }
             if room.state() != RoomState::Joined {
                 continue;
             }

@@ -100,9 +100,19 @@ void RoomModel::setRooms(const QVariantList &rooms)
         }
     }
 
-    m_rooms = rooms;   // same order now; take the fresh fields
-    if (!rooms.isEmpty())
-        emit dataChanged(index(0), index(rooms.size() - 1));
+    // same order now; take the fresh fields, and tell only about the rows
+    // that changed (every row on every update rebound every delegate)
+    int first = -1, last = -1;
+    for (int i = 0; i < rooms.size(); ++i) {
+        if (m_rooms.at(i) != rooms.at(i)) {
+            if (first < 0)
+                first = i;
+            last = i;
+        }
+    }
+    m_rooms = rooms;
+    if (first >= 0)
+        emit dataChanged(index(first), index(last));
     if (before != rooms.size())
         emit countChanged();
 }

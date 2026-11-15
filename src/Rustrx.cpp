@@ -429,14 +429,21 @@ QString Rustrx::shareableLog()
 // is stable).
 QVariant Rustrx::tabValue(const QString &kind, const QString &key, const QVariant &fallback) const
 {
-    QSettings settings;
     const QString own = QStringLiteral("tabs/") + kind + QLatin1Char('/') + key;
-    return settings.contains(own) ? settings.value(own) : settings.value(key, fallback);
+    const auto cached = m_tabCache.constFind(own);
+    if (cached != m_tabCache.constEnd())
+        return *cached;
+    QSettings settings;
+    const QVariant v = settings.contains(own) ? settings.value(own) : settings.value(key, fallback);
+    m_tabCache.insert(own, v);
+    return v;
 }
 
 void Rustrx::setTabValue(const QString &key, const QVariant &value)
 {
-    QSettings().setValue(QStringLiteral("tabs/") + m_currentTab + QLatin1Char('/') + key, value);
+    const QString own = QStringLiteral("tabs/") + m_currentTab + QLatin1Char('/') + key;
+    QSettings().setValue(own, value);
+    m_tabCache.insert(own, value);
     emit settingsChanged();
     distributeRooms(m_lastRooms);
 }

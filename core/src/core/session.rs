@@ -107,6 +107,11 @@ impl Core {
                     auto_enable_backups: true,
                 })
                 .handle_refresh_tokens()
+                // one process uses the store at a time (the D-Bus name is the
+                // lock between the app and the stand-in): no cross-process
+                // lock, whose lease the SDK renewed 20 times a second for as
+                // long as the encryption sync ran (the idle CPU users saw)
+                .cross_process_store_config(matrix_sdk::cross_process_lock::CrossProcessLockConfig::SingleProcess)
                 .user_agent(USER_AGENT);
             if with_store {
                 b = b.sqlite_store(self.data_dir.join("store"), passphrase.as_deref());

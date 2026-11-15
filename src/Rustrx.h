@@ -395,6 +395,9 @@ private:
     QString m_pendingRoom;
     QString m_pendingCall;
     QString m_currentTab = QStringLiteral("rooms");
+    // the tabs' settings as read (QSettings per room update was a file
+    // check each time); filled on first use, changed in setTabValue
+    mutable QHash<QString, QVariant> m_tabCache;
     bool m_pendingKnocks = false;
     // per room: { room_name, is_space, requests }
     QMap<QString, QVariantMap> m_knocks;

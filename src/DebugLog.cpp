@@ -42,14 +42,35 @@ static void appendLine(QtMsgType type, const QString &message)
     const QByteArray line = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd hh:mm:ss.zzz")).toUtf8()
             + ' ' + level + ' ' + message.toUtf8() + '\n';
     QMutexLocker locker(&s_lock);
-    QFile file(s_path);
-    // at most 1 MB, then it becomes the older file and a new one starts
-    if (file.size() > kMaxSize) {
-        QFile::remove(s_path + QStringLiteral(".1"));
-        QFile::rename(s_path, s_path + QStringLiteral(".1"));
+    // one file kept open (an open, a stat and a close per line woke the
+    // disk for every line); its size looked at every 50 lines: at most
+    // about 1 MB, then it becomes the older file and a new one starts
+    static QFile *file = nullptr;
+    static int lines = 0;
+    if (file && file->fileName() != s_path) {
+        delete file;
+        file = nullptr;
     }
-    if (file.open(QIODevice::Append | QIODevice::WriteOnly))
-        file.write(line);
+    if (file && ++lines >= 50) {
+        lines = 0;
+        if (file->size() > kMaxSize) {
+            file->close();
+            QFile::remove(s_path + QStringLiteral(".1"));
+            QFile::rename(s_path, s_path + QStringLiteral(".1"));
+            delete file;
+            file = nullptr;
+        }
+    }
+    if (!file) {
+        file = new QFile(s_path);
+        if (!file->open(QIODevice::Append | QIODevice::WriteOnly)) {
+            delete file;
+            file = nullptr;
+            return;
+        }
+    }
+    file->write(line);
+    file->flush();
 }
 
 static void handler(QtMsgType type, const QMessageLogContext &context, const QString &message)

@@ -127,7 +127,7 @@ pub extern "C" fn rustrx_start(data_dir: *const c_char, cb: EventCallback, ctx: 
     // The sandbox drops stderr, so log lines travel as events and the UI
     // hands them to the journal.
     let filter = tracing_subscriber::EnvFilter::try_from_env("RUSTRX_LOG")
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,rustrx=info"));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,rustrx=info,matrix_sdk_crypto::backups=error"));
     let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_ansi(false)
