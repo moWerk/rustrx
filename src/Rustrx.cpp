@@ -814,6 +814,11 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
             if (!notified.contains(id))
                 emit invited(id, r.value("name").toString(), r.value("inviter").toString(), r.value("is_dm").toBool());
         }
+        // an invitation answered some other way (another client, a join
+        // outside the list): its banner goes
+        for (const QString &id : notified)
+            if (!open.contains(id))
+                emit inviteGone(id);
         if (open != notified)
             settings.setValue("invitesNotified", open);
     }

@@ -185,6 +185,8 @@ signals:
     void newMessages(const QString &roomId, const QString &roomName, int count);
     // an invitation not notified before (also one that came while closed)
     void invited(const QString &roomId, const QString &roomName, const QString &inviter, bool direct);
+    // an invitation that is no longer one (joined, declined, elsewhere)
+    void inviteGone(const QString &roomId);
     // who is typing in the open room, the own user left out
     void typing(const QString &roomId, const QStringList &names);
     // "all", "mentions", "mute" or "default" (the account's rule)
