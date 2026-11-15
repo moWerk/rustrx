@@ -47,8 +47,10 @@ Item {
         }
         onInvited: service.notifyInvite(roomId, roomName, inviter, direct)
         onInviteGone: service.closeInvite(roomId)
+        onCallRing: service.ringCall(roomId, roomName, senderName, ring, eventId, expiresMs)
+        onCallAnswered: service.stopRinging(roomId)
         onUnreadChanged: if (rustrx.standIn) console.log("stand-in: unread", rustrx.unreadTotal, "in", rustrx.unreadChats)
-        onOpenRoomChanged: if (rustrx.openRoomId.length) service.closeNotification(rustrx.openRoomId)
+        onOpenRoomChanged: if (rustrx.openRoomId.length) { service.closeNotification(rustrx.openRoomId); service.stopRinging(rustrx.openRoomId) }
         onQuitRequested: standInNote.close()
     }
 
@@ -111,6 +113,102 @@ Item {
             var actions = all[i].remoteActions
             if (actions && actions.length && actions[0].arguments && actions[0].arguments[0] === roomId)
                 all[i].close()
+        }
+    }
+
+    // an incoming call: a notification that rings with the system's VoIP
+    // ringtone (lipstick plays its feedback while it is shown), Answer and
+    // Decline; it goes when it expires, is answered or declined, the call
+    // ends, or the room is opened. A group call's start only notifies.
+    property var ringing: ({})
+    function ringCall(roomId, roomName, senderName, ring, eventId, expiresMs) {
+        stopRinging(roomId)
+        var n = ringComponent.createObject(service, { roomId: roomId, eventId: eventId, ring: ring })
+        n.summary = ring
+                //: notification title, %1 who calls
+                //% "%1 is calling"
+                ? qsTrId("rustrx-no-call-ring").arg(senderName)
+                //: notification title, %1 the room
+                //% "Call in %1"
+                : qsTrId("rustrx-no-call-group").arg(roomName)
+        n.previewSummary = n.summary
+        n.body = ring ? roomName
+                //: notification body, %1 who started the call
+                //% "%1 started a call"
+                : qsTrId("rustrx-no-call-started").arg(senderName)
+        n.previewBody = n.body
+        if (ring) {
+            n.setHintValue("x-nemo-feedback", "voip_ringtone")
+            n.setHintValue("x-nemo-display-on", true)
+            n.setHintValue("x-nemo-priority", 120)
+        }
+        n.expiry.interval = Math.max(5000, expiresMs)
+        n.expiry.start()
+        n.publish()
+        var r = ringing
+        r[roomId] = n
+        ringing = r
+        console.log("call: incoming", ring ? "ring" : "notification", "for", expiresMs, "ms")
+    }
+    function stopRinging(roomId) {
+        var n = ringing[roomId]
+        if (!n) return
+        n.close()
+        n.destroy()
+        var r = ringing
+        delete r[roomId]
+        ringing = r
+    }
+    // the call ended before anyone answered (the room's state says nobody is in it)
+    Connections {
+        target: rustrx.all
+        onDataChanged: {
+            for (var id in service.ringing)
+                if (!rustrx.roomInfo(id).in_call && service.ringing[id].seenCall) service.stopRinging(id)
+                else if (rustrx.roomInfo(id).in_call) service.ringing[id].seenCall = true
+        }
+    }
+
+    Component {
+        id: ringComponent
+        Notification {
+            id: ringNote
+            property string roomId
+            property string eventId
+            property bool ring
+            // the room's state showed the call running once; its end then ends the ring
+            property bool seenCall
+            property Timer expiry: Timer { onTriggered: service.stopRinging(ringNote.roomId) }
+            appName: "Rustrx"
+            appIcon: "harbour-rustrx"
+            urgency: ring ? Notification.Critical : Notification.Normal
+            isTransient: false
+            remoteActions: [{
+                "name": "default",
+                "service": "net.mowerk.harbour-rustrx",
+                "path": "/net/mowerk/harbour_rustrx",
+                "iface": "net.mowerk.harbour_rustrx",
+                "method": "openRoomFromNotification",
+                "arguments": [ roomId ]
+            }, {
+                "name": "answer",
+                //% "Answer"
+                "displayName": qsTrId("rustrx-me-call-answer"),
+                "service": "net.mowerk.harbour-rustrx",
+                "path": "/net/mowerk/harbour_rustrx",
+                "iface": "net.mowerk.harbour_rustrx",
+                "method": "answerCall",
+                "arguments": [ roomId ]
+            }, {
+                "name": "decline",
+                //% "Decline"
+                "displayName": qsTrId("rustrx-me-call-decline"),
+                "service": "net.mowerk.harbour-rustrx",
+                "path": "/net/mowerk/harbour_rustrx",
+                "iface": "net.mowerk.harbour_rustrx",
+                "method": "declineCall",
+                "arguments": [ roomId, eventId ]
+            }]
         }
     }
 

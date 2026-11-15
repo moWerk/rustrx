@@ -176,6 +176,7 @@ impl Core {
             "sliding_sync": !matches!(client.sliding_sync_version(), Version::None),
         }));
         self.install_handlers(&client);
+        self.install_call_handlers(&client);
         {
             let mut st = self.state.lock().await;
             st.client = Some(client.clone());

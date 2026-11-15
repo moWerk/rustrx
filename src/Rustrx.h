@@ -170,6 +170,12 @@ signals:
     void imagePacks(const QString &roomId, const QVariantList &packs);
     void emoteReady(const QString &mxc, const QString &path);
     void emoteAdded(const QString &shortcode);
+    // someone calls (ring) or a group call starts (not ring); expiresMs: how
+    // long it may ring
+    void callRing(const QString &roomId, const QString &roomName, const QString &senderName,
+                  bool ring, const QString &eventId, int expiresMs);
+    // answered or declined: the ringing notification goes
+    void callAnswered(const QString &roomId);
     void roomsLoadedChanged();
     void settingsChanged();
     void roomFilterChanged();
@@ -246,6 +252,21 @@ public slots:
     Q_SCRIPTABLE bool activate();
     // the stand-in's notification: open the app
     Q_SCRIPTABLE void open() { if (!handOver()) emit activateRequested(); }
+    // an incoming call's notification: Answer opens the room and joins
+    // the call (the room starts it once it is open: takePendingCall)
+    Q_SCRIPTABLE void answerCall(const QString &roomId)
+    {
+        m_pendingCall = roomId;
+        emit callAnswered(roomId);
+        openRoomFromNotification(roomId);
+    }
+    // Decline: the caller's clients are told (MSC4310)
+    Q_SCRIPTABLE void declineCall(const QString &roomId, const QString &eventId)
+    {
+        emit callAnswered(roomId);
+        if (!eventId.isEmpty())
+            command({ { "cmd", "call_decline" }, { "room_id", roomId }, { "event_id", eventId } });
+    }
     // the stand-in's notification: Quit (after QML has closed that notification)
     Q_SCRIPTABLE void quit();
     // D-Bus net.mowerk.harbour_rustrx.dev, for tests from a shell (ssh),
@@ -259,6 +280,7 @@ public slots:
 public:
     Q_INVOKABLE void closeWindow() { emit closeRequested(); }
     Q_INVOKABLE QString takePendingRoom() { const QString r = m_pendingRoom; m_pendingRoom.clear(); return r; }
+    Q_INVOKABLE QString takePendingCall() { const QString r = m_pendingCall; m_pendingCall.clear(); return r; }
     // a link or a share that arrived before QML was loaded
     Q_INVOKABLE QString takePendingUri() { const QString r = m_pendingUri; m_pendingUri.clear(); return r; }
     Q_INVOKABLE QVariantMap takePendingShare() { const QVariantMap r = m_pendingShare; m_pendingShare.clear(); return r; }
@@ -306,6 +328,7 @@ private:
     QString m_recoveryState = QStringLiteral("unknown");
     QString m_openRoomId;
     QString m_pendingRoom;
+    QString m_pendingCall;
     bool m_standIn = false;
     QString m_pendingUri;
     QVariantMap m_pendingShare;

@@ -208,6 +208,14 @@ ListItem {
                 spacing: Theme.paddingSmall
                 // centred on the preview's first line
                 y: (firstLine.height - height) / 2
+                // a call is running in the room
+                Image {
+                    visible: model.in_call === true && !invited
+                    anchors.verticalCenter: parent.verticalCenter
+                    source: "image://theme/icon-s-incoming-call?" + Theme.highlightColor
+                    sourceSize.width: parent.parent.iconSize
+                    sourceSize.height: parent.parent.iconSize
+                }
                 // muted: Silica's stop sign; its canvas is 42 px where the
                 // lock's is 48, so it is drawn at that ratio
                 Image {

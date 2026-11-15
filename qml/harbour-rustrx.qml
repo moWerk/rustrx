@@ -186,6 +186,10 @@ ApplicationWindow {
             app.activate()
             service.closeNotification(roomId)
             app.showRoom(roomId)
+            // Answer on a call while its room is open already: join now
+            // (a room opened anew starts it itself, RoomPage)
+            if (rustrx.openRoomId === roomId && rustrx.takePendingCall() === roomId)
+                rustrx.command({ cmd: "call_start", room_id: roomId })
         }
         onMatrixUriRequested: if (rustrx.takePendingUri().length) { app.activate(); app.openMatrixUri(uri) }
         onShareRequested: {

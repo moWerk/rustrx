@@ -172,6 +172,8 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
         "topic": room.topic(),
         "alias": room.canonical_alias().map(|a| a.to_string()),
         "is_dm": room.is_direct().await.unwrap_or(false),
+        // a call is running here (someone is in it, from the room's state)
+        "in_call": room.has_active_room_call(),
         "is_fav": room.is_favourite(),
         "is_low": room.is_low_priority(),
         "unread": room.num_unread_messages(),

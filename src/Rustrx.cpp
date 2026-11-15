@@ -312,6 +312,7 @@ bool Rustrx::handOver()
         return false;
     QJsonObject o;
     o.insert("room", m_pendingRoom);
+    o.insert("call", m_pendingCall);
     o.insert("uri", m_pendingUri);
     o.insert("share", QJsonObject::fromVariantMap(m_pendingShare));
     QFile f(handoverPath());
@@ -333,6 +334,7 @@ void Rustrx::takeHandover()
     f.close();
     f.remove();
     m_pendingRoom = o.value("room").toString();
+    m_pendingCall = o.value("call").toString();
     m_pendingUri = o.value("uri").toString();
     m_pendingShare = o.value("share").toObject().toVariantMap();
 }
@@ -1004,6 +1006,10 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_timeline->setEmotePath(mxc, path);
         m_emotePaths.insert(mxc, path);
         emit emoteReady(mxc, QStringLiteral("file://") + path);
+    } else if (type == QLatin1String("call_ring")) {
+        emit callRing(ev.value("room_id").toString(), ev.value("room_name").toString(),
+                      ev.value("sender_name").toString(), ev.value("ring").toBool(),
+                      ev.value("event_id").toString(), ev.value("expires_ms").toInt());
     } else if (type == QLatin1String("image_packs")) {
         emit imagePacks(ev.value("room_id").toString(), ev.value("packs").toList());
     } else if (type == QLatin1String("emote_added")) {

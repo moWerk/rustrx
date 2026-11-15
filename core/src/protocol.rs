@@ -136,6 +136,8 @@ pub(crate) enum Command {
     /// A widget API postMessage from the page, passed to the driver as is.
     CallMessage { data: String },
     CallEnd,
+    /// No to an incoming call's ring (`event_id` of the ring).
+    CallDecline { room_id: String, event_id: String },
 }
 
 /// A non-empty string, or nothing (the UI sends "" for "no reply" and the like).

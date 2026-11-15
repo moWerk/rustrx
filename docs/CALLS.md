@@ -228,3 +228,19 @@ then joins the running one).
    Rustrx answers a ring with a notification that rings, with Answer
    (opens the call page and joins) and Decline (MSC4310 decline, or just
    dismissing it). Later the native call screen (above) takes it over.
+
+Built 2026-11-15 (0.4.3-19, not yet tested): the core rings on
+`org.matrix.msc4075.rtc.notification`, `m.rtc.notification` and the older
+`org.matrix.msc4075.call.notify` while they are within their lifetime
+(the server's `unsigned.age`); a notification with lipstick's
+`voip_ringtone` feedback, Answer (opens the room and joins), Decline
+(MSC4310 decline). A new call sends `sendNotificationType=ring` to
+Element Call in a DM or a two-person room, `notification` in a group.
+The room shows "Call in progress, tap to join" and the list a mark
+while `m.call.member` says someone is in a call.
+
+Limits: in background mode the stand-in's sync is frozen while the phone
+sleeps (a short window every five minutes), so a ring in between is
+missed; push (Foghorn, docs/PUSH.md) is the way out. Whether lipstick
+plays `x-nemo-feedback` for an app's notification on a locked phone is
+to be seen; the fallback is a notification category file of our own.

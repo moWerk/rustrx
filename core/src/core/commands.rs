@@ -170,6 +170,7 @@ impl Core {
             StorageInfo => self.storage_info().await,
             CallStart { room_id, voice, skip_lobby } => self.call_start(&room_id, voice.unwrap_or(false), skip_lobby.unwrap_or(false)).await,
             CallMessage { data } => self.call_message(&data).await,
+            CallDecline { room_id, event_id } => self.call_decline(&room_id, &event_id).await,
             CallEnd => {
                 self.call_end().await;
                 Ok(())

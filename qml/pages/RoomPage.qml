@@ -79,6 +79,9 @@ Page {
     onStatusChanged: {
         if (status === PageStatus.Active) {
             app.lastRoom = roomId
+            // opened by Answer on an incoming call: join it
+            if (rustrx.takePendingCall() === roomId)
+                rustrx.command({ cmd: "call_start", room_id: roomId })
             markRead()
             // the room's page, one swipe to the right; attached once the
             // transition is over (inside it the stack reports a binding loop)
@@ -379,6 +382,30 @@ Page {
             width: list.width
 
             Item { width: 1; height: Theme.paddingMedium }
+
+            // a call is running here: join it
+            BackgroundItem {
+                visible: !!page.roomInfo.in_call
+                width: parent.width
+                height: visible ? Theme.itemSizeSmall : 0
+                onClicked: rustrx.command({ cmd: "call_start", room_id: roomId })
+                Row {
+                    x: Theme.horizontalPageMargin
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.paddingMedium
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        source: "image://theme/icon-m-call"
+                        highlighted: parent.parent.highlighted
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        //% "Call in progress, tap to join"
+                        text: qsTrId("rustrx-la-call-join")
+                        color: Theme.highlightColor
+                    }
+                }
+            }
 
             // editing: the message being changed, tap to cancel
             // an edit or a reply in progress: the line and a clear button to
