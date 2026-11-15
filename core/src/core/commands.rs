@@ -372,6 +372,12 @@ impl Core {
                 self.send_sticker(&room_id, &url, &body, info, given(&thread_root)).await
             }
             OpenThread { room_id, root } => self.open_thread(&room_id, &root).await,
+            ThreadList { room_id } => self.thread_list(&room_id).await,
+            CloseThreadList => {
+                self.close_thread_list().await;
+                Ok(())
+            }
+            MarkThreadRead => self.mark_thread_read().await,
             CloseThread => {
                 self.close_thread().await;
                 Ok(())

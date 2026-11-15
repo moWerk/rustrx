@@ -64,6 +64,8 @@ class Rustrx : public QObject
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
     // the open thread's messages (root and replies), beside the room's
     Q_PROPERTY(TimelineModel *thread READ thread CONSTANT)
+    // changes whenever a thread is marked seen (bindings read it to update)
+    Q_PROPERTY(int threadsSeen READ threadsSeenVersion NOTIFY threadsSeenChanged)
     // open requests to join the rooms and spaces we may invite to, each
     // { room_id, room_name, is_space, event_id, user_id, name, reason, ts, seen }
     Q_PROPERTY(QVariantList knockRequests READ knockRequests NOTIFY knockRequestsChanged)
@@ -111,9 +113,14 @@ public:
     RoomModel *targets() const { return m_targets; }
     TimelineModel *timeline() const { return m_timeline; }
     TimelineModel *thread() const { return m_thread; }
+    int threadsSeenVersion() const { return m_threadsSeenVersion; }
     // a thread beside the open room: its messages come into `thread`
     Q_INVOKABLE void openThread(const QString &roomId, const QString &root);
     Q_INVOKABLE void closeThread();
+    // replies in a thread already seen here: the rest show as new. A thread
+    // seen the first time counts as read (old threads are not news)
+    Q_INVOKABLE int threadSeen(const QString &root, int count);
+    Q_INVOKABLE void markThreadSeen(const QString &root, int count);
     QVariantList knockRequests() const;
     QString coreVersion() const;
     bool downscaleImages() const;
@@ -200,6 +207,9 @@ signals:
     // starting a call opened the room's calls to everyone (permissions)
     void callsAllowed(const QString &roomId);
     void knockRequestsChanged();
+    void threadsSeenChanged();
+    // a room's threads (thread_list): { root, latest, count }
+    void threadList(const QString &roomId, const QVariantList &threads, bool loading);
     // a space's rooms (from space_open), loading while pages come
     void spaceRooms(const QString &spaceId, const QVariantList &rooms, bool loading);
     // a room or space before joining: ok false when the server would not tell
@@ -398,6 +408,7 @@ private:
     TimelineModel *m_timeline;
     TimelineModel *m_thread;
     QString m_threadRoot;
+    int m_threadsSeenVersion = 0;
     QElapsedTimer m_since;   // start-up timing in the journal
     bool m_firstRooms = true;
 };

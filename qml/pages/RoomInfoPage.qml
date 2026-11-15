@@ -185,6 +185,31 @@ Page {
                              : qsTrId("rustrx-he-room")
             }
 
+            // the room's threads, close to the top where they are found
+            BackgroundItem {
+                visible: !page.isSpace
+                width: parent.width
+                height: visible ? Theme.itemSizeSmall : 0
+                onClicked: pageStack.push(Qt.resolvedUrl("ThreadsPage.qml"), { roomId: roomId, roomName: info.name || "" })
+                Row {
+                    x: Theme.horizontalPageMargin
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.paddingMedium
+                    Image {
+                        anchors.verticalCenter: parent.verticalCenter
+                        sourceSize.width: Theme.iconSizeMedium
+                        sourceSize.height: Theme.iconSizeMedium
+                        source: "image://theme/icon-m-menu?" + (parent.parent.highlighted ? Theme.highlightColor : Theme.primaryColor)
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        //% "Threads"
+                        text: qsTrId("rustrx-bt-threads")
+                        color: parent.parent.highlighted ? Theme.highlightColor : Theme.primaryColor
+                    }
+                }
+            }
+
             // name and topic: fields for moderators, labels for everyone else.
             // Nothing is sent on its own: the name on Enter, the topic by its
             // Save button, which only appears once the text differs.

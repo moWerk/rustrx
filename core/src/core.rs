@@ -102,6 +102,8 @@ struct State {
     space_service: Option<Arc<matrix_sdk_ui::spaces::SpaceService>>,
     /// the thread shown beside the open room, if any
     thread: Option<threads::OpenThread>,
+    /// the room's thread list while its page is open
+    thread_list: Option<JoinHandle<()>>,
     /// open space pages: the task that sends each one's rooms
     space_lists: HashMap<String, JoinHandle<()>>,
 }
@@ -132,6 +134,9 @@ impl State {
         self.knocks_watched.clear();
         if let Some(thread) = self.thread.take() {
             tasks.push(thread.task_handle());
+        }
+        if let Some(task) = self.thread_list.take() {
+            tasks.push(task);
         }
         self.space_service = None;
         for (_, task) in self.space_lists.drain() {

@@ -39,6 +39,11 @@ pub(crate) enum Command {
     /// A thread's timeline beside the room's; answered by "thread_timeline".
     OpenThread { room_id: String, root: String },
     CloseThread,
+    /// The room's threads, live; answered by "thread_list".
+    ThreadList { room_id: String },
+    CloseThreadList,
+    /// The open thread read to its end.
+    MarkThreadRead,
     /// A file; pictures carry their size and a thumbnail from the UI, voice
     /// messages their duration.
     SendFile {

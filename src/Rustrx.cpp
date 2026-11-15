@@ -648,6 +648,28 @@ void Rustrx::openThread(const QString &roomId, const QString &root)
     command({ { "cmd", "open_thread" }, { "room_id", roomId }, { "root", root } });
 }
 
+int Rustrx::threadSeen(const QString &root, int count)
+{
+    QSettings settings;
+    const QString key = QStringLiteral("threadsSeen/") + QString(root).remove(QLatin1Char('$'));
+    if (!settings.contains(key)) {
+        settings.setValue(key, count);
+        return count;
+    }
+    return settings.value(key).toInt();
+}
+
+void Rustrx::markThreadSeen(const QString &root, int count)
+{
+    QSettings settings;
+    const QString key = QStringLiteral("threadsSeen/") + QString(root).remove(QLatin1Char('$'));
+    if (settings.value(key, -1).toInt() == count)
+        return;
+    settings.setValue(key, count);
+    ++m_threadsSeenVersion;
+    emit threadsSeenChanged();
+}
+
 void Rustrx::closeThread()
 {
     m_threadRoot.clear();
@@ -1079,6 +1101,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_thread->setEmotePath(mxc, path);
         m_emotePaths.insert(mxc, path);
         emit emoteReady(mxc, QStringLiteral("file://") + path);
+    } else if (type == QLatin1String("thread_list")) {
+        emit threadList(ev.value("room_id").toString(), ev.value("threads").toList(), ev.value("loading").toBool());
     } else if (type == QLatin1String("thread_timeline")) {
         if (ev.value("root").toString() == m_threadRoot)
             m_thread->setItems(ev.value("items").toList());

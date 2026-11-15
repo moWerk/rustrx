@@ -5,7 +5,20 @@
 //! open at a time, beside the open room. (part of `impl Core`)
 
 use super::*;
+use matrix_sdk_ui::timeline::thread_list_service::{ThreadListItemEvent, ThreadListPaginationState, ThreadListService};
 use matrix_sdk_ui::timeline::TimelineFocus;
+
+fn list_event_json(e: &ThreadListItemEvent) -> Value {
+    let name = match &e.sender_profile {
+        TimelineDetails::Ready(p) => p.display_name.clone().unwrap_or_else(|| e.sender.localpart().to_owned()),
+        _ => e.sender.localpart().to_owned(),
+    };
+    let body = e.content.as_ref().and_then(|c| c.as_message()).map(|m| m.body().to_owned());
+    json!({
+        "event_id": e.event_id.as_str(), "sender": e.sender.as_str(), "sender_name": name,
+        "is_own": e.is_own, "ts": u64::from(e.timestamp.0), "body": body,
+    })
+}
 
 pub(crate) struct OpenThread {
     pub(crate) room_id: OwnedRoomId,
@@ -65,6 +78,70 @@ impl Core {
         });
         tracing::info!(room = %room_id, %root, "thread: open");
         self.state.lock().await.thread = Some(OpenThread { room_id: room_id_kept, root, timeline, task });
+        Ok(())
+    }
+
+    /// The room's threads, newest activity first: "thread_list", live until
+    /// close_thread_list.
+    pub(crate) async fn thread_list(&'static self, room_id: &str) -> Result<()> {
+        let room = self.room(room_id).await?;
+        self.close_thread_list().await;
+        let service = Arc::new(ThreadListService::new(room.clone()));
+        let rid = room.room_id().to_owned();
+        let task = self.rt.spawn(async move {
+            let emit = |service: &ThreadListService, loading: bool| {
+                let mut items: Vec<Value> = service
+                    .items()
+                    .iter()
+                    .map(|i| {
+                        json!({
+                            "root": list_event_json(&i.root_event),
+                            "latest": i.latest_event.as_ref().map(list_event_json),
+                            "count": i.num_replies,
+                        })
+                    })
+                    .collect();
+                // the latest activity first
+                let ts = |v: &Value| {
+                    v["latest"]["ts"].as_u64().or_else(|| v["root"]["ts"].as_u64()).unwrap_or(0)
+                };
+                items.sort_by(|a, b| ts(b).cmp(&ts(a)));
+                crate::instance().emit(json!({"ev": "thread_list", "room_id": rid.as_str(), "threads": items, "loading": loading}));
+            };
+            let (_, mut updates) = service.subscribe_to_items_updates();
+            for _ in 0..10 {
+                if let ThreadListPaginationState::Idle { end_reached: true } = service.pagination_state() {
+                    break;
+                }
+                if let Err(e) = service.paginate().await {
+                    tracing::info!(room = %rid, "threads: list: {e}");
+                    break;
+                }
+                emit(&service, true);
+            }
+            emit(&service, false);
+            tracing::info!(room = %rid, threads = service.items().len(), "threads: list");
+            while updates.next().await.is_some() {
+                emit(&service, false);
+            }
+        });
+        self.state.lock().await.thread_list = Some(task);
+        Ok(())
+    }
+
+    pub(crate) async fn close_thread_list(&self) {
+        if let Some(task) = self.state.lock().await.thread_list.take() {
+            task.abort();
+        }
+    }
+
+    /// The open thread read up to its newest message (a threaded receipt,
+    /// so other clients know too).
+    pub(crate) async fn mark_thread_read(&self) -> Result<()> {
+        let tl = self.state.lock().await.thread.as_ref().map(|t| t.timeline.clone());
+        if let Some(tl) = tl {
+            tl.mark_as_read(ReceiptType::Read).await?;
+        }
         Ok(())
     }
 

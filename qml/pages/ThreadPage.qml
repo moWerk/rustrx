@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import Sailfish.Pickers 1.0
 import "../components"
 
 // A thread: its root message on top, the replies under it, newest at the
@@ -37,6 +38,20 @@ Page {
 
     Component.onCompleted: rustrx.openThread(roomId, rootId)
     Component.onDestruction: rustrx.closeThread()
+
+    // what is shown here is seen: the replies counted, and a threaded read
+    // receipt for the other clients
+    function markSeen() {
+        if (status !== PageStatus.Active) return
+        var events = 0
+        for (var i = 0; i < rustrx.thread.count; i++)
+            if (rustrx.thread.get(i).kind === "event") events++
+        if (events === 0) return
+        rustrx.markThreadSeen(rootId, Math.max(events - 1, rustrx.threadSeen(rootId, 0)))
+        rustrx.command({ cmd: "mark_thread_read" })
+    }
+    onStatusChanged: if (status === PageStatus.Active) markSeen()
+    Connections { target: rustrx.thread; onCountChanged: page.markSeen() }
 
     function send() {
         var text = input.text.trim()

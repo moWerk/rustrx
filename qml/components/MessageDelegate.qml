@@ -41,6 +41,10 @@ ListItem {
     property bool inThread
     // a thread's root: how many replies and the latest
     readonly property var threadSummary: model.thread ? model.thread : null
+    // replies in it not seen here yet
+    readonly property int threadNew: threadSummary && !inThread
+                                     ? (rustrx.threadsSeen, Math.max(0, threadSummary.count - rustrx.threadSeen(eventId, threadSummary.count)))
+                                     : 0
 
     readonly property bool isEvent: model.kind === "event"
     readonly property bool own: model.is_own === true
@@ -529,6 +533,9 @@ ListItem {
                                     //: %n replies in a thread
                                     //% "%n replies"
                                     var t = qsTrId("rustrx-la-thread-replies", threadSummary.count)
+                                    //: %n replies not seen yet
+                                    //% "%n new"
+                                    if (threadNew > 0) t += " · <b><font color=\"" + Theme.highlightColor + "\">" + qsTrId("rustrx-la-thread-new", threadNew) + "</font></b>"
                                     if (threadSummary.latest_sender)
                                         t += " · " + escapeText(threadSummary.latest_sender) + ": "
                                              + rustrx.emojify(escapeText((threadSummary.latest_body || "").replace(/\s+/g, " ")),
