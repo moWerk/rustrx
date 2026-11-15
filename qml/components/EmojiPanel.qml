@@ -151,7 +151,14 @@ Item {
                         width: panel.width / panel.columns
                         height: Theme.itemSizeSmall
                         onClicked: panel.choose(modelData)
-                        Label { anchors.centerIn: parent; text: modelData; font.pixelSize: Theme.fontSizeLarge }
+                        Image {
+                            anchors.centerIn: parent
+                            width: Theme.iconSizeMedium * 0.75
+                            height: width
+                            sourceSize.width: width
+                            source: rustrx.emojiUrl(modelData)
+                        }
+                        Label { anchors.centerIn: parent; visible: !rustrx.emojiUrl(modelData); text: modelData; font.pixelSize: Theme.fontSizeLarge }
                     }
                 }
             }
@@ -176,22 +183,23 @@ Item {
                             height: Theme.itemSizeExtraSmall
                             highlighted: down || panel.group === index
                             onClicked: { panel.group = index; grid.positionViewAtBeginning() }
+                            readonly property string twemoji: isPack ? "" : rustrx.emojiUrl(panel.groupIcons[index])
                             Label {
-                                visible: !isPack
+                                visible: !isPack && !twemoji
                                 anchors.centerIn: parent
                                 text: isPack ? "" : panel.groupIcons[index]
                                 font.pixelSize: Theme.fontSizeMedium
                                 opacity: panel.group === index ? 1.0 : Theme.opacityHigh
                             }
                             Image {
-                                visible: isPack
+                                visible: isPack || !!twemoji
                                 anchors.centerIn: parent
                                 width: Theme.iconSizeSmall
                                 height: width
                                 fillMode: Image.PreserveAspectFit
                                 sourceSize.height: height
                                 opacity: panel.group === index ? 1.0 : Theme.opacityHigh
-                                source: isPack ? panel.picture(panel.shownPacks[index - panel.unicodeGroups].avatar || "") : ""
+                                source: isPack ? panel.picture(panel.shownPacks[index - panel.unicodeGroups].avatar || "") : twemoji
                             }
                         }
                     }
@@ -228,21 +236,23 @@ Item {
             width: grid.cellWidth
             height: grid.cellHeight
             onClicked: isImage ? panel.chooseImage(modelData) : panel.choose(modelData)
+            readonly property string twemoji: isImage ? "" : rustrx.emojiUrl(modelData)
             Label {
-                visible: !isImage
+                visible: !isImage && !twemoji
                 anchors.centerIn: parent
                 text: isImage ? "" : modelData
                 font.pixelSize: Theme.fontSizeLarge
             }
             Image {
-                visible: isImage
+                visible: isImage || !!twemoji
                 anchors.centerIn: parent
-                width: Theme.iconSizeMedium
+                // a Unicode emoji a little smaller than a pack's picture
+                width: isImage ? Theme.iconSizeMedium : Theme.iconSizeMedium * 0.75
                 height: width
                 fillMode: Image.PreserveAspectFit
                 sourceSize.height: height
                 asynchronous: true
-                source: isImage ? panel.picture(modelData.url) : ""
+                source: isImage ? panel.picture(modelData.url) : twemoji
             }
         }
         VerticalScrollDecorator {}

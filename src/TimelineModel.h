@@ -63,7 +63,7 @@ signals:
 
 private:
     QVariantMap withMedia(QVariantMap item) const;
-    QString renderHtml(const QString &html) const;
+    QString renderHtml(const QString &html, int emojiHeight = 0) const;
     QVariantList renderReactions(const QVariantList &reactions) const;
     void askEmotes(const QVariantMap &item);
     bool usesEmote(const QVariantMap &item, const QString &mxc) const;

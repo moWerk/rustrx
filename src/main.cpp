@@ -33,6 +33,7 @@
 
 #include "Rustrx.h"
 #include "DebugLog.h"
+#include "Twemoji.h"
 #include <QSettings>
 #include "RoomModel.h"
 #include "TimelineModel.h"
@@ -70,6 +71,7 @@ int main(int argc, char *argv[])
     app->setApplicationName(QStringLiteral("harbour-rustrx"));
     // the debug log (Settings): the app and the stand-in each their own file
     DebugLog::install(standIn ? QStringLiteral("background") : QStringLiteral("app"));
+    Twemoji::init(SailfishApp::pathTo(QStringLiteral("qml/twemoji")).toLocalFile());
     DebugLog::setEnabled(QSettings().value(QStringLiteral("debugLog"), true).toBool());
 
     qmlRegisterUncreatableType<RoomModel>("Rustrx", 1, 0, "RoomModel", "owned by rustrx");

@@ -567,6 +567,21 @@ Page {
                 text: qsTrId("rustrx-la-about-lines").arg(appVersion).arg(rustrx.coreVersion)
             }
 
+            // the emoji pictures' attribution (CC-BY 4.0 asks for it)
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                linkColor: Theme.highlightColor
+                textFormat: Text.StyledText
+                onLinkActivated: Qt.openUrlExternally(link)
+                //: attribution of the emoji pictures; keep the links and names as they are
+                //% "Emoji: <a href='https://github.com/jdecked/twemoji'>Twemoji</a> by Twitter, Inc. and other contributors and Jason Sofonia &amp; Justine De Caires, <a href='https://creativecommons.org/licenses/by/4.0/'>CC-BY 4.0</a>"
+                text: qsTrId("rustrx-la-about-twemoji")
+            }
+
             // how it was made, graded by LLMGD (SPEC section 3: understood and
             // tested by the author, not read line by line, no outside review: A3;
             // the author directs and decides the design, the LLM writes: origin O1)

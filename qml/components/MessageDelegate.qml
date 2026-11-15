@@ -73,6 +73,11 @@ ListItem {
         return key.length > 24 ? key.substring(0, 23) + "\u2026" : key
     }
 
+    // text for a StyledText, as it is
+    function escapeText(t) {
+        return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    }
+
     // plain bodies: escape, link the addresses, keep the line breaks
     function linkify(t) {
         return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -281,7 +286,8 @@ ListItem {
                                 if (!r) return ""
                                 var quoted
                                 if (r.html && r.html.length) quoted = r.html
-                                else if (r.body !== undefined) quoted = r.body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>")
+                                else if (r.body !== undefined) quoted = rustrx.emojify(r.body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>"),
+                                                                                       Math.round(Theme.fontSizeExtraSmall * 1.25))
                                 //: the quoted message of a reply while it is fetched
                                 //% "Loading the original message"
                                 else if (r.pending) quoted = "<i>" + qsTrId("rustrx-la-reply-loading") + "</i>"
@@ -304,7 +310,7 @@ ListItem {
                             id: body
                             width: parent.width - (mentionBar ? parent.spacing + 2 : 0)
                             wrapMode: Text.Wrap
-                            textFormat: msgType === "text" || msgType === "notice" || (model.html && model.html.length) ? Text.StyledText : Text.PlainText
+                            textFormat: msgType === "text" || msgType === "notice" || msgType === "emote" || (model.html && model.html.length) ? Text.StyledText : Text.PlainText
                             color: msgType === "utd" || msgType === "redacted" ? dimColor : (mention ? Theme.highlightColor : mainColor)
                             font.italic: msgType === "emote" || msgType === "utd" || msgType === "redacted"
                             linkColor: Theme.secondaryHighlightColor
@@ -330,9 +336,9 @@ ListItem {
                                 if (msgType === "location") return (model.body || "") + "\n" + qsTrId("rustrx-la-location-open")
                                 //% "Verification request"
                                 if (msgType === "verification") return qsTrId("rustrx-la-verification-request")
-                                if (msgType === "emote") return (model.sender_name || model.sender) + " " + (model.body || "")
+                                if (msgType === "emote") return rustrx.emojify(escapeText((model.sender_name || model.sender) + " " + (model.body || "")), rustrx.timeline.emoteSize)
                                 if (model.html && model.html.length) return model.html
-                                if (msgType === "text" || msgType === "notice") return linkify(model.body || "")
+                                if (msgType === "text" || msgType === "notice") return rustrx.emojify(linkify(model.body || ""), rustrx.timeline.emoteSize)
                                 return model.body || ""
                             }
                         }
@@ -459,7 +465,9 @@ ListItem {
                                     }
                                     Label {
                                         id: chip
-                                        text: (modelData.emote !== undefined ? "" : reactionText(modelData.key) + " ") + modelData.count
+                                        textFormat: Text.StyledText
+                                        text: (modelData.emote !== undefined ? ""
+                                              : rustrx.emojify(escapeText(reactionText(modelData.key)), Math.round(font.pixelSize * 1.25)) + " ") + modelData.count
                                         font.pixelSize: Theme.fontSizeExtraSmall
                                         color: modelData.me ? Theme.highlightColor : Theme.secondaryColor
                                     }
@@ -479,7 +487,9 @@ ListItem {
                         Repeater {
                             model: reactionList
                             Label {
-                                text: (modelData.emote !== undefined ? "\u2B1C" : reactionText(modelData.key)) + " " + modelData.count
+                                textFormat: Text.StyledText
+                                text: (modelData.emote !== undefined ? "\u2B1C"
+                                      : rustrx.emojify(escapeText(reactionText(modelData.key)), Math.round(font.pixelSize * 1.25))) + " " + modelData.count
                                 font.pixelSize: Theme.fontSizeExtraSmall
                             }
                         }
@@ -542,7 +552,15 @@ ListItem {
                             rustrx.command({ cmd: "react", room_id: roomId, event_id: msg.eventId, key: modelData })
                             msg.closeMenu()
                         }
-                        Label { anchors.centerIn: parent; text: modelData; font.pixelSize: Theme.fontSizeLarge }
+                        // a Twemoji picture where there is one
+                        Image {
+                            anchors.centerIn: parent
+                            width: Theme.iconSizeMedium * 0.75
+                            height: width
+                            sourceSize.width: width
+                            source: rustrx.emojiUrl(modelData)
+                        }
+                        Label { anchors.centerIn: parent; visible: !rustrx.emojiUrl(modelData); text: modelData; font.pixelSize: Theme.fontSizeLarge }
                     }
                 }
                 IconButton {

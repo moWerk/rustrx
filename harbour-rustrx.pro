@@ -14,12 +14,14 @@ SOURCES += src/main.cpp \
     src/Rustrx.cpp \
     src/RoomModel.cpp \
     src/TimelineModel.cpp \
+    src/Twemoji.cpp \
     src/VoiceRecorder.cpp \
     src/DebugLog.cpp
 
 HEADERS += src/Rustrx.h \
     src/RoomModel.h \
     src/TimelineModel.h \
+    src/Twemoji.h \
     src/VoiceRecorder.h \
     src/DebugLog.h \
     src/rustrx_core.h

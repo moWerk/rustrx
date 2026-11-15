@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "TimelineModel.h"
+#include "Twemoji.h"
 
 #include <QImageReader>
 #include <QRegularExpression>
@@ -112,8 +113,10 @@ QVariantMap TimelineModel::withMedia(QVariantMap item) const
 // the text's height, their name until it is there; every other picture
 // becomes its name, so a message cannot make the phone fetch from any
 // address. A reply's quoted fallback (<mx-reply>) goes.
-QString TimelineModel::renderHtml(const QString &html) const
+QString TimelineModel::renderHtml(const QString &html, int emojiHeight) const
 {
+    if (emojiHeight <= 0)
+        emojiHeight = m_emoteSize;
     if (html.isEmpty())
         return html;
     static const QRegularExpression reply(QStringLiteral("<mx-reply>.*</mx-reply>"),
@@ -165,6 +168,8 @@ QString TimelineModel::renderHtml(const QString &html) const
     int hidden = 0;        // inside a spoiler: its text is not shown
     QString out;
     auto emit_ = [&](const QString &s) { if (!hidden) out += s; };
+    // text between tags, its emoji as Twemoji pictures
+    auto emitText = [&](const QString &s) { if (!hidden) out += Twemoji::inHtml(s, emojiHeight); };
     auto closeTop = [&]() {
         const Open o = stack.takeLast();
         if (o.hides) --hidden;
@@ -175,7 +180,7 @@ QString TimelineModel::renderHtml(const QString &html) const
     QRegularExpressionMatchIterator it = tagRe.globalMatch(in);
     while (it.hasNext()) {
         const QRegularExpressionMatch m = it.next();
-        emit_(text(in.midRef(last, m.capturedStart() - last)));
+        emitText(text(in.midRef(last, m.capturedStart() - last)));
         last = m.capturedEnd();
         const bool closing = m.capturedLength(1) > 0;
         const QString name = m.captured(2).toLower();
@@ -256,7 +261,7 @@ QString TimelineModel::renderHtml(const QString &html) const
         emit_(open);
         stack.append(o);
     }
-    emit_(text(in.midRef(last)));
+    emitText(text(in.midRef(last)));
     while (!stack.isEmpty())
         closeTop();
     return out;
@@ -286,7 +291,8 @@ QVariant TimelineModel::renderReply(const QVariant &reply) const
         return reply;
     QVariantMap r = reply.toMap();
     if (r.contains("html"))
-        r.insert("html", renderHtml(r.value("html").toString()));
+        // the quote's text is smaller
+        r.insert("html", renderHtml(r.value("html").toString(), qRound(m_emoteSize * 0.75)));
     return r;
 }
 

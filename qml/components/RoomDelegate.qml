@@ -184,7 +184,9 @@ ListItem {
 
         Label {
             width: parent.width
-            text: model.name
+            // emoji in the name as Twemoji pictures
+            textFormat: Text.StyledText
+            text: rustrx.emojify((model.name || "").replace(/&/g, "&amp;").replace(/</g, "&lt;"), Math.round(font.pixelSize * 1.2))
             truncationMode: TruncationMode.Fade
             font.pixelSize: nameSize
             font.bold: hasUnread
@@ -271,7 +273,7 @@ ListItem {
                         var body = model.preview.replace(/&/g, "&amp;").replace(/</g, "&lt;")
                         // one line: the breaks become spaces; more: kept
                         body = maximumLineCount > 1 ? body.replace(/\n/g, "<br>") : body.replace(/\s+/g, " ")
-                        return who + body
+                        return who + rustrx.emojify(body, Math.round(font.pixelSize * 1.2))
                     }
                     if (model.topic && model.topic.length) return model.topic.replace(/\s+/g, " ")
                     return model.encrypted

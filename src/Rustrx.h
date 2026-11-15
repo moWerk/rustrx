@@ -142,6 +142,10 @@ public:
     // a custom emoji's cached picture (file://), or "" while it is fetched
     // (emoteReady follows)
     Q_INVOKABLE QString emotePath(const QString &mxc);
+    // emoji as Twemoji pictures: in HTML for a StyledText (height in px),
+    // and one emoji's picture ("" when there is none)
+    Q_INVOKABLE QString emojify(const QString &html, int height) const;
+    Q_INVOKABLE QString emojiUrl(const QString &emoji) const;
     Q_INVOKABLE void sendFile(const QString &roomId, const QString &path, const QString &caption = QString());
     // a picture from the phone as the room's picture: upright, at most 512 px
     Q_INVOKABLE void setRoomAvatar(const QString &roomId, const QString &path);

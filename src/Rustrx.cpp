@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
+#include "Twemoji.h"
 #include "Rustrx.h"
 #include "DebugLog.h"
 #include <QLibrary>
@@ -641,6 +642,16 @@ void Rustrx::sendText(const QString &roomId, const QString &body, const QString 
     if (!emotes.isEmpty())
         cmd.insert("emotes", emotes);
     command(cmd);
+}
+
+QString Rustrx::emojify(const QString &html, int height) const
+{
+    return Twemoji::inHtml(html, height);
+}
+
+QString Rustrx::emojiUrl(const QString &emoji) const
+{
+    return Twemoji::url(emoji);
 }
 
 QString Rustrx::emotePath(const QString &mxc)

@@ -157,4 +157,8 @@ grading scheme is described at [moWerk/llmgd-specs](https://github.com/moWerk/ll
 GPL-3.0-or-later. matrix-rust-sdk is Apache-2.0. The bundled Source Sans 3 Semibold
 (`qml/fonts/`, by Adobe, unmodified) is under the SIL Open Font License 1.1. The emoji list
 (`qml/emoji-data.js`) is generated from Unicode's emoji-test.txt, under the
-[Unicode licence](https://www.unicode.org/terms_of_use.html).
+[Unicode licence](https://www.unicode.org/terms_of_use.html). The emoji pictures
+(`qml/twemoji/`) are [Twemoji](https://github.com/jdecked/twemoji) 17.0.3, unmodified:
+graphics copyright Twitter, Inc. and other contributors and Jason Sofonia & Justine De
+Caires and other contributors, licensed under
+[CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/) (`qml/twemoji/LICENSE-GRAPHICS`).
