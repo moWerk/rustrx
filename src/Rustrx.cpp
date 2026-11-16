@@ -54,8 +54,14 @@ QString Rustrx::localPath(const QString &path)
     return Media::localPath(path);
 }
 
+QString Rustrx::settingsFile()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QLatin1String("/harbour-rustrx.conf");
+}
+
 Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     : QObject(parent)
+    , m_settings(settingsFile(), QSettings::IniFormat)
     , m_lists(new RoomLists(&m_settings, this))
     , m_media(new Media(&m_settings, this))
     , m_timeline(new TimelineModel(this))

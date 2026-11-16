@@ -167,6 +167,9 @@ public:
     void receiveShare(const QStringList &files, const QString &text);
     // a file:// URL as a local path; a path stays as it is
     static QString localPath(const QString &path);
+    // the settings file, in the app's own config folder: the sandbox keeps
+    // only that one, a file next to it is lost when the app ends
+    static QString settingsFile();
 
     Q_INVOKABLE void command(const QVariantMap &cmd);
     Q_INVOKABLE void loginPassword(const QString &user, const QString &password, const QString &homeserver);

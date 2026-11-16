@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
     // the debug log (Settings): the app and the stand-in each their own file
     DebugLog::install(QLatin1String(standIn ? Keys::kLogBackground : pushWake ? Keys::kLogPush : Keys::kLogApp));
     Twemoji::init(SailfishApp::pathTo(QStringLiteral("qml/twemoji")).toLocalFile());
-    DebugLog::setEnabled(QSettings().value(QLatin1String(Keys::kDebugLog), Keys::kDebugLogDefault).toBool());
+    DebugLog::setEnabled(QSettings(Rustrx::settingsFile(), QSettings::IniFormat).value(QLatin1String(Keys::kDebugLog), Keys::kDebugLogDefault).toBool());
 
     qmlRegisterUncreatableType<RoomModel>("Rustrx", 1, 0, "RoomModel", "owned by rustrx");
     qmlRegisterUncreatableType<TimelineModel>("Rustrx", 1, 0, "TimelineModel", "owned by rustrx");

@@ -28,7 +28,7 @@ namespace Keys {
 // the JSON protocol this UI speaks, see docs/PROTOCOL.md (core: PROTO in core/src/consts.rs)
 static const int kProto = 1;
 
-// QSettings (~/.config/net.mowerk/harbour-rustrx.conf), each key with its default
+// QSettings (Rustrx::settingsFile(): ~/.config/net.mowerk/harbour-rustrx/harbour-rustrx.conf), each key with its default
 static const char kDebugLog[] = "debugLog";
 static const bool kDebugLogDefault = true;
 static const char kDownscaleImages[] = "downscaleImages";
