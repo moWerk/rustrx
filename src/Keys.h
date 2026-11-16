@@ -140,6 +140,10 @@ static const int kDefaultEmoteSize = 32;
 static const int kReactionKeyMax = 24;
 // shared files are copied in chunks of this
 static const int kShareChunk = 1 << 20;
+// a shared file is copied up to this size (a pipe or /dev/zero ends there),
+// and copies older than this are removed at start
+static const qint64 kShareMaxBytes = qint64(512) << 20;
+static const int kSharedKeepHours = 24;
 // Opus records at this rate
 static const int kVoiceSampleRate = 48000;
 // the debug log: about this big, then it becomes the older file; the size

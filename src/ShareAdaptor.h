@@ -41,6 +41,7 @@ private:
                                       const QString &name, int n);
     // D-Bus hands nested values over as QDBusVariant / QDBusArgument
     static QVariant unwrap(const QVariant &v);
+    static bool mayShare(const QString &path);
     Rustrx *m_owner;
 };
 
