@@ -136,6 +136,8 @@ ListItem {
             msg.openThread(model.thread_root, false)
             return
         }
+        // a picture, file or sound still on its way has nothing to open yet
+        if (!eventId.length && (isMedia || isFile || msgType === "audio")) return
         if (msgType === "audio") {
             if (!player) return
             if (playing) { player.pause(); return }
