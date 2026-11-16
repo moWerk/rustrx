@@ -38,8 +38,8 @@ CoverBackground {
 
     Image {
         anchors.fill: parent
-        visible: cover.inChat && !!cover.chat.avatar
-        source: visible ? "file://" + cover.chat.avatar + "?v=" + (cover.chat.avatar_v || 0) : ""
+        visible: cover.inChat && !!cover.chat.avatar_path
+        source: visible ? "file://" + cover.chat.avatar_path + "?v=" + (cover.chat.avatar_v || 0) : ""
         sourceSize.width: width
         fillMode: Image.PreserveAspectCrop
         opacity: 0.3
@@ -47,7 +47,7 @@ CoverBackground {
     }
 
     Image {
-        visible: !cover.inChat || !cover.chat.avatar
+        visible: !cover.inChat || !cover.chat.avatar_path
         anchors {
             horizontalCenter: parent.horizontalCenter
             // the icon's bottom as far from the tile's bottom as the cover

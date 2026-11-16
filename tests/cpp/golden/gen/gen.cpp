@@ -231,7 +231,9 @@ int main(int argc, char **argv)
         }
         case 4: {
             const QString sender = other.isEmpty() ? QStringLiteral("Alice <&>") : other;
-            const QVariantMap t { { "latest_sender", sender }, { "latest_body", s } };
+            // the old JavaScript read latest_sender, the model since protocol 2
+            // latest_sender_name: both, so the cases regenerate the same
+            const QVariantMap t { { "latest_sender", sender }, { "latest_sender_name", sender }, { "latest_body", s } };
             add("thread", { { "thread", t } }, call("thread", { obj(t), kSmall }));
             break;
         }

@@ -45,15 +45,15 @@ Page {
         preview = ({})
         asked = false
         loading = true
-        rustrx.command({ cmd: "room_preview", id: id, via: via })
+        rustrx.command({ cmd: "room_preview", room_or_alias: id, via: via })
     }
     function join() {
         waiting = true
-        rustrx.command({ cmd: "join_by_id_or_alias", id: address, via: via })
+        rustrx.command({ cmd: "join_by_id_or_alias", room_or_alias: address, via: via })
     }
     function knock() {
         waiting = true
-        rustrx.command({ cmd: "knock", id: address, reason: reasonField.text.trim(), via: via })
+        rustrx.command({ cmd: "knock", room_or_alias: address, reason: reasonField.text.trim(), via: via })
     }
 
     Component.onCompleted: if (address.length) { addressField.text = address; look() }
@@ -61,7 +61,7 @@ Page {
     Connections {
         target: rustrx
         onRoomPreview: {
-            if (preview.id !== page.address) return
+            if (preview.room_or_alias !== page.address) return
             page.loading = false
             page.preview = preview
         }
@@ -149,7 +149,7 @@ Page {
                                : qsTrId("rustrx-la-kind-room"))
                               //: %n members
                               //% "%n members"
-                              + " · " + qsTrId("rustrx-la-n-members", page.preview.members || 0)
+                              + " · " + qsTrId("rustrx-la-n-members", page.preview.member_count || 0)
                               + " · " + app.joinRuleName(page.rule, "")
                     }
                 }

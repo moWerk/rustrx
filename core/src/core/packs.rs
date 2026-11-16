@@ -31,7 +31,7 @@ fn pack_json(id: &str, source: &str, content: &Value) -> Option<Value> {
         let emoticon = usage.is_empty() || usage.contains(&"emoticon");
         let sticker = usage.is_empty() || usage.contains(&"sticker");
         out.push(json!({
-            "shortcode": code, "url": url,
+            "shortcode": code, "mxc": url,
             "body": img.get("body").and_then(Value::as_str).unwrap_or(code),
             "info": img.get("info").cloned().unwrap_or(Value::Null),
             "emoticon": emoticon, "sticker": sticker,
@@ -44,7 +44,7 @@ fn pack_json(id: &str, source: &str, content: &Value) -> Option<Value> {
     let name = pack.and_then(|p| p.get("display_name")).and_then(Value::as_str).unwrap_or(id);
     let avatar = pack.and_then(|p| p.get("avatar_url")).and_then(Value::as_str);
     Some(json!({"id": format!("{source}:{id}"), "name": name, "source": source,
-                "avatar": avatar.or_else(|| out[0]["url"].as_str()), "images": out}))
+                "avatar_mxc": avatar.or_else(|| out[0]["mxc"].as_str()), "images": out}))
 }
 
 /// Text into HTML, for a message that had no formatting of its own.
@@ -202,7 +202,7 @@ impl Core {
         images[&name] = json!({"url": url});
         let raw: Raw<AnyGlobalAccountDataEventContent> = Raw::new(&v)?.cast_unchecked();
         account.set_account_data_raw(kind, raw).await?;
-        self.emit(json!({"ev": "emote_added", "shortcode": name, "url": url}));
+        self.emit(json!({"ev": "emote_added", "shortcode": name, "mxc": url}));
         Ok(())
     }
 }

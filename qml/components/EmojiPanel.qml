@@ -63,7 +63,7 @@ Item {
         var out = []
         for (var i = 0; i < packs.length; i++) {
             var imgs = imagesFor(packs[i])
-            if (imgs.length) out.push({ name: packs[i].name, avatar: packs[i].avatar, images: imgs })
+            if (imgs.length) out.push({ name: packs[i].name, avatar: packs[i].avatar_mxc, images: imgs })
         }
         return out
     }
@@ -253,7 +253,7 @@ Item {
                 fillMode: Image.PreserveAspectFit
                 sourceSize.height: height
                 asynchronous: true
-                source: isImage ? panel.picture(modelData.url) : twemoji
+                source: isImage ? panel.picture(modelData.mxc) : twemoji
             }
         }
         VerticalScrollDecorator {}

@@ -245,7 +245,7 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path, setting
         "own_read": own_read,
         "replaced_by": replaced_by,
         "has_avatar": avatar_meta.is_some(),
-        "avatar": avatar_meta.as_ref().map(|_| avatar.to_string_lossy().into_owned()),
+        "avatar_path": avatar_meta.as_ref().map(|_| avatar.to_string_lossy().into_owned()),
         // the file's age: the picture's URL changes with it, past Qt's image cache
         "avatar_v": avatar_meta.and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()),
@@ -453,7 +453,7 @@ fn content_json(o: &mut Map<String, Value>, content: &TimelineItemContent, own: 
                 put(&mut t, "count", summary.num_replies);
                 if let TimelineDetails::Ready(latest) = &summary.latest_event {
                     let who = profile_name(&latest.sender_profile, &latest.sender);
-                    put(&mut t, "latest_sender", who);
+                    put(&mut t, "latest_sender_name", who);
                     // for the read check (timeline.rs, thread_unread)
                     if let matrix_sdk_ui::timeline::TimelineEventItemId::EventId(id) = &latest.identifier {
                         put(&mut t, "latest_id", id.as_str());

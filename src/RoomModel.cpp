@@ -24,7 +24,7 @@ RoomModel::RoomModel(QObject *parent)
 {
     const char *names[] = { "room_id", "name", "topic", "alias", "is_dm", "is_fav", "is_low", "unread",
                             "notifications", "highlights", "ts", "state", "encrypted", "section",
-                            "avatar", "avatar_v", "has_avatar", "preview", "preview_sender",
+                            "avatar_path", "avatar_v", "has_avatar", "preview", "preview_sender",
                             "muted", "own_read", "replaced_by", "in_call",
                             "is_space", "join_rule", "can_join_rules", "can_manage_children", "children", "parents",
                             "name_html", "preview_html" };

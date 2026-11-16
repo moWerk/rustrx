@@ -239,7 +239,7 @@ impl Core {
                     "name": r.name,
                     "alias": r.canonical_alias.map(|a| a.to_string()),
                     "topic": r.topic,
-                    "members": r.num_joined_members,
+                    "member_count": r.num_joined_members,
                     "joined": joined,
                 })
             })

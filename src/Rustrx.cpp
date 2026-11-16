@@ -450,7 +450,7 @@ void Rustrx::openThread(const QString &roomId, const QString &root)
 {
     m_threadRoot = root;
     m_thread->clear();
-    command({ { "cmd", "open_thread" }, { "room_id", roomId }, { "root", root } });
+    command({ { "cmd", "open_thread" }, { "room_id", roomId }, { "thread_root", root } });
 }
 
 void Rustrx::closeThread()
@@ -677,7 +677,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     } else if (type == QLatin1String("thread_list")) {
         emit threadList(ev.value("room_id").toString(), ev.value("threads").toList(), ev.value("loading").toBool());
     } else if (type == QLatin1String("thread_timeline")) {
-        if (ev.value("root").toString() == m_threadRoot)
+        if (ev.value("thread_root").toString() == m_threadRoot)
             m_thread->setItems(ev.value("items").toList());
     } else if (type == QLatin1String("space_rooms")) {
         emit spaceRooms(ev.value("space_id").toString(), ev.value("rooms").toList(), ev.value("loading").toBool());
@@ -733,7 +733,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_recoveryState = ev.value("state").toString();
         emit encryptionChanged();
     } else if (type == QLatin1String("recovery_key")) {
-        emit recoveryKey(ev.value("key").toString());
+        emit recoveryKey(ev.value("recovery_key").toString());
     } else if (type == QLatin1String("recovery_done")) {
         emit recoveryDone();
     } else if (type == QLatin1String("members")) {

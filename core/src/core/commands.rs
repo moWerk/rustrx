@@ -54,10 +54,10 @@ impl Core {
                 self.send_text(&room_id, &body, given(&reply_to), markdown.unwrap_or(true), emotes.as_ref(), given(&thread_root))
                     .await
             }
-            SendSticker { room_id, url, body, info, thread_root } => {
-                self.send_sticker(&room_id, &url, &body, info, given(&thread_root)).await
+            SendSticker { room_id, mxc, body, info, thread_root } => {
+                self.send_sticker(&room_id, &mxc, &body, info, given(&thread_root)).await
             }
-            OpenThread { room_id, root } => self.open_thread(&room_id, &root).await,
+            OpenThread { room_id, thread_root } => self.open_thread(&room_id, &thread_root).await,
             SaveDraft { room_id, text } => self.save_draft(&room_id, &text).await,
             RetrySend { room_id, txn_id } => self.retry_send(&room_id, &txn_id).await,
             CloseThread => {
@@ -92,7 +92,7 @@ impl Core {
             }
             FetchEmote { mxc } => self.fetch_emote(&mxc).await,
             ImagePacks { room_id } => self.image_packs(&room_id).await,
-            AddUserEmote { shortcode, url } => self.add_user_emote(&shortcode, &url).await,
+            AddUserEmote { shortcode, mxc } => self.add_user_emote(&shortcode, &mxc).await,
 
             // --- rooms (rooms.rs, spaces.rs) ---
             GetNotificationMode { room_id } => self.notification_mode(&room_id).await,
@@ -101,9 +101,9 @@ impl Core {
             SetLowPriority { room_id, value } => self.set_low_priority(&room_id, value.unwrap_or(true)).await,
             JoinRoom { room_id } => self.join_room(&room_id).await,
             LeaveRoom { room_id } => self.leave_room(&room_id).await,
-            JoinByIdOrAlias { id, via } => self.join_by_id_or_alias(&id, &via).await,
-            RoomPreview { id, via } => self.room_preview(&id, &via).await,
-            Knock { id, reason, via } => self.knock(&id, given(&reason), &via).await,
+            JoinByIdOrAlias { room_or_alias, via } => self.join_by_id_or_alias(&room_or_alias, &via).await,
+            RoomPreview { room_or_alias, via } => self.room_preview(&room_or_alias, &via).await,
+            Knock { room_or_alias, reason, via } => self.knock(&room_or_alias, given(&reason), &via).await,
             RoomLink { room_id } => self.room_link(&room_id).await,
             SetJoinRule { room_id, rule } => self.set_join_rule(&room_id, &rule).await,
             SpaceOpen { space_id } => self.space_open(&space_id).await,
@@ -144,7 +144,7 @@ impl Core {
             VerificationConfirm { flow_id } => self.verification_confirm(&flow_id).await,
             VerificationMismatch { flow_id } => self.verification_mismatch(&flow_id).await,
             VerificationCancel { flow_id } => self.verification_cancel(&flow_id).await,
-            RecoveryRecover { key } => self.recovery_recover(&key).await,
+            RecoveryRecover { recovery_key } => self.recovery_recover(&recovery_key).await,
             RecoveryEnable => self.recovery_enable().await,
             RecoveryReset => self.recovery_reset().await,
             IdentityReset => self.identity_reset().await,

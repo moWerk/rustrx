@@ -166,7 +166,7 @@ Page {
     property var roomInfo: rustrx.roomInfo(roomId)
     Connections { target: rustrx.rooms; onDataChanged: page.roomInfo = rustrx.roomInfo(page.roomId) }
     Connections { target: rustrx.people; onDataChanged: page.roomInfo = rustrx.roomInfo(page.roomId) }
-    readonly property bool hasPicture: !!(roomInfo && roomInfo.avatar)
+    readonly property bool hasPicture: !!(roomInfo && roomInfo.avatar_path)
 
     // the header stays put; the list runs underneath it
     PageHeader {
@@ -189,7 +189,7 @@ Page {
             fillMode: Image.PreserveAspectCrop
             sourceSize.width: width * 2
             sourceSize.height: height * 2
-            source: page.hasPicture ? "file://" + page.roomInfo.avatar + "?v=" + (page.roomInfo.avatar_v || 0) : ""
+            source: page.hasPicture ? "file://" + page.roomInfo.avatar_path + "?v=" + (page.roomInfo.avatar_v || 0) : ""
             layer.enabled: app.roundAvatars
             layer.effect: RoundMask {}
         }
@@ -464,9 +464,9 @@ Page {
         // (an empty message, and the image is one), else :shortcode: in the text
         onPickedImage: {
             if (mode === "react")
-                rustrx.command({ cmd: "react", room_id: page.roomId, event_id: eventId, key: image.url })
+                rustrx.command({ cmd: "react", room_id: page.roomId, event_id: eventId, key: image.mxc })
             else if (stickers && image.sticker && (!page.composer || page.composer.text.trim().length === 0)) {
-                rustrx.command({ cmd: "send_sticker", room_id: page.roomId, url: image.url,
+                rustrx.command({ cmd: "send_sticker", room_id: page.roomId, mxc: image.mxc,
                                  body: image.body || image.shortcode, info: image.info })
                 emojiDock.open = false
             } else

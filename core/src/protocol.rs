@@ -42,9 +42,9 @@ pub(crate) enum Command {
         thread_root: Option<String>,
     },
     /// A sticker from an image pack.
-    SendSticker { room_id: String, url: String, body: String, info: Option<serde_json::Value>, thread_root: Option<String> },
+    SendSticker { room_id: String, mxc: String, body: String, info: Option<serde_json::Value>, thread_root: Option<String> },
     /// A thread's timeline beside the room's; answered by "thread_timeline".
-    OpenThread { room_id: String, root: String },
+    OpenThread { room_id: String, thread_root: String },
     CloseThread,
     /// The text being written in a room, kept encrypted; "" removes it.
     /// The room's draft comes with open_room as "draft".
@@ -103,7 +103,7 @@ pub(crate) enum Command {
     /// room's). Answered by "image_packs".
     ImagePacks { room_id: String },
     /// A custom emoji into the user's own pack. Answered by "emote_added".
-    AddUserEmote { shortcode: String, url: String },
+    AddUserEmote { shortcode: String, mxc: String },
 
     // --- rooms ---
     GetNotificationMode { room_id: String },
@@ -115,11 +115,11 @@ pub(crate) enum Command {
     LeaveRoom { room_id: String },
     /// A room id or alias (and the servers that know it, from a link);
     /// answered by "joined".
-    JoinByIdOrAlias { id: String, via: Option<Vec<String>> },
+    JoinByIdOrAlias { room_or_alias: String, via: Option<Vec<String>> },
     /// What a room or space not joined is; answered by "room_preview".
-    RoomPreview { id: String, via: Option<Vec<String>> },
+    RoomPreview { room_or_alias: String, via: Option<Vec<String>> },
     /// Ask to join a room or space whose join rule is "knock"; answered by "knocked".
-    Knock { id: String, reason: Option<String>, via: Option<Vec<String>> },
+    Knock { room_or_alias: String, reason: Option<String>, via: Option<Vec<String>> },
     /// The room's matrix.to link with its servers; answered by "room_link".
     RoomLink { room_id: String },
     /// Who may join: "invite", "knock", "public", "restricted", "knock_restricted".
@@ -167,7 +167,7 @@ pub(crate) enum Command {
     VerificationConfirm { flow_id: String },
     VerificationMismatch { flow_id: String },
     VerificationCancel { flow_id: String },
-    RecoveryRecover { key: String },
+    RecoveryRecover { recovery_key: String },
     RecoveryEnable,
     RecoveryReset,
     /// No other device and no recovery key: new cross-signing keys, a new

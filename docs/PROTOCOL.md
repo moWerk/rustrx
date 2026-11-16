@@ -9,7 +9,7 @@ UI. They talk through three C functions (`src/rustrx_core.h`) and JSON:
   hands it to the GUI thread.
 - `rustrx_stop()`: no event reaches the callback afterwards.
 
-**Version 1.** The core sends `"proto": 1` with `ready` and `logged_in`
+**Version 2** (since 0.4.7: one name per concept). The core sends `"proto": 2` with `ready` and `logged_in`
 (`PROTO` in `core/src/consts.rs`); the bridge warns in the log when it expects
 another (`kProto` in `src/Keys.h`). Both halves ship in one package, so a
 mismatch means a build mix-up, not an upgrade path.
@@ -39,8 +39,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `close_room` | | |
 | `paginate_back` | `room_id`, `count?` (30) | `paginated` |
 | `send_text` | `room_id`, `body`, `reply_to?`, `markdown?` (true), `emotes?` (shortcode → mxc: custom emoji in the HTML), `thread_root?` | `timeline` |
-| `send_sticker` | `room_id`, `url` (mxc), `body`, `info?`, `thread_root?` | `timeline` |
-| `open_thread` | `room_id`, `root` | `thread_timeline` (live until `close_thread`) |
+| `send_sticker` | `room_id`, `mxc`, `body`, `info?`, `thread_root?` | `timeline` |
+| `open_thread` | `room_id`, `thread_root` | `thread_timeline` (live until `close_thread`) |
 | `close_thread` | | |
 | `retry_send` | `room_id`, `txn_id` (a message the server did not take) | `timeline` |
 | `send_file` | `room_id`, `path`, `mime?`, `caption?`, `w?`, `h?`, `thumb_path?`, `thumb_w?`, `thumb_h?`, `voice?`, `duration_ms?`, `thread_root?` | `timeline` |
@@ -54,8 +54,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `get_media` | `room_id`, `event_id`, `thumb?`, `dest_dir?` (a copy for other apps) | `media` |
 | `fetch_emote` | `mxc` (a custom emoji's address) | `emote` |
 | `image_packs` | `room_id` | `image_packs` |
-| `room_preview` | `id`, `via?` | `room_preview` |
-| `knock` | `id`, `reason?`, `via?` | `knocked` |
+| `room_preview` | `room_or_alias`, `via?` | `room_preview` |
+| `knock` | `room_or_alias`, `reason?`, `via?` | `knocked` |
 | `room_link` | `room_id` | `room_link` |
 | `set_join_rule` | `room_id`, `rule` (invite, knock, public, restricted, knock_restricted) | `rooms` |
 | `space_open` / `space_close` | `space_id` | `space_rooms` (live until closed) |
@@ -63,7 +63,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `space_leave` | `space_id`, `with_rooms?` | `rooms` |
 | `knock_answer` | `room_id`, `user_id`, `accept`, `ban?`, `reason?` | `knock_requests` |
 | `knock_seen` | `room_id`, `user_ids` | `knock_requests` |
-| `add_user_emote` | `shortcode`, `url` (mxc) | `emote_added` |
+| `add_user_emote` | `shortcode`, `mxc` | `emote_added` |
 | `event_source` | `room_id`, `event_id` | `event_source` |
 | `thread_list` | `room_id` | `thread_list` (live until `close_thread_list`) |
 | `close_thread_list` | | |
@@ -76,7 +76,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `set_notification_mode` | `room_id`, `mode` (`all`, `mentions`, `mute`, other: the account's default) | `notification_mode` |
 | `set_favourite` / `set_low_priority` | `room_id`, `value?` (true) | `rooms` |
 | `join_room` / `leave_room` | `room_id` | `rooms` |
-| `join_by_id_or_alias` | `id`, `via?` | `joined` |
+| `join_by_id_or_alias` | `room_or_alias`, `via?` | `joined` |
 | `create_dm` | `user_id` | `dm_ready` |
 | `create_room` | `name?`, `topic?`, `public?`, `alias?`, `encrypted?` (not public), `space?` (a space instead of a room), `parent?` (the space it goes into), `join_rule?` (invite, knock, public, restricted) | `joined` |
 | `room_members` | `room_id` | `members` |
@@ -92,7 +92,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `verification_request_self` | | `verification` |
 | `verification_accept`, `verification_start_sas`, `verification_cancel` | `flow_id` | `verification`, `sas` |
 | `verification_confirm`, `verification_mismatch` | `flow_id` | `sas`, `verification_state` |
-| `recovery_recover` | `key` | `recovery_done` |
+| `recovery_recover` | `recovery_key` | `recovery_done` |
 | `recovery_enable`, `recovery_reset` | | `recovery_key` |
 | `identity_reset` | | `identity_reset_approval` and `open_url` (where the server asks for approval in the browser), then `recovery_key` |
 | `export_keys` / `import_keys` | `path`, `passphrase` | `keys_exported` / `keys_imported` |
@@ -143,29 +143,29 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `typing` | `room_id`, `names` (others typing) |
 | `media` | `room_id`, `event_id`, `thumb`, `exported`, `path` |
 | `emote` | `mxc`, `path` |
-| `image_packs` | `room_id`, `packs` (`id`, `name`, `source` user/global/room, `avatar`, `images`: `shortcode`, `url`, `body`, `info`, `emoticon`, `sticker`) |
-| `emote_added` | `shortcode` (as stored, a number added when taken), `url` |
+| `image_packs` | `room_id`, `packs` (`id`, `name`, `source` user/global/room, `avatar_mxc`, `images`: `shortcode`, `mxc`, `body`, `info`, `emoticon`, `sticker`) |
+| `emote_added` | `shortcode` (as stored, a number added when taken), `mxc` |
 | `members` | `room_id`, `members`: `{user_id, name, power}` |
 | `notification_mode` | `room_id`, `mode` (`all`, `mentions`, `mute`, `default`) |
 | `joined` | `room_id` |
 | `dm_ready` | `room_id`, `user_id` |
-| `search_results` | `term`, `users`: `{user_id, name}`, `rooms`: `{room_id, name, alias, topic, members, joined}` |
+| `search_results` | `term`, `users`: `{user_id, name}`, `rooms`: `{room_id, name, alias, topic, member_count, joined}` |
 | `verification` | `flow_id`, `state`, `other_user`, `we_started`, `self_verification` |
 | `sas` | `flow_id`, `state`, `emojis?`, `decimals?`, `reason?` |
 | `verification_state` | `state` (`verified`, `unverified`, `unknown`) |
 | `recovery_state` | `state` (`enabled`, `disabled`, `incomplete`, `unknown`) |
-| `recovery_key` | `key` (shown once) |
+| `recovery_key` | `recovery_key` (shown once) |
 | `recovery_done` | |
 | `keys_exported` / `keys_imported` | `path` / `imported`, `total` |
 | `devices` | `devices`: `{device_id, name, last_seen_ts, last_seen_ip, current}` |
 | `device_deleted` | `device_id` |
-| `profile` | `display_name`, `user_id` |
+| `profile` | `display_name`, `user_id`, `avatar_path` (a cached file), `avatar_v` |
 | `storage` | `store`, `media_files` (bytes), `crypto?`, `state?`, `event_cache?`, `media_cache?` |
 | `error` | `cmd`, `message` |
-| `thread_timeline` | `room_id`, `root`, `items` (as `timeline`; a thread root carries `thread`: `count`, `latest_sender`, `latest_body`, `latest_id`, `latest_ts`, `latest_own`, `unread` (no read receipt of ours, threaded or not, reaches the latest reply)) |
+| `thread_timeline` | `room_id`, `thread_root`, `items` (as `timeline`; a thread root carries `thread`: `count`, `latest_sender_name`, `latest_body`, `latest_id`, `latest_ts`, `latest_own`, `unread` (no read receipt of ours, threaded or not, reaches the latest reply)) |
 | `thread_list` | `room_id`, `threads` (`root`, `latest`: `event_id`, `sender`, `sender_name`, `is_own`, `ts`, `body`; `count`, `unread`), `loading` |
-| `space_rooms` | `space_id`, `loading`, `rooms` (`room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `is_space`, `members`, `children`, `join_rule`, `state`, `suggested`, `via`) |
-| `room_preview` | `id`, `ok`, and when ok: `room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `members`, `is_space`, `join_rule`, `state`; else `error` |
+| `space_rooms` | `space_id`, `loading`, `rooms` (`room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `is_space`, `member_count`, `children`, `join_rule`, `state`, `suggested`, `via`) |
+| `room_preview` | `room_or_alias`, `ok`, and when ok: `room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `member_count`, `is_space`, `join_rule`, `state`; else `error` |
 | `knocked` | `room_id` |
 | `room_link` | `room_id`, `link` (matrix.to with via) |
 | `knock_requests` | `room_id`, `room_name`, `is_space`, `requests` (`event_id`, `user_id`, `name`, `reason`, `ts`, `seen`), for rooms and spaces with the knock join rule where we may invite |
@@ -182,7 +182,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `log` | `line` (a log line; the sandbox drops stderr, the UI puts it in the journal) |
 
 ### Room object
-`room_id`, `name`, `topic`, `alias`, `avatar` (a cached file path), `has_avatar`,
+`room_id`, `name`, `topic`, `alias`, `avatar_path` (a cached file), `avatar_v`, `has_avatar`,
 `state` (`joined`, `invited`), `is_dm`, `is_fav`, `is_low`, `encrypted`,
 `unread`, `notifications`, `highlights`, `ts` (last activity, ms),
 `preview`, `preview_sender`.

@@ -62,7 +62,7 @@ Page {
                 hits.append({ kind: "room", id: r.alias || r.room_id, name: r.name || r.alias || r.room_id,
                               //: %1 the number of people in a room
                               //% "%1 members"
-                              info: [r.alias, qsTrId("rustrx-la-members").arg(r.members), r.topic]
+                              info: [r.alias, qsTrId("rustrx-la-members").arg(r.member_count), r.topic]
                                     .filter(function (s) { return s && s.length }).join(" · "),
                               joined: r.joined })
             }
@@ -145,7 +145,7 @@ Page {
                     open(model.id, model.name)
                 } else {
                     page.pending = model.name
-                    rustrx.command({ cmd: "join_by_id_or_alias", id: model.id })
+                    rustrx.command({ cmd: "join_by_id_or_alias", room_or_alias: model.id })
                 }
             }
 

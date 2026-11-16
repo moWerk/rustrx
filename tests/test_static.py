@@ -467,3 +467,15 @@ def test_c_header_matches_the_core():
     exported = set(re.findall(r"#\[no_mangle\]\s*pub extern \"C\" fn (\w+)", read("core/src/lib.rs")))
     declared = set(re.findall(r"\b(rustrx_\w+)\s*\(", re.sub(r"/\*.*?\*/", "", read("src/rustrx_core.h"), flags=re.S)))
     assert exported == declared, (exported ^ declared)
+
+
+def test_command_fields_say_what_they_are():
+    """Protocol 2: one wire name per concept (audit I15). A command field
+    named only id, url, key or root meant two things before (a room or an
+    alias, an mxc or a web address, a reaction or a recovery key).
+    Planted-bug: rename recovery_recover's field back to key."""
+    vague = {"id", "url", "key", "root"}
+    allowed = {("react", "key")}   # a reaction's key is the spec's own name
+    bad = [f"{cmd}.{f}" for cmd, fields in protocol_fields().items() for f in fields
+           if f in vague and (cmd, f) not in allowed]
+    assert not bad

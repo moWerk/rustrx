@@ -193,7 +193,7 @@ QString TimelineModel::cachedThread(const QVariantMap &item) const
     Rendered &r = rendered(item);
     if (!r.hasThread) {
         const QVariantMap t = item.value(QStringLiteral("thread")).toMap();
-        const QString sender = t.value(QStringLiteral("latest_sender")).toString();
+        const QString sender = t.value(QStringLiteral("latest_sender_name")).toString();
         if (!sender.isEmpty())
             r.thread = StyledText::escaped(sender) + QLatin1String(": ")
                        + Twemoji::inHtml(StyledText::escaped(StyledText::oneLine(t.value(QStringLiteral("latest_body")).toString())),
@@ -507,7 +507,7 @@ QVariantList TimelineModel::emotesOf(const QVariantMap &item) const
         // a reaction carries no shortcode here: the picture's id gives one
         if (name.trimmed().isEmpty())
             name = url.section(QLatin1Char('/'), -1).left(12);
-        out << QVariantMap{ { "url", url }, { "shortcode", name.trimmed() },
+        out << QVariantMap{ { "mxc", url }, { "shortcode", name.trimmed() },
                             { "path", m_emotes.contains(url) ? QStringLiteral("file://") + m_emotes.value(url).path : QString() } };
     };
     const QString html = item.value("html").toString();

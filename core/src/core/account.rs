@@ -16,7 +16,7 @@ impl Core {
     pub(crate) async fn recovery_enable(&self) -> Result<()> {
         let client = self.client().await?;
         let key = client.encryption().recovery().enable().wait_for_backups_to_upload().await?;
-        self.emit(json!({"ev": "recovery_key", "key": key}));
+        self.emit(json!({"ev": "recovery_key", "recovery_key": key}));
         Ok(())
     }
 
@@ -132,7 +132,7 @@ impl Core {
             .map(|d| d.as_millis() as u64);
         self.emit(json!({"ev": "profile", "display_name": name,
                          "user_id": client.user_id().map(|u| u.to_string()),
-                         "avatar": avatar, "avatar_v": version}));
+                         "avatar_path": avatar, "avatar_v": version}));
         Ok(())
     }
 

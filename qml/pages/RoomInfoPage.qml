@@ -300,7 +300,7 @@ Page {
                     sourceSize.width: width
                     sourceSize.height: height
                     // the version makes a changed picture load past Qt's image cache
-                    source: info.avatar ? "file://" + info.avatar + "?v=" + (info.avatar_v || 0) : ""
+                    source: info.avatar_path ? "file://" + info.avatar_path + "?v=" + (info.avatar_v || 0) : ""
                     // the same circle mask as the room list
                     layer.enabled: app.roundAvatars
                     layer.effect: RoundMask {}

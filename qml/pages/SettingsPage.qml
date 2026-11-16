@@ -718,7 +718,7 @@ Page {
         onStorageInfo: page.storage = info
         onProfile: {
             displayName = profile.display_name || ""
-            ownAvatar = profile.avatar || ""
+            ownAvatar = profile.avatar_path || ""
             ownAvatarVersion = profile.avatar_v || 0
         }
         //% "Encrypted messages restored. Rooms fill in as keys arrive."

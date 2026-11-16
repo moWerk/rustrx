@@ -7,7 +7,7 @@ use std::time::Duration;
 /// The version of the JSON protocol between the core and the UI
 /// (docs/PROTOCOL.md), sent with "ready" and "logged_in". Must match
 /// `kProto` in src/Keys.h.
-pub(crate) const PROTO: u32 = 1;
+pub(crate) const PROTO: u32 = 2;
 
 // Names
 

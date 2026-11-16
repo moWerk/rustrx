@@ -65,7 +65,7 @@ Page {
         // a pack's picture: a reaction (its address the key), else :shortcode: in the text
         onPickedImage: {
             if (mode === "react")
-                rustrx.command({ cmd: "react", room_id: page.roomId, event_id: eventId, key: image.url })
+                rustrx.command({ cmd: "react", room_id: page.roomId, event_id: eventId, key: image.mxc })
             else
                 page.insertEmoji(":" + image.shortcode + ":")
         }

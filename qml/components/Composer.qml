@@ -63,7 +63,7 @@ Column {
             for (var j = 0; j < packs[i].images.length; j++) {
                 var img = packs[i].images[j]
                 if (img.emoticon && out[img.shortcode] === undefined && text.indexOf(":" + img.shortcode + ":") >= 0)
-                    out[img.shortcode] = img.url
+                    out[img.shortcode] = img.mxc
             }
         }
         return out

@@ -66,7 +66,7 @@ fn space_room_json(r: &SpaceRoom) -> Value {
         "alias": r.canonical_alias.as_ref().map(|a| a.to_string()),
         "avatar_mxc": r.avatar_url.as_ref().map(|u| u.to_string()),
         "is_space": r.room_type == Some(RoomType::Space),
-        "members": r.num_joined_members,
+        "member_count": r.num_joined_members,
         "children": r.children_count,
         "join_rule": summary_rule_name(r.join_rule.as_ref()),
         "state": state_name(r.state),
@@ -226,20 +226,20 @@ impl Core {
         let rid = RoomOrAliasId::parse(id.trim())?;
         match client.get_room_preview(&rid, servers(via)).await {
             Ok(p) => self.emit(json!({
-                "ev": "room_preview", "id": id, "ok": true,
+                "ev": "room_preview", "room_or_alias": id, "ok": true,
                 "room_id": p.room_id.as_str(),
                 "name": p.name,
                 "topic": p.topic,
                 "alias": p.canonical_alias.map(|a| a.to_string()),
                 "avatar_mxc": p.avatar_url.map(|u| u.to_string()),
-                "members": p.num_joined_members,
+                "member_count": p.num_joined_members,
                 "is_space": p.room_type == Some(RoomType::Space),
                 "join_rule": summary_rule_name(p.join_rule.as_ref()),
                 "state": state_name(p.state),
             })),
             Err(e) => {
                 tracing::info!(%id, "preview: {e}");
-                self.emit(json!({"ev": "room_preview", "id": id, "ok": false, "error": e.to_string()}));
+                self.emit(json!({"ev": "room_preview", "room_or_alias": id, "ok": false, "error": e.to_string()}));
             }
         }
         Ok(())

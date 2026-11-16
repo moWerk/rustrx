@@ -48,7 +48,7 @@ impl Core {
         let task = self.rt.spawn(async move {
             let emit = |items: Value| {
                 self.emit(json!({"ev": "thread_timeline", "room_id": room_id_owned.as_str(),
-                                 "root": root_owned.as_str(), "items": items}));
+                                 "thread_root": root_owned.as_str(), "items": items}));
             };
             // the whole thread: older replies page in after the first items
             let back = tl.clone();

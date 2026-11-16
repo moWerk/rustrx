@@ -192,7 +192,7 @@ Page {
                     text: {
                         var parts = []
                         if (row.r.is_space) parts.push(qsTrId("rustrx-la-space-rooms", row.r.children || 0))
-                        else parts.push(qsTrId("rustrx-la-n-members", row.r.members || 0))
+                        else parts.push(qsTrId("rustrx-la-n-members", row.r.member_count || 0))
                         if (row.r.state !== "joined") parts.push(app.joinRuleName(row.r.join_rule, page.info.name || page.spaceName))
                         var st = page.stateText(row.r)
                         if (st.length) parts.push(st)

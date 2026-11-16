@@ -629,7 +629,7 @@ ListItem {
                                             //% "new replies"
                                             if (threadUnread) t += " · <b><font color=\"" + Theme.highlightColor + "\">" + qsTrId("rustrx-la-thread-unread") + "</font></b>"
                                             // "sender: text", rendered by the model
-                                            if (threadSummary.latest_sender) t += " · " + model.thread_html
+                                            if (threadSummary.latest_sender_name) t += " · " + model.thread_html
                                             return t
                                         }
                                     }
@@ -774,7 +774,7 @@ ListItem {
                     //: %1 a custom emoji's shortcode
                     //% "Add :%1: to my emoji"
                     text: qsTrId("rustrx-me-add-emote").arg(modelData.shortcode || "emoji")
-                    onClicked: rustrx.command({ cmd: "add_user_emote", shortcode: modelData.shortcode || "emoji", url: modelData.url })
+                    onClicked: rustrx.command({ cmd: "add_user_emote", shortcode: modelData.shortcode || "emoji", mxc: modelData.mxc })
                 }
             }
             MenuItem {
