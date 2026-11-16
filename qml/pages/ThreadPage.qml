@@ -57,6 +57,8 @@ Page {
     function insertEmoji(emoji) {
         if (composer) composer.insert(emoji)
     }
+    // the message the picker reacts to, for "React with text"
+    property string reactMoreText
     EmojiPanel {
         id: emojiPanel
         anchors.bottom: parent.bottom
@@ -67,6 +69,11 @@ Page {
                 rustrx.command({ cmd: "react", room_id: page.roomId, event_id: eventId, key: emoji })
             else
                 page.insertEmoji(emoji)
+        }
+        onTextReaction: {
+            if (!page.composer) return
+            page.composer.react(eventId, page.reactMoreText)
+            page.composer.field.forceActiveFocus()
         }
     }
     Connections {
@@ -130,7 +137,7 @@ Page {
             roomId: page.roomId
             inThread: true
             // "+" in the message menu: the picker reacts to this message
-            onReactMore: { Qt.inputMethod.hide(); emojiPanel.show("react", eventId) }
+            onReactMore: { page.reactMoreText = text; Qt.inputMethod.hide(); emojiPanel.show("react", eventId) }
             onReply: {
                 if (!page.composer) return
                 page.composer.reply(eventId, text)
