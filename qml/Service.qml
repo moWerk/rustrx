@@ -17,8 +17,8 @@
 import QtQuick 2.6
 import Rustrx 1.0
 import Nemo.Notifications 1.0
-import Nemo.Configuration 1.0
 import Nemo.KeepAlive 1.2
+import "components"
 
 // Notifications and, in background mode, the wake job, apart from the pages
 // (harbour-rustrx.qml reaches this as `service`).
@@ -32,12 +32,12 @@ import Nemo.KeepAlive 1.2
 Item {
     id: service
 
+    // this engine's own copy of the settings (components/Settings.qml)
+    Settings { id: cfg }
     // whether a notification shows the message itself or only a count
-    property alias notifyText: cfgNotifyText.value
-    ConfigurationValue { id: cfgNotifyText; key: "/apps/harbour-rustrx/notifyText"; defaultValue: true }
+    property alias notifyText: cfg.notifyText
     // the stand-in's line in the events view, on unless switched off
-    property alias showBackgroundLine: cfgShowBackgroundLine.value
-    ConfigurationValue { id: cfgShowBackgroundLine; key: "/apps/harbour-rustrx/showBackgroundLine"; defaultValue: true }
+    property alias showBackgroundLine: cfg.showBackgroundLine
 
     Connections {
         target: rustrx
@@ -319,6 +319,6 @@ Item {
                 old[i].close()
         }
         // the line can be switched off (Settings); the stand-in runs either way
-        if (rustrx.standIn && cfgShowBackgroundLine.value) standInNote.publish()
+        if (rustrx.standIn && cfg.showBackgroundLine) standInNote.publish()
     }
 }

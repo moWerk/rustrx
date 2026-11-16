@@ -118,7 +118,7 @@ Page {
     function buildTabs() {
         // read before the list changes: changing it moves the current tab,
         // which would store another one
-        var wanted = lastTab.value
+        var wanted = app.settings.lastTabKind
         var kinds = app.separateLists ? ["rooms", "people"] : ["all"]
         if (app.separateFavs) kinds.push("favs")
         if (app.separateSpaces) kinds.push("spaces")
@@ -132,7 +132,7 @@ Page {
         // the index may not have moved (the first tab): say which it is
         if (tabs.currentIndex >= 0 && tabs.currentIndex < tabModel.count)
             rustrx.currentTab = tabModel.get(tabs.currentIndex).kind
-        lastTab.value = wanted
+        app.settings.lastTabKind = wanted
     }
     Connections {
         target: app
@@ -162,10 +162,9 @@ Page {
     // a search that was not kept goes with the menu or when a room opens
     function dropLooseFilter() { if (!filterLocked) filterText = "" }
 
-    // the app opens on the tab it was left on
+    // the app opens on the tab it was left on (app.settings.lastTabKind):
     // the kind of tab ("rooms", "people", "favs", "all"), not its place: the
     // places change with the settings
-    ConfigurationValue { id: lastTab; key: "/apps/harbour-rustrx/lastTabKind"; defaultValue: "rooms" }
 
     TabView {
         id: tabs
@@ -174,7 +173,7 @@ Page {
         currentIndex: 0
         onCurrentIndexChanged: {
             if (currentIndex < 0 || currentIndex >= tabModel.count) return
-            lastTab.value = tabModel.get(currentIndex).kind
+            app.settings.lastTabKind = tabModel.get(currentIndex).kind
             // the filter menu shows and changes this tab's order and switches
             rustrx.currentTab = tabModel.get(currentIndex).kind
         }

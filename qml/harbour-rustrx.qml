@@ -19,6 +19,7 @@ import Rustrx 1.0
 import Sailfish.Silica 1.0
 import Nemo.Configuration 1.0
 import "pages"
+import "components"
 
 ApplicationWindow {
     id: app
@@ -42,22 +43,35 @@ ApplicationWindow {
     FontLoader { id: semiboldFont; source: Qt.resolvedUrl("fonts/SourceSans3-Semibold.ttf") }
     readonly property string semiboldFontFamily: semiboldFont.status === FontLoader.Ready ? semiboldFont.name : Theme.fontFamily
 
-    // appearance settings, shared by every page and delegate
-    property alias roundAvatars: cfgRoundAvatars.value
-    property alias showReadBy: cfgShowReadBy.value
+    // the user's settings in dconf (components/Settings.qml); the aliases
+    // below are the names the pages use
+    property alias settings: cfg
+    Settings {
+        id: cfg
+        // the emoji used most: the picker's top row and a message's reactions
+        onEmojiCountsChanged: app.favouriteEmoji = app.computeFavourites()
+    }
+    // appearance, shared by every page and delegate
+    property alias roundAvatars: cfg.roundAvatars
+    property alias showReadBy: cfg.showReadBy
+    property alias highlightFavs: cfg.highlightFavs
+    property alias previewLines: cfg.previewLines
+    // rooms and people as two tabs, or together in one list; favourites and
+    // spaces as tabs of their own, or not
+    property alias separateLists: cfg.separateLists
+    property alias separateFavs: cfg.separateFavs
+    property alias separateSpaces: cfg.separateSpaces
     // privacy: what others learn from us
-    property alias sendReceipts: cfgSendReceipts.value
-    property alias sendTyping: cfgSendTyping.value
-    ConfigurationValue { id: cfgRoundAvatars; key: "/apps/harbour-rustrx/roundAvatars"; defaultValue: true }
-    // rooms and people as two tabs (default), or together in one list
-    property alias separateLists: cfgSeparateLists.value
-    ConfigurationValue { id: cfgSeparateLists; key: "/apps/harbour-rustrx/separateLists"; defaultValue: true }
-    // the favourites as a tab of their own (default), or not
-    property alias separateFavs: cfgSeparateFavs.value
-    ConfigurationValue { id: cfgSeparateFavs; key: "/apps/harbour-rustrx/separateFavs"; defaultValue: true }
+    property alias sendReceipts: cfg.sendReceipts
+    property alias sendTyping: cfg.sendTyping
+    // the line under the message field that says the room sees you typing
+    property alias typingHint: cfg.typingHint
     // when Rustrx is closed: "push", "background" or "off"; "" until chosen
-    property alias closedMode: cfgClosedMode.value
-    ConfigurationValue { id: cfgClosedMode; key: "/apps/harbour-rustrx/closedMode"; defaultValue: "" }
+    property alias closedMode: cfg.closedMode
+    // start in the chat that was open when the app was closed
+    property alias reopenLast: cfg.reopenLast
+    property alias lastRoom: cfg.lastRoom
+
     // the choice made real; unchosen, push where a distributor is installed,
     // else the background stand-in (asked again at every start, so installing
     // Foghorn later moves to push)
@@ -67,10 +81,8 @@ ApplicationWindow {
         rustrx.push.enabled = m === "push"
         rustrx.background = m === "background"
     }
-    // favourites with new messages glow in the lists (Settings, on unless switched off)
-    property alias highlightFavs: cfgHighlightFavs.value
-    ConfigurationValue { id: cfgHighlightFavs; key: "/apps/harbour-rustrx/highlightFavs"; defaultValue: true }
-    // the glow's one breath, shared by every glowing row so they breathe
+    // favourites with new messages glow in the lists (highlightFavs).
+    // The glow's one breath, shared by every glowing row so they breathe
     // together: three seconds, while a glowing row is shown and Rustrx is
     // in front (rows count themselves in favGlowRows)
     property int favGlowRows: 0
@@ -84,26 +96,11 @@ ApplicationWindow {
         NumberAnimation { from: 1; to: 0; duration: Tunables.favGlowPulseMs; easing.type: Easing.OutCubic }
         onStopped: app.favGlow = 0
     }
-    property alias separateSpaces: cfgSeparateSpaces.value
-    ConfigurationValue { id: cfgSeparateSpaces; key: "/apps/harbour-rustrx/separateSpaces"; defaultValue: true }
-    // how many lines of the last message the room list shows (1 to 3)
-    property alias previewLines: cfgPreviewLines.value
-    ConfigurationValue { id: cfgPreviewLines; key: "/apps/harbour-rustrx/previewLines"; defaultValue: 1 }
-    ConfigurationValue { id: cfgShowReadBy; key: "/apps/harbour-rustrx/showReadBy"; defaultValue: true }
-    ConfigurationValue { id: cfgSendReceipts; key: "/apps/harbour-rustrx/sendReceipts"; defaultValue: true }
-    ConfigurationValue { id: cfgSendTyping; key: "/apps/harbour-rustrx/sendTyping"; defaultValue: true }
-    // the emoji used most: the picker's top row and a message's reactions
-    // (five; the defaults fill up until five have been used)
-    ConfigurationValue {
-        id: cfgEmojiCounts
-        key: "/apps/harbour-rustrx/emojiCounts"
-        defaultValue: "{}"
-        onValueChanged: app.favouriteEmoji = app.computeFavourites()
-    }
+    // the emoji used most (five; the defaults fill up until five have been used)
     property var favouriteEmoji: computeFavourites()
     function computeFavourites() {
         var counts = {}
-        try { counts = JSON.parse(cfgEmojiCounts.value || "{}") } catch (e) {}
+        try { counts = JSON.parse(cfg.emojiCounts || "{}") } catch (e) {}
         var used = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a] }).slice(0, Tunables.recentEmojiCount)
         var defaults = ["👍", "❤️", "😂", "😮", "😢"]
         for (var i = 0; used.length < Tunables.recentEmojiCount && i < defaults.length; i++)
@@ -112,18 +109,10 @@ ApplicationWindow {
     }
     function countEmoji(emoji) {
         var counts = {}
-        try { counts = JSON.parse(cfgEmojiCounts.value || "{}") } catch (e) {}
+        try { counts = JSON.parse(cfg.emojiCounts || "{}") } catch (e) {}
         counts[emoji] = (counts[emoji] || 0) + 1
-        cfgEmojiCounts.value = JSON.stringify(counts)
+        cfg.emojiCounts = JSON.stringify(counts)
     }
-    // the line under the message field that says the room sees you typing
-    property alias typingHint: cfgTypingHint.value
-    ConfigurationValue { id: cfgTypingHint; key: "/apps/harbour-rustrx/typingHint"; defaultValue: true }
-    // start in the chat that was open when the app was closed (off by default)
-    property alias reopenLast: cfgReopenLast.value
-    property alias lastRoom: cfgLastRoom.value
-    ConfigurationValue { id: cfgReopenLast; key: "/apps/harbour-rustrx/reopenLast"; defaultValue: false }
-    ConfigurationValue { id: cfgLastRoom; key: "/apps/harbour-rustrx/lastRoom"; defaultValue: "" }
     property bool reopenTried
 
     // the receipt honours the privacy switch: a private one moves only our own marker
@@ -164,7 +153,7 @@ ApplicationWindow {
             console.log("route: logged out on page", current, "reason", rustrx.logoutReason)
             pageStack.replaceAbove(null, Qt.resolvedUrl("pages/LoginPage.qml"))
         }
-        if (!cfgPrototypeNoticeSeen.value) prototypeNotice.restart()
+        if (!cfg.prototypeNoticeSeen) prototypeNotice.restart()
     }
 
     Timer { id: routeRetry; interval: Tunables.retryIntervalMs; onTriggered: route() }
@@ -172,18 +161,17 @@ ApplicationWindow {
     // the first start: the prototype notice (and the debug log in it), once;
     // it goes only by Agree. Above whatever route() brought in, once the
     // stack is still.
-    ConfigurationValue { id: cfgPrototypeNoticeSeen; key: "/apps/harbour-rustrx/prototypeNoticeSeen"; defaultValue: false }
     property bool prototypeNoticeUp
     Timer {
         id: prototypeNotice
         interval: Tunables.noticeDelayMs
         onTriggered: {
-            if (cfgPrototypeNoticeSeen.value || app.prototypeNoticeUp) return
+            if (cfg.prototypeNoticeSeen || app.prototypeNoticeUp) return
             if (pageStack.busy) { restart(); return }
             app.prototypeNoticeUp = true
             var d = pageStack.push(Qt.resolvedUrl("pages/PrototypeNotice.qml"))
             d.accepted.connect(function () {
-                cfgPrototypeNoticeSeen.value = true
+                cfg.prototypeNoticeSeen = true
                 app.prototypeNoticeUp = false
                 routeRetry.restart()
             })
