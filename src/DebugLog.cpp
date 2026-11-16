@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "DebugLog.h"
+#include "Keys.h"
 
 #include <QAtomicInt>
 #include <QDateTime>
@@ -24,7 +25,6 @@
 #include <QMutexLocker>
 #include <QStandardPaths>
 
-static const qint64 kMaxSize = 1024 * 1024;
 static QtMessageHandler s_previous = nullptr;
 static QAtomicInt s_enabled(1);
 static QString s_path;
@@ -32,7 +32,7 @@ static QMutex s_lock(QMutex::Recursive);
 
 static QString logDir()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/logs");
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QLatin1Char('/') + QLatin1String(Keys::kLogDir);
 }
 
 static void appendLine(QtMsgType type, const QString &message)
@@ -51,9 +51,9 @@ static void appendLine(QtMsgType type, const QString &message)
         delete file;
         file = nullptr;
     }
-    if (file && ++lines >= 50) {
+    if (file && ++lines >= Keys::kLogCheckEveryLines) {
         lines = 0;
-        if (file->size() > kMaxSize) {
+        if (file->size() > Keys::kLogMaxSize) {
             file->close();
             QFile::remove(s_path + QStringLiteral(".1"));
             QFile::rename(s_path, s_path + QStringLiteral(".1"));
@@ -109,7 +109,7 @@ QString DebugLog::collect(const QString &dir, const QString &header)
         return QString();
     file.write(header.toUtf8() + "\n");
     QMutexLocker locker(&s_lock);
-    for (const QString &name : { QStringLiteral("app"), QStringLiteral("background") }) {
+    for (const QString &name : { QString::fromLatin1(Keys::kLogApp), QString::fromLatin1(Keys::kLogBackground) }) {
         for (const QString &suffix : { QStringLiteral(".log.1"), QStringLiteral(".log") }) {
             QFile part(logDir() + QLatin1Char('/') + name + suffix);
             if (!part.open(QIODevice::ReadOnly))

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "VoiceRecorder.h"
+#include "Keys.h"
 
 #include <QAudioEncoderSettings>
 #include <QDateTime>
@@ -49,13 +50,13 @@ void VoiceRecorder::start()
     ensureRecorder();
     if (recording())
         return;
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/voice";
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QLatin1Char('/') + QLatin1String(Keys::kVoiceDir);
     QDir().mkpath(dir);
     m_path = dir + "/voice-" + QString::number(QDateTime::currentMSecsSinceEpoch()) + ".ogg";
     m_error.clear();
     QAudioEncoderSettings settings;
     settings.setCodec(QStringLiteral("audio/opus"));
-    settings.setSampleRate(48000);
+    settings.setSampleRate(Keys::kVoiceSampleRate);
     settings.setChannelCount(1);
     settings.setQuality(QMultimedia::NormalQuality);
     settings.setEncodingMode(QMultimedia::ConstantQualityEncoding);

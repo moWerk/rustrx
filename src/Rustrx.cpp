@@ -21,6 +21,7 @@
 #include "TimelineModel.h"
 #include "Twemoji.h"
 #include "UnifiedPush.h"
+#include "Keys.h"
 #include "rustrx_core.h"
 #include <sailfishapp.h>
 
@@ -49,9 +50,6 @@
 #include <QVector>
 #include <algorithm>
 
-// the JSON protocol this UI speaks, see docs/PROTOCOL.md (core: PROTO in core.rs)
-static const int kProto = 1;
-
 // The core's tokio threads call eventCallback until the process ends; the
 // lock and the pointer keep them away from a Rustrx that is being destroyed.
 static QMutex s_lock;
@@ -72,7 +70,7 @@ static int badgeCount(const QVariantMap &room)
 // pictures prepared for sending (scaled, thumbnails, avatars)
 static QString outgoingDir()
 {
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/outgoing";
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QLatin1Char('/') + QLatin1String(Keys::kOutgoingDir);
     QDir().mkpath(dir);
     return dir;
 }
@@ -94,7 +92,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     , m_thread(new TimelineModel(this))
 {
     s_instance = this;
-    m_invitesNotified = m_settings.value("invitesNotified").toStringList();
+    m_invitesNotified = m_settings.value(QLatin1String(Keys::kInvitesNotified)).toStringList();
     m_push = new UnifiedPush(dataDir, this);
     connect(m_push, &UnifiedPush::command, this, &Rustrx::command);
     // a push: the woken process fetches the message; a running app or
@@ -124,9 +122,9 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     // the sailfish-secrets plugin, loaded only where it can be: its library
     // is not a dependency of the package
     QByteArray storeKey;
-    QLibrary secrets(SailfishApp::pathTo(QStringLiteral("lib/librustrx-secrets.so")).toLocalFile());
+    QLibrary secrets(SailfishApp::pathTo(QString::fromLatin1(Keys::kSecretsPlugin)).toLocalFile());
     typedef int (*StoreKeyFn)(char *, int);
-    if (StoreKeyFn fn = reinterpret_cast<StoreKeyFn>(secrets.resolve("rustrx_secrets_store_key"))) {
+    if (StoreKeyFn fn = reinterpret_cast<StoreKeyFn>(secrets.resolve(Keys::kSecretsSymbol))) {
         char buf[128];
         const int n = fn(buf, sizeof buf);
         if (n > 0)
@@ -151,10 +149,10 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     // the share sheet calls /share/<method>, the method named in the desktop
     // file's X-Share-Methods ("room"); /share stays for direct callers
     ShareAdaptor *share = new ShareAdaptor(this);
-    bus.registerObject(QStringLiteral("/share"), share, QDBusConnection::ExportScriptableSlots);
-    bus.registerObject(QStringLiteral("/share/room"), share, QDBusConnection::ExportScriptableSlots);
+    bus.registerObject(QString::fromLatin1(Keys::kSharePath), share, QDBusConnection::ExportScriptableSlots);
+    bus.registerObject(QString::fromLatin1(Keys::kShareRoomPath), share, QDBusConnection::ExportScriptableSlots);
     // the name itself is main()'s, taken before the store is opened
-    if (!bus.registerObject(QStringLiteral("/net/mowerk/harbour_rustrx"), this, QDBusConnection::ExportScriptableSlots))
+    if (!bus.registerObject(QString::fromLatin1(Keys::kObjectPath), this, QDBusConnection::ExportScriptableSlots))
         qWarning() << "D-Bus object not registered:" << bus.lastError().message();
 }
 
@@ -262,16 +260,16 @@ QVariantMap Rustrx::takePendingShare()
 
 static QString handoverPath()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QStringLiteral("/handover.json");
+    return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QLatin1Char('/') + QLatin1String(Keys::kHandoverFile);
 }
 
 bool Rustrx::startUnit(const QString &unit)
 {
-    QDBusMessage call = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.systemd1"),
-            QStringLiteral("/org/freedesktop/systemd1"), QStringLiteral("org.freedesktop.systemd1.Manager"),
+    QDBusMessage call = QDBusMessage::createMethodCall(QString::fromLatin1(Keys::kSystemdService),
+            QString::fromLatin1(Keys::kSystemdPath), QString::fromLatin1(Keys::kSystemdManager),
             QStringLiteral("StartUnit"));
     call << unit << QStringLiteral("replace");
-    const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::Block, 5000);
+    const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::Block, Keys::kStartUnitTimeoutMs);
     if (reply.type() == QDBusMessage::ErrorMessage) {
         qWarning() << "starting" << unit << "failed:" << reply.errorMessage();
         return false;
@@ -283,7 +281,7 @@ void Rustrx::quit()
 {
     emit quitRequested();
     // time for the close to reach the notification server
-    QTimer::singleShot(300, qApp, &QCoreApplication::quit);
+    QTimer::singleShot(Keys::kQuitDelayMs, qApp, &QCoreApplication::quit);
 }
 
 bool Rustrx::activate()
@@ -314,7 +312,7 @@ bool Rustrx::handOver()
         qWarning() << "stand-in: cannot write" << f.fileName() << f.errorString();
     f.close();
     qInfo() << "stand-in: handing over to the app";
-    startUnit(QStringLiteral("harbour-rustrx-open.service"));
+    startUnit(QString::fromLatin1(Keys::kOpenUnit));
     QTimer::singleShot(0, qApp, &QCoreApplication::quit);
     return true;
 }
@@ -336,7 +334,7 @@ void Rustrx::takeHandover()
 
 QString Rustrx::backgroundFlagPath()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QStringLiteral("/background");
+    return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QLatin1Char('/') + QLatin1String(Keys::kBackgroundFlag);
 }
 
 bool Rustrx::background() const
@@ -361,14 +359,14 @@ void Rustrx::setBackground(bool on)
 
 bool Rustrx::downscaleImages() const
 {
-    return m_settings.value("downscaleImages", true).toBool();
+    return m_settings.value(QLatin1String(Keys::kDownscaleImages), Keys::kDownscaleImagesDefault).toBool();
 }
 
 void Rustrx::setDownscaleImages(bool on)
 {
     if (on == downscaleImages())
         return;
-    m_settings.setValue("downscaleImages", on);
+    m_settings.setValue(QLatin1String(Keys::kDownscaleImages), on);
     emit settingsChanged();
 }
 
@@ -384,14 +382,14 @@ void Rustrx::setRoomFilter(const QString &text)
 
 bool Rustrx::debugLog() const
 {
-    return m_settings.value("debugLog", true).toBool();
+    return m_settings.value(QLatin1String(Keys::kDebugLog), Keys::kDebugLogDefault).toBool();
 }
 
 void Rustrx::setDebugLog(bool on)
 {
     if (on == debugLog())
         return;
-    m_settings.setValue("debugLog", on);
+    m_settings.setValue(QLatin1String(Keys::kDebugLog), on);
     DebugLog::setEnabled(on);
     emit settingsChanged();
 }
@@ -417,7 +415,7 @@ QString Rustrx::shareableLog()
 // is stable).
 QVariant Rustrx::tabValue(const QString &kind, const QString &key, const QVariant &fallback) const
 {
-    const QString own = QStringLiteral("tabs/") + kind + QLatin1Char('/') + key;
+    const QString own = QString::fromLatin1(Keys::kTabs) + QLatin1Char('/') + kind + QLatin1Char('/') + key;
     const auto cached = m_tabCache.constFind(own);
     if (cached != m_tabCache.constEnd())
         return *cached;
@@ -428,7 +426,7 @@ QVariant Rustrx::tabValue(const QString &kind, const QString &key, const QVarian
 
 void Rustrx::setTabValue(const QString &key, const QVariant &value)
 {
-    const QString own = QStringLiteral("tabs/") + m_currentTab + QLatin1Char('/') + key;
+    const QString own = QString::fromLatin1(Keys::kTabs) + QLatin1Char('/') + m_currentTab + QLatin1Char('/') + key;
     m_settings.setValue(own, value);
     m_tabCache.insert(own, value);
     emit settingsChanged();
@@ -445,53 +443,53 @@ void Rustrx::setCurrentTab(const QString &kind)
 
 QString Rustrx::sortOrder() const
 {
-    return tabValue(m_currentTab, QStringLiteral("sortOrder"), QStringLiteral("activity")).toString();
+    return tabValue(m_currentTab, QLatin1String(Keys::kSortOrder), QLatin1String(Keys::kSortOrderDefault)).toString();
 }
 
 void Rustrx::setSortOrder(const QString &order)
 {
     if (order != sortOrder())
-        setTabValue(QStringLiteral("sortOrder"), order);
+        setTabValue(QLatin1String(Keys::kSortOrder), order);
 }
 
 bool Rustrx::favsOnTop() const
 {
-    return tabValue(m_currentTab, QStringLiteral("favsOnTop"), false).toBool();
+    return tabValue(m_currentTab, QLatin1String(Keys::kFavsOnTop), Keys::kFavsOnTopDefault).toBool();
 }
 
 void Rustrx::setFavsOnTop(bool on)
 {
     if (on != favsOnTop())
-        setTabValue(QStringLiteral("favsOnTop"), on);
+        setTabValue(QLatin1String(Keys::kFavsOnTop), on);
 }
 
 bool Rustrx::hideMuted() const
 {
-    return tabValue(m_currentTab, QStringLiteral("hideMuted"), false).toBool();
+    return tabValue(m_currentTab, QLatin1String(Keys::kHideMuted), Keys::kHideMutedDefault).toBool();
 }
 
 void Rustrx::setHideMuted(bool on)
 {
     if (on != hideMuted())
-        setTabValue(QStringLiteral("hideMuted"), on);
+        setTabValue(QLatin1String(Keys::kHideMuted), on);
 }
 
 bool Rustrx::lowLast() const
 {
-    return tabValue(m_currentTab, QStringLiteral("lowLast"), true).toBool();
+    return tabValue(m_currentTab, QLatin1String(Keys::kLowLast), Keys::kLowLastDefault).toBool();
 }
 
 void Rustrx::setLowLast(bool on)
 {
     if (on != lowLast())
-        setTabValue(QStringLiteral("lowLast"), on);
+        setTabValue(QLatin1String(Keys::kLowLast), on);
 }
 
 void Rustrx::sortRooms(QVariantList &rooms, const QString &kind) const
 {
-    const QString order = tabValue(kind, QStringLiteral("sortOrder"), QStringLiteral("activity")).toString();
-    const bool favsFirst = tabValue(kind, QStringLiteral("favsOnTop"), false).toBool();
-    const bool lowAtEnd = tabValue(kind, QStringLiteral("lowLast"), true).toBool();
+    const QString order = tabValue(kind, QLatin1String(Keys::kSortOrder), QLatin1String(Keys::kSortOrderDefault)).toString();
+    const bool favsFirst = tabValue(kind, QLatin1String(Keys::kFavsOnTop), Keys::kFavsOnTopDefault).toBool();
+    const bool lowAtEnd = tabValue(kind, QLatin1String(Keys::kLowLast), Keys::kLowLastDefault).toBool();
     const bool byUnread = order == QLatin1String("unread");
     const bool byName = order == QLatin1String("name");
     // what the order looks at, read from each room once instead of per comparison
@@ -562,7 +560,7 @@ void Rustrx::eventCallback(void *ctx, const char *json)
 QString Rustrx::dev(const QString &json)
 {
     const QString flag = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-            + QStringLiteral("/dev-commands");
+            + QLatin1Char('/') + QLatin1String(Keys::kDevCommandsFlag);
     if (!QFile::exists(flag))
         return QStringLiteral("{\"error\":\"dev commands are off\"}");
     const QVariantMap req = QJsonDocument::fromJson(json.toUtf8()).object().toVariantMap();
@@ -669,7 +667,7 @@ void Rustrx::openThread(const QString &roomId, const QString &root)
 
 int Rustrx::threadSeen(const QString &root, int count)
 {
-    const QString key = QStringLiteral("threadsSeen/") + QString(root).remove(QLatin1Char('$'));
+    const QString key = QString::fromLatin1(Keys::kThreadsSeen) + QLatin1Char('/') + QString(root).remove(QLatin1Char('$'));
     if (!m_settings.contains(key)) {
         m_settings.setValue(key, count);
         return count;
@@ -679,7 +677,7 @@ int Rustrx::threadSeen(const QString &root, int count)
 
 void Rustrx::markThreadSeen(const QString &root, int count)
 {
-    const QString key = QStringLiteral("threadsSeen/") + QString(root).remove(QLatin1Char('$'));
+    const QString key = QString::fromLatin1(Keys::kThreadsSeen) + QLatin1Char('/') + QString(root).remove(QLatin1Char('$'));
     if (m_settings.value(key, -1).toInt() == count)
         return;
     m_settings.setValue(key, count);
@@ -753,12 +751,12 @@ QString Rustrx::prepareAvatar(const QString &path, const QString &cmd, QSize *si
         emit errorOccurred(cmd, reader.errorString());
         return QString();
     }
-    if (qMax(image.width(), image.height()) > 512)
-        image = image.scaled(512, 512, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    if (qMax(image.width(), image.height()) > Keys::kAvatarMaxEdge)
+        image = image.scaled(Keys::kAvatarMaxEdge, Keys::kAvatarMaxEdge, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     // PNG keeps a transparent picture (an icon) as it is; photos go as JPEG
     const bool alpha = image.hasAlphaChannel();
     const QString out = outgoingDir() + "/avatar-" + QString::number(QDateTime::currentMSecsSinceEpoch()) + (alpha ? ".png" : ".jpg");
-    if (!image.save(out, alpha ? "PNG" : "JPG", alpha ? -1 : 90)) {
+    if (!image.save(out, alpha ? "PNG" : "JPG", alpha ? -1 : Keys::kAvatarJpegQuality)) {
         emit errorOccurred(cmd, QStringLiteral("cannot write ") + out);
         return QString();
     }
@@ -805,18 +803,18 @@ void Rustrx::sendFile(const QString &roomId, const QString &path, const QString 
         if (!image.isNull()) {
             const QString stem = outgoingDir() + "/" + QString::number(QDateTime::currentMSecsSinceEpoch());
             const bool shrink = downscaleImages()
-                    && qMax(image.width(), image.height()) > 2048;
+                    && qMax(image.width(), image.height()) > Keys::kUploadMaxEdge;
             if (shrink) {
-                image = image.scaled(2048, 2048, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                image = image.scaled(Keys::kUploadMaxEdge, Keys::kUploadMaxEdge, Qt::KeepAspectRatio, Qt::SmoothTransformation);
                 const QString out = stem + ".jpg";
-                if (image.save(out, "JPEG", 88))
+                if (image.save(out, "JPEG", Keys::kUploadJpegQuality))
                     cmd.insert("path", out);
             }
             cmd.insert("w", image.width());
             cmd.insert("h", image.height());
-            const QImage thumb = image.scaled(800, 800, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            const QImage thumb = image.scaled(Keys::kThumbEdge, Keys::kThumbEdge, Qt::KeepAspectRatio, Qt::SmoothTransformation);
             const QString thumbPath = stem + "-thumb.jpg";
-            if (thumb.save(thumbPath, "JPEG", 80)) {
+            if (thumb.save(thumbPath, "JPEG", Keys::kThumbJpegQuality)) {
                 cmd.insert("thumb_path", thumbPath);
                 cmd.insert("thumb_w", thumb.width());
                 cmd.insert("thumb_h", thumb.height());
@@ -841,7 +839,7 @@ void Rustrx::getMedia(const QString &roomId, const QString &eventId, bool thumb)
 
 void Rustrx::exportMedia(const QString &roomId, const QString &eventId)
 {
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation) + QStringLiteral("/Rustrx");
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation) + QLatin1Char('/') + QLatin1String(Keys::kDownloadDir);
     command({{"cmd", "get_media"}, {"room_id", roomId}, {"event_id", eventId}, {"thumb", false}, {"dest_dir", dir}});
 }
 
@@ -876,12 +874,12 @@ QString Rustrx::formatDate(const QVariant &ms) const
 
 QString Rustrx::draft(const QString &roomId) const
 {
-    return m_settings.value(QStringLiteral("drafts/") + roomId).toString();
+    return m_settings.value(QString::fromLatin1(Keys::kDrafts) + QLatin1Char('/') + roomId).toString();
 }
 
 void Rustrx::setDraft(const QString &roomId, const QString &text)
 {
-    const QString key = QStringLiteral("drafts/") + roomId;
+    const QString key = QString::fromLatin1(Keys::kDrafts) + QLatin1Char('/') + roomId;
     if (text.trimmed().isEmpty())
         m_settings.remove(key);
     else
@@ -894,7 +892,7 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
         m_lastRooms = rooms;
     QVariantList groups, dms, favs, everything, targets, spaces;
     // "Hide muted" is each tab's own
-    const auto hides = [this](const char *kind) { return tabValue(QLatin1String(kind), QStringLiteral("hideMuted"), false).toBool(); };
+    const auto hides = [this](const char *kind) { return tabValue(QLatin1String(kind), QLatin1String(Keys::kHideMuted), Keys::kHideMutedDefault).toBool(); };
     const bool hideRooms = hides("rooms"), hidePeople = hides("people"), hideFavs = hides("favs"), hideAll = hides("all");
     int unread = 0, chats = 0;
     m_roomsById.clear();
@@ -976,7 +974,7 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
                 emit inviteGone(id);
         if (open != notified) {
             m_invitesNotified = open;
-            m_settings.setValue("invitesNotified", open);
+            m_settings.setValue(QLatin1String(Keys::kInvitesNotified), open);
         }
     }
     sortRooms(groups, QStringLiteral("rooms"));
@@ -1021,8 +1019,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         }
     }
     if ((type == QLatin1String("ready") || type == QLatin1String("logged_in"))
-            && ev.value("proto").toInt() != kProto)
-        qWarning() << "core speaks protocol" << ev.value("proto").toInt() << "the UI expects" << kProto;
+            && ev.value("proto").toInt() != Keys::kProto)
+        qWarning() << "core speaks protocol" << ev.value("proto").toInt() << "the UI expects" << Keys::kProto;
     if (type == QLatin1String("ready")) {
         m_ready = true;
         m_loggedIn = ev.value("logged_in").toBool();
@@ -1088,7 +1086,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
             emit unreadChanged();
         }
         // the drafts belonged to that account
-        m_settings.remove(QStringLiteral("drafts"));
+        m_settings.remove(QLatin1String(Keys::kDrafts));
         emit stateChanged();
         emit openRoomChanged();
         emit syncStateChanged();

@@ -38,6 +38,7 @@ class UnifiedPush;
 class Rustrx : public QObject
 {
     Q_OBJECT
+    // Keys::kInterface; Q_CLASSINFO takes a literal only
     Q_CLASSINFO("D-Bus Interface", "net.mowerk.harbour_rustrx")
     Q_PROPERTY(bool ready READ ready NOTIFY stateChanged)
     // the first room list of this login has arrived (empty or not)

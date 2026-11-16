@@ -102,6 +102,7 @@ private:
 class UnifiedPushConnector : public QDBusAbstractAdaptor
 {
     Q_OBJECT
+    // the connector interface; Q_CLASSINFO takes a literal only
     Q_CLASSINFO("D-Bus Interface", "org.unifiedpush.Connector2")
 public:
     UnifiedPushConnector(QObject *object, UnifiedPush *push) : QDBusAbstractAdaptor(object), m_push(push) {}

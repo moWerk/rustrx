@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "UnifiedPush.h"
+#include "Keys.h"
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -34,9 +35,6 @@
 
 const char *const UnifiedPush::kConnectorName = "org.unifiedpush.Connector.rustrx";
 
-static const char kDistributorPrefix[] = "org.unifiedpush.Distributor.";
-// the UnifiedPush project's common gateway, when the push server has none
-static const char kCommonGateway[] = "https://matrix.gateway.unifiedpush.org/_matrix/push/v1/notify";
 
 static QVariantMap readState(const QString &path)
 {
@@ -48,7 +46,7 @@ static QVariantMap readState(const QString &path)
 
 static QString statePath(const QString &dataDir)
 {
-    return dataDir + QStringLiteral("/push.json");
+    return dataDir + QLatin1Char('/') + QLatin1String(Keys::kPushStateFile);
 }
 
 bool UnifiedPush::enabledOnDisk(const QString &dataDir)
@@ -110,20 +108,20 @@ void UnifiedPush::findDistributor()
 {
     QDBusConnection bus = QDBusConnection::sessionBus();
     QStringList names = bus.interface()->registeredServiceNames().value();
-    const QDBusMessage call = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.DBus"),
-            QStringLiteral("/org/freedesktop/DBus"), QStringLiteral("org.freedesktop.DBus"),
+    const QDBusMessage call = QDBusMessage::createMethodCall(QString::fromLatin1(Keys::kDbusService),
+            QString::fromLatin1(Keys::kDbusPath), QString::fromLatin1(Keys::kDbusService),
             QStringLiteral("ListActivatableNames"));
-    const QDBusMessage reply = bus.call(call, QDBus::Block, 2000);
+    const QDBusMessage reply = bus.call(call, QDBus::Block, Keys::kListNamesTimeoutMs);
     if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty())
         names += reply.arguments().first().toStringList();
     // the sandbox may hide activatable names: the service files tell too
-    const QStringList files = QDir(QStringLiteral("/usr/share/dbus-1/services"))
-            .entryList({ QString::fromLatin1(kDistributorPrefix) + QStringLiteral("*.service") }, QDir::Files);
+    const QStringList files = QDir(QString::fromLatin1(Keys::kDbusServicesDir))
+            .entryList({ QString::fromLatin1(Keys::kDistributorPrefix) + QStringLiteral("*.service") }, QDir::Files);
     for (const QString &f : files)
         names << f.left(f.size() - 8);
     QString found;
     for (const QString &n : names) {
-        if (!n.startsWith(QLatin1String(kDistributorPrefix)))
+        if (!n.startsWith(QLatin1String(Keys::kDistributorPrefix)))
             continue;
         if (found.isEmpty() || n.endsWith(QLatin1String("Foghorn")))
             found = n;
@@ -140,7 +138,7 @@ bool UnifiedPush::exportConnector()
     QDBusConnection bus = QDBusConnection::sessionBus();
     auto *object = new QObject(this);
     new UnifiedPushConnector(object, this);
-    if (!bus.registerObject(QStringLiteral("/org/unifiedpush/Connector"), object)) {
+    if (!bus.registerObject(QString::fromLatin1(Keys::kConnectorPath), object)) {
         qWarning() << "push: connector object not registered";
         return false;
     }
@@ -165,8 +163,8 @@ void UnifiedPush::setEnabled(bool on)
         if (!endpoint.isEmpty() && m_loggedIn)
             emit command({ { "cmd", "push_remove" }, { "endpoint", endpoint } });
         if (!m_distributor.isEmpty() && !m_state.value("token").toString().isEmpty()) {
-            QDBusMessage call = QDBusMessage::createMethodCall(m_distributor, QStringLiteral("/org/unifiedpush/Distributor"),
-                    QStringLiteral("org.unifiedpush.Distributor2"), QStringLiteral("Unregister"));
+            QDBusMessage call = QDBusMessage::createMethodCall(m_distributor, QString::fromLatin1(Keys::kDistributorPath),
+                    QString::fromLatin1(Keys::kDistributorInterface), QStringLiteral("Unregister"));
             call << QVariantMap{ { "token", m_state.value("token") } };
             QDBusConnection::sessionBus().asyncCall(call);
         }
@@ -192,8 +190,8 @@ void UnifiedPush::loggedOut()
     m_loggedIn = false;
     // the homeserver drops the pusher with the session; the distributor too
     if (!m_distributor.isEmpty() && !m_state.value("token").toString().isEmpty()) {
-        QDBusMessage call = QDBusMessage::createMethodCall(m_distributor, QStringLiteral("/org/unifiedpush/Distributor"),
-                QStringLiteral("org.unifiedpush.Distributor2"), QStringLiteral("Unregister"));
+        QDBusMessage call = QDBusMessage::createMethodCall(m_distributor, QString::fromLatin1(Keys::kDistributorPath),
+                QString::fromLatin1(Keys::kDistributorInterface), QStringLiteral("Unregister"));
         call << QVariantMap{ { "token", m_state.value("token") } };
         QDBusConnection::sessionBus().asyncCall(call);
     }
@@ -210,12 +208,12 @@ void UnifiedPush::registerApp()
         m_state.insert("token", QUuid::createUuid().toString().mid(1, 36));
         save();
     }
-    QDBusMessage call = QDBusMessage::createMethodCall(m_distributor, QStringLiteral("/org/unifiedpush/Distributor"),
-            QStringLiteral("org.unifiedpush.Distributor2"), QStringLiteral("Register"));
+    QDBusMessage call = QDBusMessage::createMethodCall(m_distributor, QString::fromLatin1(Keys::kDistributorPath),
+            QString::fromLatin1(Keys::kDistributorInterface), QStringLiteral("Register"));
     call << QVariantMap{ { "service", QString::fromLatin1(kConnectorName) },
                          { "token", m_state.value("token") },
                          { "description", QStringLiteral("Rustrx") } };
-    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(call, 10000), this);
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(call, Keys::kRegisterTimeoutMs), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *w) {
         QDBusPendingReply<QVariantMap> reply = *w;
         w->deleteLater();
@@ -265,7 +263,7 @@ void UnifiedPush::discoverGateway()
     probe.setScheme(endpoint.scheme());
     probe.setHost(endpoint.host());
     probe.setPort(endpoint.port());
-    probe.setPath(QStringLiteral("/_matrix/push/v1/notify"));
+    probe.setPath(QString::fromLatin1(Keys::kPushNotifyPath));
     if (!m_net)
         m_net = new QNetworkAccessManager(this);
     QNetworkReply *reply = m_net->get(QNetworkRequest(probe));
@@ -273,7 +271,7 @@ void UnifiedPush::discoverGateway()
         reply->deleteLater();
         const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
         const bool own = o.value("unifiedpush").toObject().value("gateway").toString() == QLatin1String("matrix");
-        const QString gateway = own ? probe.toString() : QString::fromLatin1(kCommonGateway);
+        const QString gateway = own ? probe.toString() : QString::fromLatin1(Keys::kCommonGateway);
         qInfo().noquote() << "push: gateway" << QUrl(gateway).host() << (own ? "(the push server's)" : "(common)");
         m_state.insert("gateway", gateway);
         save();

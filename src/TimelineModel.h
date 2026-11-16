@@ -24,6 +24,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QVector>
+#include "Keys.h"
 
 // The open room's timeline, newest first (row 0), for a list laid out
 // bottom to top. Rows are the core's item objects; media paths are kept
@@ -101,7 +102,7 @@ private:
     struct Emote { QString path; QSize size; };
     QHash<QString, Emote> m_emotes;
     QSet<QString> m_emotesAsked;
-    int m_emoteSize = 32;
+    int m_emoteSize = Keys::kDefaultEmoteSize;
 };
 
 #endif

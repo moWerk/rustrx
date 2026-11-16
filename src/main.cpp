@@ -40,8 +40,9 @@
 #include "RoomModel.h"
 #include "TimelineModel.h"
 #include "VoiceRecorder.h"
+#include "Keys.h"
 
-static const QString kService = QStringLiteral("net.mowerk.harbour-rustrx");
+static const QString kService = QString::fromLatin1(Keys::kBusName);
 
 // the earlier process leaves (the stand-in after a handover, the app after a
 // close in background mode): its store is free once its bus name is gone
@@ -50,9 +51,9 @@ static bool waitForNameToGo(QDBusConnection &bus)
     QElapsedTimer t;
     t.start();
     while (bus.interface()->isServiceRegistered(kService)) {
-        if (t.elapsed() > 10000)
+        if (t.elapsed() > Keys::kNameGoneTimeoutMs)
             return false;
-        QThread::msleep(100);
+        QThread::msleep(Keys::kNameGonePollMs);
     }
     return true;
 }
@@ -64,10 +65,10 @@ int main(int argc, char *argv[])
     // even connect to the display: the home screen counts any connected
     // process as the running app, and a launcher tap then waits for its
     // window (a spinning tile).
-    const bool standIn = qgetenv("RUSTRX_BACKGROUND") == "1";
+    const bool standIn = qgetenv(Keys::kEnvBackground) == "1";
     // started by the push distributor through D-Bus activation of the
     // connector name, for one push: no window either, and gone soon after
-    const bool pushWake = qgetenv("RUSTRX_PUSH_WAKE") == "1";
+    const bool pushWake = qgetenv(Keys::kEnvPushWake) == "1";
     if (standIn || pushWake)
         qputenv("QT_QPA_PLATFORM", "minimal");
 
@@ -75,9 +76,9 @@ int main(int argc, char *argv[])
     app->setOrganizationName(QStringLiteral("net.mowerk"));
     app->setApplicationName(QStringLiteral("harbour-rustrx"));
     // the debug log (Settings): the app and the stand-in each their own file
-    DebugLog::install(standIn ? QStringLiteral("background") : pushWake ? QStringLiteral("push") : QStringLiteral("app"));
+    DebugLog::install(QLatin1String(standIn ? Keys::kLogBackground : pushWake ? Keys::kLogPush : Keys::kLogApp));
     Twemoji::init(SailfishApp::pathTo(QStringLiteral("qml/twemoji")).toLocalFile());
-    DebugLog::setEnabled(QSettings().value(QStringLiteral("debugLog"), true).toBool());
+    DebugLog::setEnabled(QSettings().value(QLatin1String(Keys::kDebugLog), Keys::kDebugLogDefault).toBool());
 
     qmlRegisterUncreatableType<RoomModel>("Rustrx", 1, 0, "RoomModel", "owned by rustrx");
     qmlRegisterUncreatableType<TimelineModel>("Rustrx", 1, 0, "TimelineModel", "owned by rustrx");
@@ -111,9 +112,9 @@ int main(int argc, char *argv[])
             return 0;
         bool takeOver = standIn;
         if (!standIn) {
-            QDBusMessage call = QDBusMessage::createMethodCall(kService, QStringLiteral("/net/mowerk/harbour_rustrx"),
-                    QStringLiteral("net.mowerk.harbour_rustrx"), QStringLiteral("activate"));
-            const QDBusMessage reply = bus.call(call, QDBus::Block, 3000);
+            QDBusMessage call = QDBusMessage::createMethodCall(kService, QString::fromLatin1(Keys::kObjectPath),
+                    QString::fromLatin1(Keys::kInterface), QStringLiteral("activate"));
+            const QDBusMessage reply = bus.call(call, QDBus::Block, Keys::kActivateTimeoutMs);
             // no answer: the stand-in was leaving already
             takeOver = reply.type() == QDBusMessage::ErrorMessage
                     || (!reply.arguments().isEmpty() && reply.arguments().first().toBool());
@@ -146,11 +147,11 @@ int main(int argc, char *argv[])
         // gone 30 s after the last push, after 2 minutes at the most
         QTimer idle;
         idle.setSingleShot(true);
-        idle.setInterval(30000);
+        idle.setInterval(Keys::kPushIdleMs);
         QObject::connect(&idle, &QTimer::timeout, app.data(), &QCoreApplication::quit);
         QObject::connect(rustrx.push(), &UnifiedPush::pushed, &idle, [&idle]() { idle.start(); });
         idle.start();
-        QTimer::singleShot(120000, app.data(), &QCoreApplication::quit);
+        QTimer::singleShot(Keys::kPushMaxLifeMs, app.data(), &QCoreApplication::quit);
         return app->exec();
     }
     if (standIn)
@@ -174,6 +175,6 @@ int main(int argc, char *argv[])
     // closed in background mode: the stand-in takes over (it waits for this
     // process to be gone)
     if (rustrx.background() && !UnifiedPush::activeOnDisk(dataDir))
-        Rustrx::startUnit(QStringLiteral("harbour-rustrx.service"));
+        Rustrx::startUnit(QString::fromLatin1(Keys::kStandInUnit));
     return rc;
 }

@@ -21,6 +21,7 @@ SOURCES += src/main.cpp \
     src/DebugLog.cpp
 
 HEADERS += src/Rustrx.h \
+    src/Keys.h \
     src/ShareAdaptor.h \
     src/RoomModel.h \
     src/TimelineModel.h \

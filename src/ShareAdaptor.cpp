@@ -16,6 +16,7 @@
  */
 #include "ShareAdaptor.h"
 #include "Rustrx.h"
+#include "Keys.h"
 
 #include <QDBusArgument>
 #include <QDBusUnixFileDescriptor>
@@ -35,7 +36,7 @@ void ShareAdaptor::share(const QVariantMap &config)
     QStringList texts;
     const QVariantList resources = unwrap(config.value(QStringLiteral("resources"))).toList();
     qInfo() << "share:" << resources.size() << "resources";
-    const QString cache = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/shared";
+    const QString cache = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QLatin1Char('/') + QLatin1String(Keys::kSharedDir);
     int n = 0;
     for (const QVariant &raw : resources) {
         const QVariant r = unwrap(raw);
@@ -102,7 +103,7 @@ QString ShareAdaptor::copyFromDescriptor(const QDBusUnixFileDescriptor &fd, cons
     }
     in.seek(0);
     while (!in.atEnd()) {
-        const QByteArray chunk = in.read(1 << 20);
+        const QByteArray chunk = in.read(Keys::kShareChunk);
         if (chunk.isEmpty() || out.write(chunk) != chunk.size())
             break;
     }
