@@ -99,7 +99,8 @@ Page {
                 //% "Names appear under the last message each person has read."
                 description: qsTrId("rustrx-la-show-read-by-hint")
                 checked: app.showReadBy
-                onCheckedChanged: app.showReadBy = checked
+                automaticCheck: false
+                onClicked: app.showReadBy = !app.showReadBy
             }
 
             TextSwitch {
@@ -194,7 +195,8 @@ Page {
                 //% "The line in the events view while Rustrx runs in the background. Without it, Rustrx runs unseen: open it from its icon, and switch background mode off to end it."
                 description: qsTrId("rustrx-la-background-line-hint")
                 checked: service.showBackgroundLine
-                onCheckedChanged: service.showBackgroundLine = checked
+                automaticCheck: false
+                onClicked: service.showBackgroundLine = !service.showBackgroundLine
             }
 
             //% "Appearance"
@@ -206,7 +208,8 @@ Page {
                 //% "A favourite with something unread glows calmly in the lists, its star with it."
                 description: qsTrId("rustrx-la-highlight-favs-hint")
                 checked: app.highlightFavs
-                onCheckedChanged: app.highlightFavs = checked
+                automaticCheck: false
+                onClicked: app.highlightFavs = !app.highlightFavs
             }
 
             TextSwitch {
@@ -215,7 +218,8 @@ Page {
                 //% "Cut room and people pictures to a circle."
                 description: qsTrId("rustrx-la-round-avatars-hint")
                 checked: app.roundAvatars
-                onCheckedChanged: app.roundAvatars = checked
+                automaticCheck: false
+                onClicked: app.roundAvatars = !app.roundAvatars
             }
 
             TextSwitch {
@@ -224,7 +228,8 @@ Page {
                 //% "Rooms and people as two tabs. When off, they share one list; the filter menu sorts and searches it."
                 description: qsTrId("rustrx-la-separate-lists-hint")
                 checked: app.separateLists
-                onCheckedChanged: app.separateLists = checked
+                automaticCheck: false
+                onClicked: app.separateLists = !app.separateLists
             }
 
             TextSwitch {
@@ -233,7 +238,8 @@ Page {
                 //% "The favourites as a tab of their own. When off, “Favourites on top” in the filter menu keeps them at hand."
                 description: qsTrId("rustrx-la-separate-favs-hint")
                 checked: app.separateFavs
-                onCheckedChanged: app.separateFavs = checked
+                automaticCheck: false
+                onClicked: app.separateFavs = !app.separateFavs
             }
 
             TextSwitch {
@@ -242,7 +248,8 @@ Page {
                 //% "The spaces you are in (groups of rooms) as a tab: their rooms, joining them, asking to join, and requests to join them."
                 description: qsTrId("rustrx-la-separate-spaces-hint")
                 checked: app.separateSpaces
-                onCheckedChanged: app.separateSpaces = checked
+                automaticCheck: false
+                onClicked: app.separateSpaces = !app.separateSpaces
             }
 
             ComboBox {
@@ -269,7 +276,8 @@ Page {
                 //% "Rustrx starts in the room or chat that was open when it was closed."
                 description: qsTrId("rustrx-la-reopen-last-hint")
                 checked: app.reopenLast
-                onCheckedChanged: app.reopenLast = checked
+                automaticCheck: false
+                onClicked: app.reopenLast = !app.reopenLast
             }
 
             TextSwitch {
@@ -278,19 +286,18 @@ Page {
                 //% "Photos larger than 2048 pixels are scaled down before sending."
                 description: qsTrId("rustrx-la-downscale-hint")
                 checked: rustrx.downscaleImages
-                onCheckedChanged: rustrx.downscaleImages = checked
+                automaticCheck: false
+                onClicked: rustrx.downscaleImages = !rustrx.downscaleImages
             }
 
             //% "Account"
             SectionHeader { text: qsTrId("rustrx-se-account") }
 
             DetailItem {
-                //% "Matrix ID"
                 label: qsTrId("rustrx-la-matrix-id")
                 value: rustrx.userId
             }
             DetailItem {
-                //% "Homeserver"
                 label: qsTrId("rustrx-la-homeserver")
                 value: rustrx.homeserver
             }
@@ -443,7 +450,7 @@ Page {
                 onClicked: {
                     var core = rustrx
                     //% "Resetting the encryption"
-                    resetRemorse.execute(qsTrId("rustrx-re-reset-identity"), function () {
+                    remorse.execute(qsTrId("rustrx-re-reset-identity"), function () {
                         //% "Resetting… the server may ask you to approve it in the browser."
                         recoveryResult = qsTrId("rustrx-la-resetting")
                         core.command({ cmd: "identity_reset" })
@@ -553,7 +560,7 @@ Page {
                 onClicked: {
                     var core = rustrx
                     //% "Clearing the cached pictures and files"
-                    clearRemorse.execute(qsTrId("rustrx-re-clear-media"), function () { core.command({ cmd: "clear_media" }) })
+                    remorse.execute(qsTrId("rustrx-re-clear-media"), function () { core.command({ cmd: "clear_media" }) })
                 }
             }
             Label {
@@ -683,12 +690,11 @@ Page {
         }
     }
 
+    // the log out, the reset and the clearing
     RemorsePopup { id: remorse }
-    RemorsePopup { id: resetRemorse }
     property string resetApprovalUrl
 
     property var storage: ({})
-    RemorsePopup { id: clearRemorse }
 
     Connections {
         target: rustrx

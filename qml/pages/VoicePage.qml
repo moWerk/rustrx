@@ -166,7 +166,6 @@ Page {
                 onClicked: { voice.discard(); page.elapsed = 0; page.recorded = false }
             }
             Button {
-                //% "Send"
                 text: qsTrId("rustrx-bt-send")
                 onClicked: {
                     rustrx.sendVoice(page.roomId, voice.path, page.elapsed, page.takeCaption ? page.takeCaption() : "")

@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
 
 // A space: its rooms and subspaces as the server lists them (joined or
 // not), the requests to join it, and what can be done with it. A joined
@@ -35,11 +36,7 @@ Page {
     Connections { target: rustrx.spaces; onDataChanged: page.info = rustrx.roomInfo(page.spaceId) }
 
     readonly property bool canManage: info.can_manage_children === true
-    readonly property int requests: {
-        var n = 0, all = rustrx.knockRequests
-        for (var i = 0; i < all.length; i++) if (all[i].room_id === spaceId) n++
-        return n
-    }
+    readonly property int requests: app.knockCount(spaceId)
 
     Component.onCompleted: rustrx.command({ cmd: "space_open", space_id: spaceId })
     Component.onDestruction: rustrx.command({ cmd: "space_close", space_id: spaceId })
@@ -54,7 +51,6 @@ Page {
         onRoomLink: {
             if (roomId !== page.spaceId) return
             Clipboard.text = link
-            //% "Link copied"
             Notices.show(qsTrId("rustrx-no-link-copied"), Notice.Short)
         }
     }
@@ -98,7 +94,7 @@ Page {
                 visible: page.canManage
                 //% "Add an existing room"
                 text: qsTrId("rustrx-me-space-add")
-                onClicked: pageStack.push(Qt.resolvedUrl("AddToSpacePage.qml"), { spaceId: page.spaceId, spaceName: page.spaceName, children: page.rooms })
+                onClicked: pageStack.push(Qt.resolvedUrl("AddToSpacePage.qml"), { spaceId: page.spaceId, spaceName: page.spaceName, existing: page.rooms })
             }
             MenuItem {
                 visible: page.canManage
@@ -134,20 +130,10 @@ Page {
             }
 
             // people asking to join this space
-            BackgroundItem {
-                width: parent.width
-                height: visible ? Theme.itemSizeSmall : 0
+            BannerItem {
                 visible: page.requests > 0
                 onClicked: pageStack.push(Qt.resolvedUrl("KnockPage.qml"))
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * x
-                    anchors.verticalCenter: parent.verticalCenter
-                    truncationMode: TruncationMode.Fade
-                    color: Theme.highlightColor
-                    font.pixelSize: Theme.fontSizeSmall
-                    text: qsTrId("rustrx-la-banner-knocks", page.requests)
-                }
+                text: qsTrId("rustrx-la-banner-knocks", page.requests)
             }
 
             SectionHeader {
@@ -224,7 +210,6 @@ Page {
                         text: qsTrId("rustrx-me-space-remove")
                         onClicked: {
                             var space = page.spaceId, child = row.r.room_id, core = rustrx
-                            //% "Removing"
                             row.remorseAction(qsTrId("rustrx-re-removing"), function () {
                                 core.command({ cmd: "space_remove_child", space_id: space, room_id: child })
                             })

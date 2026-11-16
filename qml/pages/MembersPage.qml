@@ -42,7 +42,9 @@ Page {
     }
 
     function powerLabel(p) {
+        //% "admin"
         if (p === "infinite" || p >= 100) return qsTrId("rustrx-la-power-admin")
+        //% "moderator"
         if (p >= 50) return qsTrId("rustrx-la-power-moderator")
         return ""
     }

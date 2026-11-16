@@ -181,7 +181,6 @@ Page {
         // the tabs, and at their right a filter icon that opens the sort
         // order below them
         header: Column {
-            id: sortHeader
             width: parent ? parent.width : page.width
 
             Item {
@@ -355,7 +354,6 @@ Page {
         }
 
         delegate: TabItem {
-            id: tabItem
             flickable: list
 
             readonly property bool isRooms: model.kind === "rooms"
@@ -450,48 +448,26 @@ Page {
                     Item { width: 1; height: tabs.tabBarHeight + Theme.paddingMedium }
 
                     // people asking to join a room or space we may invite to
-                    BackgroundItem {
-                        width: parent.width
-                        height: visible ? Theme.itemSizeSmall : 0
+                    BannerItem {
                         visible: rustrx.knockRequests.length > 0
                         onClicked: pageStack.push(Qt.resolvedUrl("KnockPage.qml"))
-
-                        Label {
-                            x: Theme.horizontalPageMargin
-                            width: parent.width - 2 * x
-                            anchors.verticalCenter: parent.verticalCenter
-                            truncationMode: TruncationMode.Fade
-                            color: Theme.highlightColor
-                            font.pixelSize: Theme.fontSizeSmall
-                            //: %n open requests to join rooms or spaces
-                            //% "%n requests to join. Tap to answer."
-                            text: qsTrId("rustrx-la-banner-knocks", rustrx.knockRequests.length)
-                        }
+                        //: %n open requests to join rooms or spaces
+                        //% "%n requests to join. Tap to answer."
+                        text: qsTrId("rustrx-la-banner-knocks", rustrx.knockRequests.length)
                     }
 
                     // one line while this device cannot read encrypted rooms
-                    BackgroundItem {
-                        width: parent.width
-                        height: visible ? Theme.itemSizeSmall : 0
+                    BannerItem {
                         visible: rustrx.verificationState === "unverified" || rustrx.recoveryState === "incomplete"
                         // the settings, scrolled to the encryption section, where
                         // verifying from another device and the recovery key sit
                         // together: without another device only the key helps
                         onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { showEncryption: true })
-
-                        Label {
-                            x: Theme.horizontalPageMargin
-                            width: parent.width - 2 * x
-                            anchors.verticalCenter: parent.verticalCenter
-                            truncationMode: TruncationMode.Fade
-                            color: Theme.highlightColor
-                            font.pixelSize: Theme.fontSizeSmall
-                            text: rustrx.verificationState === "unverified"
-                                  //% "This device is not verified. Tap to verify it."
-                                  ? qsTrId("rustrx-la-banner-unverified")
-                                  //% "Older encrypted messages need the recovery key. Tap to enter it."
-                                  : qsTrId("rustrx-la-banner-recovery")
-                        }
+                        text: rustrx.verificationState === "unverified"
+                              //% "This device is not verified. Tap to verify it."
+                              ? qsTrId("rustrx-la-banner-unverified")
+                              //% "Older encrypted messages need the recovery key. Tap to enter it."
+                              : qsTrId("rustrx-la-banner-recovery")
                     }
                 }
 

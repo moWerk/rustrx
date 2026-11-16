@@ -105,7 +105,6 @@ CoverBackground {
             spacing: Theme.paddingMedium
             visible: rustrx.loggedIn && rustrx.unreadChats > 0
             Label {
-                id: inLabel
                 anchors.verticalCenter: chatsCount.verticalCenter
                 //% "in"
                 text: qsTrId("rustrx-la-cover-in")

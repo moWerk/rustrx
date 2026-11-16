@@ -24,11 +24,11 @@ Page {
     property string spaceId
     property string spaceName
     // the space's rooms now: not offered again
-    property var children: []
+    property var existing: []
 
     function inSpace(id) {
         if (id === spaceId) return true
-        for (var i = 0; i < children.length; i++) if (children[i].room_id === id) return true
+        for (var i = 0; i < existing.length; i++) if (existing[i].room_id === id) return true
         return false
     }
 

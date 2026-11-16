@@ -57,17 +57,36 @@ Item {
         onQuitRequested: standInNote.close()
     }
 
+    // a notification's action: a call to Rustrx's D-Bus interface; args and
+    // label (the button's text) only where the action has them
+    function action(name, method, args, label) {
+        var a = {
+            "name": name,
+            "service": "net.mowerk.harbour-rustrx",
+            "path": "/net/mowerk/harbour_rustrx",
+            "iface": "net.mowerk.harbour_rustrx",
+            "method": method
+        }
+        if (args) a["arguments"] = args
+        if (label) a["displayName"] = label
+        return a
+    }
+
     // one notification per room, updated in place: the events view keeps a
     // line per room, the banner shows the latest message
     property var roomNotifications: ({})
     property var roomPending: ({})
-    function notify(roomId, roomName, count) {
-        console.log("notify: +" + count)
+    function roomNote(roomId) {
         var n = roomNotifications[roomId]
         if (!n) {
             n = notificationComponent.createObject(service, { roomId: roomId })
             roomNotifications[roomId] = n
         }
+        return n
+    }
+    function notify(roomId, roomName, count) {
+        console.log("notify: +" + count)
+        var n = roomNote(roomId)
         var info = rustrx.roomInfo(roomId)
         var last = (info.preview_sender ? info.preview_sender + ": " : "") + (info.preview || "")
         var pending = (roomPending[roomId] || 0) + count
@@ -85,11 +104,7 @@ Item {
     // to miss in the list); a tap opens it, where it is accepted or declined
     function notifyInvite(roomId, roomName, inviter, direct) {
         console.log("notify: invitation")
-        var n = roomNotifications[roomId]
-        if (!n) {
-            n = notificationComponent.createObject(service, { roomId: roomId })
-            roomNotifications[roomId] = n
-        }
+        var n = roomNote(roomId)
         var who = inviter.length ? inviter : roomName
         //: notification title for an invitation
         //% "Invitation"
@@ -108,10 +123,9 @@ Item {
     }
     // an invitation answered some other way: its banner goes, also one an
     // earlier Rustrx process posted (the app and the stand-in take turns)
-    Notification { id: lookup; appName: "Rustrx" }
     function closeInvite(roomId) {
         closeNotification(roomId)
-        var all = lookup.notifications()
+        var all = standInNote.notifications()
         for (var i = 0; i < all.length; i++) {
             var actions = all[i].remoteActions
             if (actions && actions.length && actions[0].arguments && actions[0].arguments[0] === roomId)
@@ -186,32 +200,13 @@ Item {
             appIcon: "harbour-rustrx"
             urgency: ring ? Notification.Critical : Notification.Normal
             isTransient: false
-            remoteActions: [{
-                "name": "default",
-                "service": "net.mowerk.harbour-rustrx",
-                "path": "/net/mowerk/harbour_rustrx",
-                "iface": "net.mowerk.harbour_rustrx",
-                "method": "openRoomFromNotification",
-                "arguments": [ roomId ]
-            }, {
-                "name": "answer",
+            remoteActions: [
+                service.action("default", "openRoomFromNotification", [ roomId ]),
                 //% "Answer"
-                "displayName": qsTrId("rustrx-me-call-answer"),
-                "service": "net.mowerk.harbour-rustrx",
-                "path": "/net/mowerk/harbour_rustrx",
-                "iface": "net.mowerk.harbour_rustrx",
-                "method": "answerCall",
-                "arguments": [ roomId ]
-            }, {
-                "name": "decline",
+                service.action("answer", "answerCall", [ roomId ], qsTrId("rustrx-me-call-answer")),
                 //% "Decline"
-                "displayName": qsTrId("rustrx-me-call-decline"),
-                "service": "net.mowerk.harbour-rustrx",
-                "path": "/net/mowerk/harbour_rustrx",
-                "iface": "net.mowerk.harbour_rustrx",
-                "method": "declineCall",
-                "arguments": [ roomId, eventId ]
-            }]
+                service.action("decline", "declineCall", [ roomId, eventId ], qsTrId("rustrx-me-call-decline"))
+            ]
         }
     }
 
@@ -219,11 +214,7 @@ Item {
     // message seen by the sync would make it; text as Settings has it
     function notifyPush(roomId, roomName, senderName, body, isDm) {
         console.log("notify: push")
-        var n = roomNotifications[roomId]
-        if (!n) {
-            n = notificationComponent.createObject(service, { roomId: roomId })
-            roomNotifications[roomId] = n
-        }
+        var n = roomNote(roomId)
         var pending = (roomPending[roomId] || 0) + 1
         roomPending[roomId] = pending
         var who = senderName && !isDm ? senderName + ": " : ""
@@ -258,13 +249,7 @@ Item {
         appName: "Rustrx"
         appIcon: "harbour-rustrx"
         category: "x-nemo.messaging.im"
-        remoteActions: [{
-            "name": "default",
-            "service": "net.mowerk.harbour-rustrx",
-            "path": "/net/mowerk/harbour_rustrx",
-            "iface": "net.mowerk.harbour_rustrx",
-            "method": "openKnocks"
-        }]
+        remoteActions: [ service.action("default", "openKnocks") ]
     }
 
     function closeNotification(roomId) {
@@ -273,6 +258,8 @@ Item {
         if (!n) return
         n.close()
         delete roomNotifications[roomId]
+        // ours are made here; one adopted from an earlier process is not
+        if (n.roomId !== undefined) n.destroy()
     }
 
     Component {
@@ -283,14 +270,7 @@ Item {
             appIcon: "harbour-rustrx"
             category: "x-nemo.messaging.im"
             urgency: Notification.Normal
-            remoteActions: [{
-                "name": "default",
-                "service": "net.mowerk.harbour-rustrx",
-                "path": "/net/mowerk/harbour_rustrx",
-                "iface": "net.mowerk.harbour_rustrx",
-                "method": "openRoomFromNotification",
-                "arguments": [ roomId ]
-            }]
+            remoteActions: [ service.action("default", "openRoomFromNotification", [ roomId ]) ]
             onClosed: delete service.roomPending[roomId]
         }
     }
@@ -317,21 +297,11 @@ Item {
         body: qsTrId("rustrx-no-background-body")
         urgency: Notification.Low
         isTransient: false
-        remoteActions: [{
-            "name": "default",
-            "service": "net.mowerk.harbour-rustrx",
-            "path": "/net/mowerk/harbour_rustrx",
-            "iface": "net.mowerk.harbour_rustrx",
-            "method": "open"
-        }, {
-            "name": "quit",
+        remoteActions: [
+            service.action("default", "open"),
             //% "Quit"
-            "displayName": qsTrId("rustrx-me-quit"),
-            "service": "net.mowerk.harbour-rustrx",
-            "path": "/net/mowerk/harbour_rustrx",
-            "iface": "net.mowerk.harbour_rustrx",
-            "method": "quit"
-        }]
+            service.action("quit", "quit", null, qsTrId("rustrx-me-quit"))
+        ]
     }
 
     Component.onCompleted: {
@@ -340,10 +310,10 @@ Item {
         // opening the room closes them; the stand-in's line goes
         var old = standInNote.notifications()
         for (var i = 0; i < old.length; i++) {
-            var action = old[i].remoteActions.length ? old[i].remoteActions[0] : {}
-            if (action.method === "openRoomFromNotification" && action.arguments && action.arguments.length
-                    && !roomNotifications[action.arguments[0]])
-                roomNotifications[action.arguments[0]] = old[i]
+            var first = old[i].remoteActions.length ? old[i].remoteActions[0] : {}
+            if (first.method === "openRoomFromNotification" && first.arguments && first.arguments.length
+                    && !roomNotifications[first.arguments[0]])
+                roomNotifications[first.arguments[0]] = old[i]
             else
                 old[i].close()
         }

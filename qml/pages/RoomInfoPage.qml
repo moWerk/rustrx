@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 import Sailfish.Pickers 1.0
+import "../components"
 
 // The room behind the conversation, attached to the right of RoomPage:
 // name and topic (editable for moderators), alias, encryption, the
@@ -28,8 +29,6 @@ Page {
     property var info: rustrx.roomInfo(roomId)
     property var memberList: []
     property bool membersLoaded
-    // the member a direct chat was asked for from this page
-    property string pendingDm
     // own power level, from the member list; 50 is the moderator default
     property int ownPower: 0
     readonly property bool canEdit: ownPower >= 50
@@ -40,22 +39,10 @@ Page {
     readonly property var rules: info.parents && info.parents.length
                                  ? ["invite", "knock", "restricted", "knock_restricted", "public"]
                                  : ["invite", "knock", "public"]
-    readonly property int knocks: {
-        var n = 0, all = rustrx.knockRequests
-        for (var i = 0; i < all.length; i++) if (all[i].room_id === roomId) n++
-        return n
-    }
+    readonly property int knocks: app.knockCount(roomId)
 
     function refresh() {
         info = rustrx.roomInfo(roomId)
-    }
-
-    function powerLabel(p) {
-        //% "admin"
-        if (p === "infinite" || p >= 100) return qsTrId("rustrx-la-power-admin")
-        //% "moderator"
-        if (p >= 50) return qsTrId("rustrx-la-power-moderator")
-        return ""
     }
 
     property string notifyMode: ""
@@ -81,14 +68,6 @@ Page {
                     ownPower = p === "infinite" ? 100 : (p || 0)
                 }
             }
-        }
-        onDmReady: {
-            // a direct chat opened from a member row here replaces this room
-            if (userId !== pendingDm) return
-            pendingDm = ""
-            var main = pageStack.find(function (p) { return p.objectName === "main" })
-            pageStack.replaceAbove(main, Qt.resolvedUrl("RoomPage.qml"),
-                                   { roomId: roomId, roomName: rustrx.roomInfo(roomId).name || userId })
         }
         onErrorOccurred: if (cmd === "set_room_name" || cmd === "set_room_topic") refresh()
         onNotificationMode: if (roomId === page.roomId) page.notifyMode = mode
@@ -149,7 +128,6 @@ Page {
                       : qsTrId("rustrx-me-leave-room")
                 onClicked: {
                     var id = roomId, core = rustrx
-                    //% "Leaving"
                     leaveRemorse.execute(qsTrId("rustrx-re-leaving"), function () {
                         core.command({ cmd: "leave_room", room_id: id })
                         pageStack.pop(pageStack.find(function (p) { return p.objectName === "main" }))
@@ -244,7 +222,6 @@ Page {
                 visible: canEdit && !info.is_dm
                 width: parent.width
                 label: page.isSpace ? qsTrId("rustrx-la-space-name")
-                //% "Room name"
                                     : qsTrId("rustrx-la-room-name")
                 placeholderText: label
                 text: info.name || ""
@@ -350,7 +327,6 @@ Page {
             // who may join: anyone, people who ask, members of its spaces,
             // or invited people only
             ComboBox {
-                id: ruleBox
                 visible: !info.is_dm
                 enabled: info.can_join_rules === true
                 width: parent.width
@@ -372,20 +348,10 @@ Page {
                 }
             }
             // people asking to join it
-            BackgroundItem {
-                width: parent.width
-                height: visible ? Theme.itemSizeSmall : 0
+            BannerItem {
                 visible: page.knocks > 0
                 onClicked: pageStack.push(Qt.resolvedUrl("KnockPage.qml"))
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * x
-                    anchors.verticalCenter: parent.verticalCenter
-                    truncationMode: TruncationMode.Fade
-                    color: Theme.highlightColor
-                    font.pixelSize: Theme.fontSizeSmall
-                    text: qsTrId("rustrx-la-banner-knocks", page.knocks)
-                }
+                text: qsTrId("rustrx-la-banner-knocks", page.knocks)
             }
             DetailItem {
                 visible: !page.isSpace
@@ -407,7 +373,6 @@ Page {
             }
 
             ComboBox {
-                id: notifyBox
                 visible: !page.isSpace
                 //% "Notifications"
                 label: qsTrId("rustrx-la-notifications")

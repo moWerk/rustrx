@@ -25,7 +25,7 @@ ApplicationWindow {
     // The login and the main page replace each other at the bottom of the
     // stack; everything else is pushed on top of the main page.
     initialPage: Component { StartPage { } }
-    cover: coverSource
+    cover: Qt.resolvedUrl("cover/CoverPage.qml")
     // portrait and landscape: the room list and the chats suit both (the
     // camera page keeps to portrait)
     allowedOrientations: Orientation.All
@@ -144,7 +144,7 @@ ApplicationWindow {
             // read before the main page comes in: becoming active, it forgets the room
             var last = !reopenTried && reopenLast ? lastRoom : ""
             reopenTried = true
-            if (current !== "main" && (current === "login" || current === "start"))
+            if (current === "login" || current === "start")
                 pageStack.replaceAbove(null, Qt.resolvedUrl("pages/MainPage.qml"))
             // started by a notification's tap: its room, once the list knows it
             var asked = rustrx.takePendingRoom()
@@ -324,7 +324,7 @@ ApplicationWindow {
             }
         }
         if (id.charAt(0) === "@") {
-            pendingJoin = "dm"
+            pendingDm = true
             rustrx.command({ cmd: "create_dm", user_id: id })
         } else if (id.charAt(0) === "!" && rustrx.roomInfo(id).name && rustrx.roomInfo(id).state === "joined") {
             if (rustrx.roomInfo(id).is_space)
@@ -338,11 +338,12 @@ ApplicationWindow {
         }
         return true
     }
-    property string pendingJoin
+    // a direct chat asked for by a matrix:u/ link: shown once it is there
+    property bool pendingDm
     Connections {
         target: rustrx
-        onJoined: if (app.pendingJoin.length) { app.pendingJoin = ""; app.showRoom(roomId) }
-        onDmReady: if (app.pendingJoin === "dm") { app.pendingJoin = ""; app.showRoom(roomId) }
+        onJoined: if (app.pendingDm) { app.pendingDm = false; app.showRoom(roomId) }
+        onDmReady: if (app.pendingDm) { app.pendingDm = false; app.showRoom(roomId) }
     }
 
     // a page transition in flight (the main page coming in on a cold
@@ -426,6 +427,13 @@ ApplicationWindow {
         return rule
     }
 
+    // the open requests to join one room or space
+    function knockCount(roomId) {
+        var n = 0, all = rustrx.knockRequests
+        for (var i = 0; i < all.length; i++) if (all[i].room_id === roomId) n++
+        return n
+    }
+
     function showKnocks() {
         if (pageStack.busy) { knocksRetry.restart(); return }
         var top = pageStack.currentPage
@@ -446,8 +454,6 @@ ApplicationWindow {
         pageStack.push(Qt.resolvedUrl("pages/RoomPage.qml"),
                        { roomId: roomId, roomName: rustrx.roomInfo(roomId).name || "" }, PageStackAction.Immediate)
     }
-
-    property var coverSource: Qt.resolvedUrl("cover/CoverPage.qml")
 
     // debug: close the app as the tile's close does
     ConfigurationValue { id: debugClose; key: "/apps/harbour-rustrx/debugClose"; defaultValue: false }

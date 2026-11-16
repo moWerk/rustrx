@@ -151,7 +151,6 @@ Page {
             onClicked: shotPath = ""
         }
         Button {
-            //% "Send"
             text: qsTrId("rustrx-bt-send")
             onClicked: {
                 page.captured(shotPath)
