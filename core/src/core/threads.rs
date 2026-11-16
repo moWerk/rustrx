@@ -59,7 +59,12 @@ impl Core {
             Self::stream_timeline(&room, &tl, &own, emit, page_in).await;
         });
         tracing::info!(room = %room_id, %root, "thread: open");
-        self.state.lock().await.thread = Some(OpenThread { room_id: room_id_kept, root, timeline, task });
+        // another open during the build: the one replaced stops (a close
+        // during it still loses; the next open or the logout ends it)
+        let old = self.state.lock().await.thread.replace(OpenThread { room_id: room_id_kept, root, timeline, task });
+        if let Some(old) = old {
+            old.task_handle().abort();
+        }
         Ok(())
     }
 
@@ -107,7 +112,9 @@ impl Core {
                 emit(&service, false);
             }
         });
-        self.state.lock().await.thread_list = Some(task);
+        if let Some(old) = self.state.lock().await.thread_list.replace(task) {
+            old.abort();
+        }
         Ok(())
     }
 

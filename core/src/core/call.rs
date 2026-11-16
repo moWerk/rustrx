@@ -240,7 +240,9 @@ impl Core {
                 }
             }
         });
-        self.state.lock().await.call = Some(CallSession { handle, tasks: vec![run, forward], room: rid_room });
+        if let Some(old) = self.state.lock().await.call.replace(CallSession { handle, tasks: vec![run, forward], room: rid_room }) {
+            old.stop();
+        }
         tracing::info!(room = %rid, ?intent_name, ?encryption_name, skip_lobby, "call widget started");
         self.emit(json!({"ev": "call_url", "room_id": rid.as_str(), "url": url.as_str()}));
         Ok(())

@@ -19,8 +19,12 @@ impl Core {
             }
         };
         self.rt.spawn(async move {
-            if let Err(e) = self.handle(command).await {
-                self.error(&cmd, &e);
+            // a panic in a handler would end its task silently, and the UI
+            // would wait for an answer that never comes
+            match std::panic::AssertUnwindSafe(self.handle(command)).catch_unwind().await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => self.error(&cmd, &e),
+                Err(_) => self.error(&cmd, &anyhow!("internal error")),
             }
         });
     }

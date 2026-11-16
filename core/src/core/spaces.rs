@@ -126,7 +126,9 @@ impl Core {
                 emit(rooms, false);
             }
         });
-        self.state.lock().await.space_lists.insert(space_id.to_owned(), task);
+        if let Some(old) = self.state.lock().await.space_lists.insert(space_id.to_owned(), task) {
+            old.abort();
+        }
         Ok(())
     }
 

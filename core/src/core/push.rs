@@ -73,6 +73,7 @@ impl Core {
     /// short sync where the server has no sliding sync. Answered by
     /// "push_notification" unless the account's rules keep it quiet.
     pub(crate) async fn push_handle(&'static self, room_id: &str, event_id: &str) -> Result<()> {
+        let _one_at_a_time = self.push_lock.lock().await;
         let client = self.client().await?;
         let room_id = OwnedRoomId::try_from(room_id)?;
         let event_id = OwnedEventId::try_from(event_id)?;

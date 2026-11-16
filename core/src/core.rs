@@ -158,6 +158,10 @@ pub(crate) struct Core {
     state: Mutex<State>,
     /// "login_cancel": ends a single sign-on still waiting for the browser
     sso_cancel: tokio::sync::Notify,
+    /// one pushed message at a time: each notification client runs its own
+    /// encryption sync over the one crypto store, and their mutexes are
+    /// their own, so two at once would not exclude each other
+    push_lock: Mutex<()>,
 }
 
 mod account;
@@ -178,7 +182,7 @@ pub(crate) use spaces::join_rule_name;
 
 impl Core {
     pub(crate) fn new(rt: Runtime, data_dir: PathBuf, emitter: Emitter) -> Self {
-        Core { rt, data_dir, emitter, state: Mutex::new(State::default()), sso_cancel: tokio::sync::Notify::new() }
+        Core { rt, data_dir, emitter, state: Mutex::new(State::default()), sso_cancel: tokio::sync::Notify::new(), push_lock: Mutex::new(()) }
     }
 
     pub(crate) fn emit(&self, value: Value) {
