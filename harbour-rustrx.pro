@@ -12,6 +12,7 @@ CONFIG += sailfishapp sailfishapp_i18n sailfishapp_i18n_idbased sailfishapp_i18n
 
 SOURCES += src/main.cpp \
     src/Rustrx.cpp \
+    src/ShareAdaptor.cpp \
     src/RoomModel.cpp \
     src/TimelineModel.cpp \
     src/Twemoji.cpp \
@@ -20,6 +21,7 @@ SOURCES += src/main.cpp \
     src/DebugLog.cpp
 
 HEADERS += src/Rustrx.h \
+    src/ShareAdaptor.h \
     src/RoomModel.h \
     src/TimelineModel.h \
     src/Twemoji.h \
