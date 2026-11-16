@@ -394,8 +394,10 @@ ListItem {
                                     asynchronous: true
                                     autoTransform: true
                                     fillMode: Image.PreserveAspectFit
+                                    // a video's own file is no picture: only its thumbnail
                                     source: model.thumb_path && model.thumb_path.length ? "file://" + model.thumb_path
-                                          : model.media_path && model.media_path.length ? "file://" + model.media_path : ""
+                                          : msgType !== "video" && model.media_path && model.media_path.length
+                                            ? "file://" + model.media_path : ""
                                     // what the bubble's width comes to in portrait: decoded once
                                     sourceSize.width: Math.round(Screen.width * Tunables.mediaMaxWidth)
                                 }
