@@ -624,8 +624,11 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit roomsLoadedChanged();
         // after roomsLoadedChanged, as before the move
         m_lists->clearUnread();
-        // the drafts belonged to that account
+        // the drafts and what was read in threads belonged to that account
         m_settings.remove(QLatin1String(Keys::kDrafts));
+        m_settings.remove(QLatin1String(Keys::kThreadsSeen));
+        ++m_threadsSeenVersion;
+        emit threadsSeenChanged();
         emit stateChanged();
         emit openRoomChanged();
         emit syncStateChanged();
