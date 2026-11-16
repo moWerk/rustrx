@@ -28,7 +28,7 @@
    "id": "C3",
    "severity": "medium",
    "area": "processes / bus name (main.cpp, Rustrx.cpp, SecretStore.cpp)",
-   "status": "OPEN: register the object before the secrets fetch; retry activate; needs a phone to test the start paths",
+   "status": "FIXED 36a2609 (activate asked again while the holder is still starting; a failed wait logged)",
    "summary": "CONFIRMED: the bus name is taken before the D-Bus object exists, and any error answer to `activate` is read as 'the holder is leaving'. A launch while the holder is still starting (or hung) waits 10 s and exits silently; the holder stays.",
    "detail": "main.cpp:110 `bus.registerService(kService)` happens before `Rustrx rustrx(dataDir);` (main.cpp:128). The constructor first loads the sailfish-secrets plugin and fetches the store key synchronously on the GUI thread (Rustrx.cpp:107-125; SecretStore.cpp:46-47, 67-68, 101-102: `request.waitForFinished();` with `SystemInteraction`, no timeout of its own, QtDBus default 25 s per call), then `rustrx_start` (Rustrx.cpp:130), and only then `bus.registerObject(Keys::kObjectPath, this, ..)` (Rustrx.cpp:142). A second process meanwhile calls `activate` (main.cpp:116-118, 3 s timeout, Keys.h:115); the answer is UnknownObject (or NoReply if the GUI thread is busy > 3 s), and `takeOver = reply.type() == QDBusMessage::ErrorMessage || ..` (main.cpp:120-121) is true, so it waits in `waitForNameToGo` (10 s, Keys.h:112, main.cpp:50-60) for a holder that never got the request, then `return 0` (main.cpp:123-124) with no message. Cases: the stand-in at session start (post-user-session.target) while the device is not unlocked yet, if sailfish-secrets waits for the unlock (SUSPECTED: not verified what the daemon does before the first unlock); any hung holder (Restart=no in both units, nothing kills it). A crashed holder is fine: the bus drops its names on disconnect.",
    "fix": "proposed: register the object path (a small responder that can already answer activate) right after registerService, before the secrets fetch; in main.cpp retry `activate` on UnknownObject/UnknownMethod until a deadline and treat only NoReply/ServiceUnknown/Disconnected as 'leaving'; when waitForNameToGo fails, log it and show a notification instead of exiting silently; give the SecretStore requests a bounded wait.",
@@ -68,7 +68,7 @@
    "id": "C7",
    "severity": "low",
    "area": "task lifetimes (threads.rs, spaces.rs, call.rs, timeline.rs)",
-   "status": "FIXED b1fe4ce in part: a replaced task is aborted; a close during the build still loses to the open",
+   "status": "FIXED b1fe4ce (replaced task aborted), 1f71efd (a close during the build wins, for threads and the thread list)",
    "summary": "CONFIRMED: open_thread, thread_list, space_open and call_start close the previous one first, then await, then store the new handle by assignment. A close (or a second open) that arrives during the await is lost: the replaced JoinHandle is dropped, which detaches the task instead of aborting it.",
    "detail": "open_thread: `self.close_thread().await;` (threads.rs:41), `build_timeline(.., TimelineFocus::Thread ..).await?` (threads.rs:42, a thread focus loads the root and its relations from the server), then `self.state.lock().await.thread = Some(OpenThread {..})` (threads.rs:62). A close_thread processed during the build finds nothing; the thread then stays open in the core with its task streaming thread_timeline (dropped by the UI, Rustrx.cpp:654) until the next open_thread or logout, and `timeline_holding` (threads.rs:169-198) may route reactions in that room through the stale thread timeline. Two overlapping open_thread: the first OpenThread is overwritten and its task is never aborted (only take_login or close_thread abort the stored one). Same pattern: thread_list (threads.rs:70, 110), space_open (spaces.rs ~85-129, `space_lists.insert` returns the old handle, dropped), call_start (call.rs:161, 243 `call = Some(..)`, the old CallSession's driver keeps running), open_room vs close_room (timeline.rs:185-191; narrower: a live-focus build is mostly local).",
    "fix": "proposed: when storing, take the previous value and abort it (`if let Some(old) = st.thread.replace(new) { old.task.abort() }`, `if let Some(old) = st.space_lists.insert(..) { old.abort() }`); plus a per-slot sequence number bumped by close_* and checked before storing, so a close during the build wins.",
@@ -88,7 +88,7 @@
    "id": "C9",
    "severity": "low",
    "area": "processes / exit (lib.rs, Rustrx.cpp, main.cpp)",
-   "status": "OPEN: a shutdown command before the bus name goes; handOver to check StartUnit",
+   "status": "FIXED 36a2609 (rustrx_shutdown at aboutToQuit before the name goes; handOver stays when StartUnit fails), f2818af (Client::pause closes the stores)",
    "summary": "SUSPECTED: nothing stops the core before the bus name is released. The bus name is the only store lock (cross-process lock off), yet the old process's sync and crypto tasks run until the process is gone.",
    "detail": "session.rs:111-115: `.cross_process_store_config(CrossProcessLockConfig::SingleProcess)` with the comment that the D-Bus name is the lock. On exit: `~Rustrx` only calls `rustrx_stop()` (Rustrx.cpp:146-151), which only clears LIVE so events are dropped (lib.rs:38-57); the runtime lives in a static OnceLock and is never shut down (lib.rs:59, 151-155). The name goes when QtDBus closes the session connection (during QGuiApplication teardown or at process exit; not verified for Qt 5.6) while the tokio workers may still be inside a sync response or a crypto write. The waiting process polls every 100 ms (main.cpp:54-58) and then opens the store. The window is short (milliseconds); SQLite transactions keep the files consistent, but two OlmMachines on one crypto store for even a moment is what the cross-process lock exists for. Also the stand-in's handOver() quits whether or not StartUnit succeeded (Handover.cpp:108-109: result ignored).",
    "fix": "proposed: a `shutdown` command (or a blocking `rustrx_shutdown(timeout_ms)` C function) that stops the SyncService, aborts login tasks and calls `client.pause()` (closes all stores, client/mod.rs:3813-3823), called from aboutToQuit before `bus.unregisterService(kService)` is done explicitly. In handOver(), quit only if startUnit returned true (else stay and log), or leave the quit to the new app's activate call (Rustrx.cpp:221-230).",
@@ -118,7 +118,7 @@
    "id": "C12",
    "severity": "low",
    "area": "processes / stand-in at boot (session.rs, main.cpp)",
-   "status": "OPEN: stand-in restore without the store key is not retried (sailfish-secrets before the first unlock unverified)",
+   "status": "FIXED 36a2609 (ready says restore_failed; the stand-in exits with a failure, Restart=on-failure RestartSec=60)",
    "summary": "SUSPECTED: if the stand-in starts before sailfish-secrets can give the store key (before the first unlock), restore fails once and is never retried; the stand-in then runs logged out, holding the bus name, with no notifications until something restarts it.",
    "detail": "session.rs:82-83 bails 'the encrypted store's key is not available'; boot() runs once (session.rs:13-31) and emits ready logged_in:false; STORE_KEY is a OnceLock set once before start (lib.rs:90-108, Rustrx.cpp:111-125). Nothing in Service.qml or main.cpp quits or retries on a logged-out stand-in (main.cpp:158-159 just runs the loop). Whether sailfish-secrets returns an error or blocks before the first unlock was not verified (if it blocks, see C3 instead).",
    "fix": "proposed: the stand-in quits when ready says logged_in:false with a restore error, and its unit gets `Restart=on-failure` with a RestartSec (exit non-zero in that case); or retry the key and restore on a timer / on the device lock state changing to unlocked.",
@@ -128,7 +128,7 @@
    "id": "C13",
    "severity": "trivial",
    "area": "thread hop at process exit (lib.rs, Rustrx.cpp)",
-   "status": "OPEN: goes with C9 (runtime stopped before exit)",
+   "status": "FIXED 36a2609 (the core stopped before exit)",
    "summary": "CONFIRMED but harmless today: Emitter::emit checks LIVE and then calls the callback without a lock, so a tokio thread can be inside eventCallback while main() returns and static destructors run.",
    "detail": "lib.rs:43-50 load LIVE then `(self.cb)(..)`; ~Rustrx sets LIVE false under s_lock (Rustrx.cpp:146-151). A thread that passed the check blocks on s_lock, then sees s_instance null and returns (Rustrx.cpp:320-323) - correct while the process lives. After main returns, the static QMutex s_lock and Qt's globals are destroyed while tokio workers still run (the runtime is never shut down); QJsonDocument::fromJson runs before the lock (Rustrx.cpp:317). No crash has been seen.",
    "fix": "proposed: the shutdown in C9 (runtime stopped before exit) removes it; or a reader-count/RwLock in the Emitter so rustrx_stop waits for callbacks in flight.",
@@ -259,7 +259,7 @@
    "id": "I12",
    "severity": "low",
    "area": "privacy at rest",
-   "status": "FIXED 7190dfd in part (threadsSeen cleared at logout); OPEN: drafts in the plain settings file",
+   "status": "FIXED 7190dfd (threadsSeen at logout), 30e7ec3 (drafts in the SDK store, old ones moved at login)",
    "evidence": "CONFIRMED (code)",
    "summary": "Drafts (message text being typed) are kept in the plain QSettings file, outside the encrypted store, and the per-thread seen counts (keyed by event id) survive a logout.",
    "detail": "Rustrx.cpp:542-548 setDraft -> `m_settings.setValue(\"drafts/<room id>\", text)` in ~/.config/net.mowerk/harbour-rustrx/harbour-rustrx.conf (Rustrx.cpp:57-60); the store is encrypted with the sailfish-secrets key (session.rs:58-95) but this file is not. Logout removes drafts (Rustrx.cpp:621) and RoomLists::clear removes invitesNotified (RoomLists.cpp:377-380, the first audit's 458f9ad), but nothing removes `threadsSeen/*` (Rustrx.cpp:437-455).",
@@ -270,7 +270,7 @@
    "id": "I13",
    "severity": "low",
    "area": "distrust / thread unread",
-   "status": "OPEN: thread new counts from the SDK's thread receipts instead of the UI's own",
+   "status": "FIXED 99bc45a (unread from the server's read receipts; the UI's own counts removed)",
    "evidence": "CONFIRMED (code)",
    "summary": "Thread 'new' counts are the UI's own: a reply count saved per thread in QSettings, beside the SDK's threaded read receipt that the same page sends. Reading a thread in another client never clears Rustrx's count, and the first time a thread is seen all its replies count as read; threadSeen() writes settings from inside a binding.",
    "detail": "MessageDelegate.qml:46-47 and ThreadsPage.qml:60 `Math.max(0, count - rustrx.threadSeen(root, count))`; Rustrx.cpp:437-445 threadSeen stores `count` when the key is missing (a write from a binding evaluation); ThreadPage.qml:49-50 `rustrx.markThreadSeen(...)` and `rustrx.command({ cmd: \"mark_thread_read\" })` both. The SDK knows the thread's unread state from receipts (matrix-sdk-ui thread summaries / read receipts).",
@@ -281,7 +281,7 @@
    "id": "I14",
    "severity": "low",
    "area": "distrust / notification counts and push state",
-   "status": "OPEN: notification count from the room's counts; pusher checked against the server at login",
+   "status": "FIXED 05a39c2 (the room's own count, closed when read elsewhere; push_check at login)",
    "evidence": "CONFIRMED (code)",
    "summary": "Two more UI-kept claims: the notification's 'N new messages' is a counter in Service.qml that only grows until the notification closes, apart from the SDK's unread/notification counts; and UnifiedPush's 'active' trusts a pusherSet flag saved once and never checked against the server's pusher list.",
    "detail": "Service.qml:91-93 `var pending = (roomPending[roomId] || 0) + count` and :219-221 (push path); reset only in closeNotification (:256-258). A room read on another device keeps its banner and count until the next local action. UnifiedPush.cpp:96-99 active() = enabled && pusherSet && endpoint; pusherSet is set in pusherSet() (:247-255) and cleared only by a new endpoint, logout or off; a server that dropped the pusher (password change, admin, expiry) is not noticed.",
@@ -292,7 +292,7 @@
    "id": "I15",
    "severity": "low",
    "area": "names",
-   "status": "FIXED 448a5f2 in part (every field in PROTOCOL.md, tested); OPEN for protocol 2: one wire name per concept",
+   "status": "FIXED 448a5f2 (every field documented), 48d544f (protocol 2: room_or_alias, mxc, recovery_key, member_count, avatar_path, thread_root, latest_sender_name)",
    "evidence": "CONFIRMED (code)",
    "summary": "Wire names are consistent snake_case and QML/C++ locals camelCase, but several names mean two things on the wire, and a few concepts have two names in one layer (see name_table).",
    "detail": "One name, two things: `id` = room id or alias (room_preview, knock, join_by_id_or_alias, protocol.rs:107-109) vs the timeline item's row id (`id`, PROTOCOL.md timeline item) vs a poll answer id; `url` = an mxc address (send_sticker protocol.rs:39, add_user_emote :93, image pack images) vs an https page (open_url, call_url, identity_reset_approval) while fetch_emote/emote say `mxc` and space_rooms/room_preview say `avatar_mxc`; `key` = a reaction key (react) vs a recovery key (recovery_recover, recovery_key); `avatar` = a cached file path in the room object vs `avatar_mxc` elsewhere; `members` = a count (search_results, room_preview, space_rooms) vs a list (members event); `state` = membership (room object), sync state, verification, recovery, sas. Two names, one thing: thread root is `root` (open_thread, thread_timeline, thread_list) and `thread_root` (send_text, send_sticker, timeline item) on the wire, `root`/`rootId`/`threadRoot`/`m_threadRoot` in QML/C++; user id is `user_id`, `sender`, `other_user`, `inviter`, `latest_sender` (a display name there, not an id: serialize.rs:455-456 `let who = profile_name(&latest.sender_profile, &latest.sender); put(&mut t, \"latest_sender\", who)`); space id is `space_id` and `parent` (create_room's parent, CreateRoomPage.qml:45, missing from PROTOCOL.md's create_room row together with `space` and `join_rule`); room id is `rid` only in call.rs:226-244 and threads.rs.",
@@ -303,7 +303,7 @@
    "id": "I16",
    "severity": "low",
    "area": "one source per value",
-   "status": "FIXED 229f4e3, 16d1056 in part; OPEN: the dconf path in nine places; the Element Call origin in Rust and JS (cross-referenced in consts.rs)",
+   "status": "FIXED 229f4e3, 16d1056, d13ed49 (dconf path in names.js), 4d8f277 (the call origin tested against the core's address)",
    "evidence": "CONFIRMED (code)",
    "summary": "Values defined twice, or as literals beside their constant: the bus name/path/interface in Service.qml, the Element Call origin in Rust and JS, a third spelling of the app id, the page size in QML and Rust, a menu delay literal, the dconf base path in eight files, and core names outside consts.rs.",
    "detail": "Service.qml:66-68 `\"net.mowerk.harbour-rustrx\"`, `\"/net/mowerk/harbour_rustrx\"`, `\"net.mowerk.harbour_rustrx\"` duplicate Keys.h kBusName/kObjectPath/kInterface (could come from a rustrx property); call.rs:26 `ELEMENT_CALL_URL = \"https://call.element.io/room\"` vs call-bridge.js:9 `ORIGIN = \"https://call.element.io\"` (nothing checks they agree; a self-hosted Element Call later would break the origin check silently); call.rs:200 `ClientProperties::new(\"net.mowerk.rustrx\", ...)` vs push.rs:14 `APP_ID = \"net.mowerk.harbour_rustrx\"` vs kInterface; Tunables.qml:88 `paginateBatch: 30` sent explicitly by RoomPage.qml:273 while consts.rs PAGINATE_DEFAULT = 30 (two sources since 118cc80); RoomPage.qml:135 `interval: 350` = Tunables.menuCloseMs (350, 'menu closed'); `/apps/harbour-rustrx` in Settings.qml:25 plus 8 debug ConfigurationValues (ChatTrace.qml:55-56, MainPage.qml:46-48, VoicePage.qml:63, harbour-rustrx.qml:450,453); consts.rs says 'tunables and fixed names in one place' but ELEMENT_CALL_URL, WIDGET_ID (call.rs:26-27), APP_ID (push.rs:14), DEVICE_NAME, USER_AGENT (core.rs:62-63) and the event type strings live in their files; kPushIdleMs/kPushMaxLifeMs equal RING_LIFETIME_* by coincidence (commented in Keys.h:118-120, fine). dbus/net.mowerk.harbour_rustrx.service declares `Name=net.mowerk.harbour-rustrx` (file name and bus name differ; the session bus accepts it).",
@@ -364,6 +364,13 @@
    "area": "picture viewer",
    "what": "pinch zoomed from the top left corner (dodoradio, reproduced by the author)",
    "status": "FIXED cf160f5 (resizeContent around the pinch centre); why 0.4.6 changed it not found"
+  },
+  {
+   "id": "T7",
+   "sev": "low",
+   "area": "video rows",
+   "what": "a video without a thumbnail had its downloaded .mp4 decoded as a picture (found in the author's test log)",
+   "status": "FIXED f21ed00"
   }
  ],
  "non_findings": [
@@ -608,6 +615,17 @@
    "qml": "members",
    "issues": "count vs list",
    "canonical": "member_count / members"
+  }
+ ],
+ "also_in_0.4.7": [
+  {
+   "what": "Login through the account service (OAuth 2.0 / MAS): the password never passes through Rustrx (poetaster's forum point)",
+   "commit": "fe96eaf",
+   "test": "oauth_login_reaches_the_page_and_cancels (ignored, network; run against matrix.org)"
+  },
+  {
+   "what": "A failed OAuth token refresh without network no longer counts as the session gone",
+   "commit": "fe96eaf"
   }
  ]
 }

@@ -42,8 +42,9 @@ can reach the bug.
 
 ## What it found
 
-30 findings: 3 high, 8 medium, 18 low, 1 trivial. The
-ledger has each with its status and commit; the main ones:
+30 findings: 3 high, 8 medium, 18 low, 1 trivial. 29 are fixed and one
+is a design decision. The ledger has each with its status and commit;
+the main ones:
 
 | Id | What | Status |
 |---|---|---|
@@ -57,23 +58,31 @@ ledger has each with its status and commit; the main ones:
 | I8 | A share could name Rustrx's own session file | fixed `8409035` |
 | I10 | After a logout any bus client could set the push endpoint | fixed `c721905` |
 
-## Open, for the next release
+## The rest, also in 0.4.7
 
-- **The three processes (C3, C9, C12, C13):**
-  - The bus name is taken before the D-Bus object exists.
-  - Nothing stops the core before the name is released at exit.
-  - The stand-in does not retry a restore without the store key.
+At first the process lifecycle and a few smaller findings were left for
+the next release, because each needs a phone to test. The author
+decided to have them in 0.4.7 too:
 
-  Each needs the start paths tested on a phone, so none was changed
-  unattended.
-- **Drafts (I12)** are kept in the plain settings file, outside the
-  encrypted store.
-- **Counts the UI keeps itself (I13, I14):** the "new" counts of threads, and
-  the notification's message count.
-- **Protocol 2 (I15):** one wire name per concept. `id`, `url`, `key` and
-  `members` each mean two things today.
-- **Names in two places (I16):** the dconf path in nine places, and Element
-  Call's origin in Rust and JavaScript (now cross-referenced).
+| Id | What | Fix |
+|---|---|---|
+| C3 | A launch while the running Rustrx still started (name taken, object not yet registered) exited silently | `36a2609`: activate asked again while the answer says the object is not there yet |
+| C9, C13 | Nothing stopped the core before the bus name, the store's only lock, was released | `36a2609`, `f2818af`: `rustrx_shutdown` at quit stops the sync and closes the stores (`Client::pause`) first |
+| C12 | A stand-in started before the first unlock ran logged out for good | `36a2609`: `ready` says `restore_failed`, the stand-in exits with a failure and systemd tries again a minute later |
+| C7 | A close during a thread's build lost to the open | `1f71efd`: sequence numbers, the later of close and open wins |
+| I12 | Drafts in the plain settings file | `30e7ec3`: the SDK's composer drafts, in the encrypted store |
+| I13 | Thread "new" counts kept by the UI | `99bc45a`: unread from the server's read receipts |
+| I14 | Notification count kept by the UI; the pusher never checked | `05a39c2`: the room's own count, closed when read elsewhere; `push_check` at login |
+| I15 | Wire names with two meanings | `48d544f`: protocol 2 |
+| I16 | The dconf path in nine places; the call origin in two languages | `d13ed49`, `4d8f277` |
+
+Decided, not changed: the dev hook stays in test builds with its refused
+list (I9), and Element Call keeps the capabilities it asks for, as
+documented in `docs/CALLS.md` (I17).
+
+Also in 0.4.7, from outside the audit: logging in through the account
+service (OAuth 2.0, `fe96eaf`), so the password never passes through
+Rustrx (poetaster's point on the forum).
 
 ## What was not the gap
 
