@@ -52,18 +52,24 @@ Page {
     onStatusChanged: if (status === PageStatus.Active) markSeen()
     Connections { target: rustrx.thread; onCountChanged: page.markSeen() }
 
-    // the emoji picker in the keyboard's place (as in the room, simpler: it
-    // slides in when the keyboard has gone)
+    // the emoji picker in the keyboard's place, as in the room (EmojiDock)
     function insertEmoji(emoji) {
         if (composer) composer.insert(emoji)
     }
     // the message the picker reacts to, for "React with text"
     property string reactMoreText
-    EmojiPanel {
-        id: emojiPanel
-        anchors.bottom: parent.bottom
-        height: Math.round(Screen.height * (page.isPortrait ? Tunables.emojiPanelPortrait : Tunables.emojiPanelLandscape))
-        visible: open
+    EmojiDock {
+        id: emojiDock
+        page: page
+        // above the list, which is declared after it
+        z: 1
+        // a pack's picture: a reaction (its address the key), else :shortcode: in the text
+        onPickedImage: {
+            if (mode === "react")
+                rustrx.command({ cmd: "react", room_id: page.roomId, event_id: eventId, key: image.url })
+            else
+                page.insertEmoji(":" + image.shortcode + ":")
+        }
         onPicked: {
             if (mode === "react")
                 rustrx.command({ cmd: "react", room_id: page.roomId, event_id: eventId, key: emoji })
@@ -76,15 +82,10 @@ Page {
             page.composer.field.forceActiveFocus()
         }
     }
-    Connections {
-        target: Qt.inputMethod
-        onVisibleChanged: if (Qt.inputMethod.visible) emojiPanel.open = false
-    }
-
     SilicaListView {
         id: list
         anchors { top: parent.top; left: parent.left; right: parent.right; bottom: parent.bottom }
-        anchors.bottomMargin: emojiPanel.open ? emojiPanel.height : 0
+        anchors.bottomMargin: emojiDock.aboveKeyboard
         verticalLayoutDirection: ListView.BottomToTop
         model: rustrx.thread
         currentIndex: -1
@@ -116,7 +117,7 @@ Page {
                 id: composer
                 roomId: page.roomId
                 rootId: page.rootId
-                emojiOpen: emojiPanel.open
+                emojiOpen: emojiDock.open
                 //% "Reply in the thread"
                 placeholderText: qsTrId("rustrx-ph-thread")
                 Component.onCompleted: {
@@ -124,14 +125,10 @@ Page {
                     if (page.compose) field.forceActiveFocus()
                 }
                 onEmojiClicked: {
-                    if (emojiPanel.open) {
-                        emojiPanel.open = false
-                        field.forceActiveFocus()
-                        Qt.inputMethod.show()
-                    } else {
-                        Qt.inputMethod.hide()
-                        emojiPanel.show("insert", "")
-                    }
+                    if (emojiDock.open && emojiDock.mode === "insert")
+                        emojiDock.toKeyboard()
+                    else
+                        emojiDock.show("insert", "")
                 }
             }
         }
@@ -140,7 +137,7 @@ Page {
             roomId: page.roomId
             inThread: true
             // "+" in the message menu: the picker reacts to this message
-            onReactMore: { page.reactMoreText = text; Qt.inputMethod.hide(); emojiPanel.show("react", eventId) }
+            onReactMore: { page.reactMoreText = text; emojiDock.show("react", eventId) }
             onReply: {
                 if (!page.composer) return
                 page.composer.reply(eventId, text)
