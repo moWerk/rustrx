@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# "Refuse a check-in unless all regression tests pass" (beroset).
+# The fast suites on every push and pull request; the core's cargo tests,
+# which compile matrix-rust-sdk, run in nightly.yml.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  static:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q python3-pytest qtdeclarative5-dev-tools
+      - name: Static and wiring tests
+        run: PATH=/usr/lib/qt5/bin:$PATH python3 -m pytest -q tests
