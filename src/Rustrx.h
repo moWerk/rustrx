@@ -289,6 +289,8 @@ signals:
     void dmReady(const QString &roomId, const QString &userId);
     void joined(const QString &roomId);
     void paginated(const QString &roomId, bool atStart);
+    // a room's draft from the store, as the room opens
+    void draftLoaded(const QString &roomId, const QString &text);
     void mediaExported(const QString &eventId, const QString &path);
     void newMessages(const QString &roomId, const QString &roomName, int count);
     // an invitation not notified before (also one that came while closed)
@@ -374,6 +376,7 @@ private:
     QString m_openRoomId;
     // before m_lists and m_media, which use it
     QSettings m_settings;
+    QHash<QString, QString> m_drafts;
     // the stand-in's and push-woken process's requests, the handover file
     Handover m_handover;
     QList<QVariantMap> m_pendingPushes;

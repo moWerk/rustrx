@@ -58,6 +58,7 @@ impl Core {
                 self.send_sticker(&room_id, &url, &body, info, given(&thread_root)).await
             }
             OpenThread { room_id, root } => self.open_thread(&room_id, &root).await,
+            SaveDraft { room_id, text } => self.save_draft(&room_id, &text).await,
             RetrySend { room_id, txn_id } => self.retry_send(&room_id, &txn_id).await,
             CloseThread => {
                 self.close_thread().await;

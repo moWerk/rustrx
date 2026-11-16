@@ -552,18 +552,22 @@ QString Rustrx::formatDate(const QVariant &ms) const
     return d.toString(Qt::DefaultLocaleLongDate);
 }
 
+// Drafts live in the core's store (encrypted where the store is); this is
+// the copy QML reads at once, filled as rooms open ("draft").
 QString Rustrx::draft(const QString &roomId) const
 {
-    return m_settings.value(QString::fromLatin1(Keys::kDrafts) + QLatin1Char('/') + roomId).toString();
+    return m_drafts.value(roomId);
 }
 
 void Rustrx::setDraft(const QString &roomId, const QString &text)
 {
-    const QString key = QString::fromLatin1(Keys::kDrafts) + QLatin1Char('/') + roomId;
+    if (m_drafts.value(roomId) == text)
+        return;
     if (text.trimmed().isEmpty())
-        m_settings.remove(key);
+        m_drafts.remove(roomId);
     else
-        m_settings.setValue(key, text);
+        m_drafts.insert(roomId, text);
+    command({ { "cmd", "save_draft" }, { "room_id", roomId }, { "text", text.trimmed().isEmpty() ? QString() : text } });
 }
 
 void Rustrx::handleEvent(const QVariantMap &ev)
@@ -612,6 +616,14 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_homeserver = ev.value("homeserver").toString();
         emit stateChanged();
         m_push->loggedIn();
+        // drafts from before 0.4.7 sat in the plain settings file: into the
+        // store with them, once
+        m_settings.beginGroup(QLatin1String(Keys::kDrafts));
+        const QStringList old = m_settings.childKeys();
+        for (const QString &roomId : old)
+            command({ { "cmd", "save_draft" }, { "room_id", roomId }, { "text", m_settings.value(roomId).toString() } });
+        m_settings.endGroup();
+        m_settings.remove(QLatin1String(Keys::kDrafts));
         for (const QVariantMap &cmd : m_pendingPushes)
             command(cmd);
         m_pendingPushes.clear();
@@ -644,6 +656,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         // after roomsLoadedChanged, as before the move
         m_lists->clearUnread();
         // the drafts and what was read in threads belonged to that account
+        m_drafts.clear();
         m_settings.remove(QLatin1String(Keys::kDrafts));
         m_settings.remove(QLatin1String(Keys::kThreadsSeen));
         ++m_threadsSeenVersion;
@@ -749,6 +762,14 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit dmReady(ev.value("room_id").toString(), ev.value("user_id").toString());
     } else if (type == QLatin1String("joined")) {
         emit joined(ev.value("room_id").toString());
+    } else if (type == QLatin1String("draft")) {
+        const QString roomId = ev.value("room_id").toString();
+        const QString text = ev.value("text").toString();
+        if (text.isEmpty())
+            m_drafts.remove(roomId);
+        else
+            m_drafts.insert(roomId, text);
+        emit draftLoaded(roomId, text);
     } else if (type == QLatin1String("paginated")) {
         emit paginated(ev.value("room_id").toString(), ev.value("at_start").toBool());
     } else if (type == QLatin1String("search_results")) {

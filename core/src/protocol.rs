@@ -46,6 +46,9 @@ pub(crate) enum Command {
     /// A thread's timeline beside the room's; answered by "thread_timeline".
     OpenThread { room_id: String, root: String },
     CloseThread,
+    /// The text being written in a room, kept encrypted; "" removes it.
+    /// The room's draft comes with open_room as "draft".
+    SaveDraft { room_id: String, text: String },
     /// A message the server did not take (its txn_id), sent again as it was.
     RetrySend { room_id: String, txn_id: String },
     /// The room's threads, live; answered by "thread_list".
@@ -222,7 +225,7 @@ mod tests {
     const COMMANDS: &[&str] = &[
         "probe_server", "login_password", "login_sso", "login_oauth", "login_cancel", "logout",
         "open_room", "close_room", "paginate_back", "send_text", "send_sticker",
-        "open_thread", "close_thread", "retry_send", "thread_list", "close_thread_list", "mark_thread_read",
+        "open_thread", "close_thread", "save_draft", "retry_send", "thread_list", "close_thread_list", "mark_thread_read",
         "push_set", "push_remove", "push_handle", "send_file", "react", "redact", "edit",
         "poll_vote", "report", "event_source", "mark_read", "typing", "get_media",
         "fetch_emote", "image_packs", "add_user_emote",
@@ -242,7 +245,7 @@ mod tests {
 
     /// How many fields the commands require, all together. Like COMMANDS, a
     /// change here is a change of the contract.
-    const REQUIRED_FIELDS: usize = 98;
+    const REQUIRED_FIELDS: usize = 100;
 
 
     /// The names serde knows, from its own error for an unknown tag

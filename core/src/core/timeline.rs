@@ -222,6 +222,12 @@ impl Core {
     pub(crate) async fn open_room(&'static self, room_id: &str) -> Result<()> {
         let room = self.room(room_id).await?;
         let client = self.client().await?;
+        // the room's draft, from the encrypted store: "draft"
+        match room.load_composer_draft(None).await {
+            Ok(draft) => self.emit(json!({"ev": "draft", "room_id": room.room_id().as_str(),
+                                          "text": draft.map(|d| d.plain_text).unwrap_or_default()})),
+            Err(e) => tracing::warn!("draft: not loaded: {e}"),
+        }
         let own = client.user_id().context("no user id")?.to_owned();
         let room_id = room.room_id().to_owned();
         // bound first: the lock is not held across the subscription
@@ -244,6 +250,24 @@ impl Core {
         self.rt.spawn(async move {
             let _ = tl.paginate_backwards(PAGINATE_DEFAULT).await;
         });
+        Ok(())
+    }
+
+    /// The text being written in a room, kept in the SDK's store, which is
+    /// encrypted where the store is; empty text removes it.
+    pub(crate) async fn save_draft(&self, room_id: &str, text: &str) -> Result<()> {
+        let room = self.room(room_id).await?;
+        if text.trim().is_empty() {
+            room.clear_composer_draft(None).await?;
+        } else {
+            let draft = matrix_sdk::ComposerDraft {
+                plain_text: text.to_owned(),
+                html_text: None,
+                draft_type: matrix_sdk::ComposerDraftType::NewMessage,
+                attachments: Vec::new(),
+            };
+            room.save_composer_draft(draft, None).await?;
+        }
         Ok(())
     }
 

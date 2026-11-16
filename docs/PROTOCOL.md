@@ -34,7 +34,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 ### The open room
 | cmd | fields | answered by |
 |---|---|---|
-| `open_room` | `room_id` | `timeline` (repeatedly), `typing` |
+| `open_room` | `room_id` | `draft`, then `timeline` (repeatedly), `typing` |
+| `save_draft` | `room_id`, `text` ("" removes it; kept in the encrypted store) | |
 | `close_room` | | |
 | `paginate_back` | `room_id`, `count?` (30) | `paginated` |
 | `send_text` | `room_id`, `body`, `reply_to?`, `markdown?` (true), `emotes?` (shortcode → mxc: custom emoji in the HTML), `thread_root?` | `timeline` |
@@ -137,6 +138,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `rooms` | `rooms`: room objects, invitations first, then by activity |
 | `timeline` | `room_id`, `items`: timeline items, oldest first, the whole list each time |
 | `paginated` | `room_id`, `at_start` |
+| `draft` | `room_id`, `text` (what was being written there; "" for none) |
 | `typing` | `room_id`, `names` (others typing) |
 | `media` | `room_id`, `event_id`, `thumb`, `exported`, `path` |
 | `emote` | `mxc`, `path` |

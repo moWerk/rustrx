@@ -170,6 +170,16 @@ Column {
         interval: Tunables.typingIdleMs
         onTriggered: if (composer.typing && app.sendTyping) rustrx.command({ cmd: "typing", room_id: composer.roomId, typing: false })
     }
+    // the draft comes from the store as the room opens, after the field is
+    // there: it goes in unless the user has begun typing already
+    Connections {
+        target: rustrx
+        onDraftLoaded: {
+            if (!composer.drafts || roomId !== composer.roomId || !composer.holdsDraft) return
+            if (input.text.length === 0 && text.length > 0) composer.put(text)
+        }
+    }
+
     // the draft is written once typing pauses, not per keystroke
     Timer {
         id: draftSave
