@@ -815,7 +815,6 @@ ListItem {
                 }
             }
             MenuItem {
-                //% "Remove"
                 text: qsTrId("rustrx-me-remove")
                 visible: own && msgType !== "redacted" && !failed
                 onClicked: {

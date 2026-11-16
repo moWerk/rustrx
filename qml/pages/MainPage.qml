@@ -492,7 +492,6 @@ Page {
                           : rustrx.syncState === "running" || rustrx.syncState === "idle"
                           //% "Nothing here yet"
                           ? qsTrId("rustrx-la-empty")
-                          //% "Not connected"
                           : qsTrId("rustrx-la-not-connected")
                     hintText: rustrx.roomFilter.length ? ""
                               : !(rustrx.syncState === "running" || rustrx.syncState === "idle")

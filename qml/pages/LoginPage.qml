@@ -112,7 +112,6 @@ Page {
             PasswordField {
                 id: passwordField
                 width: parent.width
-                //% "Password"
                 placeholderText: qsTrId("rustrx-ph-password")
                 label: placeholderText
                 EnterKey.enabled: text.length > 0 && userField.text.length > 1 && !rustrx.loggingIn

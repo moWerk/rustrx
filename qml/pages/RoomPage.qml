@@ -178,7 +178,6 @@ Page {
             layer.effect: RoundMask {}
         }
         description: rustrx.syncState === "idle"
-                     //% "Connecting"
                      ? qsTrId("rustrx-la-cover-connecting")
                      : rustrx.syncState !== "running"
                      //% "Not connected"
@@ -267,7 +266,6 @@ Page {
             MenuItem {
                 //% "Attach an image"
                 text: page.hasDraft ? qsTrId("rustrx-me-attach-image")
-                //% "Send an image"
                                     : qsTrId("rustrx-me-send-image")
                 onClicked: {
                     var picker = pageStack.push(multiImagePicker)
