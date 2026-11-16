@@ -338,7 +338,12 @@ Page {
 
         header: Column {
             width: list.width
-            onHeightChanged: trace.log("hdr")
+            // a long message wraps to a new line: the field grows downwards,
+            // under the keyboard, unless the list follows it (dodoradio)
+            onHeightChanged: {
+                trace.log("hdr")
+                if (page.composer && page.composer.field.activeFocus) page.viewAtBeginning("grow")
+            }
 
             Item { width: 1; height: Theme.paddingMedium }
 

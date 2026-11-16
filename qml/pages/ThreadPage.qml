@@ -106,6 +106,9 @@ Page {
         // the composer, at the bottom of a bottom-to-top list
         header: Column {
             width: list.width
+            // a long message wraps to a new line: the field grows downwards,
+            // under the keyboard, unless the list follows it
+            onHeightChanged: if (page.composer && page.composer.field.activeFocus) list.positionViewAtBeginning()
 
             Item { width: 1; height: Theme.paddingMedium }
 
