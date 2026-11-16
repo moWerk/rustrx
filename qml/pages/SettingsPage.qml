@@ -488,6 +488,33 @@ Page {
                 }
             }
 
+            // the old key cannot be shown again; a new one can be made
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: rustrx.recoveryState === "enabled"
+                //% "New recovery key"
+                text: qsTrId("rustrx-bt-new-recovery-key")
+                onClicked: {
+                    var core = rustrx
+                    //% "Making a new recovery key"
+                    remorse.execute(qsTrId("rustrx-re-new-recovery-key"), function () {
+                        //% "Making a new recovery key…"
+                        recoveryResult = qsTrId("rustrx-la-new-recovery-key")
+                        core.command({ cmd: "recovery_reset" })
+                    })
+                }
+            }
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                visible: rustrx.recoveryState === "enabled"
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                //% "Lost the recovery key? A new one replaces it. The backup and your messages stay, only the old key stops working."
+                text: qsTrId("rustrx-la-new-recovery-key-hint")
+            }
+
             Label {
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * x
