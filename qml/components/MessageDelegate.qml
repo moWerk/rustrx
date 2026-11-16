@@ -83,16 +83,6 @@ ListItem {
     readonly property bool canAct: isEvent && msgType !== "membership" && msgType !== "state" && msgType !== "redacted"
     // the reactions offered in the menu; the first stays where it always was
 
-    // a reaction's key as shown: text reactions can be long
-    function reactionText(key) {
-        return key.length > Tunables.reactionKeyMax ? key.substring(0, Tunables.reactionKeyMax - 1) + "\u2026" : key
-    }
-
-    // text for a StyledText, as it is
-    function escapeText(t) {
-        return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    }
-
     property bool exporting
     // a tap opens the copy in another app; "Save to Downloads" only saves it
     property bool exportOpens
@@ -185,13 +175,15 @@ ListItem {
         else if (msgType !== "video") rustrx.getMedia(roomId, eventId, false)
     }
     Component.onCompleted: requestPicture()
-    // the size of Twemoji in the small lines, rendered by the model
+    onEventIdChanged: requestPicture()
+
+    // the size of Twemoji in the small lines (reactions, a thread's latest
+    // reply), which the model renders
     Binding {
         target: msg.ListView.view ? msg.ListView.view.model : null
         property: "smallEmojiSize"
         value: Math.round(Theme.fontSizeExtraSmall * Tunables.emojiScale)
     }
-    onEventIdChanged: requestPicture()
 
     Loader {
         id: loader
@@ -530,8 +522,8 @@ ListItem {
                                             Label {
                                                 id: chip
                                                 textFormat: Text.StyledText
-                                                text: (modelData.emote !== undefined ? ""
-                                                      : rustrx.emojify(escapeText(reactionText(modelData.key)), Math.round(font.pixelSize * Tunables.emojiScale)) + " ") + modelData.count
+                                                // label: the key as the model rendered it
+                                                text: (modelData.emote !== undefined ? "" : modelData.label + " ") + modelData.count
                                                 font.pixelSize: Theme.fontSizeExtraSmall
                                                 color: modelData.me ? Theme.highlightColor : Theme.secondaryColor
                                             }
@@ -553,8 +545,7 @@ ListItem {
                                         model: reactionList
                                         Label {
                                             textFormat: Text.StyledText
-                                            text: (modelData.emote !== undefined ? "\u2B1C"
-                                                  : rustrx.emojify(escapeText(reactionText(modelData.key)), Math.round(font.pixelSize * Tunables.emojiScale))) + " " + modelData.count
+                                            text: (modelData.emote !== undefined ? "\u2B1C" : modelData.label) + " " + modelData.count
                                             font.pixelSize: Theme.fontSizeExtraSmall
                                         }
                                     }

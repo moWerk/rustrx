@@ -430,17 +430,21 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight) const
 }
 
 // A reaction with a custom emoji has its mxc address as the key (MSC4027):
-// it gets "emote", the cached picture, when there is one.
+// it gets "emote", the cached picture, when there is one. Any other gets
+// "label", its key as StyledText with Twemoji, cut when long.
 QVariantList TimelineModel::renderReactions(const QVariantList &reactions) const
 {
     QVariantList out = reactions;
     for (QVariant &v : out) {
         QVariantMap r = v.toMap();
         const QString key = r.value("key").toString();
-        if (!key.startsWith(QLatin1String("mxc://")))
-            continue;
-        const auto e = m_emotes.constFind(key);
-        r.insert("emote", e != m_emotes.constEnd() ? QStringLiteral("file://") + e->path : QString());
+        if (key.startsWith(QLatin1String("mxc://"))) {
+            const auto e = m_emotes.constFind(key);
+            r.insert("emote", e != m_emotes.constEnd() ? QStringLiteral("file://") + e->path : QString());
+        } else {
+            const QString shown = key.size() > kReactionKeyMax ? key.left(kReactionKeyMax - 1) + QChar(0x2026) : key;
+            r.insert("label", Twemoji::inHtml(StyledText::escaped(shown), m_smallEmojiSize));
+        }
         v = r;
     }
     return out;

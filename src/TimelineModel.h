@@ -28,7 +28,9 @@
 
 // The open room's timeline, newest first (row 0), for a list laid out
 // bottom to top. Rows are the core's item objects; media paths are kept
-// across snapshots because the core only reports them once.
+// across snapshots because the core only reports them once. body_html,
+// caption_html and thread_html are a row's plain texts as StyledText, and
+// each reaction carries its key as one ("label"), all made once per row.
 class TimelineModel : public QAbstractListModel
 {
     Q_OBJECT
