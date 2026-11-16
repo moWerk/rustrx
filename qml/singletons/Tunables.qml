@@ -86,8 +86,6 @@ QtObject {
     // counts and limits
     // events asked for per back pagination (the core's own default is 30)
     readonly property int paginateBatch: 40
-    // longest reaction key shown before it is cut with an ellipsis
-    readonly property int reactionKeyMax: 24
     // custom emoji of one message offered to add to the own pack
     readonly property int emoteOfferMax: 3
     // lines of a quoted message

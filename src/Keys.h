@@ -136,6 +136,8 @@ static const int kThumbEdge = 800;
 static const int kThumbJpegQuality = 80;
 // a custom emoji's size until QML binds emoteSize (core: height="32" in sent HTML)
 static const int kDefaultEmoteSize = 32;
+// the longest reaction key shown before it is cut with an ellipsis
+static const int kReactionKeyMax = 24;
 // shared files are copied in chunks of this
 static const int kShareChunk = 1 << 20;
 // Opus records at this rate

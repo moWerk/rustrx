@@ -442,7 +442,7 @@ QVariantList TimelineModel::renderReactions(const QVariantList &reactions) const
             const auto e = m_emotes.constFind(key);
             r.insert("emote", e != m_emotes.constEnd() ? QStringLiteral("file://") + e->path : QString());
         } else {
-            const QString shown = key.size() > kReactionKeyMax ? key.left(kReactionKeyMax - 1) + QChar(0x2026) : key;
+            const QString shown = key.size() > Keys::kReactionKeyMax ? key.left(Keys::kReactionKeyMax - 1) + QChar(0x2026) : key;
             r.insert("label", Twemoji::inHtml(StyledText::escaped(shown), m_smallEmojiSize));
         }
         v = r;

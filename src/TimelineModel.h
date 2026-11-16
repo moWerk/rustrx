@@ -118,8 +118,6 @@ private:
     int m_emoteSize = Keys::kDefaultEmoteSize;
     // until QML sets it: about the extra small text at the usual ratio
     int m_smallEmojiSize = Keys::kDefaultEmoteSize * 3 / 4;
-    // the longest reaction key shown before it is cut with an ellipsis
-    static const int kReactionKeyMax = 24;
 };
 
 #endif
