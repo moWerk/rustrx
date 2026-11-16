@@ -86,6 +86,7 @@ signals:
     void newKnock(const QString &roomId, const QString &roomName, bool isSpace,
                   const QString &name, const QString &reason);
     void newMessages(const QString &roomId, const QString &roomName, int count);
+    void roomRead(const QString &roomId);
     void invited(const QString &roomId, const QString &roomName, const QString &inviter, bool direct);
     void inviteGone(const QString &roomId);
 

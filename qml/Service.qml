@@ -46,6 +46,8 @@ Item {
             if (!rustrx.standIn && Qt.application.state === Qt.ApplicationActive) return
             service.notify(roomId, roomName, count)
         }
+        // read here or in another client: the banner and its line go
+        onRoomRead: service.closeNotification(roomId)
         onInvited: service.notifyInvite(roomId, roomName, inviter, direct)
         onInviteGone: service.closeInvite(roomId)
         onCallRing: service.ringCall(roomId, roomName, senderName, ring, eventId, expiresMs)
@@ -85,12 +87,14 @@ Item {
         }
         return n
     }
+    // count: the room's own notification count, as the server and the SDK
+    // have it (a push before it, counted here, is replaced by it)
     function notify(roomId, roomName, count) {
-        console.log("notify: +" + count)
+        console.log("notify:", count)
         var n = roomNote(roomId)
         var info = rustrx.roomInfo(roomId)
         var last = (info.preview_sender ? info.preview_sender + ": " : "") + (info.preview || "")
-        var pending = (roomPending[roomId] || 0) + count
+        var pending = count
         roomPending[roomId] = pending
         n.summary = roomName
         n.previewSummary = roomName

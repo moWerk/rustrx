@@ -305,11 +305,15 @@ void RoomLists::distributeRooms(const QVariantList &rooms)
             f.insert("section", QString());
             favs.append(f);
         }
-        // notifications while running: a room other than the open one gained notifications
+        // notifications while running: a room other than the open one gained
+        // notifications (count: the room's own, not a sum of ours); read
+        // elsewhere, its notification goes
         const int n = r.value("notifications").toInt();
         const int before = m_notificationCounts.value(id, -1);
         if (before >= 0 && n > before && id != m_openRoomId)
-            emit newMessages(id, r.value("name").toString(), n - before);
+            emit newMessages(id, r.value("name").toString(), n);
+        else if (before > 0 && n == 0)
+            emit roomRead(id);
         m_notificationCounts.insert(id, n);
     }
     // every invitation once, with a banner: the ones already notified are

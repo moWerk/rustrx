@@ -244,6 +244,24 @@ void UnifiedPush::setPusherIfNeeded()
                    { "old", m_state.value("oldEndpoint") }, { "lang", QLocale().name().left(2) } });
 }
 
+// at login: a pusher we set may be gone from the server (a password
+// change, an admin, an expiry); "active" would claim pushes that never come
+void UnifiedPush::checkPusher()
+{
+    if (m_loggedIn && enabled() && m_state.value("pusherSet").toBool())
+        emit command({ { "cmd", "push_check" }, { "endpoint", m_state.value("endpoint") } });
+}
+
+void UnifiedPush::pusherChecked(const QString &endpoint, bool present)
+{
+    if (present || endpoint != m_state.value("endpoint").toString())
+        return;
+    qWarning() << "push: the homeserver had dropped the pusher, setting it again";
+    m_state.remove("pusherSet");
+    save();
+    setPusherIfNeeded();
+}
+
 void UnifiedPush::pusherSet(const QString &endpoint)
 {
     if (endpoint != m_state.value("endpoint").toString())

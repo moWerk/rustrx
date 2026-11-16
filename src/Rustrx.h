@@ -285,7 +285,10 @@ signals:
     // a room's draft from the store, as the room opens
     void draftLoaded(const QString &roomId, const QString &text);
     void mediaExported(const QString &eventId, const QString &path);
+    // count: the room's notifications now
     void newMessages(const QString &roomId, const QString &roomName, int count);
+    // a room's notifications went to none (read here or in another client)
+    void roomRead(const QString &roomId);
     // an invitation not notified before (also one that came while closed)
     void invited(const QString &roomId, const QString &roomName, const QString &inviter, bool direct);
     // an invitation that is no longer one (joined, declined, elsewhere)

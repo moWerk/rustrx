@@ -68,6 +68,9 @@ public:
     void loggedOut();
     // the core answered "pusher_set"
     void pusherSet(const QString &endpoint);
+    // at login: whether the server still has our pusher (push_check)
+    void checkPusher();
+    void pusherChecked(const QString &endpoint, bool present);
 
     // from the D-Bus connector
     QVariantMap message(const QVariantMap &args);

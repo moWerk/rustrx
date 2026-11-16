@@ -78,6 +78,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     connect(m_lists, &RoomLists::knockRequestsChanged, this, &Rustrx::knockRequestsChanged);
     connect(m_lists, &RoomLists::newKnock, this, &Rustrx::newKnock);
     connect(m_lists, &RoomLists::newMessages, this, &Rustrx::newMessages);
+    connect(m_lists, &RoomLists::roomRead, this, &Rustrx::roomRead);
     connect(m_lists, &RoomLists::invited, this, &Rustrx::invited);
     connect(m_lists, &RoomLists::inviteGone, this, &Rustrx::inviteGone);
     connect(m_media, &Media::command, this, &Rustrx::command);
@@ -596,6 +597,9 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_homeserver = ev.value("homeserver").toString();
         emit stateChanged();
         m_push->loggedIn();
+        // not for one push: the woken process is gone in seconds
+        if (!m_handover.pushWake())
+            m_push->checkPusher();
         // drafts from before 0.4.7 sat in the plain settings file: into the
         // store with them, once
         m_settings.beginGroup(QLatin1String(Keys::kDrafts));
@@ -685,6 +689,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit roomLink(ev.value("room_id").toString(), ev.value("link").toString());
     } else if (type == QLatin1String("knock_requests")) {
         m_lists->setKnockRequests(ev);
+    } else if (type == QLatin1String("pusher_checked")) {
+        m_push->pusherChecked(ev.value("endpoint").toString(), ev.value("present").toBool());
     } else if (type == QLatin1String("pusher_set")) {
         m_push->pusherSet(ev.value("endpoint").toString());
     } else if (type == QLatin1String("push_notification")) {

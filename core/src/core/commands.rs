@@ -72,6 +72,7 @@ impl Core {
             MarkThreadRead => self.mark_thread_read().await,
             PushSet { endpoint, gateway, old, lang } => self.push_set(&endpoint, &gateway, given(&old), given(&lang)).await,
             PushRemove { endpoint } => self.push_remove(&endpoint).await,
+            PushCheck { endpoint } => self.push_check(&endpoint).await,
             PushHandle { room_id, event_id } => self.push_handle(&room_id, &event_id).await,
             SendFile { room_id, path, mime, caption, w, h, thumb_path, thumb_w, thumb_h, voice, duration_ms, thread_root } => {
                 let voice = voice.unwrap_or(false);

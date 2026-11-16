@@ -60,6 +60,18 @@ impl Core {
         Ok(())
     }
 
+    /// Whether the homeserver still has our pusher for this endpoint (a
+    /// password change, an admin or an expiry can drop it): "pusher_checked".
+    pub(crate) async fn push_check(&'static self, endpoint: &str) -> Result<()> {
+        use matrix_sdk::ruma::api::client::push::get_pushers;
+        let client = self.client().await?;
+        let pushers = client.send(get_pushers::v3::Request::new()).await?.pushers;
+        let present = pushers.iter().any(|p| p.ids.pushkey == endpoint && p.ids.app_id == APP_ID);
+        tracing::info!(present, "push: pusher checked");
+        self.emit(json!({"ev": "pusher_checked", "endpoint": endpoint, "present": present}));
+        Ok(())
+    }
+
     pub(crate) async fn push_remove(&'static self, endpoint: &str) -> Result<()> {
         let client = self.client().await?;
         client.pusher().delete(PusherIds::new(endpoint.to_owned(), APP_ID.to_owned())).await?;

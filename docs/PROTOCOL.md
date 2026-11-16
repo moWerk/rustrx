@@ -114,6 +114,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 |---|---|---|
 | `push_set` | `endpoint`, `gateway`, `old?` (an endpoint to remove), `lang?` | `pusher_set` |
 | `push_remove` | `endpoint` | |
+| `push_check` | `endpoint` | `pusher_checked` |
 | `push_handle` | `room_id`, `event_id` (a pushed message) | `push_notification`, or nothing when the account's rules keep it quiet |
 
 ### Calls (docs/CALLS.md)
@@ -171,6 +172,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `event_source` | `event_id`, `json` (as received), `edit` (its latest edit, or null) |
 | `identity_reset_approval` | `url` (the account service's approval page) |
 | `pusher_set` | `endpoint` |
+| `pusher_checked` | `endpoint`, `present` (the homeserver still has our pusher) |
 | `push_notification` | `room_id`, `event_id`, `room_name`, `sender_name`, `body`, `is_dm`, `noisy` |
 | `call_url` | `room_id`, `url` (Element Call, for the WebView) |
 | `call_message` | `data` (for the page) |

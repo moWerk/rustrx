@@ -60,6 +60,8 @@ pub(crate) enum Command {
     /// `old`, a previous endpoint, is removed. Answered by "pusher_set".
     PushSet { endpoint: String, gateway: String, old: Option<String>, lang: Option<String> },
     PushRemove { endpoint: String },
+    /// Whether the homeserver still has our pusher: "pusher_checked".
+    PushCheck { endpoint: String },
     /// A pushed message (room and event id): fetched and shown. Answered by
     /// "push_notification" (or nothing, when the account's rules keep it quiet).
     PushHandle { room_id: String, event_id: String },
@@ -226,7 +228,7 @@ mod tests {
         "probe_server", "login_password", "login_sso", "login_oauth", "login_cancel", "logout",
         "open_room", "close_room", "paginate_back", "send_text", "send_sticker",
         "open_thread", "close_thread", "save_draft", "retry_send", "thread_list", "close_thread_list", "mark_thread_read",
-        "push_set", "push_remove", "push_handle", "send_file", "react", "redact", "edit",
+        "push_set", "push_remove", "push_check", "push_handle", "send_file", "react", "redact", "edit",
         "poll_vote", "report", "event_source", "mark_read", "typing", "get_media",
         "fetch_emote", "image_packs", "add_user_emote",
         "get_notification_mode", "set_notification_mode", "set_favourite", "set_low_priority",
@@ -245,7 +247,7 @@ mod tests {
 
     /// How many fields the commands require, all together. Like COMMANDS, a
     /// change here is a change of the contract.
-    const REQUIRED_FIELDS: usize = 100;
+    const REQUIRED_FIELDS: usize = 101;
 
 
     /// The names serde knows, from its own error for an unknown tag
