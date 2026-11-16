@@ -154,7 +154,7 @@ when a process exits after hiding or recreating its window.
 
 ## Status
 
-0.4.6. From "let's build a client" to 0.2.0 in one evening, used daily on
+0.4.7. From "let's build a client" to 0.2.0 in one evening, used daily on
 the Jolla Phone 2026 since, and developed and maintained for the long run.
 Tested with two accounts, on matrix.org and on tchncs.de (single sign-on
 through its account service); since 0.4.7 servers with an account service

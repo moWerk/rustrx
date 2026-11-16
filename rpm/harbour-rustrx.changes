@@ -1,3 +1,26 @@
+* Mon Nov 16 2026 moWerk <mo@mowerk.net> - 0.4.7
+- New: on servers with an account service (MAS, matrix.org) the login
+  happens on its own page in the browser (OAuth 2.0); the password never
+  passes through Rustrx (asked for by poetaster).
+- Tests: wiring checks and C++ tests on every push, core tests nightly,
+  each proven against a planted bug; a second audit (docs/audits).
+- Fixed: messages stuck at "sending" after a network drop; Send again
+  resends as it was, pictures and files too.
+- Fixed: pinch zoom from the corner (dodoradio); video files decoded as
+  pictures; waits left on after a failed page, search or export.
+- Fixed: a slow logout could remove a newer login; single sign-on can be
+  cancelled and ends after 10 minutes; downloads after a logout.
+- Fixed: thread "new replies" from the server's read receipts;
+  notifications follow the room's count and go when read elsewhere; the
+  pusher is checked at login; the stand-in retries before the first
+  unlock.
+- Safer: other people's text is plain text, no picture comes from the
+  network, one check for links leaving the app, a user link asks before
+  a chat, shares of Rustrx's own files refused, drafts in the encrypted
+  store, the call log masked.
+- Inside: start, handover and exit in order (the core stops before the
+  store's lock goes); protocol 2, one name per concept.
+
 * Mon Nov 16 2026 moWerk <mo@mowerk.net> - 0.4.6
 - A whole-codebase audit and what it found fixed, no new features
   (docs/AUDIT-2026-11-16.md).
