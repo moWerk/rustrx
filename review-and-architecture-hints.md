@@ -19,7 +19,9 @@ The app was written by an LLM (Claude), directed and tested by the author, who h
   - the app;
   - the stand-in (`RUSTRX_BACKGROUND=1`, `systemd/harbour-rustrx.service`), never with a window;
   - push wake (`RUSTRX_PUSH_WAKE=1`, D-Bus activation by the UnifiedPush distributor, one message, then exit).
-- Login is a password, or classic `m.login.sso` through the SDK's `sso-login` feature (`session.rs`, `login_sso`): a listener on localhost, the sign-on page in the system browser, and back with a login token. There is no WebView and no Amber.Web.Authorization. OIDC (MAS) is not built.
+- Login (`session.rs`), with no WebView and no Amber.Web.Authorization:
+  - Where the server has an account service (MAS, matrix.org), OAuth 2.0 through the SDK (`login_oauth`). Rustrx registers itself as a native app, opens the service's page in the system browser and takes the code on a loopback port. The password never passes through Rustrx, and the session file keeps the client id.
+  - Elsewhere, a password (`m.login.password`) or classic `m.login.sso` (`login_sso`): the sign-on page in the browser, and back with a login token.
 - Calls: Element Call in a WebView with `qml/call-bridge.js` injected, and the SDK's widget driver behind it (`docs/CALLS.md`).
 
 ## Read these first
@@ -36,7 +38,7 @@ The app was written by an LLM (Claude), directed and tested by the author, who h
 
 ## Worth questioning
 
-- The tests are young (0.4.7). They hold the wiring between the three languages, the message HTML and the plain texts, the room order, and the core's command parsing; nothing yet exercises a live server, the three processes or Qt 5.6 itself. The open findings of the lifecycle audit are listed in its ledger.
+- The tests are young (0.4.7). They hold the wiring between the three languages, the message HTML and the plain texts, the room order, and the core's command parsing; nothing yet exercises a live server, the three processes or Qt 5.6 itself. The audits' ledgers list every finding with its commit or the decision behind it.
 - Without sailfish-secrets (community ports), the store is unencrypted.
 - The debug log is on by default until 1.0. It holds room and user ids, never message texts or passwords. Check that claim in `DebugLog.cpp` and the core's tracing calls.
 - The stand-in never gets a window, because lipstick 0.37.6 crashed when a process exited after hiding one. It is a workaround, not a fix.
