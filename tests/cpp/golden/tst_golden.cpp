@@ -65,6 +65,24 @@ class TestGolden : public QObject
         return QStringLiteral("unknown kind");
     }
 
+    // The one intended change since the old JavaScript (audit I3): a quote
+    // inside a plain address is percent-encoded in its href, so it cannot
+    // end the value and start a second href. The visible text is as before.
+    static QString withI3(QString old)
+    {
+        // in these plain texts ">" is always escaped, so the first "\">"
+        // ends the href, quotes in it or not
+        static const QRegularExpression link(QStringLiteral("<a href=\"(.*?)\">"));
+        QRegularExpressionMatch m;
+        int from = 0;
+        while ((m = link.match(old, from)).hasMatch()) {
+            const QString fixed = QStringLiteral("<a href=\"") + StyledText::hrefSafe(m.captured(1)) + QStringLiteral("\">");
+            old.replace(m.capturedStart(), m.capturedLength(), fixed);
+            from = m.capturedStart() + fixed.size();
+        }
+        return old;
+    }
+
     // every case of a kind (and message type, for bodies): the number
     // checked; a difference fails with the first few shown
     void check(const QString &kind, const QString &type = QString())
@@ -76,7 +94,7 @@ class TestGolden : public QObject
             if (c.value("kind").toString() != kind || (!type.isEmpty() && in.value("type").toString() != type))
                 continue;
             ++checked;
-            const QString want = c.value("out").toString().replace(QStringLiteral("@DIR@"), kDir);
+            const QString want = withI3(c.value("out").toString().replace(QStringLiteral("@DIR@"), kDir));
             const QString got = now(kind, in);
             if (got != want && ++differ <= 3)
                 qWarning("%s\n  input: %s\n  old:   %s\n  now:   %s", qPrintable(kind),

@@ -138,7 +138,7 @@ private slots:
         for (const char *n : { "code", "del", "s", "sup", "sub", "table", "iframe", "object", "svg",
                                "x-foo", "mx-reply", "marquee", "font", "span", "a" })
             QTest::newRow(n) << QStringLiteral("<%1 src=\"http://e/\" onload=\"x()\">t</%1>").arg(QLatin1String(n)) << U("t");
-        QTest::newRow("comment") << U("a<!-- c -->b") << U("a<!-- c -->b");
+        QTest::newRow("comment") << U("a<!-- c -->b") << U("a&lt;!-- c --&gt;b");
     }
     void droppedTagsKeepText()
     {
@@ -198,7 +198,7 @@ private slots:
         QTest::newRow("data-href first, bad") << U("<a data-href=\"javascript:x\" href=\"http://e.org\">t</a>") << U("t");
         QTest::newRow("data-href first, good") << U("<a data-href=\"http://e.org\" href=\"javascript:x\">t</a>")
                                                << U("<a href=\"http://e.org\">t</a>");
-        QTest::newRow("gt in href") << U("<a href=\"http://e.org/>x\">t</a>") << U("x\">t");
+        QTest::newRow("gt in href") << U("<a href=\"http://e.org/>x\">t</a>") << U("x\"&gt;t");
         QTest::newRow("nested a") << U("<a href=\"http://a\">1<a href=\"http://b\">2</a>3</a>")
                                   << U("<a href=\"http://a\">1<a href=\"http://b\">2</a>3</a>");
     }
@@ -364,33 +364,29 @@ private slots:
 
     // Planted-bug: an <img>'s alt text is put out with its "<" as it is
     // (the same plant as imagesBecomeText, caught here by the tag check).
-    // The rows marked "known" fail today: audit finding I2 (2026-11-17).
+    // The last four rows failed before the fix of audit finding I2.
     void outputHasOnlyOwnTags_data()
     {
         QTest::addColumn<QString>("in");
-        QTest::addColumn<bool>("known");
-        QTest::newRow("script") << U("<script>alert(1)</script>") << false;
-        QTest::newRow("img onerror") << U("<img src=x onerror=alert(1)>") << false;
-        QTest::newRow("alt with lt") << U("<img alt='<b' src=x>") << false;
-        QTest::newRow("svg") << U("<svg><a xlink:href=\"javascript:x\">t</a></svg>") << false;
-        QTest::newRow("iframe") << U("<iframe src=\"https://e.org\"></iframe>") << false;
-        QTest::newRow("entities") << U("&#60;img src=&#34;http://e.org/p.png&#34;&#62;") << false;
-        QTest::newRow("unclosed tag") << U("<b") << true;
-        // a "<" that starts no tag the expression knows is text, put out
-        // raw; the next tag's "<x>" is dropped and what follows the stray
-        // "<" reads as a tag of its own
-        QTest::newRow("stray lt, picture") << U("<<x>img src=\"http://e.org/p.png\">") << true;
-        QTest::newRow("stray lt, link") << U("<<x>a href=\"javascript:alert(1)\">t</a>") << true;
-        QTest::newRow("lt and digit") << U("1 <2 and 3> 0") << true;
+        QTest::newRow("script") << U("<script>alert(1)</script>");
+        QTest::newRow("img onerror") << U("<img src=x onerror=alert(1)>");
+        QTest::newRow("alt with lt") << U("<img alt='<b' src=x>");
+        QTest::newRow("svg") << U("<svg><a xlink:href=\"javascript:x\">t</a></svg>");
+        QTest::newRow("iframe") << U("<iframe src=\"https://e.org\"></iframe>");
+        QTest::newRow("entities") << U("&#60;img src=&#34;http://e.org/p.png&#34;&#62;");
+        QTest::newRow("unclosed tag") << U("<b");
+        // a "<" that starts no tag the expression knows is text, escaped;
+        // before the fix it went out raw, the next tag's "<x>" was dropped
+        // and what followed the stray "<" read as a tag of its own
+        QTest::newRow("stray lt, picture") << U("<<x>img src=\"http://e.org/p.png\">");
+        QTest::newRow("stray lt, link") << U("<<x>a href=\"javascript:alert(1)\">t</a>");
+        QTest::newRow("lt and digit") << U("1 <2 and 3> 0");
     }
     void outputHasOnlyOwnTags()
     {
         QFETCH(QString, in);
-        QFETCH(bool, known);
         QString bad;
         const bool ok = onlyOwnTags(t.html(in), &bad);
-        if (known)
-            QEXPECT_FAIL("", "audit I2: a stray \"<\" passes into the output unescaped", Continue);
         QVERIFY2(ok, qPrintable(bad));
     }
 
@@ -418,8 +414,6 @@ private slots:
         if (!out.isEmpty())
             QCOMPARE(got, out);
         static const QRegularExpression parsed(QStringLiteral("<\\s*(img|a)\\b"), QRegularExpression::CaseInsensitiveOption);
-        if (QByteArray(QTest::currentDataTag()).startsWith("I2"))
-            QEXPECT_FAIL("", "audit I2: text between tags is not escaped", Abort);
         QVERIFY2(!parsed.match(got).hasMatch(), qPrintable(got));
     }
 
@@ -442,8 +436,6 @@ private slots:
         const QString got = t.html(in);
         QVERIFY(got.contains(QLatin1String("<a ")));
         static const QRegularExpression one(QStringLiteral("^<a href=\"https://[^\"'\\s<>]*\">"));
-        if (QByteArray(QTest::currentDataTag()).startsWith("I3"))
-            QEXPECT_FAIL("", "audit I3: a quote in an href adds a second href", Abort);
         QVERIFY2(one.match(got.mid(got.indexOf(QLatin1String("<a ")))).hasMatch(), qPrintable(got));
     }
 

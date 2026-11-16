@@ -326,8 +326,6 @@ private slots:
         const int at = out.indexOf(QLatin1String("<a "));
         QVERIFY(at >= 0);
         static const QRegularExpression one(QStringLiteral("^<a href=\"https://[^\"'\\s<>]*\">"));
-        if (QByteArray(QTest::currentDataTag()).startsWith("I3"))
-            QEXPECT_FAIL("", "audit I3: a quote in a plain address adds a second href", Abort);
         QVERIFY2(one.match(out.mid(at)).hasMatch(), qPrintable(out));
     }
 

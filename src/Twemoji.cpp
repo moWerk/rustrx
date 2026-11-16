@@ -226,6 +226,16 @@ QString escaped(const QString &text, bool greater)
     return out;
 }
 
+// An address for inside href="...": a quote in it would end the value
+// and start a second href, and StyledText takes the last one.
+QString hrefSafe(const QString &url)
+{
+    QString out = url;
+    out.replace(QLatin1Char('"'), QLatin1String("%22"));
+    out.replace(QLatin1Char('\''), QLatin1String("%27"));
+    return out;
+}
+
 QString linkified(const QString &text)
 {
     const QString s = escaped(text);
@@ -240,7 +250,7 @@ QString linkified(const QString &text)
         }
         const QString url = s.mid(i, end - i);
         out += s.midRef(last, i - last);
-        out += QLatin1String("<a href=\"") + url + QLatin1String("\">") + url + QLatin1String("</a>");
+        out += QLatin1String("<a href=\"") + hrefSafe(url) + QLatin1String("\">") + url + QLatin1String("</a>");
         i = last = end;
     }
     out += s.midRef(last);

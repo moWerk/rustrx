@@ -299,9 +299,13 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight) const
     in.remove(reply);
 
     // the text between tags: numeric entities decoded (StyledText knows
-    // only the named few), then escaped again where needed
+    // only the named few), then escaped again where needed. A bare "<" or
+    // ">" here is text, not a tag (tagRe took those): StyledText would
+    // still read "< img src=...>" as a picture, so it is escaped.
     auto text = [&](const QStringRef &t) {
         QString seg = t.toString();
+        seg.replace(QLatin1Char('<'), QLatin1String("&lt;"));
+        seg.replace(QLatin1Char('>'), QLatin1String("&gt;"));
         if (!seg.contains(QLatin1Char('&')))
             return seg;
         QString res;
@@ -392,7 +396,7 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight) const
         } else if (name == QLatin1String("a")) {
             const QString href = attribute(tag, QStringLiteral("href"));
             if (schemeRe.match(href).hasMatch()) {
-                open = QStringLiteral("<a href=\"%1\">").arg(QString(href).replace(QLatin1Char('"'), QLatin1String("%22")));
+                open = QStringLiteral("<a href=\"%1\">").arg(StyledText::hrefSafe(href));
                 o.close = QStringLiteral("</a>");
             }
         } else if (name == QLatin1String("span") || name == QLatin1String("font")) {
