@@ -272,6 +272,7 @@ impl Core {
         &self,
         room_id: &str,
         path: String,
+        mime: Option<&str>,
         caption: Option<&str>,
         w: Option<u64>,
         h: Option<u64>,
@@ -284,7 +285,12 @@ impl Core {
     ) -> Result<()> {
         let room = self.room(room_id).await?;
         let path = PathBuf::from(path);
-        let mime = mime_guess::from_path(&path).first_or_octet_stream();
+        // the UI's type (from the content) first: a shared photo whose name had
+        // no known extension went out as an unknown file, not as a picture
+        let mime = mime
+            .and_then(|m| m.parse::<mime::Mime>().ok())
+            .filter(|m| *m != mime::APPLICATION_OCTET_STREAM)
+            .unwrap_or_else(|| mime_guess::from_path(&path).first_or_octet_stream());
         let tl = self.timeline_target(&room, thread_root).await?;
         let dim = |n: Option<u64>| n.and_then(|n| UInt::try_from(n).ok());
         let mut config = AttachmentConfig::default();

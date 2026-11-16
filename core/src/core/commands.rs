@@ -61,9 +61,9 @@ impl Core {
             PushSet { endpoint, gateway, old, lang } => self.push_set(&endpoint, &gateway, given(&old), given(&lang)).await,
             PushRemove { endpoint } => self.push_remove(&endpoint).await,
             PushHandle { room_id, event_id } => self.push_handle(&room_id, &event_id).await,
-            SendFile { room_id, path, caption, w, h, thumb_path, thumb_w, thumb_h, voice, duration_ms, thread_root } => {
+            SendFile { room_id, path, mime, caption, w, h, thumb_path, thumb_w, thumb_h, voice, duration_ms, thread_root } => {
                 let voice = voice.unwrap_or(false);
-                self.send_file(&room_id, path, given(&caption), w, h, thumb_path, thumb_w, thumb_h, voice, duration_ms, given(&thread_root))
+                self.send_file(&room_id, path, given(&mime), given(&caption), w, h, thumb_path, thumb_w, thumb_h, voice, duration_ms, given(&thread_root))
                     .await
             }
             React { room_id, event_id, key } => self.react(&room_id, &event_id, &key).await,

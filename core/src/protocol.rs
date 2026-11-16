@@ -56,6 +56,9 @@ pub(crate) enum Command {
     SendFile {
         room_id: String,
         path: String,
+        /// what the file is, from its content (the name may have no or a
+        /// wrong extension); else guessed from the name
+        mime: Option<String>,
         caption: Option<String>,
         w: Option<u64>,
         h: Option<u64>,

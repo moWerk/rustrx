@@ -21,6 +21,7 @@
 #include <QDir>
 #include <QImage>
 #include <QImageReader>
+#include <QMimeDatabase>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QUrl>
@@ -160,6 +161,9 @@ void Media::sendFile(const QString &roomId, const QString &path, const QString &
             }
         }
     }
+    // the type from the content too: a shared file's name may have no
+    // extension the core knows, and a picture then went out as a file
+    cmd.insert("mime", QMimeDatabase().mimeTypeForFile(cmd.value("path").toString()).name());
     emit command(cmd);
 }
 
