@@ -10,8 +10,8 @@ UI. They talk through three C functions (`src/rustrx_core.h`) and JSON:
 - `rustrx_stop()`: no event reaches the callback afterwards.
 
 **Version 1.** The core sends `"proto": 1` with `ready` and `logged_in`
-(`PROTO` in `core/src/core.rs`); the bridge warns in the log when it expects
-another (`kProto` in `src/Rustrx.cpp`). Both halves ship in one package, so a
+(`PROTO` in `core/src/consts.rs`); the bridge warns in the log when it expects
+another (`kProto` in `src/Keys.h`). Both halves ship in one package, so a
 mismatch means a build mix-up, not an upgrade path.
 
 The command list below is the enum in `core/src/protocol.rs`, which is the
@@ -55,17 +55,15 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `room_link` | `room_id` | `room_link` |
 | `set_join_rule` | `room_id`, `rule` (invite, knock, public, restricted, knock_restricted) | `rooms` |
 | `space_open` / `space_close` | `space_id` | `space_rooms` (live until closed) |
-| `space_add_child` / `space_remove_child` | `space_id`, `room_id` | `thread_timeline` | `room_id`, `root`, `items` (as `timeline`; a thread root carries `thread`: `count`, `latest_sender`, `latest_body`) |
-| `space_rooms` |
+| `space_add_child` / `space_remove_child` | `space_id`, `room_id` | `space_rooms` |
 | `space_leave` | `space_id`, `with_rooms?` | `rooms` |
-| `knock_answer` | `room_id`, `user_id`, `accept`, `ban?`, `reason?` | `space_rooms` | `space_id`, `loading`, `rooms` (`room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `is_space`, `members`, `children`, `join_rule`, `state`, `suggested`, `via`) |
-| `room_preview` | `id`, `ok`, and when ok: `room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `members`, `is_space`, `join_rule`, `state`; else `error` |
-| `knocked` | `room_id` |
-| `room_link` | `room_id`, `link` (matrix.to with via) |
-| `knock_requests` |
+| `knock_answer` | `room_id`, `user_id`, `accept`, `ban?`, `reason?` | `knock_requests` |
 | `knock_seen` | `room_id`, `user_ids` | `knock_requests` |
-| `add_user_emote` | `shortcode`, `url` (mxc) | `knock_requests` | `room_id`, `room_name`, `is_space`, `requests` (`event_id`, `user_id`, `name`, `reason`, `ts`, `seen`), for rooms and spaces with the knock join rule where we may invite |
-| `emote_added` |
+| `add_user_emote` | `shortcode`, `url` (mxc) | `emote_added` |
+| `event_source` | `room_id`, `event_id` | `event_source` |
+| `thread_list` | `room_id` | `thread_list` (live until `close_thread_list`) |
+| `close_thread_list` | | |
+| `mark_thread_read` | (the open thread) | |
 
 ### Rooms
 | cmd | fields | answered by |
@@ -81,7 +79,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `set_room_name` / `set_room_topic` | `room_id`, `name` / `topic` | `rooms` |
 | `invite` | `room_id`, `user_id` | |
 | `search` | `term` | `search_results` |
-| `refresh_rooms` | | `rooms` |
+| `set_room_avatar` | `room_id`, `path`, `w?`, `h?` (a prepared picture) | `rooms` (through the sync) |
+| `refresh_rooms` | | `rooms` (for tests: `tools/test/dev.sh`) |
 
 ### Encryption
 | cmd | fields | answered by |
@@ -91,6 +90,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `verification_confirm`, `verification_mismatch` | `flow_id` | `sas`, `verification_state` |
 | `recovery_recover` | `key` | `recovery_done` |
 | `recovery_enable`, `recovery_reset` | | `recovery_key` |
+| `identity_reset` | | `identity_reset_approval` and `open_url` (where the server asks for approval in the browser), then `recovery_key` |
 | `export_keys` / `import_keys` | `path`, `passphrase` | `keys_exported` / `keys_imported` |
 
 ### Account and devices
@@ -100,9 +100,25 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `delete_device` | `device_id`, `password` | `device_deleted` |
 | `profile` | | `profile` |
 | `set_display_name` | `name` | |
+| `set_own_avatar` | `path` (a prepared picture) | `profile` |
 | `ignore_user` / `unignore_user` | `user_id` | |
 | `storage_info` | | `storage` |
 | `clear_media` | | `storage` |
+
+### Push (UnifiedPush, docs/PUSH.md)
+| cmd | fields | answered by |
+|---|---|---|
+| `push_set` | `endpoint`, `gateway`, `old?` (an endpoint to remove), `lang?` | `pusher_set` |
+| `push_remove` | `endpoint` | |
+| `push_handle` | `room_id`, `event_id` (a pushed message) | `push_notification`, or nothing when the account's rules keep it quiet |
+
+### Calls (docs/CALLS.md)
+| cmd | fields | answered by |
+|---|---|---|
+| `call_start` | `room_id`, `voice?`, `skip_lobby?` (tests) | `call_url`, then `call_message` |
+| `call_message` | `data` (a widget API postMessage from the page) | `call_message` |
+| `call_end` | | `call_ended` |
+| `call_decline` | `room_id`, `event_id` (the ring) | |
 
 ## Events
 
@@ -140,6 +156,22 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `profile` | `display_name`, `user_id` |
 | `storage` | `store`, `media_files` (bytes), `crypto?`, `state?`, `event_cache?`, `media_cache?` |
 | `error` | `cmd`, `message` |
+| `thread_timeline` | `room_id`, `root`, `items` (as `timeline`; a thread root carries `thread`: `count`, `latest_sender`, `latest_body`) |
+| `thread_list` | `room_id`, `threads`, `loading` |
+| `space_rooms` | `space_id`, `loading`, `rooms` (`room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `is_space`, `members`, `children`, `join_rule`, `state`, `suggested`, `via`) |
+| `room_preview` | `id`, `ok`, and when ok: `room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `members`, `is_space`, `join_rule`, `state`; else `error` |
+| `knocked` | `room_id` |
+| `room_link` | `room_id`, `link` (matrix.to with via) |
+| `knock_requests` | `room_id`, `room_name`, `is_space`, `requests` (`event_id`, `user_id`, `name`, `reason`, `ts`, `seen`), for rooms and spaces with the knock join rule where we may invite |
+| `event_source` | `event_id`, `json` (as received), `edit` (its latest edit, or null) |
+| `identity_reset_approval` | `url` (the account service's approval page) |
+| `pusher_set` | `endpoint` |
+| `push_notification` | `room_id`, `event_id`, `room_name`, `sender_name`, `body`, `is_dm`, `noisy` |
+| `call_url` | `room_id`, `url` (Element Call, for the WebView) |
+| `call_message` | `data` (for the page) |
+| `call_ended` | `room_id` |
+| `call_ring` | `room_id`, `room_name`, `sender`, `sender_name`, `ring`, `event_id`, `expires_ms` |
+| `calls_allowed` | `room_id` |
 | `log` | `line` (a log line; the sandbox drops stderr, the UI puts it in the journal) |
 
 ### Room object
