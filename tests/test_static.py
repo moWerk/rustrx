@@ -385,3 +385,18 @@ def test_every_audit_has_its_ledger_and_is_listed():
         data = json.loads(ledger.read_text(encoding="utf-8"))
         assert data["findings"] and all("id" in f and "status" in f for f in data["findings"])
         assert p.name in index, p.name
+
+
+def test_dev_hook_refuses_keys_and_session():
+    """The dev D-Bus hook runs core commands for tests; what hands over keys
+    or the session, or ends it, is refused there even with its flag file
+    (audit I9). Planted-bug: drop export_keys from the refused list."""
+    src = read("src/Rustrx.cpp")
+    block = re.search(r"static const QStringList refused\{(.*?)\};", src, re.S)
+    assert block
+    refused = set(re.findall(r'"([a-z_]+)"', block.group(1)))
+    must = {"export_keys", "import_keys", "logout", "delete_device", "login_password",
+            "login_sso", "recovery_recover", "recovery_enable", "recovery_reset",
+            "identity_reset", "push_set", "push_remove"}
+    assert must <= refused
+    assert refused <= protocol_commands()

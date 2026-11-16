@@ -339,7 +339,14 @@ QString Rustrx::dev(const QString &json)
         out["error"] = QStringLiteral("the stand-in is running, not the app");
         return QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Compact));
     }
-    if (req.contains("cmd")) {
+    // never through a test hook, flag or not: what hands over keys or the
+    // session, or ends it
+    static const QStringList refused{ "export_keys", "import_keys", "logout", "delete_device",
+                                      "login_password", "login_sso", "recovery_recover", "recovery_enable",
+                                      "recovery_reset", "identity_reset", "push_set", "push_remove" };
+    if (refused.contains(req.value("cmd").toString())) {
+        out["error"] = QStringLiteral("not a dev command");
+    } else if (req.contains("cmd")) {
         command(req);
         out["ok"] = true;
     } else if (req.contains("rooms")) {

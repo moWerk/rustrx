@@ -335,7 +335,8 @@ public slots:
     // D-Bus net.mowerk.harbour_rustrx.dev, for tests from a shell (ssh),
     // answered only while a file "dev-commands" is in the data folder (no
     // package puts it there). A JSON object in, a JSON answer out:
-    // {"cmd": ...} goes to the core as if from the UI; {"rooms": true}
+    // {"cmd": ...} goes to the core as if from the UI (not the commands
+    // that hand over keys or the session, or end it); {"rooms": true}
     // lists the rooms; {"state": true} tells the open room and the
     // connection; {"ui": "open_room" (room_id) | "back" | "activate"}
     // goes to the UI.
