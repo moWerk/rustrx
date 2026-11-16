@@ -230,10 +230,12 @@ QVariantMap RoomLists::roomInfo(const QString &roomId) const
 
 QString RoomLists::firstUnreadRoom() const
 {
-    // the room list is ordered by activity; take the first with something unread
-    for (int i = 0; i < m_rooms->rowCount(); ++i) {
-        const QVariantMap r = m_rooms->get(i);
-        if (!isInvited(r) && badgeCount(r) > 0)
+    // the core sends the rooms by activity; take the first with something
+    // unread, a room or a person, whatever the tabs' filters (the rooms the
+    // cover counts)
+    for (const QVariant &v : m_lastRooms) {
+        const QVariantMap r = v.toMap();
+        if (!isInvited(r) && !r.value("is_space").toBool() && badgeCount(r) > 0)
             return r.value("room_id").toString();
     }
     return QString();
