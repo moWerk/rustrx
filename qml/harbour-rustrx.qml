@@ -77,8 +77,10 @@ ApplicationWindow {
     SequentialAnimation on favGlow {
         running: app.highlightFavs && app.favGlowRows > 0 && Qt.application.active
         loops: Animation.Infinite
-        NumberAnimation { from: 0; to: 1; duration: 1500; easing.type: Easing.InOutSine }
-        NumberAnimation { from: 1; to: 0; duration: 1500; easing.type: Easing.InOutSine }
+        // longer low than high: a slow rise that hurries to the peak, a quick
+        // fall that lingers near the bottom
+        NumberAnimation { from: 0; to: 1; duration: 1500; easing.type: Easing.InCubic }
+        NumberAnimation { from: 1; to: 0; duration: 1500; easing.type: Easing.OutCubic }
         onStopped: app.favGlow = 0
     }
     property alias separateSpaces: cfgSeparateSpaces.value
