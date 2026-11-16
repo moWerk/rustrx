@@ -248,7 +248,7 @@ ListItem {
                     anchors.verticalCenter: parent.verticalCenter
                     source: "image://theme/icon-s-blocked?" + parent.parent.iconColor
                     sourceSize.width: Math.round(parent.parent.iconSize * 42 / 48)
-                    sourceSize.height: sourceSize.width
+                    sourceSize.height: Math.round(parent.parent.iconSize * 42 / 48)
                 }
                 Image {
                     visible: model.encrypted && !invited
