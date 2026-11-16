@@ -9,6 +9,17 @@ use std::time::Duration;
 /// `kProto` in src/Keys.h.
 pub(crate) const PROTO: u32 = 1;
 
+// Names
+
+/// The app's id towards the homeserver (the pusher) and Element Call (the
+/// widget's client id): the D-Bus interface name, as in src/Keys.h.
+pub(crate) const APP_ID: &str = "net.mowerk.harbour_rustrx";
+/// The hosted Element Call, at its room route: the bare address is its
+/// own start page ("Name of call") and ignores the widget's room. Its
+/// origin is ORIGIN in qml/call-bridge.js.
+pub(crate) const ELEMENT_CALL_URL: &str = "https://call.element.io/room";
+pub(crate) const WIDGET_ID: &str = "rustrx-element-call";
+
 // Timing
 
 /// Room list updates arriving this close together are sent as one.

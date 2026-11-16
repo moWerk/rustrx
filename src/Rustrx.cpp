@@ -54,6 +54,10 @@ QString Rustrx::localPath(const QString &path)
     return Media::localPath(path);
 }
 
+QString Rustrx::busName() { return QString::fromLatin1(Keys::kBusName); }
+QString Rustrx::objectPath() { return QString::fromLatin1(Keys::kObjectPath); }
+QString Rustrx::interfaceName() { return QString::fromLatin1(Keys::kInterface); }
+
 QString Rustrx::settingsFile()
 {
     return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QLatin1String("/harbour-rustrx.conf");

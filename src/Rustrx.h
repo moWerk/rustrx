@@ -94,6 +94,11 @@ class Rustrx : public QObject
     Q_PROPERTY(bool background READ background WRITE setBackground NOTIFY settingsChanged)
     // this process is the stand-in: no window, ever
     Q_PROPERTY(bool standIn READ standIn CONSTANT)
+    // this app's D-Bus name, object and interface (Keys.h), for the
+    // notification actions that call back into it
+    Q_PROPERTY(QString busName READ busName CONSTANT)
+    Q_PROPERTY(QString objectPath READ objectPath CONSTANT)
+    Q_PROPERTY(QString interfaceName READ interfaceName CONSTANT)
 
 public:
     explicit Rustrx(const QString &dataDir, QObject *parent = nullptr);
@@ -152,6 +157,9 @@ public:
     bool background() const;
     void setBackground(bool on);
     bool standIn() const { return m_handover.standIn(); }
+    static QString busName();
+    static QString objectPath();
+    static QString interfaceName();
     void setStandIn(bool on) { m_handover.setStandIn(on); }
     // a process the distributor started for one push (no window, no sync)
     void setPushWake(bool on) { m_handover.setPushWake(on); }

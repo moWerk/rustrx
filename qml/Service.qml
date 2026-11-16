@@ -63,9 +63,9 @@ Item {
     function action(name, method, args, label) {
         var a = {
             "name": name,
-            "service": "net.mowerk.harbour-rustrx",
-            "path": "/net/mowerk/harbour_rustrx",
-            "iface": "net.mowerk.harbour_rustrx",
+            "service": rustrx.busName,
+            "path": rustrx.objectPath,
+            "iface": rustrx.interfaceName,
             "method": method
         }
         if (args) a["arguments"] = args

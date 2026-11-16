@@ -400,3 +400,20 @@ def test_dev_hook_refuses_keys_and_session():
             "identity_reset", "push_set", "push_remove"}
     assert must <= refused
     assert refused <= protocol_commands()
+
+
+def test_names_live_in_one_place():
+    """The bus name, object path and interface are written once in Keys.h
+    (and in the packaging files checked above); QML asks rustrx for them.
+    The core's app id and Element Call address live in consts.rs.
+    Planted-bug: the bus name as a literal in Service.qml."""
+    for p in QML_JS:
+        text = code(p)
+        for literal in (key_value("kBusName"), key_value("kObjectPath"), key_value("kInterface")):
+            assert f'"{literal}"' not in text, p.name
+    for p in RUST:
+        if p.name == "consts.rs":
+            continue
+        text = code(p)
+        assert "net.mowerk" not in text and "call.element.io" not in text, p.name
+    assert 'APP_ID: &str = "' + key_value("kInterface") + '"' in read("core/src/consts.rs")

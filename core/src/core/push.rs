@@ -11,7 +11,6 @@ use matrix_sdk::ruma::push::{HttpPusherData, PushFormat};
 use matrix_sdk_ui::notification_client::{NotificationClient, NotificationEvent, NotificationProcessSetup, NotificationStatus};
 
 /// The pusher's app id on every homeserver: never to change once pushers exist.
-const APP_ID: &str = "net.mowerk.harbour_rustrx";
 
 /// A process started by the distributor for a push: no sync, no room list,
 /// only the pushed message (RUSTRX_PUSH_WAKE, set by its D-Bus service file).

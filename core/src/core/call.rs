@@ -20,12 +20,6 @@ use matrix_sdk::widget::{
     WidgetDriverHandle, WidgetSettings,
 };
 
-/// The hosted Element Call, at its room route: the bare address is its
-/// own start page ("Name of call") and ignores the widget's room. The
-/// embedded package could be bundled later.
-const ELEMENT_CALL_URL: &str = "https://call.element.io/room";
-const WIDGET_ID: &str = "rustrx-element-call";
-
 pub(crate) struct CallSession {
     handle: Arc<WidgetDriverHandle>,
     tasks: Vec<JoinHandle<()>>,
@@ -197,7 +191,7 @@ impl Core {
         let settings = WidgetSettings::new_virtual_element_call_widget(props, config)
             .map_err(|e| anyhow!("call widget: {e}"))?;
         let url = settings
-            .generate_webview_url(&room, ClientProperties::new("net.mowerk.rustrx", None, Some("dark".to_owned())))
+            .generate_webview_url(&room, ClientProperties::new(APP_ID, None, Some("dark".to_owned())))
             .await
             .map_err(|e| anyhow!("call url: {e}"))?;
         // a new call rings the other side in a direct chat and notifies a
