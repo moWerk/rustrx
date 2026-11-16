@@ -100,6 +100,10 @@ struct State {
     thread: Option<threads::OpenThread>,
     /// the room's thread list while its page is open
     thread_list: Option<JoinHandle<()>>,
+    /// bumped by every close and open of the thread and the thread list: an
+    /// open whose build took long sees that a close came meanwhile
+    thread_seq: u64,
+    thread_list_seq: u64,
     /// open space pages: the task that sends each one's rooms
     space_lists: HashMap<String, JoinHandle<()>>,
     /// which login this is: bumped by every login and every teardown, so

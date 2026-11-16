@@ -39,6 +39,7 @@ impl Core {
         let own = client.user_id().context("no user id")?.to_owned();
         let root = EventId::parse(root)?;
         self.close_thread().await;
+        let seq = self.state.lock().await.thread_seq;
         let timeline = Self::build_timeline(&room, TimelineFocus::Thread { root_event_id: root.clone() }, true).await?;
         let tl = timeline.clone();
         let room_id_owned = room.room_id().to_owned();
@@ -59,10 +60,14 @@ impl Core {
             Self::stream_timeline(&room, &tl, &own, emit, page_in, crate::instance().threads_read.subscribe()).await;
         });
         tracing::info!(room = %room_id, %root, "thread: open");
-        // another open during the build: the one replaced stops (a close
-        // during it still loses; the next open or the logout ends it)
-        let old = self.state.lock().await.thread.replace(OpenThread { room_id: room_id_kept, root, timeline, task });
-        if let Some(old) = old {
+        // a close or another open during the build: this one is not wanted
+        let mut st = self.state.lock().await;
+        if st.thread_seq != seq {
+            task.abort();
+            return Ok(());
+        }
+        st.thread_seq += 1;
+        if let Some(old) = st.thread.replace(OpenThread { room_id: room_id_kept, root, timeline, task }) {
             old.task_handle().abort();
         }
         Ok(())
@@ -73,6 +78,7 @@ impl Core {
     pub(crate) async fn thread_list(&'static self, room_id: &str) -> Result<()> {
         let room = self.room(room_id).await?;
         self.close_thread_list().await;
+        let seq = self.state.lock().await.thread_list_seq;
         let service = Arc::new(ThreadListService::new(room.clone()));
         let rid = room.room_id().to_owned();
         let own = self.client().await?.user_id().context("no user id")?.to_owned();
@@ -149,14 +155,22 @@ impl Core {
                 known = emit(&service, false, &mut known).await;
             }
         });
-        if let Some(old) = self.state.lock().await.thread_list.replace(task) {
+        let mut st = self.state.lock().await;
+        if st.thread_list_seq != seq {
+            task.abort();
+            return Ok(());
+        }
+        st.thread_list_seq += 1;
+        if let Some(old) = st.thread_list.replace(task) {
             old.abort();
         }
         Ok(())
     }
 
     pub(crate) async fn close_thread_list(&self) {
-        if let Some(task) = self.state.lock().await.thread_list.take() {
+        let mut st = self.state.lock().await;
+        st.thread_list_seq += 1;
+        if let Some(task) = st.thread_list.take() {
             task.abort();
         }
     }
@@ -181,7 +195,9 @@ impl Core {
     }
 
     pub(crate) async fn close_thread(&self) {
-        if let Some(open) = self.state.lock().await.thread.take() {
+        let mut st = self.state.lock().await;
+        st.thread_seq += 1;
+        if let Some(open) = st.thread.take() {
             open.task.abort();
         }
     }
