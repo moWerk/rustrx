@@ -198,7 +198,8 @@ impl Core {
         let _ = client.event_cache().subscribe();
         // the cached room list first, before anything waits for the network
         let rooms = self.rt.spawn(self.rooms_task(client.clone()));
-        self.state.lock().await.login_tasks.extend([watch, rooms]);
+        let sends = self.rt.spawn(Self::send_queue_watch(client.clone()));
+        self.state.lock().await.login_tasks.extend([watch, rooms, sends]);
         self.start_sync(client).await
     }
 

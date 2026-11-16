@@ -2,8 +2,49 @@
 //! (part of `impl Core`, split out of core.rs; the items it uses live there)
 
 use super::*;
+use matrix_sdk::send_queue::LocalEchoContent;
 
 impl Core {
+    /// A reaction the server refuses for good (sent twice, say) stays in its
+    /// room's send queue, and the SDK holds back everything sent to that room
+    /// after it, across restarts, to keep the order. Such reactions are
+    /// dropped: at the start and whenever a send is refused. A refused
+    /// message stays, shown as not sent, for the user to retry or delete.
+    pub(crate) async fn send_queue_watch(client: Client) {
+        let mut errors = client.send_queue().subscribe_errors();
+        Self::drop_refused_reactions(&client).await;
+        loop {
+            match errors.recv().await {
+                Ok(e) if !e.is_recoverable => Self::drop_refused_reactions(&client).await,
+                Ok(_) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => Self::drop_refused_reactions(&client).await,
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    }
+
+    async fn drop_refused_reactions(client: &Client) {
+        let echoes = match client.send_queue().local_echoes().await {
+            Ok(echoes) => echoes,
+            Err(e) => {
+                tracing::warn!("send queue: no local echoes: {e}");
+                return;
+            }
+        };
+        for (room_id, list) in echoes {
+            for echo in list {
+                let LocalEchoContent::Event { serialized_event, send_handle, send_error: Some(error) } = echo.content else {
+                    continue;
+                };
+                if serialized_event.raw().1 != "m.reaction" {
+                    continue;
+                }
+                let dropped = send_handle.abort().await;
+                tracing::warn!(%room_id, txn_id = %echo.transaction_id, ?error, ?dropped, "send queue: refused reaction dropped");
+            }
+        }
+    }
+
     /// Display names for the people whose read receipts sit on these items;
     /// unknown members fall back to the localpart in the UI.
     pub(crate) async fn receipt_names<'a>(
