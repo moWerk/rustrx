@@ -114,8 +114,8 @@ impl Core {
         let client = self.client().await?;
         let name = client.account().get_display_name().await?;
         // one's own picture, cached beside the rooms' as "_own.img"
-        let file = self.data_dir.join("avatars").join("_own.img");
-        let format = MediaFormat::Thumbnail(MediaThumbnailSettings::new(uint!(256), uint!(256)));
+        let file = self.data_dir.join(AVATAR_DIR).join(OWN_AVATAR_FILE);
+        let format = MediaFormat::Thumbnail(MediaThumbnailSettings::new(OWN_AVATAR_PX.into(), OWN_AVATAR_PX.into()));
         let avatar = match client.account().get_avatar(format).await {
             Ok(Some(bytes)) if std::fs::write(&file, &bytes).is_ok() => Some(file.to_string_lossy().into_owned()),
             Ok(None) => {
@@ -167,7 +167,7 @@ impl Core {
     /// The decrypted copies this app keeps, and the SDK's media cache;
     /// answered with the new sizes ("storage").
     pub(crate) async fn clear_media(&self) -> Result<()> {
-        let media = self.data_dir.join("media");
+        let media = self.data_dir.join(MEDIA_DIR);
         std::fs::remove_dir_all(&media).ok();
         std::fs::create_dir_all(&media).ok();
         let client = self.client().await?;

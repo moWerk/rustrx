@@ -5,14 +5,14 @@ use super::*;
 
 impl Core {
     pub(crate) fn session_path(&self) -> PathBuf {
-        self.data_dir.join("session.json")
+        self.data_dir.join(SESSION_FILE)
     }
 
     /// Restore a saved session, or report that a login is needed.
     pub(crate) fn boot(&'static self) {
         self.rt.spawn(async move {
-            std::fs::create_dir_all(self.data_dir.join("media")).ok();
-            std::fs::create_dir_all(self.data_dir.join("avatars")).ok();
+            std::fs::create_dir_all(self.data_dir.join(MEDIA_DIR)).ok();
+            std::fs::create_dir_all(self.data_dir.join(AVATAR_DIR)).ok();
             match self.restore().await {
                 Ok(true) => {}
                 Ok(false) => {
@@ -63,8 +63,8 @@ impl Core {
     /// - a key that is not the store's (the secret was lost and made anew):
     ///   the store can never be read again and goes
     fn store_passphrase(&self) -> Result<Option<String>> {
-        let dir = self.data_dir.join("store");
-        let marker = dir.join("rustrx-encrypted");
+        let dir = self.data_dir.join(STORE_DIR);
+        let marker = dir.join(ENCRYPTED_MARKER);
         let existing = std::fs::read_dir(&dir).map(|mut d| d.next().is_some()).unwrap_or(false);
         let key = crate::store_key();
         let fingerprint = |k: &str| {
@@ -114,7 +114,7 @@ impl Core {
                 .cross_process_store_config(matrix_sdk::cross_process_lock::CrossProcessLockConfig::SingleProcess)
                 .user_agent(USER_AGENT);
             if with_store {
-                b = b.sqlite_store(self.data_dir.join("store"), passphrase.as_deref());
+                b = b.sqlite_store(self.data_dir.join(STORE_DIR), passphrase.as_deref());
             }
             if server.starts_with("http://") || server.starts_with("https://") {
                 b.homeserver_url(server)
@@ -246,7 +246,7 @@ impl Core {
     /// What a session that ended on the server's side leaves for the next
     /// login: who it was and on which device ("relogin.json").
     fn relogin_path(&self) -> PathBuf {
-        self.data_dir.join("relogin.json")
+        self.data_dir.join(RELOGIN_FILE)
     }
 
     /// Before a login: the device to log in to again, if the kept store
@@ -268,7 +268,7 @@ impl Core {
             return None;
         }
         // after a soft logout of an earlier version: the device only
-        std::fs::read_to_string(self.data_dir.join("device_id")).ok().map(|d| d.trim().to_owned())
+        std::fs::read_to_string(self.data_dir.join(DEVICE_ID_FILE)).ok().map(|d| d.trim().to_owned())
     }
 
     /// Local side of a logout the server already did: stop syncing, drop
@@ -299,10 +299,10 @@ impl Core {
 
     /// Everything of the account on this phone: store, decrypted media, avatars.
     pub(crate) fn wipe_local_data(&self) {
-        std::fs::remove_dir_all(self.data_dir.join("store")).ok();
-        std::fs::remove_file(self.data_dir.join("device_id")).ok();
+        std::fs::remove_dir_all(self.data_dir.join(STORE_DIR)).ok();
+        std::fs::remove_file(self.data_dir.join(DEVICE_ID_FILE)).ok();
         std::fs::remove_file(self.relogin_path()).ok();
-        for dir in ["media", "avatars"] {
+        for dir in [MEDIA_DIR, AVATAR_DIR] {
             std::fs::remove_dir_all(self.data_dir.join(dir)).ok();
             std::fs::create_dir_all(self.data_dir.join(dir)).ok();
         }
@@ -384,7 +384,7 @@ impl Core {
                 login = login.device_id(d.trim());
             }
             login.send().await.map_err(|e| anyhow!("{e}"))?;
-            std::fs::remove_file(self.data_dir.join("device_id")).ok();
+            std::fs::remove_file(self.data_dir.join(DEVICE_ID_FILE)).ok();
             std::fs::remove_file(self.relogin_path()).ok();
             Ok(client)
         }
@@ -425,7 +425,7 @@ impl Core {
                 builder = builder.device_id(d);
             }
             builder.send().await.map_err(|e| anyhow!("{e}"))?;
-            std::fs::remove_file(self.data_dir.join("device_id")).ok();
+            std::fs::remove_file(self.data_dir.join(DEVICE_ID_FILE)).ok();
             std::fs::remove_file(self.relogin_path()).ok();
             Ok(client)
         }

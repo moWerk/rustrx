@@ -27,7 +27,7 @@ impl Core {
                     if let Err(e) = c.sync(SyncSettings::default()).await {
                         tracing::warn!("sync ended: {e}");
                         self.emit(json!({"ev": "sync_state", "state": "error", "message": e.to_string()}));
-                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        tokio::time::sleep(SYNC_RETRY_DELAY).await;
                     }
                 }
             });
@@ -42,7 +42,7 @@ impl Core {
             let service = Arc::new(
                 SyncService::builder(client.clone())
                     .with_offline_mode()
-                    .with_room_list_timeline_limit(20)
+                    .with_room_list_timeline_limit(ROOM_LIST_TIMELINE_LIMIT)
                     .build()
                     .await?,
             );
@@ -87,7 +87,7 @@ impl Core {
     /// updates rebuilds the whole list (and catches what the stream missed).
     pub(crate) async fn rooms_task(&'static self, client: Client) {
         let mut rx = client.room_info_notable_update_receiver();
-        let avatar_dir = self.data_dir.join("avatars");
+        let avatar_dir = self.data_dir.join(AVATAR_DIR);
         let t = std::time::Instant::now();
         let mut cache: HashMap<OwnedRoomId, Value> = HashMap::new();
         let mut seen = ListSeen::default();
@@ -117,7 +117,7 @@ impl Core {
                     Err(_) => break,
                 }
             }
-            tokio::time::sleep(Duration::from_millis(150)).await;
+            tokio::time::sleep(ROOM_LIST_BATCH).await;
             loop {
                 match rx.try_recv() {
                     Ok(update) => {
@@ -129,7 +129,7 @@ impl Core {
             }
             // a minute of updates: everything once more, to catch what the
             // stream missed
-            if last_full.elapsed() > Duration::from_secs(60) {
+            if last_full.elapsed() > ROOM_LIST_FULL_REBUILD {
                 full = true;
             }
             let settings = client.notification_settings().await;
@@ -215,7 +215,7 @@ impl Core {
     /// address is kept beside it, "<room>.url"), once per picture.
     /// Returns whether a new picture arrived (the room list then needs it).
     async fn fetch_avatars(&self, client: &Client, only: Option<&HashSet<OwnedRoomId>>, seen: &mut ListSeen) -> bool {
-        let avatar_dir = self.data_dir.join("avatars");
+        let avatar_dir = self.data_dir.join(AVATAR_DIR);
         let own = client.user_id().map(ToOwned::to_owned);
         let mut fetched = false;
         for room in client.rooms() {
@@ -240,7 +240,7 @@ impl Core {
             }
             let request = MediaRequestParameters {
                 source: MediaSource::Plain(url.clone()),
-                format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(uint!(192), uint!(192))),
+                format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(ROOM_AVATAR_PX.into(), ROOM_AVATAR_PX.into())),
             };
             match client.media().get_media_content(&request, true).await {
                 Ok(bytes) => {
@@ -323,8 +323,8 @@ impl Core {
         let sizes = client.get_store_sizes().await?;
         self.emit(json!({
             "ev": "storage",
-            "store": dir_size(&self.data_dir.join("store")),
-            "media_files": dir_size(&self.data_dir.join("media")) + dir_size(&self.data_dir.join("avatars")),
+            "store": dir_size(&self.data_dir.join(STORE_DIR)),
+            "media_files": dir_size(&self.data_dir.join(MEDIA_DIR)) + dir_size(&self.data_dir.join(AVATAR_DIR)),
             "crypto": sizes.crypto_store,
             "state": sizes.state_store,
             "event_cache": sizes.event_cache_store,

@@ -128,9 +128,9 @@ impl Core {
         // event); the map replaces the server's, so its defaults are
         // restated (Synapse's, as Element sends them)
         let mut events = json!({
-            "m.room.name": 50, "m.room.power_levels": 100, "m.room.history_visibility": 100,
-            "m.room.canonical_alias": 50, "m.room.avatar": 50, "m.room.tombstone": 100,
-            "m.room.server_acl": 100, "m.room.encryption": 100,
+            "m.room.name": POWER_MOD, "m.room.power_levels": POWER_ADMIN, "m.room.history_visibility": POWER_ADMIN,
+            "m.room.canonical_alias": POWER_MOD, "m.room.avatar": POWER_MOD, "m.room.tombstone": POWER_ADMIN,
+            "m.room.server_acl": POWER_ADMIN, "m.room.encryption": POWER_ADMIN,
         });
         for t in call::CALL_MEMBER_TYPES {
             events[t] = json!(0);
@@ -138,7 +138,7 @@ impl Core {
         // in a space only admins post (its rooms are its state)
         let mut levels = json!({ "events": events });
         if space {
-            levels["events_default"] = json!(100);
+            levels["events_default"] = json!(POWER_ADMIN);
         }
         req.power_level_content_override = Some(matrix_sdk::ruma::serde::Raw::new(&levels)?.cast_unchecked());
         let room = client.create_room(req).await?;
@@ -211,9 +211,9 @@ impl Core {
     pub(crate) async fn search(&self, term: &str) -> Result<()> {
         let client = self.client().await?;
         let mut req = get_public_rooms_filtered::v3::Request::new();
-        req.limit = Some(uint!(20));
+        req.limit = Some(SEARCH_ROOMS_LIMIT.into());
         req.filter.generic_search_term = Some(term.to_owned());
-        let (users, rooms) = tokio::join!(client.search_users(term, 10), client.public_rooms_filtered(req));
+        let (users, rooms) = tokio::join!(client.search_users(term, SEARCH_USERS_LIMIT), client.public_rooms_filtered(req));
         let users: Vec<Value> = users
             .map(|r| r.results)
             .unwrap_or_else(|e| {
@@ -250,7 +250,7 @@ impl Core {
     /// The whole room list once more: "rooms".
     pub(crate) async fn refresh_rooms(&self) -> Result<()> {
         let client = self.client().await?;
-        let dir = self.data_dir.join("avatars");
+        let dir = self.data_dir.join(AVATAR_DIR);
         let settings = client.notification_settings().await;
         let mut rooms = Vec::new();
         for room in client.rooms().into_iter().filter(crate::serialize::listed) {

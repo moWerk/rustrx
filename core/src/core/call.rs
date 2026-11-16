@@ -77,7 +77,7 @@ impl Core {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_millis() as u64)
                 .unwrap_or(0);
-            let lifetime = content.get("lifetime").and_then(Value::as_u64).unwrap_or(30_000).min(120_000);
+            let lifetime = content.get("lifetime").and_then(Value::as_u64).unwrap_or(RING_LIFETIME_DEFAULT_MS).min(RING_LIFETIME_MAX_MS);
             // the server's age where it gives one: the phone's clock can be
             // off (a mainline phone boots with a wrong date until NTP)
             let age = raw

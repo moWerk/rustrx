@@ -74,7 +74,7 @@ impl Core {
             if stream.next().await.is_none() {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(60)).await;
+            tokio::time::sleep(TIMELINE_COALESCE).await;
             while let Some(Some(_)) = stream.next().now_or_never() {}
             items = timeline.items().await;
         }
@@ -142,7 +142,7 @@ impl Core {
         // Sliding sync brings a short window; fill the first screen.
         let tl = timeline.clone();
         self.rt.spawn(async move {
-            let _ = tl.paginate_backwards(30).await;
+            let _ = tl.paginate_backwards(PAGINATE_DEFAULT).await;
         });
         Ok(())
     }
@@ -179,7 +179,7 @@ impl Core {
     pub(crate) async fn paginate_back(&self, room_id: &str, count: Option<u16>) -> Result<()> {
         let room = self.room(room_id).await?;
         let tl = self.timeline_for(&room).await?;
-        let more = tl.paginate_backwards(count.unwrap_or(30)).await?;
+        let more = tl.paginate_backwards(count.unwrap_or(PAGINATE_DEFAULT)).await?;
         self.emit(json!({"ev": "paginated", "room_id": room.room_id().as_str(), "at_start": more}));
         Ok(())
     }
@@ -376,7 +376,7 @@ impl Core {
         thumb: bool,
     ) -> Result<Option<Vec<u8>>> {
         if thumb {
-            let settings = MediaThumbnailSettings::new(uint!(640), uint!(640));
+            let settings = MediaThumbnailSettings::new(MEDIA_THUMB_PX.into(), MEDIA_THUMB_PX.into());
             Ok(client.media().get_thumbnail(content, settings, true).await?)
         } else {
             Ok(client.media().get_file(content, true).await?)
@@ -428,7 +428,7 @@ impl Core {
                     .content()
                     .as_message()
                     .map(|m| m.body().to_owned())
-                    .filter(|b| !b.is_empty() && b.len() < 200)
+                    .filter(|b| !b.is_empty() && b.len() < MAX_FILENAME_FROM_BODY)
                     .map(|b| b.chars().map(|c| if c == '/' || c == '\\' || c.is_control() { '_' } else { c }).collect::<String>())
                     .unwrap_or_else(|| format!("{safe}.{ext}"));
                 let dir = PathBuf::from(dir);
@@ -439,7 +439,7 @@ impl Core {
                 }
                 path
             }
-            None => self.data_dir.join("media").join(format!("{safe}{}.{ext}", if thumb { "-thumb" } else { "" })),
+            None => self.data_dir.join(MEDIA_DIR).join(format!("{safe}{}.{ext}", if thumb { "-thumb" } else { "" })),
         };
         tokio::fs::write(&path, &bytes).await?;
         self.emit(json!({"ev": "media", "room_id": room.room_id().as_str(), "event_id": event_id,
@@ -454,7 +454,7 @@ impl Core {
     /// file per address, kept: an mxc address never changes its content).
     /// A cached one is answered without the network.
     pub(crate) async fn fetch_emote(&'static self, mxc: &str) -> Result<()> {
-        let dir = self.data_dir.join("media").join("emotes");
+        let dir = self.data_dir.join(MEDIA_DIR).join(EMOTE_DIR);
         let safe: String = mxc.trim_start_matches("mxc://").chars()
             .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
         let cached = std::fs::read_dir(&dir).ok().and_then(|entries| {
@@ -472,7 +472,7 @@ impl Core {
                 // small: it is drawn at the height of a line
                 let request = MediaRequestParameters {
                     source: MediaSource::Plain(url),
-                    format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(uint!(96), uint!(96))),
+                    format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(EMOTE_PX.into(), EMOTE_PX.into())),
                 };
                 // a picture that cannot be had stays its name: logged, no error
                 // (a room with one would otherwise complain at every opening)

@@ -39,7 +39,7 @@ use matrix_sdk::ruma::events::room::message::{
 };
 use matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType;
 use matrix_sdk::ruma::{
-    uint, EventId, OwnedDeviceId, OwnedEventId, UInt, OwnedMxcUri, OwnedRoomId, OwnedUserId, RoomId, RoomOrAliasId, UserId,
+    EventId, OwnedDeviceId, OwnedEventId, UInt, OwnedMxcUri, OwnedRoomId, OwnedUserId, RoomId, RoomOrAliasId, UserId,
 };
 use matrix_sdk::sliding_sync::{Version, VersionBuilder};
 use matrix_sdk::{Client, Room, RoomMemberships, RoomState, SessionChange};
@@ -54,13 +54,10 @@ use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
+use crate::consts::*;
 use crate::serialize::{avatar_file, items_json, member_name, profile_name, raw_value, room_json, room_name, sorted_rooms};
 use crate::protocol::{given, Command};
 use crate::Emitter;
-
-/// The version of the JSON protocol between the core and the UI (docs/PROTOCOL.md),
-/// sent with "ready" and "logged_in".
-pub(crate) const PROTO: u32 = 1;
 
 const DEVICE_NAME: &str = "Rustrx (Sailfish OS)";
 const USER_AGENT: &str = concat!("Rustrx/", env!("CARGO_PKG_VERSION"), " (Sailfish OS)");

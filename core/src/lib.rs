@@ -13,6 +13,7 @@
 // the SDK's async fns nest deeply; the Send proof for the sync task overflows the default
 #![recursion_limit = "256"]
 
+mod consts;
 mod core;
 mod protocol;
 mod serialize;
@@ -135,7 +136,7 @@ pub extern "C" fn rustrx_start(data_dir: *const c_char, cb: EventCallback, ctx: 
         .with_writer(|| LogWriter::default())
         .try_init();
     let rt = match tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
+        .worker_threads(consts::WORKER_THREADS)
         .thread_name("rustrx")
         .enable_all()
         .build()

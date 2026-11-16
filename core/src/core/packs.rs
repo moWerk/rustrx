@@ -70,7 +70,7 @@ pub(crate) fn with_emotes(content: &mut RoomMessageEventContent, emotes: &HashMa
         let code = escape_html(code);
         html = html.replace(
             &format!(":{code}:"),
-            &format!("<img data-mx-emoticon src=\"{url}\" alt=\":{code}:\" title=\":{code}:\" height=\"32\">"),
+            &format!("<img data-mx-emoticon src=\"{url}\" alt=\":{code}:\" title=\":{code}:\" height=\"{EMOTE_HTML_HEIGHT}\">"),
         );
     }
     t.formatted = Some(FormattedBody::html(html));

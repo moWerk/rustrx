@@ -144,11 +144,11 @@ fn event_preview(event: &AnySyncTimelineEvent) -> Option<String> {
 }
 
 fn message_preview(msg: &MessageType) -> String {
-    // the text, line breaks kept, up to 400 characters: the list shows as
+    // the text, line breaks kept, up to PREVIEW_CHARS characters: the list shows as
     // many lines as the user set (1 to 3) and fades the last
     let lines = |s: &str| {
         let t = s.trim();
-        match t.char_indices().nth(400) {
+        match t.char_indices().nth(crate::consts::PREVIEW_CHARS) {
             Some((i, _)) => t[..i].to_owned(),
             None => t.to_owned(),
         }

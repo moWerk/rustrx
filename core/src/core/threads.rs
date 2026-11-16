@@ -52,7 +52,7 @@ impl Core {
             let back = tl.clone();
             let page_in = move || {
                 tokio::spawn(async move {
-                    let _ = back.paginate_backwards(50).await;
+                    let _ = back.paginate_backwards(THREAD_FILL).await;
                 });
             };
             Self::stream_timeline(&room, &tl, &own, emit, page_in).await;

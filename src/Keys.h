@@ -25,7 +25,7 @@
 // the core its own (core/).
 namespace Keys {
 
-// the JSON protocol this UI speaks, see docs/PROTOCOL.md (core: PROTO in core.rs)
+// the JSON protocol this UI speaks, see docs/PROTOCOL.md (core: PROTO in core/src/consts.rs)
 static const int kProto = 1;
 
 // QSettings (~/.config/net.mowerk/harbour-rustrx.conf), each key with its default
