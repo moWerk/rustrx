@@ -21,6 +21,10 @@ import Nemo.Configuration 1.0
 // Chat position trace: every move of the room's list with what caused it,
 // in the app log. Off unless switched on:
 // dconf write /apps/harbour-rustrx/debugChatPos true
+// Also the repeatable fling for frame timing (RUSTRX_FRAMES=1): a few
+// seconds after the room page comes up, the list is flung N times, up and
+// down in turn, at one speed, so two builds see the same motion:
+// dconf write /apps/harbour-rustrx/debugFlick 6
 // an Item, not a QtObject: Qt 5.6 parses no `default property list<T>`,
 // and the timers and connections below need a parent that takes children
 Item {
@@ -38,8 +42,39 @@ Item {
     // the first move after a status change is always logged
     property bool fresh
 
+    // the fling (debugFlick); these belong in Tunables once it is free to edit
+    readonly property int flickCount: Math.max(0, Math.floor(Number(debugFlick.value) || 0))
+    readonly property int flickDelayMs: 3000
+    readonly property int flickSpacingMs: 1500
+    // pixels a second, of the theme's pixel ratio
+    readonly property real flickSpeed: 2500
+    property int flicksDone
 
     ConfigurationValue { id: debugChatPos; key: "/apps/harbour-rustrx/debugChatPos"; defaultValue: false }
+    ConfigurationValue { id: debugFlick; key: "/apps/harbour-rustrx/debugFlick"; defaultValue: 0 }
+    Connections {
+        target: trace.flickCount > 0 ? trace.page : null
+        onStatusChanged: {
+            flickStep.stop()
+            if (trace.page.status !== PageStatus.Active) return
+            trace.flicksDone = 0
+            flickStep.interval = trace.flickDelayMs
+            flickStep.start()
+        }
+    }
+    // the first fling towards older messages, then back, and so on
+    Timer {
+        id: flickStep
+        onTriggered: {
+            if (trace.flicksDone >= trace.flickCount || trace.page.status !== PageStatus.Active) return
+            var v = (trace.flicksDone % 2 === 0 ? 1 : -1) * trace.flickSpeed * Theme.pixelRatio
+            trace.flicksDone++
+            console.log("debugflick: " + trace.flicksDone + "/" + trace.flickCount + " v=" + Math.round(v))
+            trace.list.flick(0, v)
+            interval = trace.flickSpacingMs
+            start()
+        }
+    }
     Connections {
         target: trace.model
         onRowsInserted: if (trace.enabled) trace.log("ins", "rows=" + first + ".." + last)
