@@ -29,7 +29,7 @@ impl Core {
     /// A reply whose original is not loaded (older than the loaded history,
     /// or not yet decrypted when the reply came) gets it fetched, once; the
     /// timeline then updates with the quote.
-    fn fetch_replied<'a>(
+    pub(crate) fn fetch_replied<'a>(
         timeline: &Arc<Timeline>,
         items: impl IntoIterator<Item = &'a Arc<TimelineItem>>,
         asked: &mut std::collections::HashSet<OwnedEventId>,

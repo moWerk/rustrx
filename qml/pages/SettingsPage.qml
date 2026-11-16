@@ -201,6 +201,15 @@ Page {
             SectionHeader { text: qsTrId("rustrx-se-appearance") }
 
             TextSwitch {
+                //% "Highlight Favs channels with new messages"
+                text: qsTrId("rustrx-la-highlight-favs")
+                //% "A favourite with something unread glows calmly in the lists, its star with it."
+                description: qsTrId("rustrx-la-highlight-favs-hint")
+                checked: app.highlightFavs
+                onCheckedChanged: app.highlightFavs = checked
+            }
+
+            TextSwitch {
                 //% "Round avatars"
                 text: qsTrId("rustrx-la-round-avatars")
                 //% "Cut room and people pictures to a circle."

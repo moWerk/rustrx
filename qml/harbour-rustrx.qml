@@ -66,6 +66,9 @@ ApplicationWindow {
         rustrx.push.enabled = m === "push"
         rustrx.background = m === "background"
     }
+    // favourites with new messages glow in the lists (Settings, on unless switched off)
+    property alias highlightFavs: cfgHighlightFavs.value
+    ConfigurationValue { id: cfgHighlightFavs; key: "/apps/harbour-rustrx/highlightFavs"; defaultValue: true }
     property alias separateSpaces: cfgSeparateSpaces.value
     ConfigurationValue { id: cfgSeparateSpaces; key: "/apps/harbour-rustrx/separateSpaces"; defaultValue: true }
     // how many lines of the last message the room list shows (1 to 3)

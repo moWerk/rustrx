@@ -33,6 +33,31 @@ ListItem {
 
     readonly property bool invited: model.state === "invited"
     readonly property bool hasUnread: model.notifications > 0 || model.unread > 0
+    // a favourite with something unread glows (Settings): a band across the
+    // row and its star breathe, a second out and a second in. Only while
+    // shown and Rustrx is in front: an animation keeps the screen drawing.
+    readonly property bool favGlow: app.highlightFavs && model.is_fav === true && hasUnread && !invited
+    property real glow: 0
+    SequentialAnimation on glow {
+        running: item.favGlow && Qt.application.active && item.visible
+        loops: Animation.Infinite
+        NumberAnimation { from: 0; to: 1; duration: 1000; easing.type: Easing.InOutSine }
+        NumberAnimation { from: 1; to: 0; duration: 1000; easing.type: Easing.InOutSine }
+        onStopped: item.glow = 0
+    }
+    // the band: the page's whole width, brightest in the row's middle
+    // (5 % at rest, 20 % at the height of a breath), fading to nothing
+    // above and below
+    Rectangle {
+        anchors.fill: parent
+        visible: item.favGlow
+        z: -1
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "transparent" }
+            GradientStop { position: 0.5; color: Theme.rgba(Theme.primaryColor, 0.05 + 0.15 * item.glow) }
+            GradientStop { position: 1.0; color: "transparent" }
+        }
+    }
 
     onClicked: {
         if (invited) { openMenu(); return }
@@ -297,6 +322,8 @@ ListItem {
     Image {
         anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; top: age.bottom; topMargin: Theme.paddingSmall }
         visible: model.is_fav && !invited
+        // with the band's breath: down to 75 % and back
+        opacity: 1 - 0.25 * item.glow
         source: "image://theme/icon-s-favorite?#ffd54a"
         sourceSize.width: Theme.iconSizeExtraSmall
         sourceSize.height: Theme.iconSizeExtraSmall

@@ -71,9 +71,32 @@ Page {
         input.forceActiveFocus()
     }
 
+    // the emoji picker in the keyboard's place (as in the room, simpler: it
+    // slides in when the keyboard has gone)
+    function insertEmoji(emoji) {
+        if (!inputArea) return
+        var at = inputArea.cursorPosition
+        var t = inputArea.text
+        inputArea.text = t.slice(0, at) + emoji + t.slice(at)
+        inputArea.cursorPosition = at + emoji.length
+    }
+    EmojiPanel {
+        id: emojiPanel
+        anchors.bottom: parent.bottom
+        height: Math.round(Screen.height * (page.isPortrait ? 0.36 : 0.5))
+        visible: open
+        onPicked: page.insertEmoji(emoji)
+        onPickedImage: page.insertEmoji(":" + image.shortcode + ":")
+    }
+    Connections {
+        target: Qt.inputMethod
+        onVisibleChanged: if (Qt.inputMethod.visible) emojiPanel.open = false
+    }
+
     SilicaListView {
         id: list
-        anchors.fill: parent
+        anchors { top: parent.top; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors.bottomMargin: emojiPanel.open ? emojiPanel.height : 0
         verticalLayoutDirection: ListView.BottomToTop
         model: rustrx.thread
         currentIndex: -1
@@ -123,9 +146,31 @@ Page {
 
             Row {
                 width: parent.width
+                BackgroundItem {
+                    id: emojiButton
+                    width: Theme.itemSizeSmall
+                    height: Math.max(input.height, Theme.itemSizeSmall)
+                    onClicked: {
+                        if (emojiPanel.open) {
+                            emojiPanel.open = false
+                            input.forceActiveFocus()
+                            Qt.inputMethod.show()
+                        } else {
+                            Qt.inputMethod.hide()
+                            emojiPanel.show("insert", "")
+                        }
+                    }
+                    Label {
+                        anchors.centerIn: parent
+                        text: "🙂"
+                        font.pixelSize: Theme.fontSizeLarge
+                        opacity: emojiButton.highlighted || emojiPanel.open ? 1.0 : Theme.opacityHigh
+                    }
+                }
                 TextArea {
                     id: input
-                    width: parent.width - sendButton.width
+                    width: parent.width - emojiButton.width - sendButton.width
+                    textLeftMargin: Theme.paddingSmall
                     //% "Reply in the thread"
                     placeholderText: qsTrId("rustrx-ph-thread")
                     focusOutBehavior: FocusBehavior.KeepFocus

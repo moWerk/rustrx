@@ -57,6 +57,9 @@ impl Core {
             let mut names = HashMap::new();
             let (items, mut stream) = tl.subscribe().await;
             let items: Vec<Arc<TimelineItem>> = items.into_iter().collect();
+            // replies quoted here need their originals fetched too
+            let mut replies_asked = std::collections::HashSet::new();
+            Self::fetch_replied(&tl, &items, &mut replies_asked);
             Self::receipt_names(&room, &items, &mut names).await;
             let emit = |items: Value| {
                 crate::instance().emit(json!({"ev": "thread_timeline", "room_id": room_id_owned.as_str(),
@@ -72,6 +75,7 @@ impl Core {
                 tokio::time::sleep(Duration::from_millis(60)).await;
                 while let Some(Some(_)) = stream.next().now_or_never() {}
                 let items = tl.items().await;
+                Self::fetch_replied(&tl, &items, &mut replies_asked);
                 Self::receipt_names(&room, &items, &mut names).await;
                 emit(items_json(&items, &own, &names));
             }

@@ -408,10 +408,13 @@ Page {
                 }
 
                 section.property: isFavs || isSpaces ? "" : "section"
+                // a fixed height: one taken from the text's layout settled after
+                // the list had placed the rows, and the row under "Invitations"
+                // overlapped the next one until the list was rebuilt
                 section.delegate: SectionHeader {
                     text: section
                     visible: section.length > 0
-                    height: visible ? implicitHeight : 0
+                    height: visible ? Theme.itemSizeExtraSmall : 0
                 }
 
                 PullDownMenu {

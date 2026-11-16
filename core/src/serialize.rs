@@ -44,6 +44,10 @@ async fn preview(room: &Room) -> (Option<String>, Option<String>) {
         LatestEventValue::None => return (None, None),
         LatestEventValue::RemoteInvite { .. } => (Some("Invitation".to_owned()), None),
         LatestEventValue::Remote(ev) => match ev.raw().deserialize() {
+            // a membership change says whose: "Anna joined", no sender in front
+            Ok(AnySyncTimelineEvent::State(matrix_sdk::ruma::events::AnySyncStateEvent::RoomMember(m))) => {
+                return (Some(membership_preview(room, &m).await), None);
+            }
             Ok(event) => (event_preview(&event), ev.sender()),
             Err(_) => (None, None),
         },
@@ -72,6 +76,33 @@ async fn preview(room: &Room) -> (Option<String>, Option<String>) {
         None => None,
     };
     (Some(text), who)
+}
+
+/// A membership event in the room list: who, and what happened to them.
+async fn membership_preview(room: &Room, event: &matrix_sdk::ruma::events::room::member::SyncRoomMemberEvent) -> String {
+    use matrix_sdk::ruma::events::room::member::MembershipState as M;
+    let Some(original) = event.as_original() else { return "Membership changed".to_owned() };
+    let target = &original.state_key;
+    let name = match original.content.displayname.clone() {
+        Some(n) => n,
+        None => match room.get_member_no_sync(target).await {
+            Ok(Some(m)) => m.name().to_owned(),
+            _ => target.localpart().to_owned(),
+        },
+    };
+    let what = match original.content.membership {
+        M::Join => match original.unsigned.prev_content.as_ref().map(|p| &p.membership) {
+            Some(M::Join) => "changed their profile",
+            _ => "joined",
+        },
+        M::Leave if original.sender == *target => "left",
+        M::Leave => "was removed",
+        M::Invite => "was invited",
+        M::Ban => "was banned",
+        M::Knock => "asked to join",
+        _ => "membership changed",
+    };
+    format!("{name} {what}")
 }
 
 fn event_preview(event: &AnySyncTimelineEvent) -> Option<String> {
