@@ -11,7 +11,7 @@ impl Core {
         let room = v.get("room_id").and_then(Value::as_str).unwrap_or("").to_owned();
         tracing::info!(%cmd, %room, "command");
         // the shape is checked before anything runs (protocol.rs)
-        let command: Command = match serde_json::from_value(v) {
+        let command: Command = match crate::protocol::parse(v) {
             Ok(c) => c,
             Err(e) => {
                 self.error(&cmd, &anyhow!("{e}"));

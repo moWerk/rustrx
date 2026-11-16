@@ -190,6 +190,16 @@ pub(crate) enum Command {
 }
 
 /// A non-empty string, or nothing (the UI sends "" for "no reply" and the like).
+/// A command from its JSON. Only an object is one: serde's internally
+/// tagged enums would also take a sequence with the tag first, so
+/// `["logout"]` would run.
+pub(crate) fn parse(v: serde_json::Value) -> Result<Command, String> {
+    if !v.is_object() {
+        return Err("a command is a JSON object".to_owned());
+    }
+    serde_json::from_value::<Command>(v).map_err(|e| e.to_string())
+}
+
 pub(crate) fn given(s: &Option<String>) -> Option<&str> {
     s.as_deref().map(str::trim).filter(|s| !s.is_empty())
 }
@@ -226,9 +236,6 @@ mod tests {
     /// change here is a change of the contract.
     const REQUIRED_FIELDS: usize = 96;
 
-    fn parse(v: Value) -> Result<Command, String> {
-        serde_json::from_value::<Command>(v).map_err(|e| e.to_string())
-    }
 
     /// The names serde knows, from its own error for an unknown tag
     /// ("unknown variant `x`, expected one of `a`, `b`, ...").
@@ -381,13 +388,11 @@ mod tests {
     }
 
     /// A command is an object. serde's internally tagged enums also take a
-    /// sequence with the tag first, so today `["logout"]` (any command
-    /// without fields: identity_reset, clear_media) runs; commands with
-    /// fields are refused in that form. Ignored until the core refuses
-    /// non-objects (a check in `Core::dispatch` before the parse).
-    /// Planted-bug: none needed, it fails against today's code.
+    /// sequence with the tag first, so `["logout"]` (any command without
+    /// fields: identity_reset, clear_media) ran before `parse` refused it.
+    /// Planted-bug: drop the is_object check in `parse` (it failed against
+    /// the code before it).
     #[test]
-    #[ignore = "known gap: arrays parse as commands"]
     fn arrays_are_refused() {
         let accepted: Vec<String> = [json!(["logout"]), json!(["identity_reset"]), json!(["send_text", "!a:b", "hi"])]
             .into_iter()

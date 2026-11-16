@@ -286,8 +286,8 @@ pub(crate) fn listed(room: &Room) -> bool {
 }
 
 /// Invitations first, then by the last activity; the id breaks ties, so
-/// rooms without a timestamp keep their order.
-/// Favourites are not pinned here; the UI has its own tab for them.
+/// rooms without a timestamp come in the same order in every list.
+/// Favourites and the tabs' own orders are the UI's (RoomLists).
 pub(crate) fn sorted_rooms(mut rooms: Vec<Value>) -> Value {
     rooms.sort_by(|a, b| {
         let key = |r: &Value| {
