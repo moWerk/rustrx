@@ -24,6 +24,7 @@
 #include "rustrx_core.h"
 #include <sailfishapp.h>
 
+#include <QCollator>
 #include <QDBusConnection>
 #include <QDBusError>
 #include <QDBusMessage>
@@ -45,6 +46,7 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QUrl>
+#include <QVector>
 #include <algorithm>
 
 // the JSON protocol this UI speaks, see docs/PROTOCOL.md (core: PROTO in core.rs)
@@ -486,31 +488,53 @@ void Rustrx::sortRooms(QVariantList &rooms, const QString &kind) const
     const QString order = tabValue(kind, QStringLiteral("sortOrder"), QStringLiteral("activity")).toString();
     const bool favsFirst = tabValue(kind, QStringLiteral("favsOnTop"), false).toBool();
     const bool lowAtEnd = tabValue(kind, QStringLiteral("lowLast"), true).toBool();
-    std::stable_sort(rooms.begin(), rooms.end(), [&](const QVariant &va, const QVariant &vb) {
-        const QVariantMap a = va.toMap(), b = vb.toMap();
-        const bool ia = isInvited(a), ib = isInvited(b);
-        if (ia != ib)
-            return ia;
-        if (favsFirst) {
-            const bool fa = a.value("is_fav").toBool(), fb = b.value("is_fav").toBool();
-            if (fa != fb)
-                return fa;
-        }
-        if (lowAtEnd) {
-            const bool la = a.value("is_low").toBool(), lb = b.value("is_low").toBool();
-            if (la != lb)
-                return lb;
-        }
-        if (order == QLatin1String("unread")) {
-            // the most unread on top; equal counts keep the activity order
-            const int ua = badgeCount(a), ub = badgeCount(b);
-            if (ua != ub)
-                return ua > ub;
-        } else if (order == QLatin1String("name")) {
-            return QString::localeAwareCompare(a.value("name").toString(), b.value("name").toString()) < 0;
-        }
+    const bool byUnread = order == QLatin1String("unread");
+    const bool byName = order == QLatin1String("name");
+    // what the order looks at, read from each room once instead of per comparison
+    struct Key {
+        bool invited;
+        bool fav;
+        bool low;
+        int unread;
+        QString name;
+    };
+    QVector<Key> keys;
+    keys.reserve(rooms.size());
+    for (const QVariant &v : rooms) {
+        const QVariantMap r = v.toMap();
+        Key k;
+        k.invited = isInvited(r);
+        k.fav = favsFirst && r.value("is_fav").toBool();
+        k.low = lowAtEnd && r.value("is_low").toBool();
+        k.unread = byUnread ? badgeCount(r) : 0;
+        if (byName)
+            k.name = r.value("name").toString();
+        keys.append(k);
+    }
+    QVector<int> index(rooms.size());
+    for (int i = 0; i < index.size(); ++i)
+        index[i] = i;
+    QCollator collator;
+    std::stable_sort(index.begin(), index.end(), [&](int ia, int ib) {
+        const Key &a = keys.at(ia), &b = keys.at(ib);
+        if (a.invited != b.invited)
+            return a.invited;
+        if (a.fav != b.fav)
+            return a.fav;
+        if (a.low != b.low)
+            return b.low;
+        // the most unread on top; equal counts keep the activity order
+        if (byUnread)
+            return a.unread > b.unread;
+        if (byName)
+            return collator.compare(a.name, b.name) < 0;
         return false;
     });
+    QVariantList sorted;
+    sorted.reserve(rooms.size());
+    for (int i : index)
+        sorted.append(rooms.at(i));
+    rooms.swap(sorted);
 }
 
 QString Rustrx::coreVersion() const
