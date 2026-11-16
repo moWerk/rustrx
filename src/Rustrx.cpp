@@ -304,8 +304,8 @@ bool Rustrx::handOver()
     o.insert("uri", m_pendingUri);
     o.insert("share", QJsonObject::fromVariantMap(m_pendingShare));
     QFile f(handoverPath());
-    if (f.open(QIODevice::WriteOnly))
-        f.write(QJsonDocument(o).toJson(QJsonDocument::Compact));
+    if (!f.open(QIODevice::WriteOnly) || f.write(QJsonDocument(o).toJson(QJsonDocument::Compact)) < 0)
+        qWarning() << "stand-in: cannot write" << f.fileName() << f.errorString();
     f.close();
     qInfo() << "stand-in: handing over to the app";
     startUnit(QStringLiteral("harbour-rustrx-open.service"));
@@ -345,7 +345,8 @@ void Rustrx::setBackground(bool on)
     if (on) {
         QDir().mkpath(QFileInfo(backgroundFlagPath()).path());
         QFile f(backgroundFlagPath());
-        f.open(QIODevice::WriteOnly);
+        if (!f.open(QIODevice::WriteOnly))
+            qWarning() << "background: cannot write" << f.fileName() << f.errorString();
     } else {
         QFile::remove(backgroundFlagPath());
     }
@@ -1018,12 +1019,20 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit loginError(ev.value("message").toString());
     } else if (type == QLatin1String("logged_out")) {
         m_loggedIn = false;
+        m_loggingIn = false;
         m_push->loggedOut();
+        m_pendingPushes.clear();
         m_logoutReason = ev.value("reason").toString();
         m_keptUser = ev.value("user_id").toString();
         m_userId.clear();
         m_openRoomId.clear();
         m_timeline->clear();
+        m_threadRoot.clear();
+        m_thread->clear();
+        m_emotePaths.clear();
+        m_emotesAsked.clear();
+        // a filter or tab setting changed later must not bring them back
+        m_lastRooms.clear();
         m_rooms->setRooms({});
         m_people->setRooms({});
         m_favourites->setRooms({});
@@ -1035,6 +1044,12 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit knockRequestsChanged();
         m_notificationCounts.clear();
         m_roomsById.clear();
+        // that account's invitation banners go; the next account starts afresh
+        const QStringList notified = m_invitesNotified;
+        m_invitesNotified.clear();
+        for (const QString &id : notified)
+            emit inviteGone(id);
+        m_settings.remove(QStringLiteral("invitesNotified"));
         m_homeserver.clear();
         m_syncState = QStringLiteral("idle");
         m_verificationState = QStringLiteral("unknown");
@@ -1067,8 +1082,9 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         else {
             m_timeline->setMediaPath(ev.value("event_id").toString(), ev.value("thumb").toBool(),
                                      ev.value("path").toString());
-            m_thread->setMediaPath(ev.value("event_id").toString(), ev.value("thumb").toBool(),
-                                   ev.value("path").toString());
+            if (!m_threadRoot.isEmpty())
+                m_thread->setMediaPath(ev.value("event_id").toString(), ev.value("thumb").toBool(),
+                                       ev.value("path").toString());
         }
     } else if (type == QLatin1String("emote")) {
         const QString mxc = ev.value("mxc").toString(), path = ev.value("path").toString();
