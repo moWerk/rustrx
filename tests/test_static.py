@@ -448,3 +448,13 @@ def test_dconf_path_in_one_place():
     Planted-bug: a ConfigurationValue with the full key in a page."""
     hits = [p.name for p in QML_JS if p.name != "names.js" and "/apps/harbour-rustrx" in code(p)]
     assert not hits
+
+
+def test_element_call_origin_agrees():
+    """The core opens Element Call at ELEMENT_CALL_URL; the frame script
+    talks only to ORIGIN. A self-hosted Element Call set in one place only
+    would break the origin check silently (audit I16).
+    Planted-bug: change the host in consts.rs alone."""
+    url = re.search(r'ELEMENT_CALL_URL: &str = "(https://[^/"]+)', read("core/src/consts.rs")).group(1)
+    origin = re.search(r'const ORIGIN = "([^"]+)"', read("qml/call-bridge.js")).group(1)
+    assert url == origin
