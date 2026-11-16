@@ -1,3 +1,24 @@
+* Mon Nov 16 2026 moWerk <mo@mowerk.net> - 0.4.6
+- A whole-codebase audit and what it found fixed, no new features
+  (docs/AUDIT-2026-11-16.md).
+- Fixed: logout left the old account's rooms, thread, pushes, emoji
+  cache and verification watchers behind; logout during a call leaves
+  the call first.
+- Fixed: a reaction the server refused blocked its room at "sending";
+  thread root reactions sent twice; + and React with text in threads.
+- Fixed: list settings lost to the sandbox at every restart; settings
+  switches after the first tap; drafts and typing notices; reply after
+  an edit in threads; the cover's unread action and direct chats.
+- Fixed: shared photos without a known file ending sent as files; the
+  message field under the keyboard while a long message grows; quick
+  reactions in the message menu; read receipts at most twice a second.
+- Fixed: in threads the emoji picker swaps with the keyboard in place.
+- New: Settings makes a new recovery key when the old one is lost.
+- Faster: each message formatted once instead of three to five times,
+  hidden parts built only when shown, room sort keys built once.
+- Inside: one composer for rooms and threads, the core's dispatch
+  split, named numbers and keys (Tunables.qml, Keys.h, consts.rs).
+
 * Mon Nov 16 2026 moWerk <mo@mowerk.net> - 0.4.5
 - New: push notifications through UnifiedPush (Foghorn): nothing of
   Rustrx keeps running while it is closed; one choice in Settings for
