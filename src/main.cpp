@@ -35,6 +35,7 @@
 #include "Rustrx.h"
 #include "UnifiedPush.h"
 #include "DebugLog.h"
+#include "FrameStats.h"
 #include "Twemoji.h"
 #include <QSettings>
 #include "RoomModel.h"
@@ -164,6 +165,9 @@ int main(int argc, char *argv[])
     view->rootContext()->setContextProperty(QStringLiteral("service"), service.data());
     view->rootContext()->setContextProperty(QStringLiteral("appVersion"), QStringLiteral(APP_VERSION));
     view->setSource(SailfishApp::pathToMainQml());
+    // frame timing in the log, for comparing builds: RUSTRX_FRAMES=1
+    if (qgetenv("RUSTRX_FRAMES") == "1")
+        new FrameStats(view.data());
     QObject::connect(&rustrx, &Rustrx::activateRequested, view.data(), [&view]() {
         view->showFullScreen();
         view->raise();

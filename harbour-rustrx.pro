@@ -18,7 +18,8 @@ SOURCES += src/main.cpp \
     src/Twemoji.cpp \
     src/UnifiedPush.cpp \
     src/VoiceRecorder.cpp \
-    src/DebugLog.cpp
+    src/DebugLog.cpp \
+    src/FrameStats.cpp
 
 HEADERS += src/Rustrx.h \
     src/Keys.h \
@@ -29,6 +30,7 @@ HEADERS += src/Rustrx.h \
     src/UnifiedPush.h \
     src/VoiceRecorder.h \
     src/DebugLog.h \
+    src/FrameStats.h \
     src/rustrx_core.h
 
 # the prebuilt core: lib/librustrx.so at build time, next to the data at run time
