@@ -49,10 +49,6 @@
         <source>Copy text</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-me-save">
-        <source>Save</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-me-remove">
         <source>Remove</source>
         <translation type="unfinished"></translation>
@@ -114,21 +110,12 @@
         <source>Not logged in</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-cover-connected">
-        <source>Connected</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-la-cover-connecting">
         <source>Connecting</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-cover-offline">
         <source>Offline</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-no-command-failed">
-        <source>%1 failed: %2</source>
-        <extracomment>transient error line, %1 the command, %2 the message</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-no-new-messages" numerus="yes">
@@ -162,16 +149,8 @@
         <source>Send</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-he-devices">
-        <source>Devices</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-la-this-device">
         <source>%1 (this device)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-la-loading-devices">
-        <source>Loading devices…</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-he-remove-device">
@@ -274,8 +253,8 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-empty-rooms-hint">
-        <source>Rooms you join appear here, sorted by activity.</source>
-        <oldsource>Rooms you join appear here, favourites on top.</oldsource>
+        <source>Join or create a room with Add Room / Contact in the pulley menu.</source>
+        <oldsource>Rooms you join appear here, sorted by activity.</oldsource>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-empty-favs-hint">
@@ -283,7 +262,8 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-empty-people-hint">
-        <source>Direct chats appear here.</source>
+        <source>Start a chat with someone with Add Room / Contact in the pulley menu.</source>
+        <oldsource>Direct chats appear here.</oldsource>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-me-take-photo">
@@ -399,17 +379,8 @@
         <source>Devices</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-devices">
-        <source>Logged-in devices</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-se-about">
         <source>About</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-la-about">
-        <source>Rustrx %1, core %2. A Matrix client built on matrix-rust-sdk. GPLv3+, github.com/moWerk/rustrx</source>
-        <extracomment>%1 app version, %2 core version</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-restored">
@@ -651,7 +622,7 @@
     </message>
     <message id="rustrx-se-members" numerus="yes">
         <source>%n members</source>
-        <extracomment>%n the number of members</extracomment>
+        <extracomment>%n the room&apos;s members</extracomment>
         <translation type="unfinished">
             <numerusform></numerusform>
         </translation>
@@ -720,10 +691,6 @@
     </message>
     <message id="rustrx-la-topic-optional">
         <source>Topic (optional)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-sw-public">
-        <source>Public</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-public-hint">
@@ -954,17 +921,885 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-background-hint">
-        <source>Notifications also when Rustrx is closed. It starts with the phone and stays connected without a window, shown by a line in the events view: tap it to open Rustrx, or quit it there. While the phone sleeps it checks for messages every five minutes.</source>
-        <oldsource>Notifications also when Rustrx is closed. It starts with the phone, stays connected and checks for messages every five minutes while the phone sleeps. Quit it from the pulley menu or from its notification.</oldsource>
+        <source>Rustrx starts with the phone and stays connected without a window, shown by a line in the events view: tap it to open Rustrx, or quit it there. While the phone sleeps it checks for messages every five minutes.</source>
+        <oldsource>Notifications also when Rustrx is closed. It starts with the phone and stays connected without a window, shown by a line in the events view: tap it to open Rustrx, or quit it there. While the phone sleeps it checks for messages every five minutes.</oldsource>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-no-background">
-        <source>Rustrx matrix client is running in the background</source>
-        <oldsource>Rustrx is running in the background</oldsource>
+        <source>Matrix client is running</source>
+        <oldsource>Rustrx matrix client is running in the background</oldsource>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-no-background-body">
-        <source>Notifications keep coming. Tap to open.</source>
+        <source>Tap to open Rustrx</source>
+        <oldsource>Notifications keep coming. Tap to open.</oldsource>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-reacting-to">
+        <source>Reacting to: %1</source>
+        <extracomment>%1 the message reacted to</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-react">
+        <source>React</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-devices-failed">
+        <source>The devices could not be loaded</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-react-text">
+        <source>React with text</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-reply-loading">
+        <source>Loading the original message</source>
+        <extracomment>the quoted message of a reply while it is fetched</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-reply-missing">
+        <source>Original message not available</source>
+        <extracomment>the quoted message of a reply cannot be had (deleted, or no access)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-in-thread">
+        <source>in a thread</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-thread-replies" numerus="yes">
+        <source>%n replies</source>
+        <extracomment>%n replies in a thread</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message id="rustrx-la-thread-new" numerus="yes">
+        <source>%n new</source>
+        <extracomment>%n replies not seen yet</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message id="rustrx-la-uploading">
+        <source>uploading %1 %</source>
+        <extracomment>a file on its way to the server, %1 how much of it, in percent</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-reply-thread">
+        <source>Reply in thread</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-text-copied">
+        <source>Text copied</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-add-emote">
+        <source>Add :%1: to my emoji</source>
+        <extracomment>%1 a custom emoji&apos;s shortcode</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-link-copied">
+        <source>Link copied</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-view-source">
+        <source>View source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-space-rooms" numerus="yes">
+        <source>%n rooms</source>
+        <extracomment>%n the rooms in a space</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message id="rustrx-la-replaced">
+        <source>Replaced by a new room. Tap to go there.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-re-declining">
+        <source>Declining</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-action-failed">
+        <source>%1 failed: %2</source>
+        <extracomment>transient error line, %1 what was tried, %2 the server&apos;s or the network&apos;s message</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-something-failed">
+        <source>Something went wrong: %1</source>
+        <extracomment>transient error line for anything without its own name, %1 the message</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-calls-allowed">
+        <source>Everyone in this room can now take part in calls</source>
+        <extracomment>a call was started where only moderators could take part; the starter could change that</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-send">
+        <source>Sending</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-react">
+        <source>Reacting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-redact">
+        <source>Removing the message</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-edit">
+        <source>Editing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-join">
+        <source>Joining the room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-dm">
+        <source>Starting the chat</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-create-room">
+        <source>Creating the room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-leave">
+        <source>Leaving the room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-invite">
+        <source>Inviting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-room">
+        <source>Changing the room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-fav">
+        <source>Changing favourites</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-notify">
+        <source>Changing notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-vote">
+        <source>Voting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-search">
+        <source>Searching</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-older">
+        <source>Loading older messages</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-media">
+        <source>Loading the picture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-rule-invite">
+        <source>Only invited people</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-rule-knock">
+        <source>Ask to join</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-rule-public">
+        <source>Anyone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-rule-restricted">
+        <source>Members of %1</source>
+        <extracomment>%1 a space</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-rule-restricted-any">
+        <source>Members of its spaces</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-rule-knock-restricted">
+        <source>Space members, others ask</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-space-add">
+        <source>Add to the space</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-space-add-none">
+        <source>No other rooms to add</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-new-space">
+        <source>New space</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-in-space">
+        <source>in %1</source>
+        <extracomment>%1 the space a new room or space goes into</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-space-name">
+        <source>Space name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-who-can-join">
+        <source>Who can join</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-rule-knock-hint">
+        <source>Anyone can ask to join; you or a moderator let them in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-rule-restricted-hint">
+        <source>Members of the space join without asking.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-rule-invite-hint">
+        <source>Only people you invite.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-alias-new-space">
+        <source>Address, like myspace</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-join">
+        <source>Join a space or room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-join-address">
+        <source>Address, like #room:server</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-kind-space">
+        <source>Space</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-kind-room">
+        <source>Room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-n-members" numerus="yes">
+        <source>%n members</source>
+        <extracomment>%n members</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message id="rustrx-la-preview-failed">
+        <source>Could not load a preview. You can still try to join, or ask to join.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-asked">
+        <source>You asked to join. You will get an invitation once they let you in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-preview-invited">
+        <source>You are invited: the invitation is with your rooms.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-preview-banned">
+        <source>You are banned from it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-preview-joined">
+        <source>You are in it already.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-knock-reason">
+        <source>Message (optional)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-open">
+        <source>Open</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-join">
+        <source>Join</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-knock">
+        <source>Ask to join</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-preview-invite-only">
+        <source>Only invited people can join. Ask someone inside for an invitation.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-knocks">
+        <source>Requests to join</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-knock-accept">
+        <source>Accept</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-knock-decline">
+        <source>Decline</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-knock-ban">
+        <source>Decline and ban</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-knock-space">
+        <source>asks to join the space %1</source>
+        <extracomment>%1 a space (a group of rooms)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-knock-room">
+        <source>asks to join %1</source>
+        <extracomment>%1 a room</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-knock-none">
+        <source>No open requests</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-session-kept">
+        <source>The server ended the session. Log in again as %1: your messages and keys are still on this phone.</source>
+        <extracomment>%1 the Matrix ID</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-account-service">
+        <source>%1 manages its logins in the browser. If the password is not accepted, log in with single sign-on.</source>
+        <extracomment>%1 the server name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-sso-waiting">
+        <source>Waiting for the login in the browser. If the browser did not open, open the link again or copy it into the browser.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-sso-open-again">
+        <source>Open again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-sso-copy">
+        <source>Copy link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-chats">
+        <source>Chats</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-spaces">
+        <source>Spaces</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-sort-activity">
+        <source>By activity</source>
+        <extracomment>room list order</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-sort-unread">
+        <source>Unread first</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-sort-name">
+        <source>Alphabetical</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-sort-favs-on-top">
+        <source>Favourites on top</source>
+        <extracomment>room list option, with any order</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-sort-low-last">
+        <source>Low priority at the bottom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-sort-hide-muted">
+        <source>Hide muted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-ph-room-search">
+        <source>Search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-join-address">
+        <source>Join a space or room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-new-space">
+        <source>New space</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-banner-knocks" numerus="yes">
+        <source>%n requests to join. Tap to answer.</source>
+        <extracomment>%n open requests to join rooms or spaces</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message id="rustrx-la-no-match">
+        <source>No rooms match “%1”</source>
+        <extracomment>%1 the search text</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-offline-hint">
+        <source>Rustrx connects again by itself once the network is back.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-empty-spaces-hint">
+        <source>A space groups rooms. Make one with New space, or join one with its address in the pulley menu.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-ph-member-search">
+        <source>Search members</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-no-member-match">
+        <source>No members match “%1”</source>
+        <extracomment>%1 the search text</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-agree">
+        <source>Agree</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-thanks-testing">
+        <source>Thanks for testing Rustrx!</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-prototype">
+        <source>Until version 1.0 Rustrx is a prototype: it is used every day, but things can still break or change, and some parts are unfinished.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-prototype-log">
+        <source>To fix problems without anyone having to make them happen again, Rustrx keeps a debug log: a small file on this phone that notes what the app does and its errors. It holds room and user IDs (also other people&apos;s) and server names, never message texts or passwords. It does not leave the phone unless you share it yourself (Settings, Debug log).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-prototype-keep-log">
+        <source>Keep the debug log</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-prototype-keep-log-hint">
+        <source>Can be changed any time in Settings.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-understood">
+        <source>I have understood the above</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-call-test">
+        <source>Call (test)</source>
+        <extracomment>experimental: a call through Element Call</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-room-picture">
+        <source>Change the room&apos;s picture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-leave-space-rooms">
+        <source>Leave the space and its rooms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-leave-space">
+        <source>Leave space</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-room-picture">
+        <source>Room picture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-room-picture">
+        <source>Setting the room&apos;s picture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-space">
+        <source>Space</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-threads">
+        <source>Threads</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-members" numerus="yes">
+        <source>Members (%n)</source>
+        <extracomment>%n the room&apos;s members</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message id="rustrx-la-rule-admins-only">
+        <source>Only admins can change it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-emote-added">
+        <source>Added :%1: to your emoji</source>
+        <extracomment>%1 the shortcode a custom emoji got in the user&apos;s own pack</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-attach-image">
+        <source>Attach an image</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-attach-file">
+        <source>Attach a file</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-attach-photo">
+        <source>Attach a photo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-attach-voice">
+        <source>Attach a voice message</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-call-join">
+        <source>Call in progress, tap to join</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-typing-to">
+        <source>Typing to %1</source>
+        <extracomment>%1 the room&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-typing-hint">
+        <source>Say so under the message field</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-typing-hint-hint">
+        <source>A line under the field reminds you that the room sees you typing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-closed-mode">
+        <source>When Rustrx is closed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-push">
+        <source>Push notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-closed-off">
+        <source>No notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-push-active">
+        <source>Through Foghorn and %1: nothing of Rustrx keeps running. The gateway and the push server see when a message comes and for which room, never what it says.</source>
+        <extracomment>%1 the push gateway&apos;s host</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-push-setting-up">
+        <source>Setting up: %1</source>
+        <extracomment>%1 what push is doing (registering, waiting for an address, an error)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-push-none-short">
+        <source> Push needs no running Rustrx: install a UnifiedPush distributor such as Foghorn (OpenRepos).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-closed-off-hint">
+        <source>Notifications only while Rustrx is open.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-background-line">
+        <source>Show the background line</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-background-line-hint">
+        <source>The line in the events view while Rustrx runs in the background. Without it, Rustrx runs unseen: open it from its icon, and switch background mode off to end it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-highlight-favs">
+        <source>Highlight Favs channels with new messages</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-highlight-favs-hint">
+        <source>A favourite with something unread glows calmly in the lists, its star with it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-separate-lists">
+        <source>Separate People tab</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-separate-lists-hint">
+        <source>Rooms and people as two tabs. When off, they share one list; the filter menu sorts and searches it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-separate-favs">
+        <source>Favourites tab</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-separate-favs-hint">
+        <source>The favourites as a tab of their own. When off, “Favourites on top” in the filter menu keeps them at hand.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-separate-spaces">
+        <source>Spaces tab</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-separate-spaces-hint">
+        <source>The spaces you are in (groups of rooms) as a tab: their rooms, joining them, asking to join, and requests to join them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-preview-lines">
+        <source>Message preview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-preview-lines-hint">
+        <source>Lines of the last message under a room&apos;s name.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-lines-1">
+        <source>1 line</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-lines-2">
+        <source>2 lines</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-lines-3">
+        <source>3 lines</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-reopen-last">
+        <source>Reopen the last chat</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-reopen-last-hint">
+        <source>Rustrx starts in the room or chat that was open when it was closed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-reset-identity">
+        <source>Reset encryption</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-re-reset-identity">
+        <source>Resetting the encryption</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-resetting">
+        <source>Resetting… the server may ask you to approve it in the browser.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-reset-identity-hint">
+        <source>No other device and no recovery key? A reset makes new encryption keys and a new backup with a new recovery key. Older encrypted messages stay unreadable, and your other devices have to be verified again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-open-approval">
+        <source>Open approval</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-new-recovery-key">
+        <source>New recovery key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-re-new-recovery-key">
+        <source>Making a new recovery key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-new-recovery-key">
+        <source>Making a new recovery key…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-new-recovery-key-hint">
+        <source>Lost the recovery key? A new one replaces it. The backup and your messages stay, only the old key stops working.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-debug-log">
+        <source>Debug log</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-debug-log">
+        <source>Keep a debug log</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-debug-log-hint">
+        <source>Rustrx notes what it does in a small file on the phone. If something goes wrong, share it with the developer, so nobody has to make it happen again. It holds room and user IDs, never message texts or passwords.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-share-log">
+        <source>Share the debug log</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-share-log-hint">
+        <source>A copy goes to Downloads, so you can also attach it to a mail or a forum post.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-share-log">
+        <source>Rustrx debug log</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-about-lines">
+        <source>Rustrx %1, core %2&lt;br&gt;A Matrix client built on &lt;a href=&apos;https://github.com/matrix-org/matrix-rust-sdk&apos;&gt;matrix-rust-sdk&lt;/a&gt;&lt;br&gt;GPLv3+, from moWerk with love&lt;br&gt;&lt;a href=&apos;https://github.com/moWerk/rustrx&apos;&gt;github.com/moWerk/rustrx&lt;/a&gt;</source>
+        <extracomment>%1 app version, %2 core version; lines separated by &lt;br&gt;, keep the link</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-about-twemoji">
+        <source>Emoji: &lt;a href=&apos;https://github.com/jdecked/twemoji&apos;&gt;Twemoji&lt;/a&gt; by Twitter, Inc. and other contributors and Jason Sofonia &amp;amp; Justine De Caires, &lt;a href=&apos;https://creativecommons.org/licenses/by/4.0/&apos;&gt;CC-BY 4.0&lt;/a&gt;</source>
+        <extracomment>attribution of the emoji pictures; keep the links and names as they are</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-about-llmgd">
+        <source>&lt;a href=&apos;https://github.com/moWerk/llmgd-specs&apos;&gt;LLMGD-3&lt;/a&gt; · origin O1: written by an LLM, directed, understood and tested on the phone by the author; not yet reviewed by others</source>
+        <extracomment>the LLM disclosure grade; keep the link and the grade as they are</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-own-picture">
+        <source>Your picture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-own-picture">
+        <source>Setting your picture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-reset-approve">
+        <source>Approve the reset on your server&apos;s page in the browser (within two minutes). If it did not open, use the buttons above.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-copy-source">
+        <source>Copy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-source-copied">
+        <source>Source copied</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-source">
+        <source>Message source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-latest-edit">
+        <source>Latest edit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-state-joined">
+        <source>joined</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-state-invited">
+        <source>invited</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-state-knocked">
+        <source>asked to join</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-space-settings">
+        <source>Space settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-copy-space-link">
+        <source>Copy link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-space-add">
+        <source>Add an existing room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-space-new-space">
+        <source>New subspace</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-space-new-room">
+        <source>New room in this space</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-space-rooms">
+        <source>Rooms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-suggested">
+        <source>suggested</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-space-remove">
+        <source>Remove from the space</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-space-empty">
+        <source>No rooms in this space yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-space-empty-hint">
+        <source>Add one from the pulley menu.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-ph-thread">
+        <source>Reply in the thread</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-thread">
+        <source>Thread</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-threads">
+        <source>Threads</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-threads-none">
+        <source>No threads in this room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-threads-none-hint">
+        <source>Long press a message and choose Reply in thread to start one.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-video-error">
+        <source>This video cannot be played here. %1</source>
+        <extracomment>%1 the player&apos;s reason</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-invitation">
+        <source>Invitation</source>
+        <extracomment>notification title for an invitation</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-invite-dm">
+        <source>%1 wants to chat with you</source>
+        <extracomment>%1 who invites</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-invite-room">
+        <source>%1 invites you to %2</source>
+        <extracomment>%1 who invites, %2 the room</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-call-ring">
+        <source>%1 is calling</source>
+        <extracomment>notification title, %1 who calls</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-call-group">
+        <source>Call in %1</source>
+        <extracomment>notification title, %1 the room</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-call-started">
+        <source>%1 started a call</source>
+        <extracomment>notification body, %1 who started the call</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-call-answer">
+        <source>Answer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-call-decline">
+        <source>Decline</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-knock">
+        <source>Request to join</source>
+        <extracomment>notification title for a request to join</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-knock-space">
+        <source>%1 asks to join the space %2</source>
+        <extracomment>%1 who asks, %2 the space</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-knock-room">
+        <source>%1 asks to join %2</source>
+        <extracomment>%1 who asks, %2 the room</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-spoiler">
+        <source>(spoiler)</source>
+        <extracomment>in place of a hidden part of a message</extracomment>
         <translation type="unfinished"></translation>
     </message>
 </context>
