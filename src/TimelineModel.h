@@ -23,6 +23,7 @@
 #include <QSize>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QVector>
 
 // The open room's timeline, newest first (row 0), for a list laid out
 // bottom to top. Rows are the core's item objects; media paths are kept
@@ -62,6 +63,22 @@ signals:
     void emoteWanted(const QString &mxc);
 
 private:
+    // a row's rendered parts, made when first asked for and kept until the
+    // row or what it shows changes
+    struct Rendered {
+        bool hasHtml = false, hasReply = false, hasReactions = false, hasEmotes = false;
+        QString html;
+        QVariant reply;
+        QVariantList reactions;
+        QVariantList emotes;
+    };
+    Rendered &rendered(const QVariantMap &item) const;
+    QString cachedHtml(const QVariantMap &item) const;
+    QVariant cachedReply(const QVariantMap &item) const;
+    QVariantList cachedReactions(const QVariantMap &item) const;
+    QVariantList cachedEmotes(const QVariantMap &item) const;
+    void forget(const QVariant &item);
+    QVector<int> changedRoles(const QVariantMap &from, const QVariantMap &to) const;
     QVariantMap withMedia(QVariantMap item) const;
     QString renderHtml(const QString &html, int emojiHeight = 0) const;
     QVariantList renderReactions(const QVariantList &reactions) const;
@@ -74,6 +91,13 @@ private:
     QHash<QString, QString> m_media;
     QHash<QString, QString> m_thumbs;
     QHash<int, QByteArray> m_roles;
+    // the map key of each role, and the role of each key
+    QHash<int, QString> m_keys;
+    QHash<QString, int> m_roleOf;
+    int m_htmlRole, m_reactionsRole, m_replyRole, m_emotesRole, m_mediaRole, m_thumbRole;
+    mutable QHash<QString, Rendered> m_rendered;
+    // the emoji cache was emptied: the next snapshot asks for every row's
+    bool m_askAll = false;
     struct Emote { QString path; QSize size; };
     QHash<QString, Emote> m_emotes;
     QSet<QString> m_emotesAsked;

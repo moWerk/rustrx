@@ -20,6 +20,7 @@
 #include <QAbstractListModel>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QVector>
 
 // A list of rooms as the core sorts them (invitations, favourites, then by
 // activity). Each row is the room's JSON object; roles map to its keys.
@@ -42,8 +43,13 @@ signals:
     void countChanged();
 
 private:
+    QVector<int> changedRoles(const QVariantMap &from, const QVariantMap &to) const;
+
     QVariantList m_rooms;
     QHash<int, QByteArray> m_roles;
+    // the map key of each role, and the role of each key
+    QHash<int, QString> m_keys;
+    QHash<QString, int> m_roleOf;
 };
 
 #endif

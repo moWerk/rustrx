@@ -53,8 +53,18 @@ TimelineModel::TimelineModel(QObject *parent)
                             "caption", "shield", "answers", "max_selections", "ended", "upload_done", "upload_total",
                             "emotes" };
     int role = Qt::UserRole + 1;
-    for (const char *n : names)
-        m_roles.insert(role++, QByteArray(n));
+    for (const char *n : names) {
+        m_roles.insert(role, QByteArray(n));
+        m_keys.insert(role, QString::fromLatin1(n));
+        m_roleOf.insert(QString::fromLatin1(n), role);
+        ++role;
+    }
+    m_htmlRole = m_roleOf.value(QStringLiteral("html"));
+    m_reactionsRole = m_roleOf.value(QStringLiteral("reactions"));
+    m_replyRole = m_roleOf.value(QStringLiteral("reply_to"));
+    m_emotesRole = m_roleOf.value(QStringLiteral("emotes"));
+    m_mediaRole = m_roleOf.value(QStringLiteral("media_path"));
+    m_thumbRole = m_roleOf.value(QStringLiteral("thumb_path"));
 }
 
 int TimelineModel::rowCount(const QModelIndex &parent) const
@@ -67,25 +77,111 @@ QVariant TimelineModel::data(const QModelIndex &index, int role) const
     if (!index.isValid() || index.row() >= m_items.size())
         return QVariant();
     const QVariantMap item = m_items.at(index.row()).toMap();
-    const QByteArray name = m_roles.value(role);
-    if (name == "media_path")
-        return m_media.value(item.value("event_id").toString());
-    if (name == "thumb_path")
-        return m_thumbs.value(item.value("event_id").toString());
-    if (name == "html")
-        return renderHtml(item.value("html").toString());
-    if (name == "reactions")
-        return renderReactions(item.value("reactions").toList());
-    if (name == "emotes")
-        return emotesOf(item);
-    if (name == "reply_to")
-        return renderReply(item.value("reply_to"));
-    return item.value(QString::fromLatin1(name));
+    if (role == m_mediaRole)
+        return m_media.value(item.value(QStringLiteral("event_id")).toString());
+    if (role == m_thumbRole)
+        return m_thumbs.value(item.value(QStringLiteral("event_id")).toString());
+    if (role == m_htmlRole)
+        return cachedHtml(item);
+    if (role == m_reactionsRole)
+        return cachedReactions(item);
+    if (role == m_emotesRole)
+        return cachedEmotes(item);
+    if (role == m_replyRole)
+        return cachedReply(item);
+    return item.value(m_keys.value(role));
 }
 
 QHash<int, QByteArray> TimelineModel::roleNames() const
 {
     return m_roles;
+}
+
+// QML reads a role at every binding that names it (Qt does not keep the
+// values), so the rendering is done once per row and kept by the row's id
+TimelineModel::Rendered &TimelineModel::rendered(const QVariantMap &item) const
+{
+    return m_rendered[item.value(QStringLiteral("id")).toString()];
+}
+
+QString TimelineModel::cachedHtml(const QVariantMap &item) const
+{
+    Rendered &r = rendered(item);
+    if (!r.hasHtml) {
+        r.html = renderHtml(item.value(QStringLiteral("html")).toString());
+        r.hasHtml = true;
+    }
+    return r.html;
+}
+
+QVariant TimelineModel::cachedReply(const QVariantMap &item) const
+{
+    Rendered &r = rendered(item);
+    if (!r.hasReply) {
+        r.reply = renderReply(item.value(QStringLiteral("reply_to")));
+        r.hasReply = true;
+    }
+    return r.reply;
+}
+
+QVariantList TimelineModel::cachedReactions(const QVariantMap &item) const
+{
+    Rendered &r = rendered(item);
+    if (!r.hasReactions) {
+        r.reactions = renderReactions(item.value(QStringLiteral("reactions")).toList());
+        r.hasReactions = true;
+    }
+    return r.reactions;
+}
+
+QVariantList TimelineModel::cachedEmotes(const QVariantMap &item) const
+{
+    Rendered &r = rendered(item);
+    if (!r.hasEmotes) {
+        r.emotes = emotesOf(item);
+        r.hasEmotes = true;
+    }
+    return r.emotes;
+}
+
+void TimelineModel::forget(const QVariant &item)
+{
+    m_rendered.remove(item.toMap().value(QStringLiteral("id")).toString());
+}
+
+// the roles whose values differ between two versions of a row, with the
+// ones made from them; no roles (all of them) when a key without a role
+// changed
+QVector<int> TimelineModel::changedRoles(const QVariantMap &from, const QVariantMap &to) const
+{
+    QVector<int> roles;
+    bool unknown = false;
+    auto add = [&](int role) {
+        if (!roles.contains(role))
+            roles << role;
+    };
+    auto note = [&](const QString &key) {
+        const int role = m_roleOf.value(key, -1);
+        if (role < 0) {
+            unknown = true;
+            return;
+        }
+        add(role);
+        if (role == m_htmlRole || role == m_reactionsRole)
+            add(m_emotesRole);
+        // the media are looked up by the event's id
+        if (key == QLatin1String("event_id")) {
+            add(m_mediaRole);
+            add(m_thumbRole);
+        }
+    };
+    for (auto it = from.constBegin(); it != from.constEnd(); ++it)
+        if (it.value() != to.value(it.key()))
+            note(it.key());
+    for (auto it = to.constBegin(); it != to.constEnd(); ++it)
+        if (!from.contains(it.key()))
+            note(it.key());
+    return unknown ? QVector<int>() : roles;
 }
 
 QVariantMap TimelineModel::withMedia(QVariantMap item) const
@@ -94,11 +190,11 @@ QVariantMap TimelineModel::withMedia(QVariantMap item) const
     item.insert("media_path", m_media.value(id));
     item.insert("thumb_path", m_thumbs.value(id));
     if (item.contains("html"))
-        item.insert("html", renderHtml(item.value("html").toString()));
+        item.insert("html", cachedHtml(item));
     if (item.contains("reactions"))
-        item.insert("reactions", renderReactions(item.value("reactions").toList()));
+        item.insert("reactions", cachedReactions(item));
     if (item.contains("reply_to"))
-        item.insert("reply_to", renderReply(item.value("reply_to")));
+        item.insert("reply_to", cachedReply(item));
     return item;
 }
 
@@ -372,15 +468,22 @@ bool TimelineModel::usesEmote(const QVariantMap &item, const QString &mxc) const
 void TimelineModel::setEmotePath(const QString &mxc, const QString &path)
 {
     m_emotes.insert(mxc, Emote { path, QImageReader(path).size() });
-    for (int i = 0; i < m_items.size(); ++i)
-        if (usesEmote(m_items.at(i).toMap(), mxc))
-            emit dataChanged(index(i), index(i));
+    const QVector<int> roles { m_htmlRole, m_replyRole, m_reactionsRole, m_emotesRole };
+    for (int i = 0; i < m_items.size(); ++i) {
+        if (usesEmote(m_items.at(i).toMap(), mxc)) {
+            forget(m_items.at(i));
+            emit dataChanged(index(i), index(i), roles);
+        }
+    }
 }
 
 void TimelineModel::clearEmotes()
 {
     m_emotes.clear();
     m_emotesAsked.clear();
+    // rendered rows hold the pictures' paths
+    m_rendered.clear();
+    m_askAll = true;
 }
 
 void TimelineModel::setEmoteSize(int size)
@@ -388,9 +491,10 @@ void TimelineModel::setEmoteSize(int size)
     if (size == m_emoteSize || size <= 0)
         return;
     m_emoteSize = size;
+    m_rendered.clear();
     emit emoteSizeChanged();
     if (!m_items.isEmpty())
-        emit dataChanged(index(0), index(m_items.size() - 1));
+        emit dataChanged(index(0), index(m_items.size() - 1), { m_htmlRole, m_replyRole });
 }
 
 QVariantMap TimelineModel::get(int row) const
@@ -415,28 +519,41 @@ void TimelineModel::setItems(const QVariantList &items)
 
     const int before = m_items.size();
     QSet<QString> wanted;
-    for (const QVariant &v : target) {
+    for (const QVariant &v : target)
         wanted.insert(idOf(v));
-        askEmotes(v.toMap());
-    }
+    // the custom emoji are looked for in new and changed rows only (all of
+    // them once after the emoji cache was emptied)
+    const bool askAll = m_askAll;
+    m_askAll = false;
+    QVector<int> ask;
 
     // 1. rows that are gone, from the end so the indices stay valid
     for (int i = m_items.size() - 1; i >= 0; --i) {
         if (!wanted.contains(idOf(m_items.at(i)))) {
+            forget(m_items.at(i));
             beginRemoveRows(QModelIndex(), i, i);
             m_items.removeAt(i);
             endRemoveRows();
         }
     }
 
+    // a row with new content: rendered anew, and only its changed roles told
+    auto update = [&](int i) {
+        if (m_items.at(i) == target.at(i))
+            return;
+        const QVector<int> roles = changedRoles(m_items.at(i).toMap(), target.at(i).toMap());
+        forget(m_items.at(i));
+        m_items[i] = target.at(i);
+        if (!askAll)
+            ask << i;
+        emit dataChanged(index(i), index(i), roles);
+    };
+
     // 2. walk the target order: keep, move up, or insert
     for (int i = 0; i < target.size(); ++i) {
         const QString id = idOf(target.at(i));
         if (i < m_items.size() && idOf(m_items.at(i)) == id) {
-            if (m_items.at(i) != target.at(i)) {
-                m_items[i] = target.at(i);
-                emit dataChanged(index(i), index(i));
-            }
+            update(i);
             continue;
         }
         int from = -1;
@@ -450,15 +567,22 @@ void TimelineModel::setItems(const QVariantList &items)
             beginMoveRows(QModelIndex(), from, from, QModelIndex(), i);
             m_items.move(from, i);
             endMoveRows();
-            if (m_items.at(i) != target.at(i)) {
-                m_items[i] = target.at(i);
-                emit dataChanged(index(i), index(i));
-            }
+            update(i);
         } else {
+            forget(target.at(i));
             beginInsertRows(QModelIndex(), i, i);
             m_items.insert(i, target.at(i));
             endInsertRows();
+            if (!askAll)
+                ask << i;
         }
+    }
+    if (askAll) {
+        for (const QVariant &v : target)
+            askEmotes(v.toMap());
+    } else {
+        for (int i : ask)
+            askEmotes(target.at(i).toMap());
     }
     if (m_items.size() != before)
         emit countChanged();
@@ -470,7 +594,7 @@ void TimelineModel::setMediaPath(const QString &eventId, bool thumb, const QStri
     emit mediaChanged(eventId);
     for (int i = 0; i < m_items.size(); ++i) {
         if (m_items.at(i).toMap().value("event_id").toString() == eventId) {
-            emit dataChanged(index(i), index(i));
+            emit dataChanged(index(i), index(i), { m_mediaRole, m_thumbRole });
             break;
         }
     }
@@ -478,6 +602,7 @@ void TimelineModel::setMediaPath(const QString &eventId, bool thumb, const QStri
 
 void TimelineModel::clear()
 {
+    m_rendered.clear();
     if (m_items.isEmpty())
         return;
     beginResetModel();

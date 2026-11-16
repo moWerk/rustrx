@@ -27,8 +27,12 @@ RoomModel::RoomModel(QObject *parent)
                             "muted", "own_read", "replaced_by", "in_call",
                             "is_space", "join_rule", "can_join_rules", "can_manage_children", "children", "parents" };
     int role = Qt::UserRole + 1;
-    for (const char *n : names)
-        m_roles.insert(role++, QByteArray(n));
+    for (const char *n : names) {
+        m_roles.insert(role, QByteArray(n));
+        m_keys.insert(role, QString::fromLatin1(n));
+        m_roleOf.insert(QString::fromLatin1(n), role);
+        ++role;
+    }
 }
 
 int RoomModel::rowCount(const QModelIndex &parent) const
@@ -40,7 +44,7 @@ QVariant RoomModel::data(const QModelIndex &index, int role) const
 {
     if (!index.isValid() || index.row() >= m_rooms.size())
         return QVariant();
-    return m_rooms.at(index.row()).toMap().value(QString::fromLatin1(m_roles.value(role)));
+    return m_rooms.at(index.row()).toMap().value(m_keys.value(role));
 }
 
 QHash<int, QByteArray> RoomModel::roleNames() const
@@ -51,6 +55,28 @@ QHash<int, QByteArray> RoomModel::roleNames() const
 QVariantMap RoomModel::get(int row) const
 {
     return row >= 0 && row < m_rooms.size() ? m_rooms.at(row).toMap() : QVariantMap();
+}
+
+// the roles whose values differ between two versions of a room; no roles
+// (all of them) when a key without a role changed
+QVector<int> RoomModel::changedRoles(const QVariantMap &from, const QVariantMap &to) const
+{
+    QVector<int> roles;
+    bool unknown = false;
+    auto note = [&](const QString &key) {
+        const int role = m_roleOf.value(key, -1);
+        if (role < 0)
+            unknown = true;
+        else if (!roles.contains(role))
+            roles << role;
+    };
+    for (auto it = from.constBegin(); it != from.constEnd(); ++it)
+        if (it.value() != to.value(it.key()))
+            note(it.key());
+    for (auto it = to.constBegin(); it != to.constEnd(); ++it)
+        if (!from.contains(it.key()))
+            note(it.key());
+    return unknown ? QVector<int>() : roles;
 }
 
 // Same rows in the same order: update in place, so the list does not jump
@@ -101,18 +127,15 @@ void RoomModel::setRooms(const QVariantList &rooms)
     }
 
     // same order now; take the fresh fields, and tell only about the rows
-    // that changed (every row on every update rebound every delegate)
-    int first = -1, last = -1;
-    for (int i = 0; i < rooms.size(); ++i) {
-        if (m_rooms.at(i) != rooms.at(i)) {
-            if (first < 0)
-                first = i;
-            last = i;
-        }
-    }
+    // and roles that changed (every row on every update rebound every
+    // delegate, and a range rebound the unchanged rows inside it)
+    QVector<QPair<int, QVector<int>>> changed;
+    for (int i = 0; i < rooms.size(); ++i)
+        if (m_rooms.at(i) != rooms.at(i))
+            changed.append(qMakePair(i, changedRoles(m_rooms.at(i).toMap(), rooms.at(i).toMap())));
     m_rooms = rooms;
-    if (first >= 0)
-        emit dataChanged(index(first), index(last));
+    for (const auto &c : changed)
+        emit dataChanged(index(c.first), index(c.first), c.second);
     if (before != rooms.size())
         emit countChanged();
 }
