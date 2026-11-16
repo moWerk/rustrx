@@ -52,6 +52,8 @@ Page {
             //% "Saved to %1"
             Notices.show(qsTrId("rustrx-no-saved").arg(path))
         }
+        // the error names no event; one export runs at a time
+        onErrorOccurred: if (cmd === "get_media") exporting = false
     }
 
     SilicaFlickable {

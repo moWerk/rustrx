@@ -149,6 +149,8 @@ Page {
     Connections {
         target: rustrx
         onPaginated: if (roomId === page.roomId) { paginating = false; page.atStart = atStart }
+        // a failed page (no network while scrolling up): the next scroll tries again
+        onErrorOccurred: if (cmd === "paginate_back") paginating = false
         onTyping: if (roomId === page.roomId) page.typingNames = names
         onImagePacks: if (roomId === page.roomId) page.packs = packs
         onEmoteAdded: {

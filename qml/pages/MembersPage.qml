@@ -61,6 +61,7 @@ Page {
             pageStack.replaceAbove(main, Qt.resolvedUrl("RoomPage.qml"),
                                    { roomId: roomId, roomName: rustrx.roomInfo(roomId).name || userId })
         }
+        onErrorOccurred: if (cmd === "create_dm") page.pendingDm = ""
     }
 
     // the title and the search above the list, not in it: a new list with

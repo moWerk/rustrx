@@ -166,6 +166,7 @@ ListItem {
             if (exportOpens) Qt.openUrlExternally("file://" + path)
             else Notices.show(qsTrId("rustrx-no-saved").arg(path))
         }
+        onErrorOccurred: if (exporting && cmd === "get_media") exporting = false
     }
 
     // a media row asks for its picture once it is on screen: the thumbnail

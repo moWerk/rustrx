@@ -69,7 +69,10 @@ Page {
         }
         onJoined: if (page.pending.length) open(roomId, page.pending)
         onDmReady: if (page.pending.length) open(roomId, page.pending)
-        onErrorOccurred: page.pending = ""
+        onErrorOccurred: {
+            page.pending = ""
+            if (cmd === "search") page.searching = false
+        }
     }
 
     ListModel { id: hits }

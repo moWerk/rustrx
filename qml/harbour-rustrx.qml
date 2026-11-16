@@ -219,6 +219,9 @@ ApplicationWindow {
             if (data.state === "requested" && !data.we_started) showVerification(data)
         }
         onErrorOccurred: {
+            // a chat asked for by a link that could not be made: no later
+            // room may open in its place
+            if (cmd === "create_dm") pendingDm = false
             // the pages that sent these show their errors in place: settings
             // (recovery), keys, message source, devices, the login's server
             if (["recovery_recover", "recovery_enable", "recovery_reset", "identity_reset",
