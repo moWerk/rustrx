@@ -1,6 +1,6 @@
 # Calls in Rustrx: plan and spike
 
-Status: spike on branch `calls-spike`. First call on 2026-11-15, 01:58, on the
+Status: in Rustrx since 0.4.4 (the spike branch was merged). First call on 2026-11-15, 01:58, on the
 Jolla Phone 2026: Element Call joined a room, camera and microphone working.
 
 ## How Matrix calls work today

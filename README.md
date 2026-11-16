@@ -126,6 +126,8 @@ stickers. It also works well as the client for a second account next to another 
 
 ## How it is built
 
+[review-and-architecture-hints.md](review-and-architecture-hints.md) is the map for reviewers.
+
 `core/` is a Rust crate that wraps matrix-rust-sdk behind three C functions
 (`core/src/lib.rs`). Commands go in as JSON, events come back as JSON on one
 callback. It is cross-compiled for aarch64 with `cargo-zigbuild`
