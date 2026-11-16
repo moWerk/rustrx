@@ -440,6 +440,10 @@ impl Core {
     }
 
     pub(crate) async fn logout(&'static self) -> Result<()> {
+        // a call in progress is left while the client can still say so;
+        // the teardown below only stops it, and the room would show this
+        // device in the call until its membership expired
+        self.call_end().await;
         // out of the state first: nothing below may hold the lock, or every
         // other command waits for the server (or its timeout) too
         let teardown = self.state.lock().await.take_login();
