@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Commands from the UI: parsing and dispatch. Each command is one call
 //! into the file of its domain; the arms follow protocol.rs's sections.
 //! (part of `impl Core`, split out of core.rs; the items it uses live there)

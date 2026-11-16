@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The commands the UI sends, one JSON object each with a "cmd" field.
 //! This enum is the contract (docs/PROTOCOL.md is written from it): a
 //! command that does not match fails before anything runs, with serde's

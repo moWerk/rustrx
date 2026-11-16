@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Push (UnifiedPush through a distributor such as Foghorn): the pusher on
 //! the homeserver, and one pushed message fetched by a process woken for it.
 //! The UI side (registering, the endpoint, the gateway, the D-Bus connector)

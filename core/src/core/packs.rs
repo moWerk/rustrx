@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Custom emoji and stickers: Matrix image packs (MSC2545, as Element,
 //! Cinny, FluffyChat and nheko use them), sending them, and adding one to
 //! the user's own pack. (part of `impl Core`; docs/EMOJI.md has the design)

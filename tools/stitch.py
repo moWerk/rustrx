@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Stitch phone screenshots side by side into one wide image for the forum,
 which puts margins between separate pictures.
 usage: stitch.py OUT.png SHOT.png [SHOT.png ...]   (3 or 4 shots work best)"""

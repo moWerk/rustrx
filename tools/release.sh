@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Tag and publish a release: push main, tag vVERSION, create the GitHub
 # release (marked latest, so Harpoon and others can follow it) with the RPM and the notes. The repo must exist (created by
 # the author). usage: tools/release.sh VERSION NOTES.md

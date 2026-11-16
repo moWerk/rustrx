@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The account: recovery and the encryption identity, room keys, devices,
 //! the profile, ignored users and the media kept on the phone.
 //! (part of `impl Core`; verification is in verification.rs)

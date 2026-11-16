@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Cross-build librustrx.so for SailfishOS (aarch64, glibc >= 2.38) on a Linux
 # host with rustup and cargo-zigbuild. Run from core/. Output:
 # target/aarch64-unknown-linux-gnu/release/librustrx.so

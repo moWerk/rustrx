@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Start Rustrx on the Jolla Phone 2026 from the shell with the session's
 # environment and the core's log on, log to /tmp/rustrx.log on the phone.
 # usage: tools/run-on-phone.sh [start|stop|log]

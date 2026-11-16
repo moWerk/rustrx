@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 /*
  * Frame script for the call page's WebView (runs in the content process).
  * Element Call talks the Matrix widget API by postMessage to its "parent",

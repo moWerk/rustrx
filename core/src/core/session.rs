@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Logging in and out, restoring and saving the session, the server probe.
 //! (part of `impl Core`, split out of core.rs; the items it uses live there)
 

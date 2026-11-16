@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Rooms: joining, leaving and making them, their settings, members and
 //! the search for people and public rooms. (part of `impl Core`; spaces,
 //! previews and join rules are in spaces.rs)

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Threads: replies gathered under a root message. The room's timeline
 //! hides them (its root carries a summary: how many, the latest); a
 //! thread opened shows them in a timeline of its own, where sending goes

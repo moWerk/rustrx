@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Requests to join (knocking): a room or space whose join rule is "knock"
 //! lets people ask to come in; whoever may invite there answers them.
 //! (part of `impl Core`; spaces are not listed as rooms, their requests

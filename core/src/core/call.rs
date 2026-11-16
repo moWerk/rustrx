@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Calls through Element Call (MatrixRTC with a LiveKit server), the way
 //! Element X does them: Element Call is a web app shown in a WebView, and
 //! the SDK's widget driver answers its Matrix requests (MSC2762, MSC3819).

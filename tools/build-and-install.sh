@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Fetch the core from the e15, build the RPM in the SDK container, install
 # on the Jolla Phone 2026 (ssh alias jp26, password login) and start it.
 # usage: tools/build-and-install.sh [--no-fetch] [--no-install]

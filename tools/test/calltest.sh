@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # usage: sh calltest.sh ROOM_ID SECONDS   (as defaultuser, on the phone)
 L=~/.local/share/net.mowerk/harbour-rustrx/logs/app.log
 D=~/.cache/rustrx-test/dev.sh

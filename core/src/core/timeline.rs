@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The open room: its timeline, sending, receipts, typing, media.
 //! (part of `impl Core`, split out of core.rs; the items it uses live there)
 

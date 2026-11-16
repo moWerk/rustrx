@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Spaces: rooms that group rooms (and other spaces). Joined spaces come
 //! with the room list (marked is_space); this part holds what goes beyond
 //! a room: a space's rooms (the server's hierarchy, through the SDK's

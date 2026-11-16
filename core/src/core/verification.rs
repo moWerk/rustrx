@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Device verification (emoji).
 //! (part of `impl Core`, split out of core.rs; the items it uses live there)
 
