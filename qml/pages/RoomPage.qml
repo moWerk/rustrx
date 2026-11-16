@@ -415,6 +415,10 @@ Page {
         anchors.bottomMargin: Math.max(0, page.emojiLift - page.keyboardSize)
         verticalLayoutDirection: ListView.BottomToTop
         model: rustrx.timeline
+        // read once the newest end is reached (scrolled to, or arrived at):
+        // the room opens at the read marker, and marking on every return
+        // moved the marker under someone scrolled up
+        onAtYBeginningChanged: if (atYBeginning && page.status === PageStatus.Active) page.markRead()
         // no current item: a message arriving at the newest end moved it, and
         // the view gave it the focus, away from the composer in the header,
         // so the keyboard closed on every message sent or received
