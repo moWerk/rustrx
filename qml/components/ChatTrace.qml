@@ -21,7 +21,9 @@ import Nemo.Configuration 1.0
 // Chat position trace: every move of the room's list with what caused it,
 // in the app log. Off unless switched on:
 // dconf write /apps/harbour-rustrx/debugChatPos true
-QtObject {
+// an Item, not a QtObject: Qt 5.6 parses no `default property list<T>`,
+// and the timers and connections below need a parent that takes children
+Item {
     id: trace
 
     // the room page (its status, keyboardSize, emojiLift and composer), its list and model
@@ -36,8 +38,6 @@ QtObject {
     // the first move after a status change is always logged
     property bool fresh
 
-    // a bare QtObject takes no children: this list holds them
-    default property list<QtObject> _children
 
     ConfigurationValue { id: debugChatPos; key: "/apps/harbour-rustrx/debugChatPos"; defaultValue: false }
     Connections {

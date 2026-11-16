@@ -26,7 +26,9 @@ import Sailfish.Silica 1.0
 // are noted; back, they are put back once, after the keyboard has
 // settled. (Silica's auto scroll to the focused text field, the main
 // mover before, is off: see the room's composer.)
-QtObject {
+// an Item, not a QtObject: Qt 5.6 parses no `default property list<T>`,
+// and the timers and connections below need a parent that takes children
+Item {
     id: anchor
 
     property Item page
@@ -43,8 +45,6 @@ QtObject {
     property bool pending
     property bool applying
 
-    // a bare QtObject takes no children: this list holds them
-    default property list<QtObject> _children
 
     // once the keyboard has stopped moving (its animation changes the
     // height): 300 ms the first time, for a keyboard that does not move
