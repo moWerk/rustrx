@@ -120,7 +120,9 @@ stickers. It also works well as the client for a second account next to another 
   device are kept, so logging in again brings back keys and history.
 - A debug log, on until 1.0 and off with a switch: if something goes wrong,
   Settings > Debug log shares it, so nobody has to make it happen again. It
-  holds room and user IDs, never message texts or passwords.
+  holds room and user IDs, never message texts or passwords. During a call
+  it also holds Element Call's own warnings, with query strings and long
+  ids cut out.
 - The cover shows unread counts and the connection state, with actions for
   search and the latest room with unread messages.
 

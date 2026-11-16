@@ -77,10 +77,24 @@ const POLYFILL = "(" + function () {
         + " Worker=" + (typeof Worker));
 } + ")();";
 
+// A line for the debug log, which a user shares: capped (a flood would push
+// everything else out), cut short, and without what tends to be private in
+// a call page's messages: query strings (tokens) and long opaque runs (keys,
+// ids). Element Call's own text can still name people; the README says so.
+var sentToLog = 0;
+function forward(level, text) {
+    if (sentToLog++ > 2000) return;
+    var t = String(text).slice(0, 600).replace(/\?[^\s"']*/g, "?…").replace(/[A-Za-z0-9+\/=_-]{40,}/g, "…");
+    try { sendAsyncMessage("rustrx:console", { level: level, text: t }); } catch (e) {}
+}
+
+// the page's own console lines, from Element Call only
 addEventListener("rustrx-console", function (e) {
+    var t = e.target, win = t && (t.ownerGlobal || t.defaultView || t);
+    if (!win || !win.location || win.location.origin !== ORIGIN) return;
     var d = String(Components.utils.waiveXrays(e).detail || "");
     var i = d.indexOf("|");
-    try { sendAsyncMessage("rustrx:console", { level: d.slice(0, i), text: d.slice(i + 1) }); } catch (err) {}
+    forward(d.slice(0, i), d.slice(i + 1));
 }, true, true);
 
 addEventListener("DOMWindowCreated", function (e) {
@@ -120,11 +134,6 @@ addMessageListener("rustrx:toWidget", function (msg) {
 // Element Call's errors and warnings, and the engine's script errors, for
 // the debug log: what a call that fails says about it
 (function () {
-    var sent = 0;
-    function forward(level, text) {
-        if (sent++ > 2000) return;   // a flood would push everything else out of the log
-        try { sendAsyncMessage("rustrx:console", { level: level, text: String(text).slice(0, 600) }); } catch (e) {}
-    }
     try {
         Services.obs.addObserver({
             observe: function (subject) {
