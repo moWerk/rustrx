@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 
 // All threads of a room, the latest activity first: who started each and
@@ -85,7 +86,7 @@ Page {
                     textFormat: Text.StyledText
                     font.bold: row.fresh > 0
                     color: row.highlighted ? Theme.highlightColor : Theme.primaryColor
-                    text: rustrx.emojify(page.escapeText(row.t.root.body), Math.round(font.pixelSize * 1.2))
+                    text: rustrx.emojify(page.escapeText(row.t.root.body), Math.round(font.pixelSize * Tunables.emojiScaleList))
                 }
                 // replies, new ones, the latest
                 Label {
@@ -100,7 +101,7 @@ Page {
                             s += " · <b><font color=\"" + Theme.highlightColor + "\">" + qsTrId("rustrx-la-thread-new", row.fresh) + "</font></b>"
                         if (row.t.latest && row.t.latest.body)
                             s += " · " + page.escapeText(row.t.latest.sender_name) + ": "
-                                 + rustrx.emojify(page.escapeText(row.t.latest.body), Math.round(font.pixelSize * 1.25))
+                                 + rustrx.emojify(page.escapeText(row.t.latest.body), Math.round(font.pixelSize * Tunables.emojiScale))
                         return s
                     }
                 }

@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 
 // One room: name and a second line (topic, or the invitation), the unread
@@ -28,10 +29,10 @@ ListItem {
 
     // Tunables: the air above and below a row (the stock itemSizeMedium gave
     // half of this), and the name a tad over the standard medium size.
-    readonly property real rowMargin: (Theme.itemSizeMedium - Theme.iconSizeLarge) * 1.5
-    readonly property real nameSize: Theme.fontSizeMedium * 1.1
+    readonly property real rowMargin: (Theme.itemSizeMedium - Theme.iconSizeLarge) * Tunables.roomRowMarginFactor
+    readonly property real nameSize: Theme.fontSizeMedium * Tunables.roomNameScale
     // the picture: 10 % smaller than the large icon size
-    readonly property int avatarSize: Math.round(Theme.iconSizeLarge * 0.9)
+    readonly property int avatarSize: Math.round(Theme.iconSizeLarge * Tunables.avatarScale)
 
     readonly property bool invited: model.state === "invited"
     readonly property bool hasUnread: model.notifications > 0 || model.unread > 0
@@ -58,7 +59,7 @@ ListItem {
         z: -1
         gradient: Gradient {
             GradientStop { position: 0.0; color: "transparent" }
-            GradientStop { position: 0.5; color: Theme.rgba(Theme.primaryColor, 0.03 + 0.09 * app.favGlow) }
+            GradientStop { position: 0.5; color: Theme.rgba(Theme.primaryColor, Tunables.favGlowBase + Tunables.favGlowAmp * app.favGlow) }
             GradientStop { position: 1.0; color: "transparent" }
         }
     }
@@ -114,17 +115,7 @@ ListItem {
             source: model.avatar ? "file://" + model.avatar + "?v=" + (model.avatar_v || 0) : ""
             // clip: true would cut a square; the circle is a mask
             layer.enabled: app.roundAvatars
-            layer.effect: ShaderEffect {
-                fragmentShader: "
-                    varying highp vec2 qt_TexCoord0;
-                    uniform sampler2D source;
-                    uniform lowp float qt_Opacity;
-                    void main() {
-                        highp float d = length(qt_TexCoord0 - vec2(0.5));
-                        lowp float a = 1.0 - smoothstep(0.49, 0.5, d);
-                        gl_FragColor = texture2D(source, qt_TexCoord0) * a * qt_Opacity;
-                    }"
-            }
+            layer.effect: RoundMask {}
         }
 
         // the badge's shadow, offset a little further than the digits' shadow,
@@ -194,7 +185,7 @@ ListItem {
                 text: model.notifications > 0 ? model.notifications : model.unread
                 // a tenth smaller than the size the pill is measured for: more
                 // room around the digits inside it
-                font.pixelSize: Math.round(Theme.fontSizeExtraSmall * 0.9)
+                font.pixelSize: Math.round(Theme.fontSizeExtraSmall * Tunables.badgeTextScale)
                 // the file is the Semibold cut: asking for bold on top of it
                 // would make Qt embolden it again
                 font.family: app.semiboldFontFamily
@@ -218,7 +209,7 @@ ListItem {
             width: parent.width
             // emoji in the name as Twemoji pictures
             textFormat: Text.StyledText
-            text: rustrx.emojify((model.name || "").replace(/&/g, "&amp;").replace(/</g, "&lt;"), Math.round(font.pixelSize * 1.2))
+            text: rustrx.emojify((model.name || "").replace(/&/g, "&amp;").replace(/</g, "&lt;"), Math.round(font.pixelSize * Tunables.emojiScaleList))
             truncationMode: TruncationMode.Fade
             font.pixelSize: nameSize
             font.bold: hasUnread
@@ -235,7 +226,7 @@ ListItem {
             width: parent.width
             height: preview.height
             readonly property color iconColor: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
-            readonly property real iconSize: Theme.fontSizeSmall * 0.8
+            readonly property real iconSize: Theme.fontSizeSmall * Tunables.metaTextScale
 
             Row {
                 id: statusIcons
@@ -271,7 +262,7 @@ ListItem {
                     visible: model.own_read === true && !invited
                     anchors.verticalCenter: parent.verticalCenter
                     text: "\u2713"
-                    font.pixelSize: Theme.fontSizeSmall * 0.85
+                    font.pixelSize: Theme.fontSizeSmall * Tunables.readCheckScale
                     color: item.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor
                 }
             }
@@ -285,9 +276,9 @@ ListItem {
                 readonly property real indent: statusIcons.width > 0 ? statusIcons.width + Theme.paddingSmall : 0
                 width: parent.width
                 wrapMode: Text.Wrap
-                maximumLineCount: Math.max(1, Math.min(3, app.previewLines))
+                maximumLineCount: Math.max(1, Math.min(Tunables.previewLinesMax, app.previewLines))
                 truncationMode: TruncationMode.Fade
-                font.pixelSize: Theme.fontSizeSmall * 0.8
+                font.pixelSize: Theme.fontSizeSmall * Tunables.metaTextScale
                 color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
                 textFormat: Text.StyledText
                 onLineLaidOut: if (line.number === 0) { line.x += indent; line.width -= indent }
@@ -300,7 +291,7 @@ ListItem {
                     var b = model.preview.replace(/&/g, "&amp;").replace(/</g, "&lt;")
                     // one line: the breaks become spaces; more: kept
                     b = maximumLineCount > 1 ? b.replace(/\n/g, "<br>") : b.replace(/\s+/g, " ")
-                    return rustrx.emojify(b, Math.round(font.pixelSize * 1.2))
+                    return rustrx.emojify(b, Math.round(font.pixelSize * Tunables.emojiScaleList))
                 }
                 text: {
                     // a new indent needs a new layout (Qt 5.6 has no forceLayout)
@@ -335,7 +326,7 @@ ListItem {
         id: favStar
         anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; top: age.bottom; topMargin: Theme.paddingSmall }
         visible: model.is_fav && !invited
-        source: "image://theme/icon-s-favorite?#ffd54a"
+        source: "image://theme/icon-s-favorite?" + Tunables.favStarColor
         sourceSize.width: Theme.iconSizeExtraSmall
         sourceSize.height: Theme.iconSizeExtraSmall
     }
@@ -344,8 +335,8 @@ ListItem {
     Image {
         anchors.fill: favStar
         visible: item.favGlow && favStar.visible
-        opacity: Math.max(0, (app.favGlow - 0.75) * 4)
-        source: "image://theme/icon-s-favorite?#fff4b8"
+        opacity: Math.max(0, (app.favGlow - Tunables.favSparkleFrom) / (1 - Tunables.favSparkleFrom))
+        source: "image://theme/icon-s-favorite?" + Tunables.favSparkleColor
         sourceSize.width: Theme.iconSizeExtraSmall
         sourceSize.height: Theme.iconSizeExtraSmall
     }

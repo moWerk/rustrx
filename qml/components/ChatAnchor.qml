@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 
 // The chat keeps its place. It moves on an action (send, reply, edit,
@@ -56,7 +57,7 @@ Item {
             var s = anchor.page.status
             if (!anchor.pending || s === PageStatus.Inactive || s === PageStatus.Deactivating) return
             anchor.apply(true)
-            if (s === PageStatus.Active) { settle.interval = 150; settle.restart() }
+            if (s === PageStatus.Active) { settle.interval = Tunables.anchorStepMs; settle.restart() }
         }
     }
     // while coming back, any move not made by a finger is undone at once:
@@ -147,7 +148,7 @@ Item {
             apply(true)
         if (s === PageStatus.Active && pending) {
             apply(true)
-            settle.interval = 300
+            settle.interval = Tunables.anchorFirstMs
             settle.restart()
         }
     }

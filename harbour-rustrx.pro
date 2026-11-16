@@ -55,6 +55,7 @@ DISTFILES += qml/harbour-rustrx.qml \
     qml/pages/*.qml \
     qml/components/*.qml \
     qml/cover/*.qml \
+    qml/singletons/*.qml \
     rpm/harbour-rustrx.spec \
     harbour-rustrx.desktop
 

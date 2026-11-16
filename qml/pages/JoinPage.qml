@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 
 // A room or space not joined yet, by its address or a link: what it is
@@ -39,7 +40,7 @@ Page {
 
     function look() {
         var id = addressField.text.trim()
-        if (id.length < 3) return
+        if (id.length < Tunables.minJoinChars) return
         address = id
         preview = ({})
         asked = false
@@ -98,7 +99,7 @@ Page {
                 placeholderText: label
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhUrlCharactersOnly
                 EnterKey.iconSource: "image://theme/icon-m-search"
-                EnterKey.enabled: text.trim().length >= 3
+                EnterKey.enabled: text.trim().length >= Tunables.minJoinChars
                 EnterKey.onClicked: { page.via = []; page.look() }
             }
 
@@ -119,7 +120,7 @@ Page {
                     width: Theme.iconSizeLarge
                     height: width
                     radius: width / 2
-                    color: Theme.rgba(Theme.highlightBackgroundColor, 0.3)
+                    color: Theme.rgba(Theme.highlightBackgroundColor, Tunables.cardOpacity)
                     clip: true
                     Image {
                         anchors.fill: parent

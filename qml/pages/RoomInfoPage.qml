@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 import Sailfish.Pickers 1.0
 import "../components"
@@ -31,7 +32,7 @@ Page {
     property bool membersLoaded
     // own power level, from the member list; 50 is the moderator default
     property int ownPower: 0
-    readonly property bool canEdit: ownPower >= 50
+    readonly property bool canEdit: ownPower >= Tunables.powerModerator
     // a space's settings: no chat things (notifications, calls, encryption)
     readonly property bool isSpace: info.is_space === true
     // who may join, as the core names it; the choices offered here (members
@@ -53,7 +54,7 @@ Page {
 
     // the header lays out after creation (the topic wraps, the fields size),
     // which moves the list's origin and leaves the view scrolled: re-anchor
-    Timer { id: settle; interval: 250; running: true; onTriggered: list.positionViewAtBeginning() }
+    Timer { id: settle; interval: Tunables.listSettleMs; running: true; onTriggered: list.positionViewAtBeginning() }
 
     Connections {
         target: rustrx
@@ -65,7 +66,7 @@ Page {
             for (var i = 0; i < members.length; i++) {
                 if (members[i].user_id === rustrx.userId) {
                     var p = members[i].power
-                    ownPower = p === "infinite" ? 100 : (p || 0)
+                    ownPower = p === "infinite" ? Tunables.powerAdmin : (p || 0)
                 }
             }
         }
@@ -302,17 +303,7 @@ Page {
                     source: info.avatar ? "file://" + info.avatar + "?v=" + (info.avatar_v || 0) : ""
                     // the same circle mask as the room list
                     layer.enabled: app.roundAvatars
-                    layer.effect: ShaderEffect {
-                        fragmentShader: "
-                            varying highp vec2 qt_TexCoord0;
-                            uniform sampler2D source;
-                            uniform lowp float qt_Opacity;
-                            void main() {
-                                highp float d = length(qt_TexCoord0 - vec2(0.5));
-                                lowp float a = 1.0 - smoothstep(0.49, 0.5, d);
-                                gl_FragColor = texture2D(source, qt_TexCoord0) * a * qt_Opacity;
-                            }"
-                    }
+                    layer.effect: RoundMask {}
                 }
             }
 

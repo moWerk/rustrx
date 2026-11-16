@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Nemo.Notifications 1.0
 import Nemo.Configuration 1.0
 import Nemo.KeepAlive 1.2
@@ -157,9 +158,9 @@ Item {
         if (ring) {
             n.setHintValue("x-nemo-feedback", "voip_ringtone")
             n.setHintValue("x-nemo-display-on", true)
-            n.setHintValue("x-nemo-priority", 120)
+            n.setHintValue("x-nemo-priority", Tunables.ringPriority)
         }
-        n.expiry.interval = Math.max(5000, expiresMs)
+        n.expiry.interval = Math.max(Tunables.ringMinMs, expiresMs)
         n.expiry.start()
         n.publish()
         var r = ringing
@@ -284,7 +285,7 @@ Item {
         frequency: BackgroundJob.FiveMinutes
         onTriggered: { console.log("background: woken"); wakeHold.restart() }
     }
-    Timer { id: wakeHold; interval: 20000; onTriggered: wakeJob.finished() }
+    Timer { id: wakeHold; interval: Tunables.wakeHoldMs; onTriggered: wakeJob.finished() }
 
     // the stand-in's line in the events view: tap opens Rustrx, Quit ends it
     Notification {

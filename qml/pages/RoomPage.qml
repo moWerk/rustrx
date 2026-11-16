@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 import Sailfish.Pickers 1.0
 import "../components"
@@ -92,7 +93,7 @@ Page {
     }
 
     // a few seconds of patience before an empty room says so
-    Timer { id: openGrace; interval: 6000; running: true }
+    Timer { id: openGrace; interval: Tunables.roomOpenGraceMs; running: true }
 
     function markRead() {
         if (rustrx.timeline.count > 0 && Qt.application.state === Qt.ApplicationActive)
@@ -156,7 +157,7 @@ Page {
         id: header
         title: roomName
         // room for the picture right of the name, as tall as the name's letters
-        readonly property real pictureSize: Math.round(_titleItem.font.pixelSize * 0.9)
+        readonly property real pictureSize: Math.round(_titleItem.font.pixelSize * Tunables.avatarScale)
         rightMargin: Theme.horizontalPageMargin + (page.hasPicture ? pictureSize + Theme.paddingMedium : 0)
 
         Image {
@@ -174,17 +175,7 @@ Page {
             sourceSize.height: height * 2
             source: page.hasPicture ? "file://" + page.roomInfo.avatar + "?v=" + (page.roomInfo.avatar_v || 0) : ""
             layer.enabled: app.roundAvatars
-            layer.effect: ShaderEffect {
-                fragmentShader: "
-                    varying highp vec2 qt_TexCoord0;
-                    uniform sampler2D source;
-                    uniform lowp float qt_Opacity;
-                    void main() {
-                        highp float d = length(qt_TexCoord0 - vec2(0.5));
-                        lowp float a = 1.0 - smoothstep(0.49, 0.5, d);
-                        gl_FragColor = texture2D(source, qt_TexCoord0) * a * qt_Opacity;
-                    }"
-            }
+            layer.effect: RoundMask {}
         }
         description: rustrx.syncState === "idle"
                      //% "Connecting"
@@ -266,7 +257,7 @@ Page {
         onAtYEndChanged: {
             if (atYEnd && count > 0 && !paginating && !atStart) {
                 paginating = true
-                rustrx.command({ cmd: "paginate_back", room_id: roomId, count: 40 })
+                rustrx.command({ cmd: "paginate_back", room_id: roomId, count: Tunables.paginateBatch })
             }
         }
 
@@ -459,9 +450,9 @@ Page {
     property bool emojiToKeys
     Behavior on emojiLift {
         enabled: page.emojiLiftAnimated
-        NumberAnimation { duration: 250; easing.type: Easing.InOutQuad }
+        NumberAnimation { duration: Tunables.panelSlideMs; easing.type: Easing.InOutQuad }
     }
-    function defaultEmojiHeight() { return Math.round(Screen.height * (isPortrait ? 0.36 : 0.5)) }
+    function defaultEmojiHeight() { return Math.round(Screen.height * (isPortrait ? Tunables.emojiPanelPortrait : Tunables.emojiPanelLandscape)) }
     onIsPortraitChanged: { emojiHeight = defaultEmojiHeight(); if (emojiPanel.open) emojiLift = emojiHeight }
 
     function showEmoji(mode, eventId) {

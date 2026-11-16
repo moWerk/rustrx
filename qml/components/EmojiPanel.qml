@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 import "../emoji-data.js" as EmojiData
 
@@ -66,7 +67,7 @@ Item {
         }
         return out
     }
-    readonly property int columns: Math.max(6, Math.floor(width / Theme.itemSizeSmall))
+    readonly property int columns: Math.max(Tunables.emojiMinColumns, Math.floor(width / Theme.itemSizeSmall))
     readonly property bool onPack: group >= unicodeGroups && group - unicodeGroups < shownPacks.length
 
     function imagesFor(pack) {
@@ -99,7 +100,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: Theme.rgba(Theme.highlightDimmerColor, 0.9)
+        color: Theme.rgba(Theme.highlightDimmerColor, Tunables.panelOpacity)
     }
 
     // A swipe down closes the picker, as it closes the keyboard: pulled past
@@ -153,7 +154,7 @@ Item {
                         onClicked: panel.choose(modelData)
                         Image {
                             anchors.centerIn: parent
-                            width: Theme.iconSizeMedium * 0.75
+                            width: Theme.iconSizeMedium * Tunables.emojiGlyphScale
                             height: width
                             sourceSize.width: width
                             source: rustrx.emojiUrl(modelData)
@@ -247,7 +248,7 @@ Item {
                 visible: isImage || !!twemoji
                 anchors.centerIn: parent
                 // a Unicode emoji a little smaller than a pack's picture
-                width: isImage ? Theme.iconSizeMedium : Theme.iconSizeMedium * 0.75
+                width: isImage ? Theme.iconSizeMedium : Theme.iconSizeMedium * Tunables.emojiGlyphScale
                 height: width
                 fillMode: Image.PreserveAspectFit
                 sourceSize.height: height

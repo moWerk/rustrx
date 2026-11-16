@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 
 // Find rooms in the server's public directory and people in the user
@@ -30,7 +31,7 @@ Page {
     function search(term) {
         term = term.trim()
         hits.clear()
-        if (term.length < 2) return
+        if (term.length < Tunables.minSearchChars) return
         page.lastTerm = term
         if (/^[@#!][^\s]+:[^\s]+$/.test(term)) {
             hits.append({ kind: term.charAt(0) === "@" ? "user" : "room",
@@ -75,7 +76,7 @@ Page {
 
     Timer {
         id: debounce
-        interval: 400
+        interval: Tunables.searchDebounceMs
         onTriggered: page.search(field.text)
     }
 

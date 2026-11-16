@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 import Sailfish.Silica.private 1.0
 import Nemo.Configuration 1.0
@@ -147,9 +148,9 @@ Page {
     // the room search of the filter menu (see the search row there)
     property string filterText
     property bool filterLocked
-    onFilterTextChanged: rustrx.roomFilter = filterText.trim().length >= 2 ? filterText : ""
+    onFilterTextChanged: rustrx.roomFilter = filterText.trim().length >= Tunables.minSearchChars ? filterText : ""
     function lockFilter() {
-        if (filterText.trim().length < 2) return
+        if (filterText.trim().length < Tunables.minSearchChars) return
         filterLocked = true
         Qt.inputMethod.hide()
         focus = true
@@ -197,7 +198,7 @@ Page {
                         title: tabTitle(model.kind)
                         // four tabs and the filter icon in one row: a size
                         // smaller, so narrow phones fit them
-                        titleFontSize: tabModel.count >= 4 ? Math.round(Theme.fontSizeMedium * 0.9) : Theme.fontSizeLarge
+                        titleFontSize: tabModel.count >= Tunables.crowdedTabCount ? Math.round(Theme.fontSizeMedium * Tunables.crowdedTabScale) : Theme.fontSizeLarge
                     }
                 }
                 MouseArea {
@@ -213,7 +214,7 @@ Page {
                     }
                     // three bars, each narrower than the one above; with four tabs
                     // as much smaller as their titles are
-                    readonly property real scale_: tabModel.count >= 4 ? Math.round(Theme.fontSizeMedium * 0.9) / Theme.fontSizeLarge : 1
+                    readonly property real scale_: tabModel.count >= Tunables.crowdedTabCount ? Math.round(Theme.fontSizeMedium * Tunables.crowdedTabScale) / Theme.fontSizeLarge : 1
                     Column {
                         anchors.centerIn: parent
                         // half again as tall and wide as at first, the bars as thin
@@ -337,7 +338,7 @@ Page {
                     text: page.filterText
                     onTextChanged: page.filterText = text
                     EnterKey.iconSource: "image://theme/icon-m-enter-accept"
-                    EnterKey.enabled: text.trim().length >= 2
+                    EnterKey.enabled: text.trim().length >= Tunables.minSearchChars
                     EnterKey.onClicked: page.lockFilter()
                     // a hidden field keeps its focus in QML and took the typing
                     // with the menu closed: with the menu it lets go, keyboard too
@@ -346,7 +347,7 @@ Page {
                 IconButton {
                     id: lockButton
                     anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin - Theme.paddingMedium; verticalCenter: searchField.verticalCenter; verticalCenterOffset: -Theme.paddingSmall }
-                    enabled: page.filterLocked || searchField.text.trim().length >= 2
+                    enabled: page.filterLocked || searchField.text.trim().length >= Tunables.minSearchChars
                     icon.source: page.filterLocked ? "image://theme/icon-m-clear" : "image://theme/icon-m-acknowledge"
                     onClicked: page.filterLocked ? page.clearFilter() : page.lockFilter()
                 }

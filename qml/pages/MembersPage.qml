@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 
 // A room's members, a search on top that narrows them by name or Matrix
@@ -43,9 +44,9 @@ Page {
 
     function powerLabel(p) {
         //% "admin"
-        if (p === "infinite" || p >= 100) return qsTrId("rustrx-la-power-admin")
+        if (p === "infinite" || p >= Tunables.powerAdmin) return qsTrId("rustrx-la-power-admin")
         //% "moderator"
-        if (p >= 50) return qsTrId("rustrx-la-power-moderator")
+        if (p >= Tunables.powerModerator) return qsTrId("rustrx-la-power-moderator")
         return ""
     }
 
@@ -107,7 +108,7 @@ Page {
                     truncationMode: TruncationMode.Fade
                     textFormat: Text.StyledText
                     text: rustrx.emojify((modelData.name || modelData.user_id).replace(/&/g, "&amp;").replace(/</g, "&lt;"),
-                                         Math.round(font.pixelSize * 1.2))
+                                         Math.round(font.pixelSize * Tunables.emojiScaleList))
                           + (page.powerLabel(modelData.power).length ? "  ·  " + page.powerLabel(modelData.power) : "")
                     color: row.highlighted ? Theme.highlightColor : Theme.primaryColor
                 }

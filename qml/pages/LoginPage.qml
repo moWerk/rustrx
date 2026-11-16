@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 
 // Everything on one page: the fields keep their content, errors appear
@@ -50,7 +51,7 @@ Page {
     }
     // asked again a moment after typing stops, so single sign-on shows up
     // without leaving the field first
-    Timer { id: probeLater; interval: 800; onTriggered: page.probe() }
+    Timer { id: probeLater; interval: Tunables.typingDebounceMs; onTriggered: page.probe() }
     function probeSoon() {
         var id = /^@[^:\s]+:[^.\s]+\.[^\s]+$/.test(userField.text.trim())
         if (id || serverField.text.trim().indexOf(".") > 0) probeLater.restart()

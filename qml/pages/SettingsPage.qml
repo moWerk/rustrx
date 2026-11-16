@@ -331,17 +331,7 @@ Page {
                     // the version makes a changed picture load past Qt's image cache
                     source: ownAvatar.length ? "file://" + ownAvatar + "?v=" + ownAvatarVersion : ""
                     layer.enabled: app.roundAvatars
-                    layer.effect: ShaderEffect {
-                        fragmentShader: "
-                            varying highp vec2 qt_TexCoord0;
-                            uniform sampler2D source;
-                            uniform lowp float qt_Opacity;
-                            void main() {
-                                highp float d = length(qt_TexCoord0 - vec2(0.5));
-                                lowp float a = 1.0 - smoothstep(0.49, 0.5, d);
-                                gl_FragColor = texture2D(source, qt_TexCoord0) * a * qt_Opacity;
-                            }"
-                    }
+                    layer.effect: RoundMask {}
                 }
             }
 

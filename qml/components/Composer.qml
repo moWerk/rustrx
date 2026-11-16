@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 
 // The text field with its emoji and Send buttons, and the line above it
@@ -166,13 +167,13 @@ Column {
 
     Timer {
         id: typingTimer
-        interval: 4000
+        interval: Tunables.typingIdleMs
         onTriggered: if (composer.typing && app.sendTyping) rustrx.command({ cmd: "typing", room_id: composer.roomId, typing: false })
     }
     // the draft is written once typing pauses, not per keystroke
     Timer {
         id: draftSave
-        interval: 800
+        interval: Tunables.typingDebounceMs
         onTriggered: if (composer.drafts && composer.holdsDraft) rustrx.setDraft(composer.roomId, input.text)
     }
 

@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import QtMultimedia 5.6
 import Sailfish.Silica 1.0
 
@@ -84,7 +85,7 @@ ListItem {
 
     // a reaction's key as shown: text reactions can be long
     function reactionText(key) {
-        return key.length > 24 ? key.substring(0, 23) + "\u2026" : key
+        return key.length > Tunables.reactionKeyMax ? key.substring(0, Tunables.reactionKeyMax - 1) + "\u2026" : key
     }
 
     // text for a StyledText, as it is
@@ -292,27 +293,27 @@ ListItem {
                         visible: active
                         sourceComponent: Component {
                             Item {
-                                width: Math.min(quote.implicitWidth + 2 + 2 * Theme.paddingSmall, innerMax)
+                                width: Math.min(quote.implicitWidth + Tunables.barWidth + 2 * Theme.paddingSmall, innerMax)
                                 height: quote.height + 2 * Theme.paddingSmall
 
                                 Rectangle {
                                     anchors.fill: parent
                                     radius: Theme.paddingSmall
-                                    color: Qt.rgba(0, 0, 0, 0.1)
+                                    color: Qt.rgba(0, 0, 0, Tunables.quoteShade)
                                 }
                                 Rectangle {
-                                    width: 2
+                                    width: Tunables.barWidth
                                     height: parent.height
                                     color: Theme.secondaryHighlightColor
                                 }
 
                                 Label {
                                     id: quote
-                                    x: 2 + Theme.paddingSmall
+                                    x: Tunables.barWidth + Theme.paddingSmall
                                     y: Theme.paddingSmall
-                                    width: parent.width - 2 - 2 * Theme.paddingSmall
+                                    width: parent.width - Tunables.barWidth - 2 * Theme.paddingSmall
                                     wrapMode: Text.Wrap
-                                    maximumLineCount: 3
+                                    maximumLineCount: Tunables.quoteLines
                                     elide: Text.ElideRight
                                     font.pixelSize: Theme.fontSizeExtraSmall
                                     color: Theme.secondaryColor
@@ -323,7 +324,7 @@ ListItem {
                                         var quoted
                                         if (r.html && r.html.length) quoted = r.html
                                         else if (r.body !== undefined) quoted = rustrx.emojify(r.body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>"),
-                                                                                               Math.round(Theme.fontSizeExtraSmall * 1.25))
+                                                                                               Math.round(Theme.fontSizeExtraSmall * Tunables.emojiScale))
                                         //: the quoted message of a reply while it is fetched
                                         //% "Loading the original message"
                                         else if (r.pending) quoted = "<i>" + qsTrId("rustrx-la-reply-loading") + "</i>"
@@ -341,12 +342,12 @@ ListItem {
                     // a thin bar marks a mention; plain bodies get their addresses linked
                     Row {
                         visible: !isMedia
-                        width: Math.min(body.implicitWidth + (mentionBar ? spacing + 2 : 0), innerMax)
+                        width: Math.min(body.implicitWidth + (mentionBar ? spacing + Tunables.barWidth : 0), innerMax)
                         spacing: Theme.paddingSmall
-                        Rectangle { visible: mentionBar; width: 2; height: body.height; color: Theme.highlightColor }
+                        Rectangle { visible: mentionBar; width: Tunables.barWidth; height: body.height; color: Theme.highlightColor }
                         Label {
                             id: body
-                            width: parent.width - (mentionBar ? parent.spacing + 2 : 0)
+                            width: parent.width - (mentionBar ? parent.spacing + Tunables.barWidth : 0)
                             wrapMode: Text.Wrap
                             textFormat: msgType === "text" || msgType === "notice" || msgType === "emote" || htmlText.length > 0 ? Text.StyledText : Text.PlainText
                             color: msgType === "utd" || msgType === "redacted" ? dimColor : (mention ? Theme.highlightColor : mainColor)
@@ -388,8 +389,8 @@ ListItem {
                         visible: active
                         sourceComponent: Component {
                             Item {
-                                width: Math.min(innerMax, Math.min(msg.width, Screen.width) * 0.6)
-                                height: Math.min(width, Math.max(Theme.itemSizeLarge, width * (model.h && model.w ? model.h / model.w : 0.75)))
+                                width: Math.min(innerMax, Math.min(msg.width, Screen.width) * Tunables.mediaMaxWidth)
+                                height: Math.min(width, Math.max(Theme.itemSizeLarge, width * (model.h && model.w ? model.h / model.w : Tunables.mediaFallbackAspect)))
 
                                 Image {
                                     anchors.fill: parent
@@ -399,7 +400,7 @@ ListItem {
                                     source: model.thumb_path && model.thumb_path.length ? "file://" + model.thumb_path
                                           : model.media_path && model.media_path.length ? "file://" + model.media_path : ""
                                     // what the bubble's width comes to in portrait: decoded once
-                                    sourceSize.width: Math.round(Screen.width * 0.6)
+                                    sourceSize.width: Math.round(Screen.width * Tunables.mediaMaxWidth)
                                 }
                                 Label {
                                     anchors.centerIn: parent
@@ -485,7 +486,7 @@ ListItem {
                         visible: active
                         sourceComponent: Component {
                             Rectangle {
-                                width: Math.min(innerMax, Math.min(msg.width, Screen.width) * 0.6)
+                                width: Math.min(innerMax, Math.min(msg.width, Screen.width) * Tunables.mediaMaxWidth)
                                 height: Theme.paddingSmall
                                 radius: height / 2
                                 color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
@@ -529,7 +530,7 @@ ListItem {
                                                 id: chip
                                                 textFormat: Text.StyledText
                                                 text: (modelData.emote !== undefined ? ""
-                                                      : rustrx.emojify(escapeText(reactionText(modelData.key)), Math.round(font.pixelSize * 1.25)) + " ") + modelData.count
+                                                      : rustrx.emojify(escapeText(reactionText(modelData.key)), Math.round(font.pixelSize * Tunables.emojiScale)) + " ") + modelData.count
                                                 font.pixelSize: Theme.fontSizeExtraSmall
                                                 color: modelData.me ? Theme.highlightColor : Theme.secondaryColor
                                             }
@@ -552,7 +553,7 @@ ListItem {
                                         Label {
                                             textFormat: Text.StyledText
                                             text: (modelData.emote !== undefined ? "\u2B1C"
-                                                  : rustrx.emojify(escapeText(reactionText(modelData.key)), Math.round(font.pixelSize * 1.25))) + " " + modelData.count
+                                                  : rustrx.emojify(escapeText(reactionText(modelData.key)), Math.round(font.pixelSize * Tunables.emojiScale))) + " " + modelData.count
                                             font.pixelSize: Theme.fontSizeExtraSmall
                                         }
                                     }
@@ -633,7 +634,7 @@ ListItem {
                                             if (threadSummary.latest_sender)
                                                 t += " · " + escapeText(threadSummary.latest_sender) + ": "
                                                      + rustrx.emojify(escapeText((threadSummary.latest_body || "").replace(/\s+/g, " ")),
-                                                                      Math.round(font.pixelSize * 1.25))
+                                                                      Math.round(font.pixelSize * Tunables.emojiScale))
                                             return t
                                         }
                                     }
@@ -702,7 +703,7 @@ ListItem {
                         // a Twemoji picture where there is one
                         Image {
                             anchors.centerIn: parent
-                            width: Theme.iconSizeMedium * 0.75
+                            width: Theme.iconSizeMedium * Tunables.emojiGlyphScale
                             height: width
                             sourceSize.width: width
                             source: rustrx.emojiUrl(modelData)
@@ -770,7 +771,7 @@ ListItem {
             }
             // a custom emoji seen here, into the user's own pack (the first three)
             Repeater {
-                model: msg.emoteList().slice(0, 3)
+                model: msg.emoteList().slice(0, Tunables.emoteOfferMax)
                 MenuItem {
                     //: %1 a custom emoji's shortcode
                     //% "Add :%1: to my emoji"

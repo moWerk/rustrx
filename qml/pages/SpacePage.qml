@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 import "../components"
 
@@ -158,7 +159,7 @@ Page {
                 height: width
                 // a space a rounded square, a room a circle
                 radius: row.r.is_space ? Theme.paddingSmall : width / 2
-                color: Theme.rgba(Theme.highlightBackgroundColor, 0.3)
+                color: Theme.rgba(Theme.highlightBackgroundColor, Tunables.cardOpacity)
                 clip: true
                 Label {
                     anchors.centerIn: parent

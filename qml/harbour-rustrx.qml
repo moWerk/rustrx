@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 import Nemo.Configuration 1.0
 import "pages"
@@ -33,7 +34,7 @@ ApplicationWindow {
 
     // the rows' "3m" age labels follow this clock
     property real now: Date.now()
-    Timer { interval: 60000; repeat: true; running: Qt.application.active; onTriggered: app.now = Date.now() }
+    Timer { interval: Tunables.ageTickMs; repeat: true; running: Qt.application.active; onTriggered: app.now = Date.now() }
 
     // Source Sans 3 Semibold (Adobe, OFL), shipped unmodified: the system font
     // is the same design but installed only in ExtraLight and Light, so bold
@@ -79,8 +80,8 @@ ApplicationWindow {
         loops: Animation.Infinite
         // longer low than high: a slow rise that hurries to the peak, a quick
         // fall that lingers near the bottom
-        NumberAnimation { from: 0; to: 1; duration: 1500; easing.type: Easing.InCubic }
-        NumberAnimation { from: 1; to: 0; duration: 1500; easing.type: Easing.OutCubic }
+        NumberAnimation { from: 0; to: 1; duration: Tunables.favGlowPulseMs; easing.type: Easing.InCubic }
+        NumberAnimation { from: 1; to: 0; duration: Tunables.favGlowPulseMs; easing.type: Easing.OutCubic }
         onStopped: app.favGlow = 0
     }
     property alias separateSpaces: cfgSeparateSpaces.value
@@ -103,9 +104,9 @@ ApplicationWindow {
     function computeFavourites() {
         var counts = {}
         try { counts = JSON.parse(cfgEmojiCounts.value || "{}") } catch (e) {}
-        var used = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a] }).slice(0, 5)
+        var used = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a] }).slice(0, Tunables.recentEmojiCount)
         var defaults = ["👍", "❤️", "😂", "😮", "😢"]
-        for (var i = 0; used.length < 5 && i < defaults.length; i++)
+        for (var i = 0; used.length < Tunables.recentEmojiCount && i < defaults.length; i++)
             if (used.indexOf(defaults[i]) < 0) used.push(defaults[i])
         return used
     }
@@ -166,7 +167,7 @@ ApplicationWindow {
         if (!cfgPrototypeNoticeSeen.value) prototypeNotice.restart()
     }
 
-    Timer { id: routeRetry; interval: 300; onTriggered: route() }
+    Timer { id: routeRetry; interval: Tunables.retryIntervalMs; onTriggered: route() }
 
     // the first start: the prototype notice (and the debug log in it), once;
     // it goes only by Agree. Above whatever route() brought in, once the
@@ -175,7 +176,7 @@ ApplicationWindow {
     property bool prototypeNoticeUp
     Timer {
         id: prototypeNotice
-        interval: 600
+        interval: Tunables.noticeDelayMs
         onTriggered: {
             if (cfgPrototypeNoticeSeen.value || app.prototypeNoticeUp) return
             if (pageStack.busy) { restart(); return }
@@ -190,11 +191,11 @@ ApplicationWindow {
     }
     Timer {
         id: pendingRoomRetry
-        interval: 500
+        interval: Tunables.pendingRoomPollMs
         repeat: true
         property int tries
         onTriggered: {
-            if (!app.pendingRoom.length || ++tries > 40) { stop(); tries = 0; return }
+            if (!app.pendingRoom.length || ++tries > Tunables.retryMaxTries) { stop(); tries = 0; return }
             if (!pageStack.busy) app.showRoom(app.pendingRoom)
         }
     }
@@ -361,11 +362,11 @@ ApplicationWindow {
     }
     Timer {
         id: shareRetry
-        interval: 300
+        interval: Tunables.retryIntervalMs
         repeat: true
         property int tries
         onTriggered: {
-            if (!app.pendingShare || ++tries > 40) { stop(); tries = 0; return }
+            if (!app.pendingShare || ++tries > Tunables.retryMaxTries) { stop(); tries = 0; return }
             app.showShare(app.pendingShare.files, app.pendingShare.text)
         }
     }
@@ -440,7 +441,7 @@ ApplicationWindow {
         if (top && top.objectName === "knocks") return
         pageStack.push(Qt.resolvedUrl("pages/KnockPage.qml"))
     }
-    Timer { id: knocksRetry; interval: 300; onTriggered: app.showKnocks() }
+    Timer { id: knocksRetry; interval: Tunables.retryIntervalMs; onTriggered: app.showKnocks() }
 
     function showRoom(roomId) {
         if (rustrx.openRoomId === roomId) return
@@ -465,6 +466,6 @@ ApplicationWindow {
     Component.onCompleted: { applyClosedMode(); route() }
 
     // custom emoji in messages: a little taller than the text, like an emoji
-    Binding { target: rustrx.timeline; property: "emoteSize"; value: Math.round(Theme.fontSizeMedium * 1.25) }
-    Binding { target: rustrx.thread; property: "emoteSize"; value: Math.round(Theme.fontSizeMedium * 1.25) }
+    Binding { target: rustrx.timeline; property: "emoteSize"; value: Math.round(Theme.fontSizeMedium * Tunables.emoteScale) }
+    Binding { target: rustrx.thread; property: "emoteSize"; value: Math.round(Theme.fontSizeMedium * Tunables.emoteScale) }
 }

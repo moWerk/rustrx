@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 
 // The overview: the app icon faint in the back; the connection state and
@@ -84,7 +85,7 @@ CoverBackground {
             visible: rustrx.loggedIn
             Label {
                 id: countLabel
-                text: rustrx.unreadTotal >= 1000 ? Math.floor(rustrx.unreadTotal / 1000) + "K" : rustrx.unreadTotal
+                text: rustrx.unreadTotal >= Tunables.coverKiloFrom ? Math.floor(rustrx.unreadTotal / 1000) + "K" : rustrx.unreadTotal
                 font.pixelSize: Theme.fontSizeHuge
                 color: Theme.primaryColor
             }
@@ -95,7 +96,7 @@ CoverBackground {
                 //: beside the big count on the cover
                 //% "unread messages"
                 text: qsTrId("rustrx-la-cover-unread-messages")
-                font.pixelSize: Theme.fontSizeSmall * 0.8
+                font.pixelSize: Theme.fontSizeSmall * Tunables.metaTextScale
                 color: Theme.primaryColor
             }
         }
@@ -178,7 +179,7 @@ CoverBackground {
                 spacing: Theme.paddingMedium
                 Label {
                     id: chatCount
-                    text: cover.chatUnread >= 1000 ? Math.floor(cover.chatUnread / 1000) + "K" : cover.chatUnread
+                    text: cover.chatUnread >= Tunables.coverKiloFrom ? Math.floor(cover.chatUnread / 1000) + "K" : cover.chatUnread
                     font.pixelSize: Theme.fontSizeHuge
                 }
                 Label {
@@ -186,7 +187,7 @@ CoverBackground {
                     width: parent.width - chatCount.width - parent.spacing
                     wrapMode: Text.Wrap
                     text: qsTrId("rustrx-la-cover-unread-messages")
-                    font.pixelSize: Theme.fontSizeSmall * 0.8
+                    font.pixelSize: Theme.fontSizeSmall * Tunables.metaTextScale
                 }
             }
         }

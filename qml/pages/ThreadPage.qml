@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 import Sailfish.Pickers 1.0
 import "../components"
@@ -59,7 +60,7 @@ Page {
     EmojiPanel {
         id: emojiPanel
         anchors.bottom: parent.bottom
-        height: Math.round(Screen.height * (page.isPortrait ? 0.36 : 0.5))
+        height: Math.round(Screen.height * (page.isPortrait ? Tunables.emojiPanelPortrait : Tunables.emojiPanelLandscape))
         visible: open
         onPicked: page.insertEmoji(emoji)
     }

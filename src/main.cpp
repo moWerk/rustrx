@@ -82,6 +82,10 @@ int main(int argc, char *argv[])
     qmlRegisterUncreatableType<RoomModel>("Rustrx", 1, 0, "RoomModel", "owned by rustrx");
     qmlRegisterUncreatableType<TimelineModel>("Rustrx", 1, 0, "TimelineModel", "owned by rustrx");
     qmlRegisterUncreatableType<UnifiedPush>("Rustrx", 1, 0, "UnifiedPush", "owned by rustrx");
+    // the tuned numbers (import Rustrx 1.0): one registration serves the
+    // window's engine and Service.qml's
+    qmlRegisterSingletonType(QUrl::fromLocalFile(SailfishApp::pathTo(QStringLiteral("qml/singletons/Tunables.qml")).toLocalFile()),
+                             "Rustrx", 1, 0, "Tunables");
 
     const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     // the stand-in is the fallback: not wanted while push works
