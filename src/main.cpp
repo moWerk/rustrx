@@ -32,6 +32,7 @@
 #include <QThread>
 #include <QTimer>
 
+#include "LocalOnly.h"
 #include "Rustrx.h"
 #include "UnifiedPush.h"
 #include "DebugLog.h"
@@ -137,6 +138,8 @@ int main(int argc, char *argv[])
 
     // notifications and the wake job, for the life of the process
     QQmlEngine serviceEngine;
+    LocalOnly localOnly;
+    serviceEngine.setNetworkAccessManagerFactory(&localOnly);
     serviceEngine.rootContext()->setContextProperty(QStringLiteral("rustrx"), &rustrx);
     QQmlComponent serviceComponent(&serviceEngine, QUrl::fromLocalFile(
             SailfishApp::pathTo(QStringLiteral("qml/Service.qml")).toLocalFile()));
@@ -160,6 +163,7 @@ int main(int argc, char *argv[])
 
     // the window lives as long as the process (see Service.qml)
     QScopedPointer<QQuickView> view(SailfishApp::createView());
+    view->engine()->setNetworkAccessManagerFactory(&localOnly);
     view->rootContext()->setContextProperty(QStringLiteral("rustrx"), &rustrx);
     view->rootContext()->setContextProperty(QStringLiteral("voice"), &voice);
     view->rootContext()->setContextProperty(QStringLiteral("service"), service.data());
