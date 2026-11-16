@@ -46,10 +46,6 @@ fn pack_json(id: &str, source: &str, content: &Value) -> Option<Value> {
                 "avatar": avatar.or_else(|| out[0]["url"].as_str()), "images": out}))
 }
 
-fn raw_value<T>(raw: &Raw<T>) -> Value {
-    serde_json::from_str(raw.json().get()).unwrap_or(Value::Null)
-}
-
 /// Text into HTML, for a message that had no formatting of its own.
 fn escape_html(text: &str) -> String {
     text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\n', "<br>")
@@ -157,10 +153,7 @@ impl Core {
         thread_root: Option<&str>,
     ) -> Result<()> {
         let room = self.room(room_id).await?;
-        let tl = match thread_root {
-            Some(root) => self.thread_timeline(&room, root).await?,
-            None => self.timeline_for(&room).await?,
-        };
+        let tl = self.timeline_target(&room, thread_root).await?;
         let url = OwnedMxcUri::from(url);
         url.validate()?;
         let info: ImageInfo = info

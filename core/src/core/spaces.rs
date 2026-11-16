@@ -53,7 +53,7 @@ fn state_name(state: Option<RoomState>) -> &'static str {
 
 /// The server names in a matrix.to or matrix: link's "via" (or given
 /// alone), for rooms on other servers.
-fn servers(via: &Option<Vec<String>>) -> Vec<OwnedServerName> {
+pub(super) fn servers(via: &Option<Vec<String>>) -> Vec<OwnedServerName> {
     via.iter().flatten().filter_map(|s| OwnedServerName::try_from(s.as_str()).ok()).collect()
 }
 
@@ -79,11 +79,17 @@ impl Core {
     /// The SDK's space service, made once per login.
     pub(crate) async fn space_service(&self) -> Result<Arc<SpaceService>> {
         let client = self.client().await?;
-        let mut st = self.state.lock().await;
-        if st.space_service.is_none() {
-            st.space_service = Some(Arc::new(SpaceService::new(client).await));
+        let existing = self.state.lock().await.space_service.clone();
+        if let Some(service) = existing {
+            return Ok(service);
         }
-        Ok(st.space_service.clone().unwrap())
+        // made without the lock held; a logout meanwhile leaves no service behind
+        let service = Arc::new(SpaceService::new(client).await);
+        let mut st = self.state.lock().await;
+        if st.client.is_none() {
+            bail!("not logged in");
+        }
+        Ok(st.space_service.get_or_insert(service).clone())
     }
 
     /// A space's rooms, page by page until all are in, and live after that:

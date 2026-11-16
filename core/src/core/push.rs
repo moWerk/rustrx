@@ -115,13 +115,10 @@ impl Core {
             let parsed: Option<AnySyncTimelineEvent> = event.raw().deserialize().ok();
             let sender = parsed.as_ref().map(|e| e.sender().to_owned());
             let sender_name = match &sender {
-                Some(u) => match room.get_member_no_sync(u).await {
-                    Ok(Some(m)) => m.name().to_owned(),
-                    _ => u.localpart().to_owned(),
-                },
+                Some(u) => member_name(&room, u).await,
                 None => String::new(),
             };
-            let name = room.cached_display_name().map(|n| n.to_string()).unwrap_or_else(|| room_id.to_string());
+            let name = room_name(&room);
             (name, sender_name, parsed.as_ref().and_then(body_of), room.is_direct().await.unwrap_or(false), true)
         };
         tracing::info!(ms = t.elapsed().as_millis() as u64, sliding, "push: message fetched");

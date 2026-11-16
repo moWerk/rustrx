@@ -12,10 +12,11 @@ impl Core {
     /// room that starts taking requests is picked up. Each watched room
     /// reports its open requests as "knock_requests" (also when none are
     /// left).
-    pub(crate) async fn watch_knocks(
+    pub(super) async fn watch_knocks(
         &'static self,
         client: &Client,
         only: Option<&std::collections::HashSet<OwnedRoomId>>,
+        seen: &mut super::sync::ListSeen,
     ) {
         for room in client.rooms() {
             if only.is_some_and(|o| !o.contains(room.room_id())) {
@@ -35,17 +36,14 @@ impl Core {
                 continue;
             }
             let id = room.room_id().to_owned();
-            {
-                let mut st = self.state.lock().await;
-                if !st.knocks_watched.insert(id.clone()) {
-                    continue;
-                }
+            if !seen.knocks_watched.insert(id.clone()) {
+                continue;
             }
             let (stream, cleanup) = match room.subscribe_to_knock_requests().await {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::info!(room = %id, "knock: cannot watch: {e}");
-                    self.state.lock().await.knocks_watched.remove(&id);
+                    seen.knocks_watched.remove(&id);
                     continue;
                 }
             };
@@ -53,10 +51,7 @@ impl Core {
             let task = self.rt.spawn(async move {
                 let mut stream = std::pin::pin!(stream);
                 while let Some(requests) = stream.next().await {
-                    let name = room
-                        .cached_display_name()
-                        .map(|n| n.to_string())
-                        .unwrap_or_else(|| room.room_id().to_string());
+                    let name = room_name(&room);
                     let list: Vec<Value> = requests
                         .iter()
                         .map(|r| {
@@ -95,7 +90,7 @@ impl Core {
         reason: Option<&str>,
     ) -> Result<()> {
         let room = self.room(room_id).await?;
-        let user = UserId::parse(user_id)?;
+        let user = UserId::parse(user_id.trim())?;
         if accept {
             room.invite_user_by_id(&user).await?;
         } else if ban {
@@ -109,7 +104,7 @@ impl Core {
     /// The requests the user has looked at: no notification for them again.
     pub(crate) async fn knock_seen(&'static self, room_id: &str, user_ids: &[String]) -> Result<()> {
         let room = self.room(room_id).await?;
-        let users: Vec<OwnedUserId> = user_ids.iter().filter_map(|u| UserId::parse(u.as_str()).ok()).collect();
+        let users: Vec<OwnedUserId> = user_ids.iter().filter_map(|u| UserId::parse(u.trim()).ok()).collect();
         room.mark_knock_requests_as_seen(&users).await?;
         Ok(())
     }

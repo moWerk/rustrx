@@ -1,4 +1,5 @@
-//! Commands from the UI: parsing and dispatch.
+//! Commands from the UI: parsing and dispatch. Each command is one call
+//! into the file of its domain; the arms follow protocol.rs's sections.
 //! (part of `impl Core`, split out of core.rs; the items it uses live there)
 
 use super::*;
@@ -23,160 +24,71 @@ impl Core {
         });
     }
 
-    pub(crate) async fn client(&self) -> Result<Client> {
-        self.state.lock().await.client.clone().context("not logged in")
-    }
-
-    pub(crate) async fn room(&self, id: &str) -> Result<Room> {
-        let client = self.client().await?;
-        client.get_room(&RoomId::parse(id)?).with_context(|| format!("unknown room {id}"))
-    }
-
-    /// A timeline item by event id, or by transaction id for a local echo.
-    fn item_id(event_id: Option<String>, txn_id: Option<String>) -> Result<TimelineEventItemId> {
-        if let Some(txn) = given(&txn_id) {
-            return Ok(TimelineEventItemId::TransactionId(txn.into()));
-        }
-        let id = given(&event_id).context("missing field `event_id`")?;
-        Ok(TimelineEventItemId::EventId(EventId::parse(id)?))
-    }
-
-    /// The open room's timeline when it matches, else a throwaway one.
-    pub(crate) async fn timeline_for(&self, room: &Room) -> Result<Arc<Timeline>> {
-        if let Some(open) = &self.state.lock().await.open {
-            if open.room_id == room.room_id() {
-                return Ok(open.timeline.clone());
-            }
-        }
-        Ok(Arc::new(room.timeline().await?))
-    }
-
     pub(crate) async fn handle(&'static self, command: Command) -> Result<()> {
         use Command::*;
         match command {
+            // --- session (session.rs) ---
             ProbeServer { user, homeserver } => self.probe_server(user, homeserver).await,
             LoginPassword { user, password, homeserver } => self.login_password(user, password, homeserver).await,
             LoginSso { user, homeserver, idp } => self.login_sso(user, homeserver, idp).await,
             Logout => self.logout().await,
+
+            // --- the open room (timeline.rs, threads.rs, push.rs, packs.rs) ---
             OpenRoom { room_id } => self.open_room(&room_id).await,
             CloseRoom => {
-                let mut st = self.state.lock().await;
-                if let Some(open) = st.open.take() {
-                    open.task.abort();
-                }
+                self.close_room().await;
                 Ok(())
             }
-            PaginateBack { room_id, count } => {
-                let room = self.room(&room_id).await?;
-                let n = count.unwrap_or(30);
-                let tl = self.timeline_for(&room).await?;
-                let more = tl.paginate_backwards(n).await?;
-                self.emit(json!({"ev": "paginated", "room_id": room.room_id().as_str(), "at_start": more}));
-                Ok(())
-            }
+            PaginateBack { room_id, count } => self.paginate_back(&room_id, count).await,
             SendText { room_id, body, reply_to, markdown, emotes, thread_root } => {
-                let room = self.room(&room_id).await?;
-                let tl = match given(&thread_root) {
-                    Some(root) => self.thread_timeline(&room, root).await?,
-                    None => self.timeline_for(&room).await?,
-                };
-                let mut content = if markdown.unwrap_or(true) {
-                    RoomMessageEventContent::text_markdown(&body)
-                } else {
-                    RoomMessageEventContent::text_plain(&body)
-                };
-                if let Some(emotes) = &emotes {
-                    packs::with_emotes(&mut content, emotes);
-                }
-                match given(&reply_to) {
-                    Some(reply) => {
-                        let without: RoomMessageEventContentWithoutRelation = content.into();
-                        tl.send_reply(without, EventId::parse(reply)?).await?;
-                    }
-                    None => {
-                        tl.send(content.into()).await?;
-                    }
-                }
+                self.send_text(&room_id, &body, given(&reply_to), markdown.unwrap_or(true), emotes.as_ref(), given(&thread_root))
+                    .await
+            }
+            SendSticker { room_id, url, body, info, thread_root } => {
+                self.send_sticker(&room_id, &url, &body, info, given(&thread_root)).await
+            }
+            OpenThread { room_id, root } => self.open_thread(&room_id, &root).await,
+            CloseThread => {
+                self.close_thread().await;
                 Ok(())
             }
+            ThreadList { room_id } => self.thread_list(&room_id).await,
+            CloseThreadList => {
+                self.close_thread_list().await;
+                Ok(())
+            }
+            MarkThreadRead => self.mark_thread_read().await,
+            PushSet { endpoint, gateway, old, lang } => self.push_set(&endpoint, &gateway, given(&old), given(&lang)).await,
+            PushRemove { endpoint } => self.push_remove(&endpoint).await,
+            PushHandle { room_id, event_id } => self.push_handle(&room_id, &event_id).await,
             SendFile { room_id, path, caption, w, h, thumb_path, thumb_w, thumb_h, voice, duration_ms, thread_root } => {
-                let room = self.room(&room_id).await?;
-                let path = PathBuf::from(path);
-                let mime = mime_guess::from_path(&path).first_or_octet_stream();
-                let tl = match given(&thread_root) {
-                    Some(root) => self.thread_timeline(&room, root).await?,
-                    None => self.timeline_for(&room).await?,
-                };
-                let dim = |n: Option<u64>| n.and_then(|n| UInt::try_from(n).ok());
-                let mut config = AttachmentConfig::default();
-                if let (Some(w), Some(h)) = (dim(w), dim(h)) {
-                    let size = std::fs::metadata(&path).ok().and_then(|m| UInt::try_from(m.len()).ok());
-                    config.info = Some(AttachmentInfo::Image(BaseImageInfo {
-                        width: Some(w),
-                        height: Some(h),
-                        size,
-                        ..Default::default()
-                    }));
-                }
-                if let (Some(tp), Some(w), Some(h)) = (thumb_path, dim(thumb_w), dim(thumb_h)) {
-                    if let Ok(data) = std::fs::read(&tp) {
-                        let size = UInt::try_from(data.len() as u64).unwrap_or_default();
-                        config.thumbnail = Some(Thumbnail {
-                            data,
-                            content_type: mime::IMAGE_JPEG,
-                            width: w,
-                            height: h,
-                            size,
-                        });
-                    }
-                    let _ = std::fs::remove_file(&tp);
-                }
-                if let Some(caption) = given(&caption) {
-                    config.caption = Some(TextMessageEventContent::markdown(caption));
-                }
-                // a voice message: other clients show it as one (a player, not a file)
-                if voice.unwrap_or(false) {
-                    let duration = duration_ms.map(Duration::from_millis);
-                    let size = std::fs::metadata(&path).ok().and_then(|m| UInt::try_from(m.len()).ok());
-                    config.info = Some(AttachmentInfo::Voice(BaseAudioInfo { duration, size, ..Default::default() }));
-                }
-                // through the send queue: the message shows at once as a local
-                // echo with its upload progress, instead of only once uploaded
-                tl.send_attachment(path, mime, config).use_send_queue().await?;
-                Ok(())
+                let voice = voice.unwrap_or(false);
+                self.send_file(&room_id, path, given(&caption), w, h, thumb_path, thumb_w, thumb_h, voice, duration_ms, given(&thread_root))
+                    .await
             }
-            React { room_id, event_id, key } => {
-                let room = self.room(&room_id).await?;
-                let tl = self.timeline_holding(&room, Some(&event_id), None).await?;
-                let id = TimelineEventItemId::EventId(EventId::parse(&event_id)?);
-                tl.toggle_reaction(&id, &key).await?;
-                Ok(())
+            React { room_id, event_id, key } => self.react(&room_id, &event_id, &key).await,
+            Redact { room_id, event_id, txn_id, reason } => self.redact(&room_id, event_id, txn_id, given(&reason)).await,
+            Edit { room_id, event_id, txn_id, body } => self.edit(&room_id, event_id, txn_id, &body).await,
+            PollVote { room_id, event_id, answers } => self.poll_vote(&room_id, &event_id, answers).await,
+            Report { room_id, event_id, reason } => self.report(&room_id, &event_id, given(&reason)).await,
+            EventSource { room_id, event_id } => self.event_source(&room_id, &event_id).await,
+            MarkRead { room_id, private } => self.mark_read(&room_id, private.unwrap_or(false)).await,
+            Typing { room_id, typing } => self.typing(&room_id, typing.unwrap_or(false)).await,
+            GetMedia { room_id, event_id, thumb, dest_dir } => {
+                self.get_media(&room_id, &event_id, thumb.unwrap_or(false), dest_dir).await
             }
-            Redact { room_id, event_id, txn_id, reason } => {
-                // a sent event is redacted; a local echo (txn_id) is discarded
-                let room = self.room(&room_id).await?;
-                let tl = self.timeline_holding(&room, event_id.as_deref(), txn_id.as_deref()).await?;
-                tl.redact(&Self::item_id(event_id, txn_id)?, given(&reason)).await?;
-                Ok(())
-            }
-            Edit { room_id, event_id, txn_id, body } => {
-                let room = self.room(&room_id).await?;
-                let tl = self.timeline_holding(&room, event_id.as_deref(), txn_id.as_deref()).await?;
-                let content: RoomMessageEventContentWithoutRelation =
-                    RoomMessageEventContent::text_markdown(&body).into();
-                tl.edit(&Self::item_id(event_id, txn_id)?, EditedContent::RoomMessage(content)).await?;
-                Ok(())
-            }
-            PollVote { room_id, event_id, answers } => {
-                let room = self.room(&room_id).await?;
-                let poll = EventId::parse(&event_id)?;
-                room.send(UnstablePollResponseEventContent::new(answers, poll)).await?;
-                Ok(())
-            }
-            StorageInfo => self.storage_info().await,
-            CallStart { room_id, voice, skip_lobby } => self.call_start(&room_id, voice.unwrap_or(false), skip_lobby.unwrap_or(false)).await,
-            CallMessage { data } => self.call_message(&data).await,
-            CallDecline { room_id, event_id } => self.call_decline(&room_id, &event_id).await,
+            FetchEmote { mxc } => self.fetch_emote(&mxc).await,
+            ImagePacks { room_id } => self.image_packs(&room_id).await,
+            AddUserEmote { shortcode, url } => self.add_user_emote(&shortcode, &url).await,
+
+            // --- rooms (rooms.rs, spaces.rs) ---
+            GetNotificationMode { room_id } => self.notification_mode(&room_id).await,
+            SetNotificationMode { room_id, mode } => self.set_notification_mode(&room_id, &mode).await,
+            SetFavourite { room_id, value } => self.set_favourite(&room_id, value.unwrap_or(true)).await,
+            SetLowPriority { room_id, value } => self.set_low_priority(&room_id, value.unwrap_or(true)).await,
+            JoinRoom { room_id } => self.join_room(&room_id).await,
+            LeaveRoom { room_id } => self.leave_room(&room_id).await,
+            JoinByIdOrAlias { id, via } => self.join_by_id_or_alias(&id, &via).await,
             RoomPreview { id, via } => self.room_preview(&id, &via).await,
             Knock { id, reason, via } => self.knock(&id, given(&reason), &via).await,
             RoomLink { room_id } => self.room_link(&room_id).await,
@@ -189,491 +101,67 @@ impl Core {
             SpaceAddChild { space_id, room_id } => self.space_add_child(&space_id, &room_id).await,
             SpaceRemoveChild { space_id, room_id } => self.space_remove_child(&space_id, &room_id).await,
             SpaceLeave { space_id, with_rooms } => self.space_leave(&space_id, with_rooms.unwrap_or(false)).await,
-            KnockAnswer { room_id, user_id, accept, ban, reason } => {
-                self.knock_answer(&room_id, &user_id, accept, ban.unwrap_or(false), given(&reason)).await
+            CreateDm { user_id } => self.create_dm(&user_id).await,
+            CreateRoom { name, topic, public, alias, encrypted, space, parent, join_rule } => {
+                self.create_room(
+                    given(&name),
+                    given(&topic),
+                    public.unwrap_or(false),
+                    given(&alias),
+                    encrypted,
+                    space.unwrap_or(false),
+                    given(&parent),
+                    given(&join_rule),
+                )
+                .await
             }
-            KnockSeen { room_id, user_ids } => self.knock_seen(&room_id, &user_ids).await,
+            RoomMembers { room_id } => self.room_members(&room_id).await,
+            SetRoomName { room_id, name } => self.set_room_name(&room_id, name).await,
+            SetRoomAvatar { room_id, path, w, h } => self.set_room_avatar(&room_id, &path, w, h).await,
+            SetOwnAvatar { path } => self.set_own_avatar(&path).await,
+            SetRoomTopic { room_id, topic } => self.set_room_topic(&room_id, &topic).await,
+            Invite { room_id, user_id } => self.invite(&room_id, &user_id).await,
+            Search { term } => self.search(&term).await,
+            RefreshRooms => self.refresh_rooms().await,
+
+            // --- encryption (verification.rs, account.rs) ---
+            VerificationRequestSelf => self.verification_request_self().await,
+            VerificationAccept { flow_id } => self.verification_accept(&flow_id).await,
+            VerificationStartSas { flow_id } => self.verification_start_sas(&flow_id).await,
+            VerificationConfirm { flow_id } => self.verification_confirm(&flow_id).await,
+            VerificationMismatch { flow_id } => self.verification_mismatch(&flow_id).await,
+            VerificationCancel { flow_id } => self.verification_cancel(&flow_id).await,
+            RecoveryRecover { key } => self.recovery_recover(&key).await,
+            RecoveryEnable => self.recovery_enable().await,
+            RecoveryReset => self.recovery_reset().await,
+            IdentityReset => self.identity_reset().await,
+            ExportKeys { path, passphrase } => self.export_keys(path, &passphrase).await,
+            ImportKeys { path, passphrase } => self.import_keys(path, &passphrase).await,
+
+            // --- account and devices (account.rs, sync.rs) ---
+            Devices => self.devices().await,
+            DeleteDevice { device_id, password } => self.delete_device(device_id, password).await,
+            Profile => self.profile().await,
+            SetDisplayName { name } => self.set_display_name(&name).await,
+            IgnoreUser { user_id } => self.ignore_user(&user_id).await,
+            UnignoreUser { user_id } => self.unignore_user(&user_id).await,
+            StorageInfo => self.storage_info().await,
+            ClearMedia => self.clear_media().await,
+
+            // --- calls (call.rs) and requests to join (knock.rs) ---
+            CallStart { room_id, voice, skip_lobby } => {
+                self.call_start(&room_id, voice.unwrap_or(false), skip_lobby.unwrap_or(false)).await
+            }
+            CallMessage { data } => self.call_message(&data).await,
             CallEnd => {
                 self.call_end().await;
                 Ok(())
             }
-            EventSource { room_id, event_id } => {
-                let room = self.room(&room_id).await?;
-                let tl = self.timeline_holding(&room, Some(&event_id), None).await?;
-                let item = tl
-                    .item_by_event_id(&EventId::parse(&event_id)?)
-                    .await
-                    .context("the message is not in the loaded timeline")?;
-                let pretty = |raw: &matrix_sdk::ruma::serde::Raw<_>| {
-                    serde_json::from_str::<Value>(raw.json().get())
-                        .and_then(|v| serde_json::to_string_pretty(&v))
-                        .unwrap_or_else(|_| raw.json().get().to_owned())
-                };
-                let original = item.original_json().map(&pretty).context("no source for this message yet")?;
-                let edit = item.latest_edit_json().map(&pretty);
-                self.emit(json!({"ev": "event_source", "event_id": event_id, "json": original, "edit": edit}));
-                Ok(())
+            KnockAnswer { room_id, user_id, accept, ban, reason } => {
+                self.knock_answer(&room_id, &user_id, accept, ban.unwrap_or(false), given(&reason)).await
             }
-            ClearMedia => {
-                // the decrypted copies this app keeps, and the SDK's media cache
-                for dir in ["media"] {
-                    std::fs::remove_dir_all(self.data_dir.join(dir)).ok();
-                    std::fs::create_dir_all(self.data_dir.join(dir)).ok();
-                }
-                let client = self.client().await?;
-                client.media().clean().await?;
-                self.storage_info().await
-            }
-            Report { room_id, event_id, reason } => {
-                let room = self.room(&room_id).await?;
-                let event_id = EventId::parse(&event_id)?;
-                room.report_content(event_id, given(&reason).map(str::to_owned)).await?;
-                Ok(())
-            }
-            GetNotificationMode { room_id } => {
-                let room = self.room(&room_id).await?;
-                self.notification_mode(&room).await
-            }
-            SetNotificationMode { room_id, mode } => {
-                let room = self.room(&room_id).await?;
-                let client = self.client().await?;
-                let settings = client.notification_settings().await;
-                match mode.as_str() {
-                    "all" => settings.set_room_notification_mode(room.room_id(), RoomNotificationMode::AllMessages).await?,
-                    "mentions" => settings
-                        .set_room_notification_mode(room.room_id(), RoomNotificationMode::MentionsAndKeywordsOnly)
-                        .await?,
-                    "mute" => settings.set_room_notification_mode(room.room_id(), RoomNotificationMode::Mute).await?,
-                    _ => settings.delete_user_defined_room_rules(room.room_id()).await?,
-                }
-                self.notification_mode(&room).await
-            }
-            ExportKeys { path, passphrase } => {
-                let client = self.client().await?;
-                let path = PathBuf::from(path);
-                client.encryption().export_room_keys(path.clone(), &passphrase, |_| true).await?;
-                self.emit(json!({"ev": "keys_exported", "path": path.to_string_lossy()}));
-                Ok(())
-            }
-            ImportKeys { path, passphrase } => {
-                let client = self.client().await?;
-                let result = client
-                    .encryption()
-                    .import_room_keys(PathBuf::from(path), &passphrase)
-                    .await?;
-                self.emit(json!({"ev": "keys_imported", "imported": result.imported_count, "total": result.total_count}));
-                Ok(())
-            }
-            CreateRoom { name, topic, public, alias, encrypted, space, parent, join_rule } => {
-                let client = self.client().await?;
-                let mut req = create_room::v3::Request::new();
-                req.name = given(&name).map(str::to_owned);
-                req.topic = given(&topic).map(str::to_owned);
-                let public = public.unwrap_or(false);
-                req.preset = Some(if public { create_room::v3::RoomPreset::PublicChat } else { create_room::v3::RoomPreset::PrivateChat });
-                if public {
-                    req.visibility = Visibility::Public;
-                    req.room_alias_name = given(&alias).map(str::to_owned);
-                }
-                let space = space.unwrap_or(false);
-                let parent = given(&parent).map(str::to_owned);
-                // a space holds no messages: nothing to encrypt
-                if !space && encrypted.unwrap_or(!public) {
-                    let content = RoomEncryptionEventContent::with_recommended_defaults();
-                    req.initial_state.push(InitialStateEvent::with_empty_state_key(content).to_raw_any());
-                }
-                if space {
-                    req.creation_content = Some(matrix_sdk::ruma::serde::Raw::new(&json!({"type": "m.space"}))?.cast_unchecked());
-                }
-                // who may join, when not public: invite (the preset's), ask to
-                // join, or the members of the parent space
-                {
-                    use matrix_sdk::ruma::events::room::join_rules::{AllowRule, JoinRule, Restricted, RoomJoinRulesEventContent};
-                    let rule = match given(&join_rule) {
-                        Some("knock") => Some(JoinRule::Knock),
-                        Some("restricted") => match &parent {
-                            Some(p) => Some(JoinRule::Restricted(Restricted::new(vec![AllowRule::room_membership(OwnedRoomId::try_from(p.as_str())?)]))),
-                            None => None,
-                        },
-                        _ => None,
-                    };
-                    if let Some(rule) = rule {
-                        req.initial_state.push(InitialStateEvent::with_empty_state_key(RoomJoinRulesEventContent::new(rule)).to_raw_any());
-                    }
-                }
-                // everyone may take part in calls (a call membership is a state
-                // event); the map replaces the server's, so its defaults are
-                // restated (Synapse's, as Element sends them)
-                let mut events = json!({
-                    "m.room.name": 50, "m.room.power_levels": 100, "m.room.history_visibility": 100,
-                    "m.room.canonical_alias": 50, "m.room.avatar": 50, "m.room.tombstone": 100,
-                    "m.room.server_acl": 100, "m.room.encryption": 100,
-                });
-                for t in super::call::CALL_MEMBER_TYPES {
-                    events[t] = json!(0);
-                }
-                // in a space only admins post (its rooms are its state)
-                let mut levels = json!({ "events": events });
-                if space {
-                    levels["events_default"] = json!(100);
-                }
-                req.power_level_content_override = Some(matrix_sdk::ruma::serde::Raw::new(&levels)?.cast_unchecked());
-                let room = client.create_room(req).await?;
-                if let Some(p) = parent {
-                    let service = self.space_service().await?;
-                    if let Err(e) = service.add_child_to_space(room.room_id().to_owned(), OwnedRoomId::try_from(p.as_str())?).await {
-                        tracing::info!(room = %room.room_id(), "space: adding the new room: {e}");
-                    }
-                }
-                self.emit(json!({"ev": "joined", "room_id": room.room_id().as_str(), "is_space": space}));
-                Ok(())
-            }
-            MarkRead { room_id, private } => {
-                let room = self.room(&room_id).await?;
-                // the open room's timeline knows its newest item; any other room
-                // gets the receipt on its latest event (a throwaway timeline is
-                // empty and marked nothing, so "Mark as read" in the list did nothing)
-                let is_open = {
-                    let st = self.state.lock().await;
-                    st.open.as_ref().map(|o| o.room_id == room.room_id()).unwrap_or(false)
-                };
-                // a private receipt moves our marker without telling the room
-                let kind = if private.unwrap_or(false) {
-                    ReceiptType::ReadPrivate
-                } else {
-                    ReceiptType::Read
-                };
-                // The fully-read marker is where a room opens: only our own
-                // account sees it, so it moves with "receipts off" too.
-                // Without it a room opened where another client left it.
-                if is_open {
-                    let tl = self.timeline_for(&room).await?;
-                    tl.mark_as_read(kind).await?;
-                    tl.mark_as_read(ReceiptType::FullyRead).await?;
-                } else if let Some(event_id) = crate::serialize::latest_event_id(&room) {
-                    room.send_single_receipt(kind, ReceiptThread::Unthreaded, event_id.clone()).await?;
-                    room.send_single_receipt(ReceiptType::FullyRead, ReceiptThread::Unthreaded, event_id).await?;
-                }
-                let _ = room.set_unread_flag(false).await;
-                Ok(())
-            }
-            Typing { room_id, typing } => {
-                let room = self.room(&room_id).await?;
-                room.typing_notice(typing.unwrap_or(false)).await?;
-                Ok(())
-            }
-            GetMedia { room_id, event_id, thumb, dest_dir } => {
-                self.get_media(&room_id, &event_id, thumb.unwrap_or(false), dest_dir).await
-            }
-            FetchEmote { mxc } => self.fetch_emote(&mxc).await,
-            ImagePacks { room_id } => self.image_packs(&room_id).await,
-            AddUserEmote { shortcode, url } => self.add_user_emote(&shortcode, &url).await,
-            SendSticker { room_id, url, body, info, thread_root } => {
-                self.send_sticker(&room_id, &url, &body, info, given(&thread_root)).await
-            }
-            OpenThread { room_id, root } => self.open_thread(&room_id, &root).await,
-            ThreadList { room_id } => self.thread_list(&room_id).await,
-            CloseThreadList => {
-                self.close_thread_list().await;
-                Ok(())
-            }
-            MarkThreadRead => self.mark_thread_read().await,
-            PushSet { endpoint, gateway, old, lang } => self.push_set(&endpoint, &gateway, given(&old), given(&lang)).await,
-            PushRemove { endpoint } => self.push_remove(&endpoint).await,
-            PushHandle { room_id, event_id } => self.push_handle(&room_id, &event_id).await,
-            CloseThread => {
-                self.close_thread().await;
-                Ok(())
-            }
-            SetFavourite { room_id, value } => {
-                let room = self.room(&room_id).await?;
-                room.set_is_favourite(value.unwrap_or(true), None).await?;
-                Ok(())
-            }
-            SetLowPriority { room_id, value } => {
-                let room = self.room(&room_id).await?;
-                room.set_is_low_priority(value.unwrap_or(true), None).await?;
-                Ok(())
-            }
-            JoinRoom { room_id } => {
-                let room = self.room(&room_id).await?;
-                room.join().await?;
-                Ok(())
-            }
-            LeaveRoom { room_id } => {
-                let room = self.room(&room_id).await?;
-                room.leave().await?;
-                Ok(())
-            }
-            Search { term } => {
-                // People from the user directory, rooms from the public
-                // directory of the own server; both are best effort.
-                let client = self.client().await?;
-                let mut req = get_public_rooms_filtered::v3::Request::new();
-                req.limit = Some(uint!(20));
-                req.filter.generic_search_term = Some(term.clone());
-                let (users, rooms) =
-                    tokio::join!(client.search_users(&term, 10), client.public_rooms_filtered(req));
-                let users: Vec<Value> = users
-                    .map(|r| r.results)
-                    .unwrap_or_else(|e| {
-                        tracing::info!("user search: {e}");
-                        Vec::new()
-                    })
-                    .into_iter()
-                    .filter(|u| Some(u.user_id.as_ref()) != client.user_id())
-                    .map(|u| json!({"user_id": u.user_id.as_str(), "name": u.display_name}))
-                    .collect();
-                let rooms: Vec<Value> = rooms
-                    .map(|r| r.chunk)
-                    .unwrap_or_else(|e| {
-                        tracing::info!("room search: {e}");
-                        Vec::new()
-                    })
-                    .into_iter()
-                    .map(|r| {
-                        let joined = client
-                            .get_room(&r.room_id)
-                            .is_some_and(|room| room.state() == RoomState::Joined);
-                        json!({
-                            "room_id": r.room_id.as_str(),
-                            "name": r.name,
-                            "alias": r.canonical_alias.map(|a| a.to_string()),
-                            "topic": r.topic,
-                            "members": r.num_joined_members,
-                            "joined": joined,
-                        })
-                    })
-                    .collect();
-                self.emit(json!({"ev": "search_results", "term": term, "users": users, "rooms": rooms}));
-                Ok(())
-            }
-            JoinByIdOrAlias { id, via } => {
-                let client = self.client().await?;
-                let id = RoomOrAliasId::parse(id.trim())?;
-                let servers: Vec<matrix_sdk::ruma::OwnedServerName> = via
-                    .iter()
-                    .flatten()
-                    .filter_map(|s| matrix_sdk::ruma::OwnedServerName::try_from(s.as_str()).ok())
-                    .collect();
-                let room = client.join_room_by_id_or_alias(&id, &servers).await?;
-                self.emit(json!({"ev": "joined", "room_id": room.room_id().as_str()}));
-                Ok(())
-            }
-            CreateDm { user_id } => {
-                let client = self.client().await?;
-                let user = UserId::parse(user_id.trim())?;
-                let room = match client.get_dm_room(&user) {
-                    Some(r) => r,
-                    None => client.create_dm(&user).await?,
-                };
-                self.emit(json!({"ev": "dm_ready", "room_id": room.room_id().as_str(), "user_id": user.as_str()}));
-                Ok(())
-            }
-            RoomMembers { room_id } => {
-                let room = self.room(&room_id).await?;
-                let members: Vec<Value> = room
-                    .members(RoomMemberships::ACTIVE)
-                    .await?
-                    .iter()
-                    .map(|m| {
-                        let power = match m.power_level() {
-                            UserPowerLevel::Infinite => Value::from("infinite"),
-                            UserPowerLevel::Int(i) => Value::from(i64::from(i)),
-                            _ => Value::Null,
-                        };
-                        json!({"user_id": m.user_id().as_str(), "name": m.name(), "power": power})
-                    })
-                    .collect();
-                self.emit(json!({"ev": "members", "room_id": room.room_id().as_str(), "members": members}));
-                Ok(())
-            }
-            SetRoomName { room_id, name } => {
-                let room = self.room(&room_id).await?;
-                room.set_name(name).await?;
-                Ok(())
-            }
-            SetRoomAvatar { room_id, path, w, h } => {
-                let room = self.room(&room_id).await?;
-                let data = std::fs::read(&path)?;
-                let mime = mime_guess::from_path(&path).first_or(mime::IMAGE_JPEG);
-                let mut info = matrix_sdk::ruma::events::room::avatar::ImageInfo::new();
-                info.width = w.and_then(|n| UInt::try_from(n).ok());
-                info.height = h.and_then(|n| UInt::try_from(n).ok());
-                info.size = UInt::try_from(data.len() as u64).ok();
-                info.mimetype = Some(mime.to_string());
-                room.upload_avatar(&mime, data, Some(info)).await?;
-                std::fs::remove_file(&path).ok();
-                // the room list fetches the new picture once the sync brings it
-                Ok(())
-            }
-            SetRoomTopic { room_id, topic } => {
-                let room = self.room(&room_id).await?;
-                room.set_room_topic(&topic).await?;
-                Ok(())
-            }
-            Invite { room_id, user_id } => {
-                let room = self.room(&room_id).await?;
-                room.invite_user_by_id(&UserId::parse(user_id.trim())?).await?;
-                Ok(())
-            }
-            VerificationRequestSelf => {
-                let client = self.client().await?;
-                let own = client.user_id().context("no user id")?.to_owned();
-                let identity = client
-                    .encryption()
-                    .get_user_identity(&own)
-                    .await?
-                    .context("own identity not known yet; wait for the first sync")?;
-                let req = identity.request_verification().await?;
-                self.rt.spawn(self.watch_request(req));
-                Ok(())
-            }
-            VerificationAccept { flow_id } => {
-                let req = self.request(&flow_id).await?;
-                req.accept().await?;
-                Ok(())
-            }
-            VerificationStartSas { flow_id } => {
-                let req = self.request(&flow_id).await?;
-                req.start_sas().await?;
-                Ok(())
-            }
-            VerificationConfirm { flow_id } => {
-                let sas = self.sas(&flow_id).await?;
-                sas.confirm().await?;
-                Ok(())
-            }
-            VerificationMismatch { flow_id } => {
-                let sas = self.sas(&flow_id).await?;
-                sas.mismatch().await?;
-                Ok(())
-            }
-            VerificationCancel { flow_id } => {
-                let req = self.request(&flow_id).await?;
-                req.cancel().await?;
-                Ok(())
-            }
-            RecoveryRecover { key } => {
-                let client = self.client().await?;
-                client.encryption().recovery().recover(key.trim()).await?;
-                self.emit(json!({"ev": "recovery_done"}));
-                Ok(())
-            }
-            RecoveryEnable => {
-                let client = self.client().await?;
-                let key = client.encryption().recovery().enable().wait_for_backups_to_upload().await?;
-                self.emit(json!({"ev": "recovery_key", "key": key}));
-                Ok(())
-            }
-            RecoveryReset => {
-                let client = self.client().await?;
-                let key = client.encryption().recovery().reset_key().await?;
-                self.emit(json!({"ev": "recovery_key", "key": key}));
-                Ok(())
-            }
-            IdentityReset => {
-                use matrix_sdk::encryption::CrossSigningResetAuthType;
-                let client = self.client().await?;
-                let recovery = client.encryption().recovery();
-                if let Some(handle) = recovery.reset_identity().await? {
-                    match handle.auth_type() {
-                        CrossSigningResetAuthType::OAuth(info) => {
-                            let url = info.approval_url.to_string();
-                            tracing::info!("identity reset: waiting for the approval in the browser");
-                            self.emit(json!({"ev": "identity_reset_approval", "url": url}));
-                            self.emit(json!({"ev": "open_url", "url": url}));
-                            // the SDK polls for two minutes
-                            handle.reset(None).await?;
-                        }
-                        CrossSigningResetAuthType::Uiaa(_) => {
-                            handle.cancel().await;
-                            bail!("this server asks for the password to reset the encryption, which Rustrx cannot do yet");
-                        }
-                    }
-                }
-                tracing::info!("identity reset: done, setting up the backup");
-                let key = recovery.enable().wait_for_backups_to_upload().await?;
-                self.emit(json!({"ev": "recovery_key", "key": key}));
-                Ok(())
-            }
-            Devices => {
-                let client = self.client().await?;
-                let own = client.device_id().map(|d| d.to_string());
-                let devices: Vec<Value> = client
-                    .devices()
-                    .await?
-                    .devices
-                    .iter()
-                    .map(|d| {
-                        json!({
-                            "device_id": d.device_id.as_str(),
-                            "name": d.display_name,
-                            "last_seen_ts": d.last_seen_ts.map(|t| u64::from(t.0)),
-                            "last_seen_ip": d.last_seen_ip,
-                            "current": Some(d.device_id.to_string()) == own,
-                        })
-                    })
-                    .collect();
-                self.emit(json!({"ev": "devices", "devices": devices}));
-                Ok(())
-            }
-            DeleteDevice { device_id, password } => self.delete_device(device_id, password).await,
-            Profile => {
-                let client = self.client().await?;
-                let name = client.account().get_display_name().await?;
-                // one's own picture, cached beside the rooms' as "_own.img"
-                let file = self.data_dir.join("avatars").join("_own.img");
-                let format = MediaFormat::Thumbnail(MediaThumbnailSettings::new(uint!(256), uint!(256)));
-                let avatar = match client.account().get_avatar(format).await {
-                    Ok(Some(bytes)) if std::fs::write(&file, &bytes).is_ok() => Some(file.to_string_lossy().into_owned()),
-                    Ok(None) => {
-                        std::fs::remove_file(&file).ok();
-                        None
-                    }
-                    _ => file.exists().then(|| file.to_string_lossy().into_owned()),
-                };
-                let version = std::fs::metadata(&file).and_then(|m| m.modified()).ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64);
-                self.emit(json!({"ev": "profile", "display_name": name,
-                                 "user_id": client.user_id().map(|u| u.to_string()),
-                                 "avatar": avatar, "avatar_v": version}));
-                Ok(())
-            }
-            SetOwnAvatar { path } => {
-                let client = self.client().await?;
-                let data = std::fs::read(&path)?;
-                let mime = mime_guess::from_path(&path).first_or(mime::IMAGE_JPEG);
-                client.account().upload_avatar(&mime, data).await?;
-                std::fs::remove_file(&path).ok();
-                // the new picture to the settings page
-                Box::pin(self.handle(Command::Profile)).await
-            }
-            SetDisplayName { name } => {
-                let client = self.client().await?;
-                client.account().set_display_name(Some(&name)).await?;
-                Ok(())
-            }
-            IgnoreUser { user_id } => {
-                let client = self.client().await?;
-                client.account().ignore_user(&UserId::parse(user_id.trim())?).await?;
-                Ok(())
-            }
-            UnignoreUser { user_id } => {
-                let client = self.client().await?;
-                client.account().unignore_user(&UserId::parse(user_id.trim())?).await?;
-                Ok(())
-            }
-            RefreshRooms => {
-                let client = self.client().await?;
-                let dir = self.data_dir.join("avatars");
-                let mut rooms = Vec::new();
-                for room in client.rooms().into_iter().filter(crate::serialize::listed) {
-                    rooms.push(room_json(&room, &dir).await);
-                }
-                self.emit(json!({"ev": "rooms", "rooms": sorted_rooms(rooms)}));
-                Ok(())
-            }
+            KnockSeen { room_id, user_ids } => self.knock_seen(&room_id, &user_ids).await,
+            CallDecline { room_id, event_id } => self.call_decline(&room_id, &event_id).await,
         }
     }
 }

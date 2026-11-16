@@ -6,13 +6,9 @@
 
 use super::*;
 use matrix_sdk_ui::timeline::thread_list_service::{ThreadListItemEvent, ThreadListPaginationState, ThreadListService};
-use matrix_sdk_ui::timeline::TimelineFocus;
 
 fn list_event_json(e: &ThreadListItemEvent) -> Value {
-    let name = match &e.sender_profile {
-        TimelineDetails::Ready(p) => p.display_name.clone().unwrap_or_else(|| e.sender.localpart().to_owned()),
-        _ => e.sender.localpart().to_owned(),
-    };
+    let name = profile_name(&e.sender_profile, &e.sender);
     let body = e.content.as_ref().and_then(|c| c.as_message()).map(|m| m.body().to_owned());
     json!({
         "event_id": e.event_id.as_str(), "sender": e.sender.as_str(), "sender_name": name,
@@ -42,43 +38,24 @@ impl Core {
         let own = client.user_id().context("no user id")?.to_owned();
         let root = EventId::parse(root)?;
         self.close_thread().await;
-        let timeline = Arc::new(
-            room.timeline_builder()
-                .with_focus(TimelineFocus::Thread { root_event_id: root.clone() })
-                .track_read_marker_and_receipts(TimelineReadReceiptTracking::MessageLikeEvents)
-                .build()
-                .await?,
-        );
+        let timeline = Self::build_timeline(&room, TimelineFocus::Thread { root_event_id: root.clone() }, true).await?;
         let tl = timeline.clone();
         let room_id_owned = room.room_id().to_owned();
         let room_id_kept = room_id_owned.clone();
         let root_owned = root.clone();
         let task = self.rt.spawn(async move {
-            let mut names = HashMap::new();
-            let (items, mut stream) = tl.subscribe().await;
-            let items: Vec<Arc<TimelineItem>> = items.into_iter().collect();
-            // replies quoted here need their originals fetched too
-            let mut replies_asked = std::collections::HashSet::new();
-            Self::fetch_replied(&tl, &items, &mut replies_asked);
-            Self::receipt_names(&room, &items, &mut names).await;
             let emit = |items: Value| {
-                crate::instance().emit(json!({"ev": "thread_timeline", "room_id": room_id_owned.as_str(),
-                                              "root": root_owned.as_str(), "items": items}));
+                self.emit(json!({"ev": "thread_timeline", "room_id": room_id_owned.as_str(),
+                                 "root": root_owned.as_str(), "items": items}));
             };
-            emit(items_json(&items, &own, &names));
-            // the whole thread: older replies page in
+            // the whole thread: older replies page in after the first items
             let back = tl.clone();
-            tokio::spawn(async move {
-                let _ = back.paginate_backwards(50).await;
-            });
-            while stream.next().await.is_some() {
-                tokio::time::sleep(Duration::from_millis(60)).await;
-                while let Some(Some(_)) = stream.next().now_or_never() {}
-                let items = tl.items().await;
-                Self::fetch_replied(&tl, &items, &mut replies_asked);
-                Self::receipt_names(&room, &items, &mut names).await;
-                emit(items_json(&items, &own, &names));
-            }
+            let page_in = move || {
+                tokio::spawn(async move {
+                    let _ = back.paginate_backwards(50).await;
+                });
+            };
+            Self::stream_timeline(&room, &tl, &own, emit, page_in).await;
         });
         tracing::info!(room = %room_id, %root, "thread: open");
         self.state.lock().await.thread = Some(OpenThread { room_id: room_id_kept, root, timeline, task });
@@ -166,32 +143,34 @@ impl Core {
     /// else a thread timeline made for the send.
     pub(crate) async fn thread_timeline(&self, room: &Room, root: &str) -> Result<Arc<Timeline>> {
         let root = EventId::parse(root)?;
-        if let Some(open) = &self.state.lock().await.thread {
-            if open.room_id == room.room_id() && open.root == root {
-                return Ok(open.timeline.clone());
-            }
+        let open = {
+            let st = self.state.lock().await;
+            st.thread.as_ref().filter(|t| t.room_id == room.room_id() && t.root == root).map(|t| t.timeline.clone())
+        };
+        if let Some(tl) = open {
+            return Ok(tl);
         }
-        Ok(Arc::new(
-            room.timeline_builder().with_focus(TimelineFocus::Thread { root_event_id: root }).build().await?,
-        ))
+        Self::build_timeline(room, TimelineFocus::Thread { root_event_id: root }, false).await
     }
 
-    /// The timeline that holds an event (or a local echo): the open thread's
-    /// when it is there, else the room's.
-    pub(crate) async fn timeline_holding(
-        &self,
-        room: &Room,
-        event_id: Option<&str>,
-        txn_id: Option<&str>,
-    ) -> Result<Arc<Timeline>> {
+    /// The timeline to send into: the thread's when a root is given, else
+    /// the room's.
+    pub(crate) async fn timeline_target(&self, room: &Room, thread_root: Option<&str>) -> Result<Arc<Timeline>> {
+        match thread_root {
+            Some(root) => self.thread_timeline(room, root).await,
+            None => self.timeline_for(room).await,
+        }
+    }
+
+    /// The timeline that holds an event: the open thread's when it is there,
+    /// else the room's. A local echo (no event id) is looked up in the
+    /// room's timeline: the thread's echoes are discarded there as well.
+    pub(crate) async fn timeline_holding(&self, room: &Room, event_id: Option<&str>) -> Result<Arc<Timeline>> {
         let thread = {
             let st = self.state.lock().await;
             st.thread.as_ref().filter(|t| t.room_id == room.room_id()).map(|t| t.timeline.clone())
         };
         if let Some(tl) = thread {
-            // a local echo (txn_id) is looked up in the room's timeline: the
-            // thread's echoes are discarded there as well
-            let _ = txn_id;
             let found = match event_id.filter(|s| !s.is_empty()).map(EventId::parse) {
                 Some(Ok(e)) => tl.item_by_event_id(&e).await.is_some(),
                 _ => false,

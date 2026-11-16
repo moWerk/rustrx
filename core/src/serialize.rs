@@ -5,20 +5,46 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use matrix_sdk::latest_events::LatestEventValue;
-use matrix_sdk::notification_settings::RoomNotificationMode;
+use matrix_sdk::notification_settings::{NotificationSettings, RoomNotificationMode};
 use matrix_sdk::ruma::events::receipt::ReceiptThread;
 use matrix_sdk::ruma::events::room::message::{MessageFormat, MessageType};
 use matrix_sdk::ruma::events::{AnyMessageLikeEventContent, AnySyncTimelineEvent, StateEventType};
 use matrix_sdk::ruma::{OwnedUserId, UserId};
 use matrix_sdk::{Room, RoomState};
 use matrix_sdk_ui::timeline::{
-    EventSendState, MembershipChange, TimelineEventShieldState, MsgLikeKind, TimelineDetails, TimelineItem, TimelineItemContent,
-    TimelineItemKind, VirtualTimelineItem,
+    EventSendState, MembershipChange, TimelineEventShieldState, MsgLikeKind, Profile, TimelineDetails, TimelineItem,
+    TimelineItemContent, TimelineItemKind, VirtualTimelineItem,
 };
 use serde_json::{json, Map, Value};
 
 fn ms(t: matrix_sdk::ruma::MilliSecondsSinceUnixEpoch) -> u64 {
     u64::from(t.0)
+}
+
+/// A room member's display name, else the localpart of their id.
+pub(crate) async fn member_name(room: &Room, user: &UserId) -> String {
+    match room.get_member_no_sync(user).await {
+        Ok(Some(m)) => m.name().to_owned(),
+        _ => user.localpart().to_owned(),
+    }
+}
+
+/// A timeline sender's display name, else the localpart of their id.
+pub(crate) fn profile_name(profile: &TimelineDetails<Profile>, user: &UserId) -> String {
+    match profile {
+        TimelineDetails::Ready(p) => p.display_name.clone().unwrap_or_else(|| user.localpart().to_owned()),
+        _ => user.localpart().to_owned(),
+    }
+}
+
+/// A room's cached name, else its id.
+pub(crate) fn room_name(room: &Room) -> String {
+    room.cached_display_name().map(|n| n.to_string()).unwrap_or_else(|| room.room_id().to_string())
+}
+
+/// An event's raw JSON as a value (null if it cannot be read).
+pub(crate) fn raw_value<T>(raw: &matrix_sdk::ruma::serde::Raw<T>) -> Value {
+    serde_json::from_str(raw.json().get()).unwrap_or(Value::Null)
 }
 
 /// File name of a room's cached avatar; the UI detects the image format.
@@ -38,7 +64,7 @@ pub(crate) fn latest_event_id(room: &Room) -> Option<matrix_sdk::ruma::OwnedEven
 
 /// One line for the room list: what the last message was, and who sent it
 /// in a group (`None` sender for direct chats and own messages say "You").
-async fn preview(room: &Room) -> (Option<String>, Option<String>) {
+async fn preview(room: &Room, is_dm: bool) -> (Option<String>, Option<String>) {
     let value = room.latest_event();
     let (text, sender) = match &value {
         LatestEventValue::None => return (None, None),
@@ -64,15 +90,12 @@ async fn preview(room: &Room) -> (Option<String>, Option<String>) {
     };
     let Some(text) = text else { return (None, None) };
     // the sender only matters in a group
-    if room.is_direct().await.unwrap_or(false) {
+    if is_dm {
         return (Some(text), None);
     }
     let who = match sender {
         Some(user) if user == room.own_user_id() => Some("You".to_owned()),
-        Some(user) => Some(match room.get_member_no_sync(&user).await {
-            Ok(Some(m)) => m.name().to_owned(),
-            _ => user.localpart().to_owned(),
-        }),
+        Some(user) => Some(member_name(room, &user).await),
         None => None,
     };
     (Some(text), who)
@@ -85,10 +108,7 @@ async fn membership_preview(room: &Room, event: &matrix_sdk::ruma::events::room:
     let target = &original.state_key;
     let name = match original.content.displayname.clone() {
         Some(n) => n,
-        None => match room.get_member_no_sync(target).await {
-            Ok(Some(m)) => m.name().to_owned(),
-            _ => target.localpart().to_owned(),
-        },
+        None => member_name(room, target).await,
     };
     let what = match original.content.membership {
         M::Join => match original.unsigned.prev_content.as_ref().map(|p| &p.membership) {
@@ -146,7 +166,9 @@ fn message_preview(msg: &MessageType) -> String {
     }
 }
 
-pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Value {
+/// `settings`: the account's notification settings, made once for a whole
+/// room list (building them reads and parses the push rules).
+pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path, settings: &NotificationSettings) -> Value {
     let name = match room.cached_display_name() {
         Some(n) => n.to_string(),
         None => match room.display_name().await {
@@ -156,9 +178,13 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
     };
     let counts = room.unread_notification_counts();
     let avatar = avatar_file(avatar_dir, room);
-    let (preview, preview_sender) = preview(room).await;
-    // muted: the room's notification mode
-    let muted = matches!(room.notification_mode().await, Some(RoomNotificationMode::Mute));
+    let avatar_meta = std::fs::metadata(&avatar).ok();
+    let is_dm = room.is_direct().await.unwrap_or(false);
+    let (preview, preview_sender) = preview(room, is_dm).await;
+    // muted: the room's notification mode, as Room::notification_mode has it
+    // (only a joined room has one; the default mode is never Mute)
+    let muted = room.state() == RoomState::Joined
+        && settings.get_user_defined_room_notification_mode(room.room_id()).await == Some(RoomNotificationMode::Mute);
     // the own last message was read by someone else
     let own_read = match room.latest_event() {
         LatestEventValue::Remote(ev) if ev.sender().as_deref() == Some(room.own_user_id()) => match ev.event_id() {
@@ -177,7 +203,6 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
     };
     // an upgraded room points to its successor
     let replaced_by = room.successor_room().map(|s| s.room_id.to_string());
-    // who sent an invitation: their name, else their id
     // what the user may change about who joins, and a space's rooms
     let (can_join_rules, can_children) = match room.power_levels().await {
         Ok(l) => (
@@ -191,7 +216,7 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
             .into_iter()
             .filter_map(|ev| match ev {
                 matrix_sdk::deserialized_responses::RawAnySyncOrStrippedState::Sync(raw) => {
-                    let v: Value = serde_json::from_str(raw.json().get()).ok()?;
+                    let v = raw_value(&raw);
                     let live = v.get("content").and_then(Value::as_object).is_some_and(|c| !c.is_empty());
                     if live { v.get("state_key").and_then(Value::as_str).map(str::to_owned) } else { None }
                 }
@@ -205,6 +230,7 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
         0
     };
     let parents = state_keys(room.get_state_events(StateEventType::SpaceParent).await.unwrap_or_default());
+    // who sent an invitation: their name, else their id
     let inviter = if room.state() == RoomState::Invited {
         room.invite_details().await.ok().map(|i| match i.inviter {
             Some(m) => m.name().to_owned(),
@@ -218,10 +244,10 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
         "muted": muted,
         "own_read": own_read,
         "replaced_by": replaced_by,
-        "has_avatar": avatar.exists(),
-        "avatar": if avatar.exists() { Some(avatar.to_string_lossy().into_owned()) } else { None },
+        "has_avatar": avatar_meta.is_some(),
+        "avatar": avatar_meta.as_ref().map(|_| avatar.to_string_lossy().into_owned()),
         // the file's age: the picture's URL changes with it, past Qt's image cache
-        "avatar_v": std::fs::metadata(&avatar).and_then(|m| m.modified()).ok()
+        "avatar_v": avatar_meta.and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()),
         "room_id": room.room_id().as_str(),
         "name": name,
@@ -229,7 +255,7 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
         "preview_sender": preview_sender,
         "topic": room.topic(),
         "alias": room.canonical_alias().map(|a| a.to_string()),
-        "is_dm": room.is_direct().await.unwrap_or(false),
+        "is_dm": is_dm,
         // a call is running here (someone is in it, from the room's state)
         "in_call": room.has_active_room_call(),
         "is_fav": room.is_favourite(),
@@ -253,17 +279,15 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path) -> Valu
     })
 }
 
-/// Joined rooms and invitations, invitations first, then by activity.
-/// Favourites are not pinned here; the UI has its own tab for them.
-/// Spaces and left rooms are left out.
-/// Rooms that belong in the list: joined or invited, no spaces.
+/// Rooms that belong in the list: joined or invited, spaces too (marked
+/// is_space; the UI keeps them apart). Left rooms are left out.
 pub(crate) fn listed(room: &Room) -> bool {
-    // spaces too, marked is_space: the UI keeps them apart
     matches!(room.state(), RoomState::Joined | RoomState::Invited)
 }
 
 /// Invitations first, then by the last activity; the id breaks ties, so
 /// rooms without a timestamp keep their order.
+/// Favourites are not pinned here; the UI has its own tab for them.
 pub(crate) fn sorted_rooms(mut rooms: Vec<Value>) -> Value {
     rooms.sort_by(|a, b| {
         let key = |r: &Value| {
@@ -428,10 +452,7 @@ fn content_json(o: &mut Map<String, Value>, content: &TimelineItemContent, own: 
                 let mut t = Map::new();
                 put(&mut t, "count", summary.num_replies);
                 if let TimelineDetails::Ready(latest) = &summary.latest_event {
-                    let who = match &latest.sender_profile {
-                        TimelineDetails::Ready(p) => p.display_name.clone().unwrap_or_else(|| latest.sender.localpart().to_owned()),
-                        _ => latest.sender.localpart().to_owned(),
-                    };
+                    let who = profile_name(&latest.sender_profile, &latest.sender);
                     put(&mut t, "latest_sender", who);
                     if let Some(msg) = latest.content.as_message() {
                         put(&mut t, "latest_body", msg.body());
@@ -563,10 +584,7 @@ pub(crate) fn item_json(item: &Arc<TimelineItem>, own: &UserId, names: &HashMap<
                         .original_json()
                         .and_then(|raw| raw.get_field::<Value>("content").ok().flatten())
                         .map_or(false, |c| c.as_object().map_or(true, |m| m.is_empty()));
-                    let who = match e.sender_profile() {
-                        TimelineDetails::Ready(p) => p.display_name.clone().unwrap_or_else(|| e.sender().localpart().to_owned()),
-                        _ => e.sender().localpart().to_owned(),
-                    };
+                    let who = profile_name(e.sender_profile(), e.sender());
                     put(&mut o, "body", format!("{who} {}", if left { "left the call" } else { "joined the call" }));
                 }
             }

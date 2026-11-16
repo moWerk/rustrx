@@ -2,6 +2,20 @@
 //! (part of `impl Core`, split out of core.rs; the items it uses live there)
 
 use super::*;
+use std::collections::HashSet;
+
+/// What the room list task remembers between passes, for one login (the
+/// task is aborted on logout, and this goes with it).
+#[derive(Default)]
+pub(super) struct ListSeen {
+    /// room and picture pairs tried once ("!room|mxc://..."); a new picture
+    /// of the room is tried again
+    avatars_tried: HashSet<String>,
+    /// joined rooms whose latest event is listened for
+    latest_listened: HashSet<OwnedRoomId>,
+    /// rooms and spaces whose requests to join are watched
+    pub(super) knocks_watched: HashSet<OwnedRoomId>,
+}
 
 impl Core {
     pub(crate) async fn start_sync(&'static self, client: Client) -> Result<()> {
@@ -76,17 +90,22 @@ impl Core {
         let avatar_dir = self.data_dir.join("avatars");
         let t = std::time::Instant::now();
         let mut cache: HashMap<OwnedRoomId, Value> = HashMap::new();
-        for room in client.rooms().into_iter().filter(crate::serialize::listed) {
-            cache.insert(room.room_id().to_owned(), room_json(&room, &avatar_dir).await);
+        let mut seen = ListSeen::default();
+        {
+            // the push rules once per pass, not once per room
+            let settings = client.notification_settings().await;
+            for room in client.rooms().into_iter().filter(crate::serialize::listed) {
+                cache.insert(room.room_id().to_owned(), room_json(&room, &avatar_dir, &settings).await);
+            }
         }
         tracing::info!(ms = t.elapsed().as_millis() as u64, rooms = cache.len(), "startup: first room list");
         self.emit(json!({"ev": "rooms", "rooms": sorted_rooms(cache.values().cloned().collect())}));
-        self.listen_latest(&client).await;
-        self.watch_knocks(&client, None).await;
-        let mut avatars_new = self.fetch_avatars(&client, None).await;
+        Self::listen_latest(&client, &mut seen).await;
+        self.watch_knocks(&client, None, &mut seen).await;
+        let mut avatars_new = self.fetch_avatars(&client, None, &mut seen).await;
         let mut last_full = std::time::Instant::now();
         loop {
-            let mut changed: std::collections::HashSet<OwnedRoomId> = std::collections::HashSet::new();
+            let mut changed: HashSet<OwnedRoomId> = HashSet::new();
             // new pictures change rows the update stream does not name
             let mut full = std::mem::take(&mut avatars_new);
             if !full {
@@ -113,17 +132,18 @@ impl Core {
             if last_full.elapsed() > Duration::from_secs(60) {
                 full = true;
             }
+            let settings = client.notification_settings().await;
             if full {
                 cache.clear();
                 for room in client.rooms().into_iter().filter(crate::serialize::listed) {
-                    cache.insert(room.room_id().to_owned(), room_json(&room, &avatar_dir).await);
+                    cache.insert(room.room_id().to_owned(), room_json(&room, &avatar_dir, &settings).await);
                 }
                 last_full = std::time::Instant::now();
             } else {
                 for id in &changed {
                     match client.get_room(id).filter(crate::serialize::listed) {
                         Some(room) => {
-                            cache.insert(id.clone(), room_json(&room, &avatar_dir).await);
+                            cache.insert(id.clone(), room_json(&room, &avatar_dir, &settings).await);
                         }
                         None => {
                             cache.remove(id);
@@ -137,15 +157,12 @@ impl Core {
             // room, else the rooms the update named (the list's cost no
             // longer grows with the number of rooms on every receipt)
             let only = if full { None } else { Some(&changed) };
-            let unknown = {
-                let st = self.state.lock().await;
-                changed.iter().any(|id| !st.latest_listened.contains(id))
-            };
+            let unknown = changed.iter().any(|id| !seen.latest_listened.contains(id));
             if unknown || full {
-                self.listen_latest(&client).await;
+                Self::listen_latest(&client, &mut seen).await;
             }
-            self.watch_knocks(&client, only).await;
-            avatars_new = self.fetch_avatars(&client, only).await;
+            self.watch_knocks(&client, only, &mut seen).await;
+            avatars_new = self.fetch_avatars(&client, only, &mut seen).await;
         }
     }
 
@@ -153,6 +170,10 @@ impl Core {
     /// (nc notifications, hc highlights) next to the SDK's own (nu unread,
     /// nn notifying), to see which of the two a stale badge comes from.
     pub(crate) fn log_counts(client: &Client) {
+        // the walk over every room only when the line is written
+        if !tracing::enabled!(tracing::Level::DEBUG) {
+            return;
+        }
         let mut parts = Vec::new();
         for room in client.rooms() {
             let c = room.unread_notification_counts();
@@ -175,13 +196,13 @@ impl Core {
 
     /// The latest-event service is lazy: a room's preview is only computed
     /// once someone listens for it. Register every joined room, once.
-    pub(crate) async fn listen_latest(&'static self, client: &Client) {
+    async fn listen_latest(client: &Client, seen: &mut ListSeen) {
         let latest = client.latest_events().await;
         for room in client.rooms() {
             if room.state() != RoomState::Joined {
                 continue;
             }
-            if !self.state.lock().await.latest_listened.insert(room.room_id().to_owned()) {
+            if !seen.latest_listened.insert(room.room_id().to_owned()) {
                 continue;
             }
             if let Err(e) = latest.listen_to_room(room.room_id()).await {
@@ -193,11 +214,7 @@ impl Core {
     /// Cache the avatars that are missing or changed (the picture's mxc
     /// address is kept beside it, "<room>.url"), once per picture.
     /// Returns whether a new picture arrived (the room list then needs it).
-    pub(crate) async fn fetch_avatars(
-        &'static self,
-        client: &Client,
-        only: Option<&std::collections::HashSet<OwnedRoomId>>,
-    ) -> bool {
+    async fn fetch_avatars(&self, client: &Client, only: Option<&HashSet<OwnedRoomId>>, seen: &mut ListSeen) -> bool {
         let avatar_dir = self.data_dir.join("avatars");
         let own = client.user_id().map(ToOwned::to_owned);
         let mut fetched = false;
@@ -218,7 +235,7 @@ impl Core {
                     _ => continue,
                 }
             }
-            if !self.state.lock().await.avatars_tried.insert(format!("{}|{}", room.room_id(), url)) {
+            if !seen.avatars_tried.insert(format!("{}|{}", room.room_id(), url)) {
                 continue;
             }
             let request = MediaRequestParameters {

@@ -1,4 +1,4 @@
-//! The open room: its timeline, typing, media, notification mode.
+//! The open room: its timeline, sending, receipts, typing, media.
 //! (part of `impl Core`, split out of core.rs; the items it uses live there)
 
 use super::*;
@@ -17,11 +17,7 @@ impl Core {
                 if names.contains_key(user) {
                     continue;
                 }
-                let name = match room.get_member_no_sync(user).await {
-                    Ok(Some(m)) => m.name().to_owned(),
-                    _ => user.localpart().to_owned(),
-                };
-                names.insert(user.clone(), name);
+                names.insert(user.clone(), member_name(room, user).await);
             }
         }
     }
@@ -54,60 +50,73 @@ impl Core {
         }
     }
 
-    /// Timeline snapshots for the open room, coalesced per update burst, and
-    /// who is typing there (the own user left out).
-    pub(crate) async fn timeline_task(&'static self, room: Room, timeline: Arc<Timeline>, own: OwnedUserId) {
-        let room_id = room.room_id().to_owned();
+    /// A timeline's items on every change, coalesced per update burst, until
+    /// its stream ends. Replies get their originals fetched, read receipts
+    /// their names. `started` runs once, after the first items are out.
+    pub(crate) async fn stream_timeline(
+        room: &Room,
+        timeline: &Arc<Timeline>,
+        own: &UserId,
+        emit: impl Fn(Value) + Send,
+        started: impl FnOnce() + Send,
+    ) {
         let mut names = HashMap::new();
-        let (items, mut stream) = timeline.subscribe().await;
-        let items: Vec<Arc<TimelineItem>> = items.into_iter().collect();
         let mut replies_asked = std::collections::HashSet::new();
-        Self::fetch_replied(&timeline, &items, &mut replies_asked);
-        Self::receipt_names(&room, &items, &mut names).await;
-        self.emit(json!({"ev": "timeline", "room_id": room_id.as_str(), "items": items_json(&items, &own, &names)}));
-        // the guard keeps the typing handler registered while this task lives
-        let (_typing_guard, mut typing) = room.subscribe_to_typing_notifications();
+        let (mut items, mut stream) = timeline.subscribe().await;
+        let mut started = Some(started);
         loop {
-            tokio::select! {
-                update = stream.next() => {
-                    if update.is_none() {
-                        break;
-                    }
-                    tokio::time::sleep(Duration::from_millis(60)).await;
-                    while let Some(Some(_)) = stream.next().now_or_never() {}
-                    let items = timeline.items().await;
-                    Self::fetch_replied(&timeline, &items, &mut replies_asked);
-                    Self::receipt_names(&room, &items, &mut names).await;
-                    self.emit(json!({"ev": "timeline", "room_id": room_id.as_str(), "items": items_json(&items, &own, &names)}));
-                }
-                users = typing.recv() => {
-                    let Ok(users) = users else { continue };
-                    let mut who = Vec::new();
-                    for u in users.iter().filter(|u| **u != own) {
-                        let name = match room.get_member_no_sync(u).await {
-                            Ok(Some(m)) => m.name().to_owned(),
-                            _ => u.localpart().to_owned(),
-                        };
-                        who.push(name);
-                    }
-                    self.emit(json!({"ev": "typing", "room_id": room_id.as_str(), "names": who}));
-                }
+            Self::fetch_replied(timeline, &items, &mut replies_asked);
+            Self::receipt_names(room, &items, &mut names).await;
+            emit(items_json(&items, own, &names));
+            if let Some(started) = started.take() {
+                started();
             }
+            if stream.next().await.is_none() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(60)).await;
+            while let Some(Some(_)) = stream.next().now_or_never() {}
+            items = timeline.items().await;
         }
     }
 
-
-    pub(crate) async fn notification_mode(&self, room: &Room) -> Result<()> {
-        let client = self.client().await?;
-        let settings = client.notification_settings().await;
-        let mode = match settings.get_user_defined_room_notification_mode(room.room_id()).await {
-            Some(RoomNotificationMode::AllMessages) => "all",
-            Some(RoomNotificationMode::MentionsAndKeywordsOnly) => "mentions",
-            Some(RoomNotificationMode::Mute) => "mute",
-            None => "default",
+    /// Timeline snapshots for the open room, and who is typing there (the
+    /// own user left out). Ends when the timeline's stream does.
+    pub(crate) async fn timeline_task(&'static self, room: Room, timeline: Arc<Timeline>, own: OwnedUserId) {
+        let room_id = room.room_id().to_owned();
+        let emit = |items: Value| self.emit(json!({"ev": "timeline", "room_id": room_id.as_str(), "items": items}));
+        let items = Self::stream_timeline(&room, &timeline, &own, emit, || {});
+        // the guard keeps the typing handler registered while this task lives
+        let (_typing_guard, mut typing) = room.subscribe_to_typing_notifications();
+        let typing = async {
+            loop {
+                let users = match typing.recv().await {
+                    Ok(users) => users,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    // no more typing news; the timeline goes on
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => std::future::pending().await,
+                };
+                let mut who = Vec::new();
+                for u in users.iter().filter(|u| **u != own) {
+                    who.push(member_name(&room, u).await);
+                }
+                self.emit(json!({"ev": "typing", "room_id": room_id.as_str(), "names": who}));
+            }
         };
-        self.emit(json!({"ev": "notification_mode", "room_id": room.room_id().as_str(), "mode": mode}));
-        Ok(())
+        tokio::select! {
+            _ = items => {}
+            _ = typing => {}
+        }
+    }
+
+    /// A timeline with this focus; `track` follows the read marker and the
+    /// receipts (a timeline made only to send into does not need them).
+    pub(crate) async fn build_timeline(room: &Room, focus: TimelineFocus, track: bool) -> Result<Arc<Timeline>> {
+        let mut builder = room.timeline_builder().with_focus(focus);
+        if track {
+            builder = builder.track_read_marker_and_receipts(TimelineReadReceiptTracking::MessageLikeEvents);
+        }
+        Ok(Arc::new(builder.build().await?))
     }
 
     pub(crate) async fn open_room(&'static self, room_id: &str) -> Result<()> {
@@ -115,18 +124,14 @@ impl Core {
         let client = self.client().await?;
         let own = client.user_id().context("no user id")?.to_owned();
         let room_id = room.room_id().to_owned();
-        if let Some(service) = self.state.lock().await.sync_service.clone() {
+        // bound first: the lock is not held across the subscription
+        let service = self.state.lock().await.sync_service.clone();
+        if let Some(service) = service {
             service.room_list_service().set_room_subscriptions(&[&room_id]).await;
         }
-        let timeline = Arc::new(
-            room.timeline_builder()
-                // every message, thread replies too (marked by their thread_root);
-                // the thread's page shows a thread alone, its root a summary
-                .with_focus(matrix_sdk_ui::timeline::TimelineFocus::Live { hide_threaded_events: false })
-                .track_read_marker_and_receipts(TimelineReadReceiptTracking::MessageLikeEvents)
-                .build()
-                .await?,
-        );
+        // every message, thread replies too (marked by their thread_root);
+        // the thread's page shows a thread alone, its root a summary
+        let timeline = Self::build_timeline(&room, TimelineFocus::Live { hide_threaded_events: false }, true).await?;
         let task = self.rt.spawn(self.timeline_task(room.clone(), timeline.clone(), own));
         let mut st = self.state.lock().await;
         if let Some(previous) = st.open.take() {
@@ -139,6 +144,229 @@ impl Core {
         self.rt.spawn(async move {
             let _ = tl.paginate_backwards(30).await;
         });
+        Ok(())
+    }
+
+    pub(crate) async fn close_room(&self) {
+        let open = self.state.lock().await.open.take();
+        if let Some(open) = open {
+            open.task.abort();
+        }
+    }
+
+    /// A timeline item by event id, or by transaction id for a local echo.
+    fn item_id(event_id: Option<String>, txn_id: Option<String>) -> Result<TimelineEventItemId> {
+        if let Some(txn) = given(&txn_id) {
+            return Ok(TimelineEventItemId::TransactionId(txn.into()));
+        }
+        let id = given(&event_id).context("missing field `event_id`")?;
+        Ok(TimelineEventItemId::EventId(EventId::parse(id)?))
+    }
+
+    /// The open room's timeline when it matches, else a throwaway one.
+    pub(crate) async fn timeline_for(&self, room: &Room) -> Result<Arc<Timeline>> {
+        let open = {
+            let st = self.state.lock().await;
+            st.open.as_ref().filter(|o| o.room_id == room.room_id()).map(|o| o.timeline.clone())
+        };
+        match open {
+            Some(tl) => Ok(tl),
+            None => Ok(Arc::new(room.timeline().await?)),
+        }
+    }
+
+    /// Older history; answered by "paginated".
+    pub(crate) async fn paginate_back(&self, room_id: &str, count: Option<u16>) -> Result<()> {
+        let room = self.room(room_id).await?;
+        let tl = self.timeline_for(&room).await?;
+        let more = tl.paginate_backwards(count.unwrap_or(30)).await?;
+        self.emit(json!({"ev": "paginated", "room_id": room.room_id().as_str(), "at_start": more}));
+        Ok(())
+    }
+
+    pub(crate) async fn send_text(
+        &self,
+        room_id: &str,
+        body: &str,
+        reply_to: Option<&str>,
+        markdown: bool,
+        emotes: Option<&HashMap<String, String>>,
+        thread_root: Option<&str>,
+    ) -> Result<()> {
+        let room = self.room(room_id).await?;
+        let tl = self.timeline_target(&room, thread_root).await?;
+        let mut content = if markdown {
+            RoomMessageEventContent::text_markdown(body)
+        } else {
+            RoomMessageEventContent::text_plain(body)
+        };
+        if let Some(emotes) = emotes {
+            packs::with_emotes(&mut content, emotes);
+        }
+        match reply_to {
+            Some(reply) => {
+                let without: RoomMessageEventContentWithoutRelation = content.into();
+                tl.send_reply(without, EventId::parse(reply)?).await?;
+            }
+            None => {
+                tl.send(content.into()).await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// A file; a picture carries its size and a thumbnail made by the UI,
+    /// a voice message its duration.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn send_file(
+        &self,
+        room_id: &str,
+        path: String,
+        caption: Option<&str>,
+        w: Option<u64>,
+        h: Option<u64>,
+        thumb_path: Option<String>,
+        thumb_w: Option<u64>,
+        thumb_h: Option<u64>,
+        voice: bool,
+        duration_ms: Option<u64>,
+        thread_root: Option<&str>,
+    ) -> Result<()> {
+        let room = self.room(room_id).await?;
+        let path = PathBuf::from(path);
+        let mime = mime_guess::from_path(&path).first_or_octet_stream();
+        let tl = self.timeline_target(&room, thread_root).await?;
+        let dim = |n: Option<u64>| n.and_then(|n| UInt::try_from(n).ok());
+        let mut config = AttachmentConfig::default();
+        if let (Some(w), Some(h)) = (dim(w), dim(h)) {
+            let size = std::fs::metadata(&path).ok().and_then(|m| UInt::try_from(m.len()).ok());
+            config.info = Some(AttachmentInfo::Image(BaseImageInfo {
+                width: Some(w),
+                height: Some(h),
+                size,
+                ..Default::default()
+            }));
+        }
+        if let (Some(tp), Some(w), Some(h)) = (thumb_path, dim(thumb_w), dim(thumb_h)) {
+            if let Ok(data) = std::fs::read(&tp) {
+                let size = UInt::try_from(data.len() as u64).unwrap_or_default();
+                config.thumbnail = Some(Thumbnail {
+                    data,
+                    content_type: mime::IMAGE_JPEG,
+                    width: w,
+                    height: h,
+                    size,
+                });
+            }
+            let _ = std::fs::remove_file(&tp);
+        }
+        if let Some(caption) = caption {
+            config.caption = Some(TextMessageEventContent::markdown(caption));
+        }
+        // a voice message: other clients show it as one (a player, not a file)
+        if voice {
+            let duration = duration_ms.map(Duration::from_millis);
+            let size = std::fs::metadata(&path).ok().and_then(|m| UInt::try_from(m.len()).ok());
+            config.info = Some(AttachmentInfo::Voice(BaseAudioInfo { duration, size, ..Default::default() }));
+        }
+        // through the send queue: the message shows at once as a local
+        // echo with its upload progress, instead of only once uploaded
+        tl.send_attachment(path, mime, config).use_send_queue().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn react(&self, room_id: &str, event_id: &str, key: &str) -> Result<()> {
+        let room = self.room(room_id).await?;
+        let tl = self.timeline_holding(&room, Some(event_id)).await?;
+        let id = TimelineEventItemId::EventId(EventId::parse(event_id)?);
+        tl.toggle_reaction(&id, key).await?;
+        Ok(())
+    }
+
+    /// A sent event is redacted; a local echo (txn_id) is discarded.
+    pub(crate) async fn redact(
+        &self,
+        room_id: &str,
+        event_id: Option<String>,
+        txn_id: Option<String>,
+        reason: Option<&str>,
+    ) -> Result<()> {
+        let room = self.room(room_id).await?;
+        let tl = self.timeline_holding(&room, event_id.as_deref()).await?;
+        tl.redact(&Self::item_id(event_id, txn_id)?, reason).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn edit(&self, room_id: &str, event_id: Option<String>, txn_id: Option<String>, body: &str) -> Result<()> {
+        let room = self.room(room_id).await?;
+        let tl = self.timeline_holding(&room, event_id.as_deref()).await?;
+        let content: RoomMessageEventContentWithoutRelation = RoomMessageEventContent::text_markdown(body).into();
+        tl.edit(&Self::item_id(event_id, txn_id)?, EditedContent::RoomMessage(content)).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn poll_vote(&self, room_id: &str, event_id: &str, answers: Vec<String>) -> Result<()> {
+        let room = self.room(room_id).await?;
+        let poll = EventId::parse(event_id)?;
+        room.send(UnstablePollResponseEventContent::new(answers, poll)).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn report(&self, room_id: &str, event_id: &str, reason: Option<&str>) -> Result<()> {
+        let room = self.room(room_id).await?;
+        let event_id = EventId::parse(event_id)?;
+        room.report_content(event_id, reason.map(str::to_owned)).await?;
+        Ok(())
+    }
+
+    /// The event's JSON as received, and its latest edit: "event_source".
+    pub(crate) async fn event_source(&self, room_id: &str, event_id: &str) -> Result<()> {
+        let room = self.room(room_id).await?;
+        let tl = self.timeline_holding(&room, Some(event_id)).await?;
+        let item = tl
+            .item_by_event_id(&EventId::parse(event_id)?)
+            .await
+            .context("the message is not in the loaded timeline")?;
+        // as received where it cannot be read
+        let pretty = |raw: &matrix_sdk::ruma::serde::Raw<_>| match raw_value(raw) {
+            Value::Null => raw.json().get().to_owned(),
+            v => serde_json::to_string_pretty(&v).unwrap_or_else(|_| raw.json().get().to_owned()),
+        };
+        let original = item.original_json().map(&pretty).context("no source for this message yet")?;
+        let edit = item.latest_edit_json().map(&pretty);
+        self.emit(json!({"ev": "event_source", "event_id": event_id, "json": original, "edit": edit}));
+        Ok(())
+    }
+
+    pub(crate) async fn mark_read(&self, room_id: &str, private: bool) -> Result<()> {
+        let room = self.room(room_id).await?;
+        // the open room's timeline knows its newest item; any other room
+        // gets the receipt on its latest event (a throwaway timeline is
+        // empty and marked nothing, so "Mark as read" in the list did nothing)
+        let is_open = {
+            let st = self.state.lock().await;
+            st.open.as_ref().map(|o| o.room_id == room.room_id()).unwrap_or(false)
+        };
+        // a private receipt moves our marker without telling the room
+        let kind = if private { ReceiptType::ReadPrivate } else { ReceiptType::Read };
+        // The fully-read marker is where a room opens: only our own
+        // account sees it, so it moves with "receipts off" too.
+        // Without it a room opened where another client left it.
+        if is_open {
+            let tl = self.timeline_for(&room).await?;
+            tl.mark_as_read(kind).await?;
+            tl.mark_as_read(ReceiptType::FullyRead).await?;
+        } else if let Some(event_id) = crate::serialize::latest_event_id(&room) {
+            room.send_single_receipt(kind, ReceiptThread::Unthreaded, event_id.clone()).await?;
+            room.send_single_receipt(ReceiptType::FullyRead, ReceiptThread::Unthreaded, event_id).await?;
+        }
+        let _ = room.set_unread_flag(false).await;
+        Ok(())
+    }
+
+    pub(crate) async fn typing(&self, room_id: &str, typing: bool) -> Result<()> {
+        let room = self.room(room_id).await?;
+        room.typing_notice(typing).await?;
         Ok(())
     }
 
@@ -158,7 +386,7 @@ impl Core {
     pub(crate) async fn get_media(&'static self, room_id: &str, event_id: &str, thumb: bool, dest_dir: Option<String>) -> Result<()> {
         let room = self.room(room_id).await?;
         let client = self.client().await?;
-        let tl = self.timeline_holding(&room, Some(event_id), None).await?;
+        let tl = self.timeline_holding(&room, Some(event_id)).await?;
         let item = tl.item_by_event_id(&EventId::parse(&event_id)?).await.context("event not in timeline")?;
         let (bytes, mime) = match item.content().as_message().map(|m| m.msgtype()) {
             Some(MessageType::Image(c)) => (

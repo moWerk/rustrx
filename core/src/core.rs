@@ -45,7 +45,8 @@ use matrix_sdk::sliding_sync::{Version, VersionBuilder};
 use matrix_sdk::{Client, Room, RoomMemberships, RoomState, SessionChange};
 use matrix_sdk_ui::sync_service::{State as SyncState, SyncService};
 use matrix_sdk_ui::timeline::{
-    AttachmentConfig, RoomExt, Timeline, TimelineDetails, TimelineEventItemId, TimelineItem, TimelineReadReceiptTracking,
+    AttachmentConfig, RoomExt, Timeline, TimelineDetails, TimelineEventItemId, TimelineFocus, TimelineItem,
+    TimelineReadReceiptTracking,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -53,7 +54,7 @@ use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
-use crate::serialize::{avatar_file, items_json, room_json, sorted_rooms};
+use crate::serialize::{avatar_file, items_json, member_name, profile_name, raw_value, room_json, room_name, sorted_rooms};
 use crate::protocol::{given, Command};
 use crate::Emitter;
 
@@ -88,16 +89,10 @@ struct State {
     open: Option<OpenRoom>,
     requests: HashMap<String, VerificationRequest>,
     sas: HashMap<String, SasVerification>,
-    /// room and picture pairs tried once ("!room|mxc://..."); a new picture
-    /// of the room is tried again
-    avatars_tried: std::collections::HashSet<String>,
-    latest_listened: std::collections::HashSet<OwnedRoomId>,
     /// tasks that live as long as one login; aborted on logout
     login_tasks: Vec<JoinHandle<()>>,
     /// the call shown in the WebView, if any
     call: Option<call::CallSession>,
-    /// rooms and spaces whose requests to join are watched (this login)
-    knocks_watched: std::collections::HashSet<OwnedRoomId>,
     /// the SDK's space service (this login)
     space_service: Option<Arc<matrix_sdk_ui::spaces::SpaceService>>,
     /// the thread shown beside the open room, if any
@@ -130,8 +125,6 @@ impl State {
         }
         self.requests.clear();
         self.sas.clear();
-        self.avatars_tried.clear();
-        self.knocks_watched.clear();
         if let Some(thread) = self.thread.take() {
             tasks.push(thread.task_handle());
         }
@@ -139,10 +132,7 @@ impl State {
             tasks.push(task);
         }
         self.space_service = None;
-        for (_, task) in self.space_lists.drain() {
-            task.abort();
-        }
-        self.latest_listened.clear();
+        tasks.extend(self.space_lists.drain().map(|(_, task)| task));
         Teardown { client: self.client.take(), service: self.sync_service.take(), tasks }
     }
 }
@@ -166,20 +156,21 @@ pub(crate) struct Core {
     state: Mutex<State>,
 }
 
-
-
+mod account;
 mod call;
 mod commands;
 mod knock;
-mod push;
-mod spaces;
-mod threads;
-pub(crate) use spaces::join_rule_name;
 mod packs;
+mod push;
+mod rooms;
 mod session;
+mod spaces;
 mod sync;
+mod threads;
 mod timeline;
 mod verification;
+
+pub(crate) use spaces::join_rule_name;
 
 impl Core {
     pub(crate) fn new(rt: Runtime, data_dir: PathBuf, emitter: Emitter) -> Self {
@@ -188,6 +179,21 @@ impl Core {
 
     pub(crate) fn emit(&self, value: Value) {
         self.emitter.emit(value);
+    }
+
+    pub(crate) async fn client(&self) -> Result<Client> {
+        self.state.lock().await.client.clone().context("not logged in")
+    }
+
+    pub(crate) async fn room(&self, id: &str) -> Result<Room> {
+        let client = self.client().await?;
+        client.get_room(&RoomId::parse(id)?).with_context(|| format!("unknown room {id}"))
+    }
+
+    /// Spawns a task that lives as long as this login (aborted on logout).
+    pub(crate) async fn spawn_login_task(&'static self, task: impl std::future::Future<Output = ()> + Send + 'static) {
+        let handle = self.rt.spawn(task);
+        self.state.lock().await.login_tasks.push(handle);
     }
 
     fn error(&self, cmd: &str, err: &anyhow::Error) {

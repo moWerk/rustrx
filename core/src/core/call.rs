@@ -97,13 +97,10 @@ impl Core {
                 .and_then(Value::as_str)
                 == Some("ring");
             let sender_name = match UserId::parse(sender.as_str()) {
-                Ok(u) => match room.get_member_no_sync(&u).await {
-                    Ok(Some(m)) => m.name().to_owned(),
-                    _ => u.localpart().to_owned(),
-                },
+                Ok(u) => member_name(&room, &u).await,
                 Err(_) => sender.clone(),
             };
-            let room_name = room.cached_display_name().map(|n| n.to_string()).unwrap_or_else(|| room.room_id().to_string());
+            let room_name = room_name(&room);
             tracing::info!(room = %room.room_id(), ring, age, "call: incoming");
             crate::instance().emit(json!({
                 "ev": "call_ring", "room_id": room.room_id().as_str(), "room_name": room_name,
@@ -282,7 +279,7 @@ impl Core {
             let Ok(events) = room.get_state_events(StateEventType::from(kind)).await else { continue };
             for ev in events {
                 let RawAnySyncOrStrippedState::Sync(raw) = ev else { continue };
-                let v: Value = serde_json::from_str(raw.json().get()).unwrap_or(Value::Null);
+                let v = raw_value(&raw);
                 let key = v.get("state_key").and_then(Value::as_str).unwrap_or("");
                 let live = v.get("content").and_then(Value::as_object).is_some_and(|c| !c.is_empty());
                 let mine = v.get("sender").and_then(Value::as_str) == Some(own.as_str()) && key.contains(&device);

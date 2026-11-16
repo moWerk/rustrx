@@ -1,4 +1,4 @@
-//! Device verification (emoji) and device management.
+//! Device verification (emoji).
 //! (part of `impl Core`, split out of core.rs; the items it uses live there)
 
 use super::*;
@@ -13,7 +13,8 @@ impl Core {
                 .get_verification_request(&ev.sender, ev.content.transaction_id.as_str())
                 .await
             {
-                tokio::spawn(async move { crate::instance().watch_request(req).await });
+                let core = crate::instance();
+                core.spawn_login_task(core.watch_request(req)).await;
             }
         });
         client.add_event_handler(|ev: OriginalSyncRoomMessageEvent, client: Client| async move {
@@ -21,7 +22,8 @@ impl Core {
                 if let Some(req) =
                     client.encryption().get_verification_request(&ev.sender, ev.event_id.as_str()).await
                 {
-                    tokio::spawn(async move { crate::instance().watch_request(req).await });
+                    let core = crate::instance();
+                    core.spawn_login_task(core.watch_request(req)).await;
                 }
             }
         });
@@ -87,8 +89,9 @@ impl Core {
                 VerificationRequestState::Transitioned { verification } => {
                     if let Some(sas) = verification.clone().sas() {
                         self.emit(Self::request_json(&req, "sas", json!({})));
-                        self.state.lock().await.sas.insert(flow.clone(), sas.clone());
-                        self.rt.spawn(self.watch_sas(flow.clone(), sas));
+                        let mut st = self.state.lock().await;
+                        st.sas.insert(flow.clone(), sas.clone());
+                        st.login_tasks.push(self.rt.spawn(self.watch_sas(flow.clone(), sas)));
                     } else {
                         self.emit(Self::request_json(&req, "unsupported", json!({})));
                     }
@@ -160,18 +163,43 @@ impl Core {
         self.state.lock().await.sas.get(flow).cloned().context("no emoji verification in progress")
     }
 
-    pub(crate) async fn delete_device(&'static self, device_id: String, password: String) -> Result<()> {
+    /// Verifying this device with another of the own ones; the flow then
+    /// goes on as "verification" events.
+    pub(crate) async fn verification_request_self(&'static self) -> Result<()> {
         let client = self.client().await?;
-        let id: OwnedDeviceId = device_id.into();
-        let ids = [id];
-        if let Err(e) = client.delete_devices(&ids, None).await {
-            let info = e.as_uiaa_response().context(format!("{e}"))?;
-            let localpart = client.user_id().context("no user id")?.localpart().to_owned();
-            let mut auth = Password::new(UserIdentifier::Matrix(MatrixUserIdentifier::new(localpart)), password);
-            auth.session = info.session.clone();
-            client.delete_devices(&ids, Some(AuthData::Password(auth))).await?;
-        }
-        self.emit(json!({"ev": "device_deleted", "device_id": ids[0].as_str()}));
+        let own = client.user_id().context("no user id")?.to_owned();
+        let identity = client
+            .encryption()
+            .get_user_identity(&own)
+            .await?
+            .context("own identity not known yet; wait for the first sync")?;
+        let req = identity.request_verification().await?;
+        self.spawn_login_task(self.watch_request(req)).await;
+        Ok(())
+    }
+
+    pub(crate) async fn verification_accept(&self, flow: &str) -> Result<()> {
+        self.request(flow).await?.accept().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn verification_start_sas(&self, flow: &str) -> Result<()> {
+        self.request(flow).await?.start_sas().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn verification_confirm(&self, flow: &str) -> Result<()> {
+        self.sas(flow).await?.confirm().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn verification_mismatch(&self, flow: &str) -> Result<()> {
+        self.sas(flow).await?.mismatch().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn verification_cancel(&self, flow: &str) -> Result<()> {
+        self.request(flow).await?.cancel().await?;
         Ok(())
     }
 }
