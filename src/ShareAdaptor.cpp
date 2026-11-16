@@ -26,7 +26,6 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QStringList>
-#include <QUrl>
 
 ShareAdaptor::ShareAdaptor(Rustrx *owner) : QObject(owner), m_owner(owner) {}
 
@@ -42,9 +41,7 @@ void ShareAdaptor::share(const QVariantMap &config)
         const QVariant r = unwrap(raw);
         qInfo() << "share: resource of type" << r.typeName();
         if (r.type() == QVariant::String || r.type() == QVariant::Url) {
-            QString path = r.toString();
-            if (path.startsWith(QLatin1String("file://")))
-                path = QUrl(path).toLocalFile();
+            const QString path = Rustrx::localPath(r.toString());
             if (QFileInfo(path).isFile()) {
                 files << path;
             } else {

@@ -17,14 +17,14 @@
 #ifndef RUSTRX_H
 #define RUSTRX_H
 
-#include <QCoreApplication>
-#include <QObject>
-#include <QVariantMap>
-#include <QVariantList>
 #include <QElapsedTimer>
 #include <QHash>
 #include <QMap>
+#include <QObject>
 #include <QSet>
+#include <QSize>
+#include <QVariantList>
+#include <QVariantMap>
 
 class RoomModel;
 class TimelineModel;
@@ -151,7 +151,6 @@ public:
     bool standIn() const { return m_standIn; }
     void setStandIn(bool on) { m_standIn = on; }
     // a process the distributor started for one push (no window, no sync)
-    bool pushWake() const { return m_pushWake; }
     void setPushWake(bool on) { m_pushWake = on; }
     UnifiedPush *push() const { return m_push; }
     // the file the stand-in's unit looks for (in the sandbox's own config folder)
@@ -161,6 +160,10 @@ public:
     static bool startUnit(const QString &unit);
     // what the stand-in passed on: the room, link or share to show
     void takeHandover();
+    // called by the share adaptor
+    void receiveShare(const QStringList &files, const QString &text);
+    // a file:// URL as a local path; a path stays as it is
+    static QString localPath(const QString &path);
 
     Q_INVOKABLE void command(const QVariantMap &cmd);
     Q_INVOKABLE void loginPassword(const QString &user, const QString &password, const QString &homeserver);
@@ -196,10 +199,15 @@ public:
     Q_INVOKABLE QString formatTime(const QVariant &ms) const;
     Q_INVOKABLE QString formatDate(const QVariant &ms) const;
     // unsent text per room, kept across pages and restarts
-    // the newest JPEG the stock camera saved after `sinceMs`, or an empty string
-    Q_INVOKABLE QString newestPhotoSince(qint64 sinceMs) const;
     Q_INVOKABLE QString draft(const QString &roomId) const;
     Q_INVOKABLE void setDraft(const QString &roomId, const QString &text);
+    Q_INVOKABLE void closeWindow() { emit closeRequested(); }
+    Q_INVOKABLE QString takePendingRoom();
+    Q_INVOKABLE QString takePendingCall();
+    Q_INVOKABLE bool takePendingKnocks();
+    // a link or a share that arrived before QML was loaded
+    Q_INVOKABLE QString takePendingUri();
+    Q_INVOKABLE QVariantMap takePendingShare();
 
 signals:
     // a dev command for the UI (see dev())
@@ -300,45 +308,24 @@ signals:
 public slots:
     // D-Bus net.mowerk.harbour_rustrx.openRoom, the notifications' action
     // kept until QML takes it: a cold start delivers the call before QML is loaded
-    Q_SCRIPTABLE void openRoomFromNotification(const QString &roomId)
-    {
-        m_pendingRoom = roomId;
-        if (handOver())
-            return;
-        emit activateRequested();
-        emit openRoomRequested(roomId);
-    }
+    Q_SCRIPTABLE void openRoomFromNotification(const QString &roomId);
     // a second launch: true when this is the stand-in, which leaves at once,
     // and the caller waits for the name to go and becomes the app
     Q_SCRIPTABLE bool activate();
     // the stand-in's notification: open the app
-    Q_SCRIPTABLE void open() { if (!handOver()) emit activateRequested(); }
+    Q_SCRIPTABLE void open();
     // an incoming call's notification: Answer opens the room and joins
     // the call (the room starts it once it is open: takePendingCall)
-    Q_SCRIPTABLE void answerCall(const QString &roomId)
-    {
-        m_pendingCall = roomId;
-        emit callAnswered(roomId);
-        openRoomFromNotification(roomId);
-    }
+    Q_SCRIPTABLE void answerCall(const QString &roomId);
     // the requests' notification: open the app on the list of requests
-    Q_SCRIPTABLE void openKnocks()
-    {
-        m_pendingKnocks = true;
-        if (handOver())
-            return;
-        emit activateRequested();
-        emit knocksRequested();
-    }
+    Q_SCRIPTABLE void openKnocks();
     // Decline: the caller's clients are told (MSC4310)
-    Q_SCRIPTABLE void declineCall(const QString &roomId, const QString &eventId)
-    {
-        emit callAnswered(roomId);
-        if (!eventId.isEmpty())
-            command({ { "cmd", "call_decline" }, { "room_id", roomId }, { "event_id", eventId } });
-    }
+    Q_SCRIPTABLE void declineCall(const QString &roomId, const QString &eventId);
     // the stand-in's notification: Quit (after QML has closed that notification)
     Q_SCRIPTABLE void quit();
+    // D-Bus net.mowerk.harbour_rustrx.openUrl, the desktop file's handler for
+    // matrix: links; the launcher icon calls it too, without a link
+    Q_SCRIPTABLE void openUrl(const QStringList &urls);
     // D-Bus net.mowerk.harbour_rustrx.dev, for tests from a shell (ssh),
     // answered only while a file "dev-commands" is in the data folder (no
     // package puts it there). A JSON object in, a JSON answer out:
@@ -347,31 +334,6 @@ public slots:
     // connection; {"ui": "open_room" (room_id) | "back" | "activate"}
     // goes to the UI.
     Q_SCRIPTABLE QString dev(const QString &json);
-public:
-    Q_INVOKABLE void closeWindow() { emit closeRequested(); }
-    Q_INVOKABLE QString takePendingRoom() { const QString r = m_pendingRoom; m_pendingRoom.clear(); return r; }
-    Q_INVOKABLE QString takePendingCall() { const QString r = m_pendingCall; m_pendingCall.clear(); return r; }
-    Q_INVOKABLE bool takePendingKnocks() { const bool r = m_pendingKnocks; m_pendingKnocks = false; return r; }
-    // a link or a share that arrived before QML was loaded
-    Q_INVOKABLE QString takePendingUri() { const QString r = m_pendingUri; m_pendingUri.clear(); return r; }
-    Q_INVOKABLE QVariantMap takePendingShare() { const QVariantMap r = m_pendingShare; m_pendingShare.clear(); return r; }
-    // called by the share adaptor
-    void receiveShare(const QStringList &files, const QString &text);
-public slots:
-    // D-Bus net.mowerk.harbour_rustrx.openUrl, the desktop file's handler for
-    // matrix: links; the launcher icon calls it too, without a link
-    Q_SCRIPTABLE void openUrl(const QStringList &urls)
-    {
-        if (urls.isEmpty()) {
-            open();
-            return;
-        }
-        m_pendingUri = urls.first();
-        if (handOver())
-            return;
-        emit activateRequested();
-        emit matrixUriRequested(m_pendingUri);
-    }
 
 private slots:
     void handleEvent(const QVariantMap &ev);

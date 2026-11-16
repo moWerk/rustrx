@@ -14,20 +14,23 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-#include "Twemoji.h"
-#include "UnifiedPush.h"
 #include "Rustrx.h"
 #include "DebugLog.h"
-#include <QLibrary>
-#include <sailfishapp.h>
 #include "RoomModel.h"
 #include "ShareAdaptor.h"
 #include "TimelineModel.h"
+#include "Twemoji.h"
+#include "UnifiedPush.h"
 #include "rustrx_core.h"
+#include <sailfishapp.h>
 
+#include <QDBusConnection>
+#include <QDBusError>
+#include <QDBusMessage>
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
@@ -35,29 +38,48 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLibrary>
 #include <QMetaObject>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QUrl>
-
-#include <QDBusConnection>
-#include <QDBusMessage>
-#include <QFile>
-#include <QDBusError>
-#include <QMutex>
-#include <QElapsedTimer>
 #include <algorithm>
-#include <QMutexLocker>
 
-// The core's tokio threads call eventCallback until the process ends; the
-// lock and the pointer keep them away from a Rustrx that is being destroyed.
 // the JSON protocol this UI speaks, see docs/PROTOCOL.md (core: PROTO in core.rs)
 static const int kProto = 1;
 
+// The core's tokio threads call eventCallback until the process ends; the
+// lock and the pointer keep them away from a Rustrx that is being destroyed.
 static QMutex s_lock;
-
 static Rustrx *s_instance = nullptr;
+
+static bool isInvited(const QVariantMap &room)
+{
+    return room.value("state").toString() == QLatin1String("invited");
+}
+
+// the number a room's badge shows: notifications, else unread messages
+static int badgeCount(const QVariantMap &room)
+{
+    const int n = room.value("notifications").toInt();
+    return n > 0 ? n : room.value("unread").toInt();
+}
+
+// pictures prepared for sending (scaled, thumbnails, avatars)
+static QString outgoingDir()
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/outgoing";
+    QDir().mkpath(dir);
+    return dir;
+}
+
+QString Rustrx::localPath(const QString &path)
+{
+    return path.startsWith(QLatin1String("file://")) ? QUrl(path).toLocalFile() : path;
+}
 
 Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     : QObject(parent)
@@ -119,16 +141,15 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
         qWarning() << "rustrx_start failed:" << rc;
     qInfo().noquote() << "startup: core started after" << m_since.elapsed() << "ms";
 
-    // the sandbox lets the app own its organisation's name on the session bus
     QDBusConnection bus = QDBusConnection::sessionBus();
     // the share sheet calls /share/<method>, the method named in the desktop
     // file's X-Share-Methods ("room"); /share stays for direct callers
     ShareAdaptor *share = new ShareAdaptor(this);
     bus.registerObject(QStringLiteral("/share"), share, QDBusConnection::ExportScriptableSlots);
     bus.registerObject(QStringLiteral("/share/room"), share, QDBusConnection::ExportScriptableSlots);
-    if (!bus.registerObject(QStringLiteral("/net/mowerk/harbour_rustrx"), this, QDBusConnection::ExportScriptableSlots)
-            || !bus.registerService(QStringLiteral("net.mowerk.harbour-rustrx")))
-        qWarning() << "D-Bus service not registered:" << bus.lastError().message();
+    // the name itself is main()'s, taken before the store is opened
+    if (!bus.registerObject(QStringLiteral("/net/mowerk/harbour_rustrx"), this, QDBusConnection::ExportScriptableSlots))
+        qWarning() << "D-Bus object not registered:" << bus.lastError().message();
 }
 
 Rustrx::~Rustrx()
@@ -145,6 +166,92 @@ void Rustrx::receiveShare(const QStringList &files, const QString &text)
         return;
     emit activateRequested();
     emit shareRequested(files, text);
+}
+
+void Rustrx::openRoomFromNotification(const QString &roomId)
+{
+    m_pendingRoom = roomId;
+    if (handOver())
+        return;
+    emit activateRequested();
+    emit openRoomRequested(roomId);
+}
+
+void Rustrx::open()
+{
+    if (!handOver())
+        emit activateRequested();
+}
+
+void Rustrx::answerCall(const QString &roomId)
+{
+    m_pendingCall = roomId;
+    emit callAnswered(roomId);
+    openRoomFromNotification(roomId);
+}
+
+void Rustrx::openKnocks()
+{
+    m_pendingKnocks = true;
+    if (handOver())
+        return;
+    emit activateRequested();
+    emit knocksRequested();
+}
+
+void Rustrx::declineCall(const QString &roomId, const QString &eventId)
+{
+    emit callAnswered(roomId);
+    if (!eventId.isEmpty())
+        command({ { "cmd", "call_decline" }, { "room_id", roomId }, { "event_id", eventId } });
+}
+
+void Rustrx::openUrl(const QStringList &urls)
+{
+    if (urls.isEmpty()) {
+        open();
+        return;
+    }
+    m_pendingUri = urls.first();
+    if (handOver())
+        return;
+    emit activateRequested();
+    emit matrixUriRequested(m_pendingUri);
+}
+
+QString Rustrx::takePendingRoom()
+{
+    const QString r = m_pendingRoom;
+    m_pendingRoom.clear();
+    return r;
+}
+
+QString Rustrx::takePendingCall()
+{
+    const QString r = m_pendingCall;
+    m_pendingCall.clear();
+    return r;
+}
+
+bool Rustrx::takePendingKnocks()
+{
+    const bool r = m_pendingKnocks;
+    m_pendingKnocks = false;
+    return r;
+}
+
+QString Rustrx::takePendingUri()
+{
+    const QString r = m_pendingUri;
+    m_pendingUri.clear();
+    return r;
+}
+
+QVariantMap Rustrx::takePendingShare()
+{
+    const QVariantMap r = m_pendingShare;
+    m_pendingShare.clear();
+    return r;
 }
 
 static QString handoverPath()
@@ -379,15 +486,9 @@ void Rustrx::sortRooms(QVariantList &rooms, const QString &kind) const
     const QString order = tabValue(kind, QStringLiteral("sortOrder"), QStringLiteral("activity")).toString();
     const bool favsFirst = tabValue(kind, QStringLiteral("favsOnTop"), false).toBool();
     const bool lowAtEnd = tabValue(kind, QStringLiteral("lowLast"), true).toBool();
-    // the number the badge shows: notifications, else unread messages
-    const auto unread = [](const QVariantMap &r) {
-        const int n = r.value("notifications").toInt();
-        return n > 0 ? n : r.value("unread").toInt();
-    };
     std::stable_sort(rooms.begin(), rooms.end(), [&](const QVariant &va, const QVariant &vb) {
         const QVariantMap a = va.toMap(), b = vb.toMap();
-        const bool ia = a.value("state").toString() == QLatin1String("invited");
-        const bool ib = b.value("state").toString() == QLatin1String("invited");
+        const bool ia = isInvited(a), ib = isInvited(b);
         if (ia != ib)
             return ia;
         if (favsFirst) {
@@ -402,7 +503,7 @@ void Rustrx::sortRooms(QVariantList &rooms, const QString &kind) const
         }
         if (order == QLatin1String("unread")) {
             // the most unread on top; equal counts keep the activity order
-            const int ua = unread(a), ub = unread(b);
+            const int ua = badgeCount(a), ub = badgeCount(b);
             if (ua != ub)
                 return ua > ub;
         } else if (order == QLatin1String("name")) {
@@ -620,10 +721,7 @@ QString Rustrx::emotePath(const QString &mxc)
 
 QString Rustrx::prepareAvatar(const QString &path, const QString &cmd, QSize *size)
 {
-    QString p = path;
-    if (p.startsWith(QLatin1String("file://")))
-        p = QUrl(p).toLocalFile();
-    QImageReader reader(p);
+    QImageReader reader(localPath(path));
     reader.setAutoTransform(true);
     QImage image = reader.read();
     if (image.isNull()) {
@@ -632,11 +730,9 @@ QString Rustrx::prepareAvatar(const QString &path, const QString &cmd, QSize *si
     }
     if (qMax(image.width(), image.height()) > 512)
         image = image.scaled(512, 512, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    const QString cache = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/outgoing";
-    QDir().mkpath(cache);
     // PNG keeps a transparent picture (an icon) as it is; photos go as JPEG
     const bool alpha = image.hasAlphaChannel();
-    const QString out = cache + "/avatar-" + QString::number(QDateTime::currentMSecsSinceEpoch()) + (alpha ? ".png" : ".jpg");
+    const QString out = outgoingDir() + "/avatar-" + QString::number(QDateTime::currentMSecsSinceEpoch()) + (alpha ? ".png" : ".jpg");
     if (!image.save(out, alpha ? "PNG" : "JPG", alpha ? -1 : 90)) {
         emit errorOccurred(cmd, QStringLiteral("cannot write ") + out);
         return QString();
@@ -666,9 +762,7 @@ void Rustrx::setOwnAvatar(const QString &path)
 void Rustrx::sendFile(const QString &roomId, const QString &path, const QString &caption,
                       const QString &threadRoot)
 {
-    QString p = path;
-    if (p.startsWith(QLatin1String("file://")))
-        p = QUrl(p).toLocalFile();
+    const QString p = localPath(path);
     QVariantMap cmd{{"cmd", "send_file"}, {"room_id", roomId}, {"path", p}};
     if (!threadRoot.isEmpty())
         cmd.insert("thread_root", threadRoot);
@@ -684,9 +778,7 @@ void Rustrx::sendFile(const QString &roomId, const QString &path, const QString 
     if (!format.isEmpty() && format != "gif") {
         QImage image = reader.read();
         if (!image.isNull()) {
-            const QString cache = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/outgoing";
-            QDir().mkpath(cache);
-            const QString stem = cache + "/" + QString::number(QDateTime::currentMSecsSinceEpoch());
+            const QString stem = outgoingDir() + "/" + QString::number(QDateTime::currentMSecsSinceEpoch());
             const bool shrink = QSettings().value("downscaleImages", true).toBool()
                     && qMax(image.width(), image.height()) > 2048;
             if (shrink) {
@@ -738,8 +830,7 @@ QString Rustrx::firstUnreadRoom() const
     // the room list is ordered by activity; take the first with something unread
     for (int i = 0; i < m_rooms->rowCount(); ++i) {
         const QVariantMap r = m_rooms->get(i);
-        if (r.value("state").toString() != QLatin1String("invited")
-                && (r.value("notifications").toInt() > 0 || r.value("unread").toInt() > 0))
+        if (!isInvited(r) && badgeCount(r) > 0)
             return r.value("room_id").toString();
     }
     return QString();
@@ -756,15 +847,6 @@ QString Rustrx::formatDate(const QVariant &ms) const
     // "Today" and "Yesterday" are QML's (app.dayLabel): qtTrId from here came
     // back as the raw id on the phone while every QML qsTrId resolved.
     return d.toString(Qt::DefaultLocaleLongDate);
-}
-
-QString Rustrx::newestPhotoSince(qint64 sinceMs) const
-{
-    const QDir dir(QStandardPaths::writableLocation(QStandardPaths::PicturesLocation) + QStringLiteral("/Camera"));
-    const QFileInfoList files = dir.entryInfoList({ "*.jpg", "*.jpeg", "*.JPG" }, QDir::Files, QDir::Time);
-    if (files.isEmpty() || files.first().lastModified().toMSecsSinceEpoch() < sinceMs)
-        return QString();
-    return files.first().absoluteFilePath();
 }
 
 QString Rustrx::draft(const QString &roomId) const
@@ -796,7 +878,7 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
     for (const QVariant &v : rooms) {
         QVariantMap r = v.toMap();
         const QString id = r.value("room_id").toString();
-        const bool invited = r.value("state").toString() == QLatin1String("invited");
+        const bool invited = isInvited(r);
         const bool fav = r.value("is_fav").toBool();
         //: list section for pending invitations
         //% "Invitations"
@@ -809,9 +891,8 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
             spaces.append(r);
             continue;
         }
-        // the same number the row badge shows: notifications, else unread messages
-        const int rowUnread = r.value("notifications").toInt() > 0 ? r.value("notifications").toInt()
-                                                                   : r.value("unread").toInt();
+        // the same number the row badge shows
+        const int rowUnread = badgeCount(r);
         if (!invited && rowUnread > 0) {
             unread += rowUnread;
             ++chats;
@@ -859,7 +940,7 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
         QStringList open;
         for (const QVariant &v : rooms) {
             const QVariantMap r = v.toMap();
-            if (r.value("state").toString() != QLatin1String("invited"))
+            if (!isInvited(r))
                 continue;
             const QString id = r.value("room_id").toString();
             open << id;
@@ -907,8 +988,6 @@ void Rustrx::handleEvent(const QVariantMap &ev)
             qInfo().noquote() << "core:" << line;
         return;
     }
-    if (type == QLatin1String("error"))
-        qWarning().noquote() << "core error:" << ev.value("cmd").toString() << ev.value("message").toString();
     if (type == QLatin1String("ready") || type == QLatin1String("logged_in") || type == QLatin1String("sync_state")
             || (type == QLatin1String("rooms") && m_firstRooms)) {
         qInfo().noquote() << "startup:" << type << "after" << m_since.elapsed() << "ms";
@@ -1054,6 +1133,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit identityResetApproval(ev.value("url").toString());
     } else if (type == QLatin1String("error")) {
         const QString cmd = ev.value("cmd").toString();
+        qWarning().noquote() << "core error:" << cmd << ev.value("message").toString();
         if (cmd == QLatin1String("login_password") || cmd == QLatin1String("login_sso")) {
             m_loggingIn = false;
             emit stateChanged();
