@@ -132,7 +132,7 @@ Page {
     function showComposer() { composerLater.restart() }
     Timer {
         id: composerLater
-        interval: 350
+        interval: Tunables.menuCloseMs
         onTriggered: {
             page.viewAtBeginning("composer")
             if (page.composer) page.composer.field.forceActiveFocus()
@@ -272,7 +272,7 @@ Page {
         onAtYEndChanged: {
             if (atYEnd && count > 0 && !paginating && !atStart) {
                 paginating = true
-                rustrx.command({ cmd: "paginate_back", room_id: roomId, count: Tunables.paginateBatch })
+                rustrx.command({ cmd: "paginate_back", room_id: roomId })
             }
         }
 

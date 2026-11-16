@@ -84,8 +84,6 @@ QtObject {
     readonly property string favSparkleColor: "#fff4b8"
 
     // counts and limits
-    // events asked for per back pagination (the core's own default)
-    readonly property int paginateBatch: 30
     // custom emoji of one message offered to add to the own pack
     readonly property int emoteOfferMax: 3
     // lines of a quoted message
