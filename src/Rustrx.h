@@ -19,7 +19,6 @@
 
 #include <QElapsedTimer>
 #include <QHash>
-#include <QMap>
 #include <QMetaMethod>
 #include <QObject>
 #include <QSet>
@@ -28,6 +27,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 
+class RoomLists;
 class RoomModel;
 class TimelineModel;
 class UnifiedPush;
@@ -111,14 +111,14 @@ public:
     QString verificationState() const { return m_verificationState; }
     QString recoveryState() const { return m_recoveryState; }
     QString openRoomId() const { return m_openRoomId; }
-    int unreadTotal() const { return m_unreadTotal; }
-    int unreadChats() const { return m_unreadChats; }
-    RoomModel *rooms() const { return m_rooms; }
-    RoomModel *people() const { return m_people; }
-    RoomModel *favourites() const { return m_favourites; }
-    RoomModel *all() const { return m_all; }
-    RoomModel *spaces() const { return m_spaces; }
-    RoomModel *targets() const { return m_targets; }
+    int unreadTotal() const;
+    int unreadChats() const;
+    RoomModel *rooms() const;
+    RoomModel *people() const;
+    RoomModel *favourites() const;
+    RoomModel *all() const;
+    RoomModel *spaces() const;
+    RoomModel *targets() const;
     TimelineModel *timeline() const { return m_timeline; }
     TimelineModel *thread() const { return m_thread; }
     int threadsSeenVersion() const { return m_threadsSeenVersion; }
@@ -133,7 +133,7 @@ public:
     QString coreVersion() const;
     bool downscaleImages() const;
     void setDownscaleImages(bool on);
-    QString currentTab() const { return m_currentTab; }
+    QString currentTab() const;
     void setCurrentTab(const QString &kind);
     QString sortOrder() const;
     void setSortOrder(const QString &order);
@@ -147,7 +147,7 @@ public:
     void setDebugLog(bool on);
     // the logs in one text file in Downloads, for the share sheet; its path
     Q_INVOKABLE QString shareableLog();
-    QString roomFilter() const { return m_roomFilter; }
+    QString roomFilter() const;
     void setRoomFilter(const QString &text);
     bool background() const;
     void setBackground(bool on);
@@ -345,16 +345,8 @@ private:
     static void eventCallback(void *ctx, const char *json);
     // handleEvent, looked up once for the queued calls from the core's threads
     QMetaMethod m_handleEvent;
-    void distributeRooms(const QVariantList &rooms);
-    // a tab's ("rooms", "people", "favs", "all", "spaces") own setting; one
-    // never set starts from the setting all tabs shared before
-    QVariant tabValue(const QString &kind, const QString &key, const QVariant &fallback) const;
-    void setTabValue(const QString &key, const QVariant &value);
-    void sortRooms(QVariantList &rooms, const QString &kind) const;
-    QVariantList m_lastRooms;   // as the core sent them, for a new order
     // an avatar picture upright, at most 512 px, in the cache; its path and size
     QString prepareAvatar(const QString &path, const QString &cmd, QSize *size);
-    QString m_roomFilter;
     // the stand-in: pass what was asked for to a new app process and leave
     bool handOver();
 
@@ -371,33 +363,17 @@ private:
     QString m_openRoomId;
     QString m_pendingRoom;
     QString m_pendingCall;
-    QString m_currentTab = QStringLiteral("rooms");
+    // before m_lists, which uses it
     QSettings m_settings;
-    // the tabs' settings as read (QSettings per room update was a file
-    // check each time); filled on first use, changed in setTabValue
-    mutable QHash<QString, QVariant> m_tabCache;
-    // the invitations already notified, as in the settings
-    QStringList m_invitesNotified;
     bool m_pendingKnocks = false;
-    // per room: { room_name, is_space, requests }
-    QMap<QString, QVariantMap> m_knocks;
-    QSet<QString> m_knocksNotified;
     bool m_standIn = false;
     bool m_pushWake = false;
     QList<QVariantMap> m_pendingPushes;
     UnifiedPush *m_push;
     QString m_pendingUri;
     QVariantMap m_pendingShare;
-    int m_unreadTotal = 0;
-    int m_unreadChats = 0;
-    QHash<QString, int> m_notificationCounts;
-    QHash<QString, QVariantMap> m_roomsById;
-    RoomModel *m_rooms;
-    RoomModel *m_people;
-    RoomModel *m_favourites;
-    RoomModel *m_all;
-    RoomModel *m_spaces;
-    RoomModel *m_targets;
+    // the tabs' room lists, their settings, unread totals and requests to join
+    RoomLists *m_lists;
     QHash<QString, QString> m_emotePaths;
     QSet<QString> m_emotesAsked;
     TimelineModel *m_timeline;
