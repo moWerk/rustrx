@@ -35,6 +35,8 @@ class TimelineModel : public QAbstractListModel
     Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
     // the height custom emoji are drawn at in a message, in pixels
     Q_PROPERTY(int emoteSize READ emoteSize WRITE setEmoteSize NOTIFY emoteSizeChanged)
+    // the height of Twemoji in the small lines (reactions, a thread's latest reply)
+    Q_PROPERTY(int smallEmojiSize READ smallEmojiSize WRITE setSmallEmojiSize NOTIFY smallEmojiSizeChanged)
 
 public:
     explicit TimelineModel(QObject *parent = nullptr);
@@ -51,6 +53,8 @@ public:
     void clearEmotes();
     int emoteSize() const { return m_emoteSize; }
     void setEmoteSize(int size);
+    int smallEmojiSize() const { return m_smallEmojiSize; }
+    void setSmallEmojiSize(int size);
     void clear();
     Q_INVOKABLE QVariantMap get(int row) const;
     // the cached full file for an event, or an empty string
@@ -60,6 +64,7 @@ signals:
     void countChanged();
     void mediaChanged(const QString &eventId);
     void emoteSizeChanged();
+    void smallEmojiSizeChanged();
     // a custom emoji (mxc address) is shown that is not in the cache yet
     void emoteWanted(const QString &mxc);
 
@@ -68,7 +73,9 @@ private:
     // row or what it shows changes
     struct Rendered {
         bool hasHtml = false, hasReply = false, hasReactions = false, hasEmotes = false;
+        bool hasBody = false, hasCaption = false, hasThread = false;
         QString html;
+        QString body, caption, thread;
         QVariant reply;
         QVariantList reactions;
         QVariantList emotes;
@@ -78,6 +85,9 @@ private:
     QVariant cachedReply(const QVariantMap &item) const;
     QVariantList cachedReactions(const QVariantMap &item) const;
     QVariantList cachedEmotes(const QVariantMap &item) const;
+    QString cachedBody(const QVariantMap &item) const;
+    QString cachedCaption(const QVariantMap &item) const;
+    QString cachedThread(const QVariantMap &item) const;
     void forget(const QVariant &item);
     QVector<int> changedRoles(const QVariantMap &from, const QVariantMap &to) const;
     QVariantMap withMedia(QVariantMap item) const;
@@ -96,6 +106,7 @@ private:
     QHash<int, QString> m_keys;
     QHash<QString, int> m_roleOf;
     int m_htmlRole, m_reactionsRole, m_replyRole, m_emotesRole, m_mediaRole, m_thumbRole;
+    int m_bodyHtmlRole, m_captionHtmlRole, m_threadHtmlRole;
     mutable QHash<QString, Rendered> m_rendered;
     // the emoji cache was emptied: the next snapshot asks for every row's
     bool m_askAll = false;
@@ -103,6 +114,10 @@ private:
     QHash<QString, Emote> m_emotes;
     QSet<QString> m_emotesAsked;
     int m_emoteSize = Keys::kDefaultEmoteSize;
+    // until QML sets it: about the extra small text at the usual ratio
+    int m_smallEmojiSize = Keys::kDefaultEmoteSize * 3 / 4;
+    // the longest reaction key shown before it is cut with an ellipsis
+    static const int kReactionKeyMax = 24;
 };
 
 #endif

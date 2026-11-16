@@ -37,4 +37,18 @@ QString inHtml(const QString &html, int height);
 
 }
 
+// Plain text made ready for Text.StyledText, the way the QML did it in
+// JavaScript before, character for character (white space is what
+// JavaScript's \s matches), so the output stays the same.
+namespace StyledText {
+
+// & and < as entities, and > too unless told not to
+QString escaped(const QString &text, bool greater = true);
+// escaped, its http(s):// and matrix: addresses as links, \n as <br>
+QString linkified(const QString &text);
+// every run of white space as one space
+QString oneLine(const QString &text);
+
+}
+
 #endif

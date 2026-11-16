@@ -177,3 +177,93 @@ QString inHtml(const QString &html, int height)
 }
 
 }
+
+namespace StyledText {
+
+namespace {
+
+// JavaScript's \s (the YARR table Qt's engine uses)
+bool isSpace(ushort c)
+{
+    return (c >= 0x09 && c <= 0x0D) || c == 0x20 || c == 0xA0 || c == 0x1680
+            || (c >= 0x2000 && c <= 0x200A) || c == 0x2028 || c == 0x2029 || c == 0x202F
+            || c == 0x205F || c == 0x3000 || c == 0xFEFF;
+}
+
+// the end of an address starting at "at", or -1: the scheme, then at
+// least one character up to white space or "<"
+int linkEnd(const QString &s, int at)
+{
+    int from = -1;
+    if (s.midRef(at, 4) == QLatin1String("http")) {
+        if (s.midRef(at + 4, 4) == QLatin1String("s://"))
+            from = at + 8;
+        else if (s.midRef(at + 4, 3) == QLatin1String("://"))
+            from = at + 7;
+    } else if (s.midRef(at, 7) == QLatin1String("matrix:")) {
+        from = at + 7;
+    }
+    if (from < 0)
+        return -1;
+    int end = from;
+    while (end < s.size() && s.at(end) != QLatin1Char('<') && !isSpace(s.at(end).unicode()))
+        ++end;
+    return end > from ? end : -1;
+}
+
+}
+
+QString escaped(const QString &text, bool greater)
+{
+    QString out;
+    out.reserve(text.size());
+    for (const QChar c : text) {
+        if (c == QLatin1Char('&')) out += QLatin1String("&amp;");
+        else if (c == QLatin1Char('<')) out += QLatin1String("&lt;");
+        else if (greater && c == QLatin1Char('>')) out += QLatin1String("&gt;");
+        else out += c;
+    }
+    return out;
+}
+
+QString linkified(const QString &text)
+{
+    const QString s = escaped(text);
+    QString out;
+    out.reserve(s.size());
+    int last = 0;
+    for (int i = 0; i < s.size();) {
+        const int end = linkEnd(s, i);
+        if (end < 0) {
+            ++i;
+            continue;
+        }
+        const QString url = s.mid(i, end - i);
+        out += s.midRef(last, i - last);
+        out += QLatin1String("<a href=\"") + url + QLatin1String("\">") + url + QLatin1String("</a>");
+        i = last = end;
+    }
+    out += s.midRef(last);
+    out.replace(QLatin1Char('\n'), QLatin1String("<br>"));
+    return out;
+}
+
+QString oneLine(const QString &text)
+{
+    QString out;
+    out.reserve(text.size());
+    bool inSpace = false;
+    for (const QChar c : text) {
+        if (isSpace(c.unicode())) {
+            if (!inSpace)
+                out += QLatin1Char(' ');
+            inSpace = true;
+        } else {
+            out += c;
+            inSpace = false;
+        }
+    }
+    return out;
+}
+
+}

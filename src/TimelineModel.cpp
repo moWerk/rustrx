@@ -51,7 +51,7 @@ TimelineModel::TimelineModel(QObject *parent)
                             "reactions", "reply_to", "thread_root", "thread", "mime", "size", "w", "h", "has_thumb",
                             "filename", "duration", "geo_uri", "media_path", "thumb_path", "read_by",
                             "caption", "shield", "answers", "max_selections", "ended", "upload_done", "upload_total",
-                            "emotes" };
+                            "emotes", "body_html", "caption_html", "thread_html" };
     int role = Qt::UserRole + 1;
     for (const char *n : names) {
         m_roles.insert(role, QByteArray(n));
@@ -65,6 +65,9 @@ TimelineModel::TimelineModel(QObject *parent)
     m_emotesRole = m_roleOf.value(QStringLiteral("emotes"));
     m_mediaRole = m_roleOf.value(QStringLiteral("media_path"));
     m_thumbRole = m_roleOf.value(QStringLiteral("thumb_path"));
+    m_bodyHtmlRole = m_roleOf.value(QStringLiteral("body_html"));
+    m_captionHtmlRole = m_roleOf.value(QStringLiteral("caption_html"));
+    m_threadHtmlRole = m_roleOf.value(QStringLiteral("thread_html"));
 }
 
 int TimelineModel::rowCount(const QModelIndex &parent) const
@@ -89,6 +92,12 @@ QVariant TimelineModel::data(const QModelIndex &index, int role) const
         return cachedEmotes(item);
     if (role == m_replyRole)
         return cachedReply(item);
+    if (role == m_bodyHtmlRole)
+        return cachedBody(item);
+    if (role == m_captionHtmlRole)
+        return cachedCaption(item);
+    if (role == m_threadHtmlRole)
+        return cachedThread(item);
     return item.value(m_keys.value(role));
 }
 
@@ -144,6 +153,56 @@ QVariantList TimelineModel::cachedEmotes(const QVariantMap &item) const
     return r.emotes;
 }
 
+// A plain body as StyledText: an emote as "name text", text and notices
+// with their addresses linked, both with Twemoji; other types have none
+QString TimelineModel::cachedBody(const QVariantMap &item) const
+{
+    Rendered &r = rendered(item);
+    if (!r.hasBody) {
+        QString type = item.value(QStringLiteral("type")).toString();
+        if (type.isEmpty())
+            type = QStringLiteral("text");
+        const QString body = item.value(QStringLiteral("body")).toString();
+        if (type == QLatin1String("emote")) {
+            QString name = item.value(QStringLiteral("sender_name")).toString();
+            if (name.isEmpty())
+                name = item.value(QStringLiteral("sender")).toString();
+            r.body = Twemoji::inHtml(StyledText::escaped(name + QLatin1Char(' ') + body), m_emoteSize);
+        } else if (type == QLatin1String("text") || type == QLatin1String("notice")) {
+            r.body = Twemoji::inHtml(StyledText::linkified(body), m_emoteSize);
+        }
+        r.hasBody = true;
+    }
+    return r.body;
+}
+
+// the text sent with a picture, a video or a file, its addresses linked
+QString TimelineModel::cachedCaption(const QVariantMap &item) const
+{
+    Rendered &r = rendered(item);
+    if (!r.hasCaption) {
+        r.caption = StyledText::linkified(item.value(QStringLiteral("caption")).toString());
+        r.hasCaption = true;
+    }
+    return r.caption;
+}
+
+// a thread's latest reply in one line, "sender: text", or nothing
+QString TimelineModel::cachedThread(const QVariantMap &item) const
+{
+    Rendered &r = rendered(item);
+    if (!r.hasThread) {
+        const QVariantMap t = item.value(QStringLiteral("thread")).toMap();
+        const QString sender = t.value(QStringLiteral("latest_sender")).toString();
+        if (!sender.isEmpty())
+            r.thread = StyledText::escaped(sender) + QLatin1String(": ")
+                       + Twemoji::inHtml(StyledText::escaped(StyledText::oneLine(t.value(QStringLiteral("latest_body")).toString())),
+                                         m_smallEmojiSize);
+        r.hasThread = true;
+    }
+    return r.thread;
+}
+
 void TimelineModel::forget(const QVariant &item)
 {
     m_rendered.remove(item.toMap().value(QStringLiteral("id")).toString());
@@ -169,6 +228,13 @@ QVector<int> TimelineModel::changedRoles(const QVariantMap &from, const QVariant
         add(role);
         if (role == m_htmlRole || role == m_reactionsRole)
             add(m_emotesRole);
+        if (key == QLatin1String("type") || key == QLatin1String("body")
+                || key == QLatin1String("sender_name") || key == QLatin1String("sender"))
+            add(m_bodyHtmlRole);
+        if (key == QLatin1String("caption"))
+            add(m_captionHtmlRole);
+        if (key == QLatin1String("thread"))
+            add(m_threadHtmlRole);
         // the media are looked up by the event's id
         if (key == QLatin1String("event_id")) {
             add(m_mediaRole);
@@ -494,7 +560,19 @@ void TimelineModel::setEmoteSize(int size)
     m_rendered.clear();
     emit emoteSizeChanged();
     if (!m_items.isEmpty())
-        emit dataChanged(index(0), index(m_items.size() - 1), { m_htmlRole, m_replyRole });
+        emit dataChanged(index(0), index(m_items.size() - 1), { m_htmlRole, m_replyRole, m_bodyHtmlRole });
+}
+
+void TimelineModel::setSmallEmojiSize(int size)
+{
+    if (size == m_smallEmojiSize || size <= 0)
+        return;
+    m_smallEmojiSize = size;
+    for (Rendered &r : m_rendered)
+        r.hasReactions = r.hasThread = false;
+    emit smallEmojiSizeChanged();
+    if (!m_items.isEmpty())
+        emit dataChanged(index(0), index(m_items.size() - 1), { m_reactionsRole, m_threadHtmlRole });
 }
 
 QVariantMap TimelineModel::get(int row) const

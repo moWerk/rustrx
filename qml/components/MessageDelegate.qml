@@ -93,13 +93,6 @@ ListItem {
         return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     }
 
-    // plain bodies: escape, link the addresses, keep the line breaks
-    function linkify(t) {
-        return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-                .replace(/(https?:\/\/[^\s<]+|matrix:[^\s<]+)/g, "<a href=\"$1\">$1</a>")
-                .replace(/\n/g, "<br>")
-    }
-
     property bool exporting
     // a tap opens the copy in another app; "Save to Downloads" only saves it
     property bool exportOpens
@@ -192,6 +185,12 @@ ListItem {
         else if (msgType !== "video") rustrx.getMedia(roomId, eventId, false)
     }
     Component.onCompleted: requestPicture()
+    // the size of Twemoji in the small lines, rendered by the model
+    Binding {
+        target: msg.ListView.view ? msg.ListView.view.model : null
+        property: "smallEmojiSize"
+        value: Math.round(Theme.fontSizeExtraSmall * Tunables.emojiScale)
+    }
     onEventIdChanged: requestPicture()
 
     Loader {
@@ -376,9 +375,10 @@ ListItem {
                                 if (msgType === "location") return (model.body || "") + "\n" + qsTrId("rustrx-la-location-open")
                                 //% "Verification request"
                                 if (msgType === "verification") return qsTrId("rustrx-la-verification-request")
-                                if (msgType === "emote") return rustrx.emojify(escapeText((model.sender_name || model.sender) + " " + (model.body || "")), rustrx.timeline.emoteSize)
+                                // the model renders plain bodies (body_html) once
+                                if (msgType === "emote") return model.body_html
                                 if (htmlText.length) return htmlText
-                                if (msgType === "text" || msgType === "notice") return rustrx.emojify(linkify(model.body || ""), rustrx.timeline.emoteSize)
+                                if (msgType === "text" || msgType === "notice") return model.body_html
                                 return model.body || ""
                             }
                         }
@@ -473,7 +473,7 @@ ListItem {
                                 width: Math.min(implicitWidth, innerMax)
                                 wrapMode: Text.Wrap
                                 textFormat: Text.StyledText
-                                text: linkify(model.caption || "")
+                                text: model.caption_html
                                 color: mainColor
                                 linkColor: Theme.secondaryHighlightColor
                                 onLinkActivated: app.openLink(link)
@@ -632,10 +632,8 @@ ListItem {
                                             //: %n replies not seen yet
                                             //% "%n new"
                                             if (threadNew > 0) t += " · <b><font color=\"" + Theme.highlightColor + "\">" + qsTrId("rustrx-la-thread-new", threadNew) + "</font></b>"
-                                            if (threadSummary.latest_sender)
-                                                t += " · " + escapeText(threadSummary.latest_sender) + ": "
-                                                     + rustrx.emojify(escapeText((threadSummary.latest_body || "").replace(/\s+/g, " ")),
-                                                                      Math.round(font.pixelSize * Tunables.emojiScale))
+                                            // "sender: text", rendered by the model
+                                            if (threadSummary.latest_sender) t += " · " + model.thread_html
                                             return t
                                         }
                                     }
