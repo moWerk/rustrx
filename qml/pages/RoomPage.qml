@@ -221,14 +221,14 @@ Page {
         page: page
         list: list
         model: rustrx.timeline
+        dock: emojiDock
     }
 
     SilicaListView {
         id: list
         anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
-        // the emoji panel takes the keyboard's place below the composer
-        // the picker's part above the keyboard (none while the keyboard covers it)
-        anchors.bottomMargin: Math.max(0, page.emojiLift - page.keyboardSize)
+        // the emoji picker takes the keyboard's place below the composer (EmojiDock)
+        anchors.bottomMargin: emojiDock.aboveKeyboard
         verticalLayoutDirection: ListView.BottomToTop
         model: rustrx.timeline
         // read once the newest end is reached (scrolled to, or arrived at):
@@ -358,7 +358,7 @@ Page {
                 drafts: true
                 typing: true
                 packs: page.packs
-                emojiOpen: emojiPanel.open
+                emojiOpen: emojiDock.open
                 //% "Message"
                 placeholderText: qsTrId("rustrx-ph-message")
                 //: %1 the room's name
@@ -373,11 +373,11 @@ Page {
                 // the emoji picker (and the stickers with an empty message);
                 // a second tap brings the keyboard back
                 onEmojiClicked: {
-                    if (emojiPanel.open && emojiPanel.mode === "insert") {
-                        page.emojiToKeyboard()
+                    if (emojiDock.open && emojiDock.mode === "insert") {
+                        emojiDock.toKeyboard()
                     } else {
-                        emojiPanel.stickers = page.hasStickers && composer.text.trim().length === 0
-                        page.showEmoji("insert", "")
+                        emojiDock.stickers = page.hasStickers && composer.text.trim().length === 0
+                        emojiDock.show("insert", "")
                     }
                 }
             }
@@ -401,7 +401,7 @@ Page {
                 rustrx.command({ cmd: "redact", room_id: page.roomId, txn_id: txnId })
                 rustrx.sendText(page.roomId, text, "")
             }
-            onReactMore: { page.reactMoreText = text; page.showEmoji("react", eventId) }
+            onReactMore: { page.reactMoreText = text; emojiDock.show("react", eventId) }
             onOpenThread: pageStack.push(Qt.resolvedUrl("ThreadPage.qml"),
                                          { roomId: page.roomId, roomName: page.roomName, rootId: eventId, compose: compose })
         }
@@ -431,75 +431,16 @@ Page {
         FilePickerPage { }
     }
 
-    // The emoji picker in the keyboard's place: inserts at the cursor, or
-    // reacts to a message (EmojiPanel). The picker and the keyboard share
-    // one place at the bottom of the screen. Silica shrinks the page by the
-    // keyboard as it slides (keyboardSize); the picker sits at the screen's
-    // bottom, lifted by emojiLift, and the conversation ends above whichever
-    // is higher. Switching from one to the other keeps the height: the
-    // picker takes the keyboard's, lies under it and is uncovered as the
-    // keyboard slides away, or is covered by the keyboard sliding up and
-    // only then goes. With nothing open it slides in and out on its own.
-    readonly property real keyboardSize: pageStack.panelSize
-    property real emojiHeight: defaultEmojiHeight()
-    property real emojiLift: 0
-    property bool emojiLiftAnimated
-    // the keyboard is coming back in the picker's place
-    property bool emojiToKeys
-    Behavior on emojiLift {
-        enabled: page.emojiLiftAnimated
-        NumberAnimation { duration: Tunables.panelSlideMs; easing.type: Easing.InOutQuad }
-    }
-    function defaultEmojiHeight() { return Math.round(Screen.height * (isPortrait ? Tunables.emojiPanelPortrait : Tunables.emojiPanelLandscape)) }
-    onIsPortraitChanged: { emojiHeight = defaultEmojiHeight(); if (emojiPanel.open) emojiLift = emojiHeight }
-
-    function showEmoji(mode, eventId) {
-        emojiToKeys = false
-        if (keyboardSize > 0) {
-            // under the keyboard, at its height, uncovered as it goes
-            emojiHeight = keyboardSize
-            emojiLiftAnimated = false
-            emojiLift = emojiHeight
-            emojiPanel.show(mode, eventId)
-            Qt.inputMethod.hide()
-        } else {
-            emojiPanel.show(mode, eventId)
-            emojiLiftAnimated = true
-            emojiLift = emojiHeight
-        }
-    }
-    // the emoji button again, or a tap into the field: the keyboard covers
-    // the picker, which goes once it is covered
-    function emojiToKeyboard() {
-        emojiToKeys = true
-        if (composer) composer.field.forceActiveFocus()
-        Qt.inputMethod.show()
-    }
-    onKeyboardSizeChanged: {
-        trace.logKeyboard()
-        // the keyboard's own height, for the picker next time
-        if (Qt.inputMethod.visible && !emojiPanel.open && keyboardSize > 0)
-            emojiHeight = keyboardSize
-        if (emojiToKeys && emojiPanel.open && keyboardSize >= emojiLift - 1) {
-            emojiToKeys = false
-            emojiLiftAnimated = false
-            emojiLift = 0
-            emojiPanel.open = false
-        }
-    }
     function insertEmoji(emoji) {
         if (composer) composer.insert(emoji)
     }
     // the message the picker reacts to, for "React with text"
     property string reactMoreText
-    EmojiPanel {
-        id: emojiPanel
-        // at the screen's bottom, below the page while the keyboard is up
-        y: page.height + page.keyboardSize - page.emojiLift
-        height: page.emojiHeight
-        visible: page.emojiLift > 0
-        // closed by itself (a reaction, a sticker): it slides away
-        onOpenChanged: if (!open && page.emojiLift > 0) { page.emojiLiftAnimated = true; page.emojiLift = 0 }
+    // the emoji picker in the keyboard's place (EmojiDock)
+    EmojiDock {
+        id: emojiDock
+        page: page
+        trace: trace
         packs: page.packs
         // a pack's picture: a reaction (its address the key), a sticker sent
         // (an empty message, and the image is one), else :shortcode: in the text
@@ -509,7 +450,7 @@ Page {
             else if (stickers && image.sticker && (!page.composer || page.composer.text.trim().length === 0)) {
                 rustrx.command({ cmd: "send_sticker", room_id: page.roomId, url: image.url,
                                  body: image.body || image.shortcode, info: image.info })
-                emojiPanel.open = false
+                emojiDock.open = false
             } else
                 page.insertEmoji(":" + image.shortcode + ":")
         }
@@ -521,16 +462,6 @@ Page {
                 page.insertEmoji(emoji)
         }
     }
-    // the keyboard back (a tap into the field): it takes the picker's place
-    Connections {
-        target: Qt.inputMethod
-        onVisibleChanged: {
-            trace.log("im", "vis=" + Qt.inputMethod.visible)
-            if (Qt.inputMethod.visible && emojiPanel.open) page.emojiToKeys = true
-        }
-    }
-
-    onEmojiLiftChanged: trace.logLift()
 
     // positioning, with a trace line before and after
     function viewAt(tag, index, mode) {

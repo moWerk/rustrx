@@ -30,8 +30,10 @@ import Nemo.Configuration 1.0
 Item {
     id: trace
 
-    // the room page (its status, keyboardSize, emojiLift and composer), its list and model
+    // the room page (its status and composer), its emoji dock (keyboard and
+    // picker heights), its list and model
     property Item page
+    property Item dock
     property Item list
     property QtObject model
 
@@ -103,11 +105,11 @@ Item {
         if (enabled && (isNaN(lastCh) || Math.abs(list.contentHeight - lastCh) > 20)) log("ch")
     }
     function logKeyboard() {
-        var kb = page.keyboardSize
+        var kb = dock.keyboardSize
         if (enabled && (kb === 0 || Math.abs(kb - lastKb) > 40)) { lastKb = kb; log("kb") }
     }
     function logLift() {
-        if (enabled && (!page.emojiLiftAnimated || page.emojiLift === 0 || page.emojiLift >= page.emojiHeight)) log("lift")
+        if (enabled && (!dock.liftAnimated || dock.lift === 0 || dock.lift >= dock.panelHeight)) log("lift")
     }
     // a row that grew or shrank (a picture, a menu)
     function logRow(index, before, after) {
@@ -145,7 +147,7 @@ Item {
         console.log("chatpos: " + ev + " y=" + Math.round(list.contentY) + " oy=" + Math.round(list.originY)
                     + " ch=" + Math.round(list.contentHeight) + " h=" + Math.round(list.height)
                     + " hdr=" + (list.headerItem ? Math.round(list.headerItem.height) : -1)
-                    + " kb=" + Math.round(page.keyboardSize) + " lift=" + Math.round(page.emojiLift)
+                    + " kb=" + Math.round(dock.keyboardSize) + " lift=" + Math.round(dock.lift)
                     + " top=" + top + " \"" + tb + "\" bot=" + bot + " status=" + statusName(page.status)
                     + " focus=" + fn + " inp=" + (c && c.field.activeFocus ? 1 : 0)
                     + " src=" + (list.dragging ? "drag" : list.flicking ? "flick" : "-")
