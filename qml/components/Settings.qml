@@ -16,13 +16,14 @@
  */
 import QtQuick 2.6
 import Nemo.Configuration 1.0
+import "../names.js" as Names
 
 // The user's settings in dconf. Every property here is the key of the same
 // name under the path, and its value here is the default while the key is
 // unset. The app and Service.qml each make one (two engines, one dconf).
 // Add no property where this is used: it would become a key too.
 ConfigurationGroup {
-    path: "/apps/harbour-rustrx"
+    path: Names.dconfPath
 
     // appearance
     property bool roundAvatars: true

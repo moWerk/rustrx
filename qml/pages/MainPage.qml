@@ -18,7 +18,6 @@ import QtQuick 2.6
 import Rustrx 1.0
 import Sailfish.Silica 1.0
 import Sailfish.Silica.private 1.0
-import Nemo.Configuration 1.0
 import "../components"
 
 // Three panels, Rooms, People and Favs, in the tab view Jolla uses for Settings.
@@ -43,9 +42,9 @@ Page {
 
     // debug: open this room when the page first becomes active, and go on to
     // its attached page when debugNavigate is "info" (unattended screenshots)
-    ConfigurationValue { id: debugOpenRoom; key: "/apps/harbour-rustrx/debugOpenRoom"; defaultValue: "" }
-    ConfigurationValue { id: debugNavigate; key: "/apps/harbour-rustrx/debugNavigate"; defaultValue: "" }
-    ConfigurationValue { id: debugMarkRead; key: "/apps/harbour-rustrx/debugMarkRead"; defaultValue: "" }
+    DebugValue { id: debugOpenRoom; name: "debugOpenRoom"; defaultValue: "" }
+    DebugValue { id: debugNavigate; name: "debugNavigate"; defaultValue: "" }
+    DebugValue { id: debugMarkRead; name: "debugMarkRead"; defaultValue: "" }
     property bool debugDone
     // the key may hold a room id or a room name; names are looked up in the list
     Instantiator {

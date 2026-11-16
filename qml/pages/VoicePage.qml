@@ -16,7 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
-import Nemo.Configuration 1.0
+import "../components"
 
 // A voice message: tap to start, tap to stop, then send or throw away.
 // Leaving the page without sending throws it away.
@@ -60,7 +60,7 @@ Page {
     Component.onDestruction: if (!sent) voice.discard()
 
     // debug: record three seconds by itself (unattended tests)
-    ConfigurationValue { id: debugRecord; key: "/apps/harbour-rustrx/debugRecord"; defaultValue: false }
+    DebugValue { id: debugRecord; name: "debugRecord"; defaultValue: false }
     Timer { running: debugRecord.value === true; interval: 500; onTriggered: { page.toggle(); debugShot.start() } }
     Timer { id: debugShot; interval: 1500; onTriggered: debugStop.start() }
     Timer { id: debugStop; interval: 1500; onTriggered: page.toggle() }

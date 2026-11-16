@@ -17,7 +17,6 @@
 import QtQuick 2.6
 import Rustrx 1.0
 import Sailfish.Silica 1.0
-import Nemo.Configuration 1.0
 import "pages"
 import "components"
 
@@ -497,10 +496,10 @@ ApplicationWindow {
     }
 
     // debug: close the app as the tile's close does
-    ConfigurationValue { id: debugClose; key: "/apps/harbour-rustrx/debugClose"; defaultValue: false }
+    DebugValue { id: debugClose; name: "debugClose"; defaultValue: false }
     Connections { target: debugClose; onValueChanged: if (debugClose.value === true) rustrx.closeWindow() }
     // debug: back to the home screen (to look at the tile)
-    ConfigurationValue { id: debugMinimize; key: "/apps/harbour-rustrx/debugMinimize"; defaultValue: false }
+    DebugValue { id: debugMinimize; name: "debugMinimize"; defaultValue: false }
     Connections { target: debugMinimize; onValueChanged: if (debugMinimize.value === true) app.deactivate() }
 
     Component.onCompleted: { applyClosedMode(); route() }

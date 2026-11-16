@@ -16,7 +16,6 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
-import Nemo.Configuration 1.0
 
 // Chat position trace: every move of the room's list with what caused it,
 // in the app log. Off unless switched on:
@@ -52,8 +51,8 @@ Item {
     readonly property real flickSpeed: 2500
     property int flicksDone
 
-    ConfigurationValue { id: debugChatPos; key: "/apps/harbour-rustrx/debugChatPos"; defaultValue: false }
-    ConfigurationValue { id: debugFlick; key: "/apps/harbour-rustrx/debugFlick"; defaultValue: 0 }
+    DebugValue { id: debugChatPos; name: "debugChatPos"; defaultValue: false }
+    DebugValue { id: debugFlick; name: "debugFlick"; defaultValue: 0 }
     Connections {
         target: trace.flickCount > 0 ? trace.page : null
         onStatusChanged: {

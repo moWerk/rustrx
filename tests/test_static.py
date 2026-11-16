@@ -440,3 +440,11 @@ def test_every_field_is_documented():
         row = next((r for r in rows if r.split("|")[1].find(f"`{cmd}`") >= 0), "")
         missing += [f"{cmd}.{f}" for f in fields if f"`{f}" not in row]
     assert not missing
+
+
+def test_dconf_path_in_one_place():
+    """The dconf folder is written once, in names.js; Settings and the
+    debug switches (DebugValue) build their keys from it (audit I16).
+    Planted-bug: a ConfigurationValue with the full key in a page."""
+    hits = [p.name for p in QML_JS if p.name != "names.js" and "/apps/harbour-rustrx" in code(p)]
+    assert not hits
