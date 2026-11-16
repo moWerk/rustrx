@@ -38,15 +38,14 @@ Page {
     Component.onCompleted: rustrx.openThread(roomId, rootId)
     Component.onDestruction: rustrx.closeThread()
 
-    // what is shown here is seen: the replies counted, and a threaded read
-    // receipt for the other clients
+    // what is shown here is read: a threaded read receipt, which the thread
+    // lines here and in the other clients go by
     function markSeen() {
         if (status !== PageStatus.Active) return
         var events = 0
         for (var i = 0; i < rustrx.thread.count; i++)
             if (rustrx.thread.get(i).kind === "event") events++
         if (events === 0) return
-        rustrx.markThreadSeen(rootId, Math.max(events - 1, rustrx.threadSeen(rootId, 0)))
         rustrx.command({ cmd: "mark_thread_read" })
     }
     onStatusChanged: if (status === PageStatus.Active) markSeen()

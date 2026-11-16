@@ -454,6 +454,12 @@ fn content_json(o: &mut Map<String, Value>, content: &TimelineItemContent, own: 
                 if let TimelineDetails::Ready(latest) = &summary.latest_event {
                     let who = profile_name(&latest.sender_profile, &latest.sender);
                     put(&mut t, "latest_sender", who);
+                    // for the read check (timeline.rs, thread_unread)
+                    if let matrix_sdk_ui::timeline::TimelineEventItemId::EventId(id) = &latest.identifier {
+                        put(&mut t, "latest_id", id.as_str());
+                    }
+                    put(&mut t, "latest_ts", ms(latest.timestamp));
+                    put(&mut t, "latest_own", latest.sender == own);
                     if let Some(msg) = latest.content.as_message() {
                         put(&mut t, "latest_body", msg.body());
                     }

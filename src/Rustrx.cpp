@@ -452,26 +452,6 @@ void Rustrx::openThread(const QString &roomId, const QString &root)
     command({ { "cmd", "open_thread" }, { "room_id", roomId }, { "root", root } });
 }
 
-int Rustrx::threadSeen(const QString &root, int count)
-{
-    const QString key = QString::fromLatin1(Keys::kThreadsSeen) + QLatin1Char('/') + QString(root).remove(QLatin1Char('$'));
-    if (!m_settings.contains(key)) {
-        m_settings.setValue(key, count);
-        return count;
-    }
-    return m_settings.value(key).toInt();
-}
-
-void Rustrx::markThreadSeen(const QString &root, int count)
-{
-    const QString key = QString::fromLatin1(Keys::kThreadsSeen) + QLatin1Char('/') + QString(root).remove(QLatin1Char('$'));
-    if (m_settings.value(key, -1).toInt() == count)
-        return;
-    m_settings.setValue(key, count);
-    ++m_threadsSeenVersion;
-    emit threadsSeenChanged();
-}
-
 void Rustrx::closeThread()
 {
     m_threadRoot.clear();
@@ -624,6 +604,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
             command({ { "cmd", "save_draft" }, { "room_id", roomId }, { "text", m_settings.value(roomId).toString() } });
         m_settings.endGroup();
         m_settings.remove(QLatin1String(Keys::kDrafts));
+        // and the thread counts the UI kept itself until 0.4.7
+        m_settings.remove(QLatin1String(Keys::kThreadsSeen));
         for (const QVariantMap &cmd : m_pendingPushes)
             command(cmd);
         m_pendingPushes.clear();
@@ -659,8 +641,6 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_drafts.clear();
         m_settings.remove(QLatin1String(Keys::kDrafts));
         m_settings.remove(QLatin1String(Keys::kThreadsSeen));
-        ++m_threadsSeenVersion;
-        emit threadsSeenChanged();
         emit stateChanged();
         emit openRoomChanged();
         emit syncStateChanged();

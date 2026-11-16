@@ -167,6 +167,9 @@ pub(crate) struct Core {
     /// encryption sync over the one crypto store, and their mutexes are
     /// their own, so two at once would not exclude each other
     push_lock: Mutex<()>,
+    /// bumped when a thread was read here: open timelines and the thread
+    /// list check their threads' unread state again
+    threads_read: tokio::sync::watch::Sender<u64>,
 }
 
 mod account;
@@ -187,7 +190,8 @@ pub(crate) use spaces::join_rule_name;
 
 impl Core {
     pub(crate) fn new(rt: Runtime, data_dir: PathBuf, emitter: Emitter) -> Self {
-        Core { rt, data_dir, emitter, state: Mutex::new(State::default()), sso_cancel: tokio::sync::Notify::new(), push_lock: Mutex::new(()) }
+        Core { rt, data_dir, emitter, state: Mutex::new(State::default()), sso_cancel: tokio::sync::Notify::new(), push_lock: Mutex::new(()),
+               threads_read: tokio::sync::watch::channel(0).0 }
     }
 
     pub(crate) fn emit(&self, value: Value) {

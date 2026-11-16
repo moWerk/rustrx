@@ -35,8 +35,8 @@ static const char kDownscaleImages[] = "downscaleImages";
 static const bool kDownscaleImagesDefault = true;
 // the invitations a notification was shown for
 static const char kInvitesNotified[] = "invitesNotified";
-// groups: drafts/<room id> (before 0.4.7 only, moved into the store at
-// login), threadsSeen/<root id without $>
+// groups from before 0.4.7, removed at login: drafts/<room id> (moved into
+// the store), threadsSeen/<root id without $> (the receipts tell now)
 static const char kDrafts[] = "drafts";
 static const char kThreadsSeen[] = "threadsSeen";
 // per tab: tabs/<kind>/<key>, else the key itself as the shared value

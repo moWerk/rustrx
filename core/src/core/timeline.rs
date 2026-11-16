@@ -159,20 +159,42 @@ impl Core {
         own: &UserId,
         emit: impl Fn(Value) + Send,
         started: impl FnOnce() + Send,
+        mut threads_read: tokio::sync::watch::Receiver<u64>,
     ) {
         let mut names = HashMap::new();
         let mut replies_asked = std::collections::HashSet::new();
+        let mut unread = HashMap::new();
         let (mut items, mut stream) = timeline.subscribe().await;
         let mut started = Some(started);
         loop {
             Self::fetch_replied(timeline, &items, &mut replies_asked);
             Self::receipt_names(room, &items, &mut names).await;
-            emit(items_json(&items, own, &names));
+            let mut json = items_json(&items, own, &names);
+            if let Value::Array(list) = &mut json {
+                for item in list.iter_mut() {
+                    let root = item["event_id"].as_str().map(str::to_owned);
+                    if let (Some(root), Some(thread)) = (root, item.get_mut("thread")) {
+                        Self::mark_thread_unread(room, own, &root, thread, &mut unread).await;
+                    }
+                }
+            }
+            emit(json);
             if let Some(started) = started.take() {
                 started();
             }
-            if stream.next().await.is_none() {
-                break;
+            tokio::select! {
+                next = stream.next() => {
+                    if next.is_none() {
+                        break;
+                    }
+                }
+                // a thread read here: its receipt is new, nothing else
+                changed = threads_read.changed() => {
+                    if changed.is_err() {
+                        std::future::pending::<()>().await;
+                    }
+                    unread.clear();
+                }
             }
             tokio::time::sleep(TIMELINE_COALESCE).await;
             while let Some(Some(_)) = stream.next().now_or_never() {}
@@ -180,12 +202,51 @@ impl Core {
         }
     }
 
+    /// Puts "unread" into a thread summary (serialize.rs): its latest reply
+    /// is someone else's and no read receipt of ours, threaded or not,
+    /// reaches it. The receipts are the server's, so a thread read in
+    /// another client counts as read here too. Remembered per latest reply.
+    pub(crate) async fn mark_thread_unread(room: &Room, own: &UserId, root: &str, thread: &mut Value,
+                                           known: &mut HashMap<String, bool>) {
+        let Some(latest) = thread["latest_id"].as_str().map(str::to_owned) else { return };
+        let key = format!("{root} {latest}");
+        let unread = match known.get(&key) {
+            Some(u) => *u,
+            None => {
+                let u = Self::thread_unread(room, own, root, &latest,
+                                            thread["latest_ts"].as_u64().unwrap_or(0),
+                                            thread["latest_own"].as_bool().unwrap_or(false)).await;
+                known.insert(key, u);
+                u
+            }
+        };
+        thread["unread"] = Value::Bool(unread);
+    }
+
+    pub(crate) async fn thread_unread(room: &Room, own: &UserId, root: &str, latest: &str, latest_ts: u64, latest_own: bool) -> bool {
+        if latest_own {
+            return false;
+        }
+        let Ok(root) = EventId::parse(root) else { return false };
+        use matrix_sdk::ruma::events::receipt::ReceiptType as Kind;
+        for kind in [Kind::Read, Kind::ReadPrivate] {
+            for thread in [ReceiptThread::Thread(root.clone()), ReceiptThread::Unthreaded] {
+                if let Ok(Some((id, receipt))) = room.load_user_receipt(kind.clone(), &thread, own).await {
+                    if id.as_str() == latest || receipt.ts.map_or(false, |t| u64::from(t.0) >= latest_ts) {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+
     /// Timeline snapshots for the open room, and who is typing there (the
     /// own user left out). Ends when the timeline's stream does.
     pub(crate) async fn timeline_task(&'static self, room: Room, timeline: Arc<Timeline>, own: OwnedUserId) {
         let room_id = room.room_id().to_owned();
         let emit = |items: Value| self.emit(json!({"ev": "timeline", "room_id": room_id.as_str(), "items": items}));
-        let items = Self::stream_timeline(&room, &timeline, &own, emit, || {});
+        let items = Self::stream_timeline(&room, &timeline, &own, emit, || {}, self.threads_read.subscribe());
         // the guard keeps the typing handler registered while this task lives
         let (_typing_guard, mut typing) = room.subscribe_to_typing_notifications();
         let typing = async {

@@ -58,7 +58,7 @@ Page {
         delegate: BackgroundItem {
             id: row
             readonly property var t: modelData
-            readonly property int fresh: (rustrx.threadsSeen, Math.max(0, t.count - rustrx.threadSeen(t.root.event_id, t.count)))
+            readonly property bool fresh: t.unread === true
             width: list.width
             height: column.height + 2 * Theme.paddingMedium
             onClicked: pageStack.push(Qt.resolvedUrl("ThreadPage.qml"),
@@ -85,7 +85,7 @@ Page {
                     wrapMode: Text.Wrap
                     elide: Text.ElideRight
                     textFormat: Text.StyledText
-                    font.bold: row.fresh > 0
+                    font.bold: row.fresh
                     color: row.highlighted ? Theme.highlightColor : Theme.primaryColor
                     text: rustrx.emojify(page.escapeText(row.t.root.body), Math.round(font.pixelSize * Tunables.emojiScaleList))
                 }
@@ -98,8 +98,8 @@ Page {
                     color: row.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
                     text: {
                         var s = qsTrId("rustrx-la-thread-replies", row.t.count)
-                        if (row.fresh > 0)
-                            s += " · <b><font color=\"" + Theme.highlightColor + "\">" + qsTrId("rustrx-la-thread-new", row.fresh) + "</font></b>"
+                        if (row.fresh)
+                            s += " · <b><font color=\"" + Theme.highlightColor + "\">" + qsTrId("rustrx-la-thread-unread") + "</font></b>"
                         if (row.t.latest && row.t.latest.body)
                             s += " · " + page.escapeText(row.t.latest.sender_name) + ": "
                                  + rustrx.emojify(page.escapeText(row.t.latest.body), Math.round(font.pixelSize * Tunables.emojiScale))

@@ -56,7 +56,7 @@ impl Core {
                     let _ = back.paginate_backwards(THREAD_FILL).await;
                 });
             };
-            Self::stream_timeline(&room, &tl, &own, emit, page_in).await;
+            Self::stream_timeline(&room, &tl, &own, emit, page_in, crate::instance().threads_read.subscribe()).await;
         });
         tracing::info!(room = %room_id, %root, "thread: open");
         // another open during the build: the one replaced stops (a close
@@ -75,8 +75,11 @@ impl Core {
         self.close_thread_list().await;
         let service = Arc::new(ThreadListService::new(room.clone()));
         let rid = room.room_id().to_owned();
+        let own = self.client().await?.user_id().context("no user id")?.to_owned();
+        let mut threads_read = self.threads_read.subscribe();
         let task = self.rt.spawn(async move {
-            let emit = |service: &ThreadListService, loading: bool| {
+            let mut known = HashMap::new();
+            let emit = |service: &ThreadListService, loading: bool, known: &mut HashMap<String, bool>| {
                 let mut items: Vec<Value> = service
                     .items()
                     .iter()
@@ -93,7 +96,31 @@ impl Core {
                     v["latest"]["ts"].as_u64().or_else(|| v["root"]["ts"].as_u64()).unwrap_or(0)
                 };
                 items.sort_by(|a, b| ts(b).cmp(&ts(a)));
-                crate::instance().emit(json!({"ev": "thread_list", "room_id": rid.as_str(), "threads": items, "loading": loading}));
+                let room = room.clone();
+                let own = own.clone();
+                let rid = rid.clone();
+                let mut known = std::mem::take(known);
+                async move {
+                    // unread: as for a thread line in the room (timeline.rs)
+                    for item in items.iter_mut() {
+                        let (Some(root), Some(latest)) = (item["root"]["event_id"].as_str().map(str::to_owned),
+                                                         item["latest"]["event_id"].as_str().map(str::to_owned)) else { continue };
+                        let key = format!("{root} {latest}");
+                        let unread = match known.get(&key) {
+                            Some(u) => *u,
+                            None => {
+                                let u = Self::thread_unread(&room, &own, &root, &latest,
+                                                            item["latest"]["ts"].as_u64().unwrap_or(0),
+                                                            item["latest"]["is_own"].as_bool().unwrap_or(false)).await;
+                                known.insert(key, u);
+                                u
+                            }
+                        };
+                        item["unread"] = Value::Bool(unread);
+                    }
+                    crate::instance().emit(json!({"ev": "thread_list", "room_id": rid.as_str(), "threads": items, "loading": loading}));
+                    known
+                }
             };
             let (_, mut updates) = service.subscribe_to_items_updates();
             for _ in 0..10 {
@@ -104,12 +131,22 @@ impl Core {
                     tracing::info!(room = %rid, "threads: list: {e}");
                     break;
                 }
-                emit(&service, true);
+                known = emit(&service, true, &mut known).await;
             }
-            emit(&service, false);
+            known = emit(&service, false, &mut known).await;
             tracing::info!(room = %rid, threads = service.items().len(), "threads: list");
-            while updates.next().await.is_some() {
-                emit(&service, false);
+            loop {
+                tokio::select! {
+                    next = updates.next() => if next.is_none() { break },
+                    // a thread read here: its receipt is new
+                    changed = threads_read.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                        known.clear();
+                    }
+                }
+                known = emit(&service, false, &mut known).await;
             }
         });
         if let Some(old) = self.state.lock().await.thread_list.replace(task) {
@@ -138,6 +175,8 @@ impl Core {
         if let Err(e) = tl.mark_as_read(ReceiptType::Read).await {
             tracing::info!("thread: read receipt: {e}");
         }
+        // the room's timeline and the thread list show it read
+        self.threads_read.send_modify(|n| *n += 1);
         Ok(())
     }
 

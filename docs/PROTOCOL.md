@@ -161,8 +161,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `profile` | `display_name`, `user_id` |
 | `storage` | `store`, `media_files` (bytes), `crypto?`, `state?`, `event_cache?`, `media_cache?` |
 | `error` | `cmd`, `message` |
-| `thread_timeline` | `room_id`, `root`, `items` (as `timeline`; a thread root carries `thread`: `count`, `latest_sender`, `latest_body`) |
-| `thread_list` | `room_id`, `threads`, `loading` |
+| `thread_timeline` | `room_id`, `root`, `items` (as `timeline`; a thread root carries `thread`: `count`, `latest_sender`, `latest_body`, `latest_id`, `latest_ts`, `latest_own`, `unread` (no read receipt of ours, threaded or not, reaches the latest reply)) |
+| `thread_list` | `room_id`, `threads` (`root`, `latest`: `event_id`, `sender`, `sender_name`, `is_own`, `ts`, `body`; `count`, `unread`), `loading` |
 | `space_rooms` | `space_id`, `loading`, `rooms` (`room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `is_space`, `members`, `children`, `join_rule`, `state`, `suggested`, `via`) |
 | `room_preview` | `id`, `ok`, and when ok: `room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `members`, `is_space`, `join_rule`, `state`; else `error` |
 | `knocked` | `room_id` |

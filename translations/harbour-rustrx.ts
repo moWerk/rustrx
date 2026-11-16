@@ -975,13 +975,6 @@
             <numerusform></numerusform>
         </translation>
     </message>
-    <message id="rustrx-la-thread-new" numerus="yes">
-        <source>%n new</source>
-        <extracomment>%n replies not seen yet</extracomment>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-        </translation>
-    </message>
     <message id="rustrx-la-uploading">
         <source>uploading %1 %</source>
         <extracomment>a file on its way to the server, %1 how much of it, in percent</extracomment>
@@ -1838,6 +1831,11 @@
     <message id="rustrx-la-create-account-oauth">
         <source>Makes the account on the page of %1 in the browser and logs you in here.</source>
         <extracomment>%1 the server name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-thread-unread">
+        <source>new replies</source>
+        <extracomment>a thread has replies not read yet</extracomment>
         <translation type="unfinished"></translation>
     </message>
 </context>
