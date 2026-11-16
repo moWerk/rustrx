@@ -67,8 +67,11 @@ Page {
                 color: Theme.primaryColor
             }
 
-            //% "Latest edit"
-            SectionHeader { visible: page.edit.length > 0; text: qsTrId("rustrx-se-latest-edit") }
+            SectionHeader {
+                visible: page.edit.length > 0
+                //% "Latest edit"
+                text: qsTrId("rustrx-se-latest-edit")
+            }
             TextArea {
                 width: parent.width
                 readOnly: true
