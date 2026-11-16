@@ -17,7 +17,6 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 import Sailfish.Pickers 1.0
-import Nemo.Configuration 1.0
 import "../components"
 
 // The conversation. The list runs bottom to top, so its header, the text
@@ -28,22 +27,14 @@ Page {
 
     property string roomId
     property string roomName
-    property string replyToId
-    property string replyToText
-    // editing one of our own messages: the composer holds its text
-    property string editId
-    property string editText
-    // a text reaction to this message: Send reacts with what is typed
-    property string reactToId
-    property string reactToText
     // who else is typing here, for the header
     property var typingNames: []
     property bool paginating
     // the oldest message is in: no more pages to ask for
     property bool atStart
     property bool infoAttached
-    // the text field lives in the list header, a scope of its own; it registers here
-    property Item inputArea
+    // the composer lives in the list header, a scope of its own; it registers here
+    property Item composer
 
     Component.onCompleted: {
         rustrx.openRoom(roomId)
@@ -59,131 +50,23 @@ Page {
                 if (packs[i].images[j].sticker) return true
         return false
     }
-    // the custom emoji a text uses, shortcode to address, for its HTML
-    function emotesIn(text) {
-        var out = {}
-        if (text.indexOf(":") < 0) return out
-        for (var i = 0; i < packs.length; i++) {
-            for (var j = 0; j < packs[i].images.length; j++) {
-                var img = packs[i].images[j]
-                if (img.emoticon && out[img.shortcode] === undefined && text.indexOf(":" + img.shortcode + ":") >= 0)
-                    out[img.shortcode] = img.url
-            }
-        }
-        return out
-    }
     Component.onDestruction: {
-        if (inputArea && !editId.length && !reactToId.length) rustrx.setDraft(roomId, inputArea.text)
+        if (composer) composer.saveDraft()
         if (rustrx.openRoomId === roomId) rustrx.closeRoom()
     }
 
-    // The chat keeps its place. It moves on an action (send, reply, edit,
-    // a reaction) or to follow new messages at the newest end; otherwise the
-    // message at the bottom edge keeps its distance from that edge. When a
-    // page comes over the chat (a picture, a thread, the room's page) that
-    // message (by its row id, not a raw contentY: the keyboard changes the
-    // height in between and older history may page in) and its distance
-    // are noted; back, they are put back once, after the keyboard has
-    // settled. (Silica's auto scroll to the focused text field, the main
-    // mover before, is off: see the TextArea.)
-    property string anchorId
-    property real anchorOffset
-    property bool anchorNewest
-    property bool anchorPending
-
-    // the row at a point of the view, as an item and its index
-    function rowAt(y) {
-        for (var k = 0; k < 30; k++) {
-            var i = list.indexAt(list.width / 2, y - k * 8)
-            if (i >= 0) return { index: i, item: list.itemAt(list.width / 2, y - k * 8) }
-        }
-        return null
-    }
-    // the newest message is in view at the bottom: by the row there, not by
-    // the view's edges (with the composer as the list's header and the
-    // place put back by hand, atYBeginning did not reliably turn true)
-    function atNewest() {
-        if (list.count === 0) return true
-        var r = rowAt(list.contentY + list.height - 1)
-        return !!r && r.index === 0
-    }
-    function takeAnchor() {
-        anchorNewest = atNewest()
-        anchorId = ""
-        var bottom = list.contentY + list.height
-        var r = rowAt(bottom - 1)
-        if (!r || !r.item) return
-        anchorId = rustrx.timeline.get(r.index).id || ""
-        anchorOffset = bottom - (r.item.y + r.item.height)
-        cp("anchor-take", "id=" + anchorId.slice(0, 10) + " off=" + Math.round(anchorOffset) + " newest=" + anchorNewest)
-    }
-    // keep: put it back but keep holding (while the page comes in and the
-    // keyboard moves); without: the last time, the hold ends
-    property bool anchorApplying
-    function applyAnchor(keep) {
-        if (!keep) anchorPending = false
-        if (anchorApplying) return
-        anchorApplying = true
-        placeAnchor()
-        anchorApplying = false
-    }
-    function placeAnchor() {
-        if (anchorNewest) { cp("anchor-newest"); list.positionViewAtBeginning(); return }
-        if (!anchorId.length) return
-        var index = -1
-        for (var i = 0; i < rustrx.timeline.count; i++)
-            if (rustrx.timeline.get(i).id === anchorId) { index = i; break }
-        if (index < 0) { cp("anchor-gone"); return }
-        // into view first, then exactly to its old distance from the bottom
-        list.positionViewAtIndex(index, ListView.Contain)
-        for (var y = list.contentY; y < list.contentY + list.height; y += 8) {
-            if (list.indexAt(list.width / 2, y) !== index) continue
-            var item = list.itemAt(list.width / 2, y)
-            if (item) list.contentY = item.y + item.height + anchorOffset - list.height
-            break
-        }
-        cp("anchor-apply", "index=" + index)
-    }
-    // once the keyboard has stopped moving (its animation changes the height)
-    Timer { id: anchorSettle; interval: 150; onTriggered: if (page.anchorPending) page.applyAnchor() }
-    // the first wait, for a keyboard that does not move at all
-    Timer { id: anchorFirst; interval: 300; onTriggered: if (page.anchorPending) page.applyAnchor() }
-    Connections {
-        target: pageStack
-        onPanelSizeChanged: {
-            if (!page.anchorPending || page.status === PageStatus.Inactive || page.status === PageStatus.Deactivating) return
-            page.applyAnchor(true)
-            if (page.status === PageStatus.Active) { anchorFirst.stop(); anchorSettle.restart() }
-        }
-    }
-    // while coming back, any move not made by a finger is undone at once:
-    // the chat was pulled to the newest end and came back half a second
-    // later, visibly
-    Connections {
-        target: list
-        onContentYChanged: {
-            if (page.anchorPending && !page.anchorApplying && !list.moving
-                    && (page.status === PageStatus.Activating || page.status === PageStatus.Active))
-                page.applyAnchor(true)
-        }
-        // a finger takes over: the hold ends
-        onMovementStarted: page.anchorPending = false
+    // the chat keeps its place across pages above it (ChatAnchor)
+    ChatAnchor {
+        id: anchor
+        page: page
+        list: list
+        model: rustrx.timeline
+        trace: trace
     }
 
     onStatusChanged: {
-        cpFresh = true
-        cp("status")
-        if (status === PageStatus.Deactivating) {
-            takeAnchor()
-            anchorPending = true
-        }
-        // coming back: hold from the first frame
-        if (status === PageStatus.Activating && anchorPending)
-            applyAnchor(true)
-        if (status === PageStatus.Active && anchorPending) {
-            applyAnchor(true)
-            anchorFirst.restart()
-        }
+        trace.logStatus()
+        anchor.pageStatus(status)
         if (status === PageStatus.Active) {
             app.lastRoom = roomId
             // opened by Answer on an incoming call: join it
@@ -191,7 +74,7 @@ Page {
                 rustrx.command({ cmd: "call_start", room_id: roomId })
             // read only at the newest end: marking moves the read marker's
             // row, which shifted what someone scrolled up was reading
-            if (page.atNewest()) markRead()
+            if (anchor.atNewest()) markRead()
             // the room's page, one swipe to the right; attached once the
             // transition is over (inside it the stack reports a binding loop)
             if (!infoAttached) attachInfo.start()
@@ -217,23 +100,13 @@ Page {
     }
 
     // a message is drafted: the push-up menu attaches to it
-    readonly property bool hasDraft: !!inputArea && !editId.length && !reactToId.length
-                                     && inputArea.text.trim().length > 0
+    readonly property bool hasDraft: !!composer && composer.hasDraft
 
-    // whatever is in the composer, taken out of it
-    function takeCaption() {
-        if (!inputArea || editId.length || reactToId.length) return ""
-        var t = inputArea.text.trim()
-        inputArea.text = ""
-        rustrx.setDraft(roomId, "")
-        return t
-    }
+    // whatever is in the composer, taken out of it (VoicePage calls it too)
+    function takeCaption() { return composer ? composer.takeCaption() : "" }
 
     function startEdit(eventId, text) {
-        replyToId = ""; replyToText = ""
-        reactToId = ""; reactToText = ""
-        editId = eventId; editText = text
-        if (inputArea) { inputArea.text = text; inputArea.cursorPosition = text.length }
+        if (composer) composer.edit(eventId, text)
         showComposer()
     }
 
@@ -247,71 +120,15 @@ Page {
         interval: 350
         onTriggered: {
             page.viewAtBeginning("composer")
-            if (page.inputArea) page.inputArea.forceActiveFocus()
-            page.cp("composer-focused")
+            if (page.composer) page.composer.field.forceActiveFocus()
+            trace.log("composer-focused")
         }
-    }
-
-    function cancelEdit() {
-        editId = ""; editText = ""
-        if (inputArea) inputArea.text = rustrx.draft(roomId)
     }
 
     // the composer takes a text reaction; the draft waits meanwhile
     function startTextReaction(eventId, text) {
-        if (editId.length) cancelEdit()
-        replyToId = ""; replyToText = ""
-        if (inputArea) rustrx.setDraft(roomId, inputArea.text)
-        reactToId = eventId; reactToText = text
-        if (inputArea) inputArea.text = ""
+        if (composer) composer.react(eventId, text)
         showComposer()
-    }
-    function cancelTextReaction() {
-        reactToId = ""; reactToText = ""
-        if (inputArea) inputArea.text = rustrx.draft(roomId)
-    }
-
-    function send() {
-        if (!inputArea) return
-        var text = inputArea.text.trim()
-        if (text.length === 0) return
-        // "/react <text>" while replying reacts to that message (as in nheko)
-        var command = text.match(/^\/react\s+([\s\S]+)$/)
-        if (command && replyToId.length) {
-            rustrx.command({ cmd: "react", room_id: roomId, event_id: replyToId, key: command[1].trim() })
-            inputArea.text = ""
-            rustrx.setDraft(roomId, "")
-            replyToId = ""; replyToText = ""
-            inputArea.forceActiveFocus()
-            return
-        }
-        if (reactToId.length) {
-            rustrx.command({ cmd: "react", room_id: roomId, event_id: reactToId, key: text })
-            cancelTextReaction()
-            inputArea.forceActiveFocus()
-            return
-        }
-        if (editId.length) {
-            if (text !== editText) rustrx.command({ cmd: "edit", room_id: roomId, event_id: editId, body: text })
-            editId = ""; editText = ""
-            inputArea.text = rustrx.draft(roomId)
-            inputArea.forceActiveFocus()
-            return
-        }
-        rustrx.sendText(roomId, text, replyToId, emotesIn(text))
-        inputArea.text = ""
-        rustrx.setDraft(roomId, "")
-        replyToId = ""
-        replyToText = ""
-        typingTimer.stop()
-        if (app.sendTyping) rustrx.command({ cmd: "typing", room_id: roomId, typing: false })
-        inputArea.forceActiveFocus()
-    }
-
-    Timer {
-        id: typingTimer
-        interval: 4000
-        onTriggered: if (app.sendTyping) rustrx.command({ cmd: "typing", room_id: roomId, typing: false })
     }
 
     Connections {
@@ -395,7 +212,7 @@ Page {
     Connections {
         target: rustrx.timeline
         onCountChanged: {
-            if (page.cpOn) page.cp("count", "n=" + rustrx.timeline.count)
+            if (trace.enabled) trace.log("count", "n=" + rustrx.timeline.count)
             if (!page.positioned && rustrx.timeline.count > 0) {
                 page.positioned = true
                 for (var i = 0; i < rustrx.timeline.count; i++) {
@@ -405,14 +222,15 @@ Page {
                     }
                 }
             }
-            if (page.atNewest()) markRead()
+            if (anchor.atNewest()) markRead()
         }
-        onRowsInserted: if (page.cpOn) page.cp("ins", "rows=" + first + ".." + last)
-        onRowsRemoved: if (page.cpOn) page.cp("rem", "rows=" + first + ".." + last)
-        onRowsMoved: if (page.cpOn) page.cp("mov", "rows=" + start + ".." + end + ">" + row)
-        onDataChanged: if (page.cpOn) page.cp("data", "rows=" + topLeft.row + ".." + bottomRight.row)
-        onModelReset: page.cp("reset")
-        onLayoutChanged: page.cp("layout")
+    }
+    // the chat position trace, off by default (ChatTrace)
+    ChatTrace {
+        id: trace
+        page: page
+        list: list
+        model: rustrx.timeline
     }
 
     SilicaListView {
@@ -434,17 +252,14 @@ Page {
         spacing: Theme.paddingSmall
         clip: true
 
-        onContentYChanged: if (page.cpOn && (page.cpFresh || isNaN(page.cpLastY) || Math.abs(contentY - page.cpLastY) > 20)) {
-            page.cpFresh = false
-            page.cp("y")
-        }
-        onOriginYChanged: page.cp("oy")
-        onContentHeightChanged: if (page.cpOn && (isNaN(page.cpLastCh) || Math.abs(contentHeight - page.cpLastCh) > 20)) page.cp("ch")
-        onHeightChanged: page.cp("h")
+        onContentYChanged: trace.logY()
+        onOriginYChanged: trace.log("oy")
+        onContentHeightChanged: trace.logContentHeight()
+        onHeightChanged: trace.log("h")
         onMovementEnded: {
-            page.cp("moved")
+            trace.log("moved")
             // scrolled to the newest message: the room is read
-            if (page.status === PageStatus.Active && page.atNewest()) page.markRead()
+            if (page.status === PageStatus.Active && anchor.atNewest()) page.markRead()
         }
 
         // the oldest end is at the top in this layout
@@ -520,13 +335,13 @@ Page {
 
         header: Column {
             width: list.width
-            onHeightChanged: page.cp("hdr")
+            onHeightChanged: trace.log("hdr")
 
             Item { width: 1; height: Theme.paddingMedium }
 
             // a call is running here: join it
             BackgroundItem {
-                visible: !!page.roomInfo.in_call
+                visible: !!(page.roomInfo && page.roomInfo.in_call)
                 width: parent.width
                 height: visible ? Theme.itemSizeSmall : 0
                 onClicked: rustrx.command({ cmd: "call_start", room_id: roomId })
@@ -548,161 +363,32 @@ Page {
                 }
             }
 
-            // editing: the message being changed, tap to cancel
-            // an edit or a reply in progress: the line and a clear button to
-            // drop it (a tap on the line drops it too)
-            Item {
-                visible: editId.length > 0
-                width: parent.width
-                height: visible ? Theme.itemSizeExtraSmall : 0
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - x - clearEdit.width
-                    anchors.verticalCenter: parent.verticalCenter
-                    truncationMode: TruncationMode.Fade
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: Theme.secondaryHighlightColor
-                    //: %1 the original text
-                    //% "Editing: %1"
-                    text: qsTrId("rustrx-la-editing").arg(editText.replace(/\s+/g, " "))
-                    maximumLineCount: 1
-                    MouseArea { anchors.fill: parent; onClicked: page.cancelEdit() }
-                }
-                IconButton {
-                    id: clearEdit
-                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                    icon.source: "image://theme/icon-m-clear"
-                    onClicked: page.cancelEdit()
-                }
-            }
-
-            Item {
-                visible: reactToId.length > 0
-                width: parent.width
-                height: visible ? Theme.itemSizeExtraSmall : 0
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - x - clearReact.width
-                    anchors.verticalCenter: parent.verticalCenter
-                    truncationMode: TruncationMode.Fade
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: Theme.secondaryHighlightColor
-                    //: %1 the message reacted to
-                    //% "Reacting to: %1"
-                    text: qsTrId("rustrx-la-reacting-to").arg(reactToText.replace(/\s+/g, " "))
-                    maximumLineCount: 1
-                    MouseArea { anchors.fill: parent; onClicked: page.cancelTextReaction() }
-                }
-                IconButton {
-                    id: clearReact
-                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                    icon.source: "image://theme/icon-m-clear"
-                    onClicked: page.cancelTextReaction()
-                }
-            }
-
-            Item {
-                visible: replyToId.length > 0
-                width: parent.width
-                height: visible ? Theme.itemSizeExtraSmall : 0
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - x - clearReply.width
-                    anchors.verticalCenter: parent.verticalCenter
-                    truncationMode: TruncationMode.Fade
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: Theme.secondaryHighlightColor
-                    //: %1 the quoted text
-                    //% "Replying to: %1"
-                    text: qsTrId("rustrx-la-replying-to").arg(replyToText.replace(/\s+/g, " "))
-                    maximumLineCount: 1
-                    MouseArea { anchors.fill: parent; onClicked: { replyToId = ""; replyToText = "" } }
-                }
-                IconButton {
-                    id: clearReply
-                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                    icon.source: "image://theme/icon-m-clear"
-                    onClicked: { replyToId = ""; replyToText = "" }
-                }
-            }
-
-            Row {
-                width: parent.width
-
+            Composer {
+                id: composer
+                roomId: page.roomId
+                drafts: true
+                typing: true
+                packs: page.packs
+                emojiOpen: emojiPanel.open
+                //% "Message"
+                placeholderText: qsTrId("rustrx-ph-message")
+                //: %1 the room's name
+                //% "Typing to %1"
+                label: app.sendTyping && app.typingHint ? qsTrId("rustrx-la-typing-to").arg(roomName) : ""
+                labelVisible: label !== ""
+                // no scrolling the chat to the field when it gets its focus
+                // back (every return from a page above, and with every step
+                // of the keyboard's animation): the chat keeps its place
+                autoScroll: false
+                Component.onCompleted: page.composer = composer
                 // the emoji picker (and the stickers with an empty message);
                 // a second tap brings the keyboard back
-                BackgroundItem {
-                    id: emojiButton
-                    width: Theme.itemSizeSmall
-                    height: Math.max(input.height, Theme.itemSizeSmall)
-                    onClicked: {
-                        if (emojiPanel.open && emojiPanel.mode === "insert") {
-                            page.emojiToKeyboard()
-                        } else {
-                            emojiPanel.stickers = page.hasStickers && input.text.trim().length === 0
-                            page.showEmoji("insert", "")
-                        }
-                    }
-                    Label {
-                        anchors.centerIn: parent
-                        text: "🙂"
-                        font.pixelSize: Theme.fontSizeLarge
-                        opacity: emojiButton.highlighted || emojiPanel.open ? 1.0 : Theme.opacityHigh
-                    }
-                }
-
-                TextArea {
-                    id: input
-                    width: parent.width - emojiButton.width - sendButton.width
-                    // the emoji button holds the page margin
-                    textLeftMargin: Theme.paddingSmall
-                    //% "Message"
-                    placeholderText: qsTrId("rustrx-ph-message")
-                    //: %1 the room's name
-                    //% "Typing to %1"
-                    label: app.sendTyping && app.typingHint ? qsTrId("rustrx-la-typing-to").arg(roomName) : ""
-                    labelVisible: label !== ""
-                    // a tap on Send (or anywhere else) must not take the focus and
-                    // close the keyboard, as in Jolla's Messages
-                    focusOutBehavior: FocusBehavior.KeepFocus
-                    // no scrolling the chat to the field when it gets its focus
-                    // back (every return from a page above, and with every step
-                    // of the keyboard's animation): the chat keeps its place
-                    autoScrollEnabled: false
-                    onActiveFocusChanged: page.cp("inputfocus", "af=" + activeFocus)
-                    Component.onCompleted: {
-                        page.inputArea = input
-                        text = rustrx.draft(roomId)
-                    }
-                    onTextChanged: {
-                        if (editId.length || reactToId.length) return   // an edit or a reaction is not a draft
-                        draftSave.restart()
-                        if (text.length === 0 || !app.sendTyping) return
-                        if (!typingTimer.running)
-                            rustrx.command({ cmd: "typing", room_id: roomId, typing: true })
-                        typingTimer.restart()
-                    }
-                    // the draft is written once typing pauses, not per keystroke
-                    Timer { id: draftSave; interval: 800; onTriggered: if (!editId.length && !reactToId.length) rustrx.setDraft(roomId, input.text) }
-                }
-
-                // a text button, as in Jolla's Messages
-                BackgroundItem {
-                    id: sendButton
-                    width: Math.max(Theme.itemSizeLarge, sendLabel.implicitWidth + 2 * Theme.paddingLarge)
-                    height: Math.max(input.height, Theme.itemSizeSmall)
-                    onClicked: send()
-                    Label {
-                        id: sendLabel
-                        anchors.centerIn: parent
-                        //% "React"
-                        text: reactToId.length ? qsTrId("rustrx-bt-react")
-                        //% "Save"
-                            : editId.length ? qsTrId("rustrx-bt-save")
-                        //% "Send"
-                            : qsTrId("rustrx-bt-send")
-                        color: input.text.trim().length === 0 ? Theme.secondaryColor
-                             : sendButton.highlighted ? Theme.highlightColor : Theme.primaryColor
+                onEmojiClicked: {
+                    if (emojiPanel.open && emojiPanel.mode === "insert") {
+                        page.emojiToKeyboard()
+                    } else {
+                        emojiPanel.stickers = page.hasStickers && composer.text.trim().length === 0
+                        page.showEmoji("insert", "")
                     }
                 }
             }
@@ -710,18 +396,14 @@ Page {
 
         delegate: MessageDelegate {
             roomId: page.roomId
-            // a row that grows or shrinks (a picture, a menu)
+            // a row that grows or shrinks (a picture, a menu), for the trace
             property real cpH
             onHeightChanged: {
-                if (page.cpOn && cpH > 0 && Math.abs(height - cpH) > 20)
-                    page.cp("row", "i=" + index + " " + Math.round(cpH) + ">" + Math.round(height))
+                trace.logRow(index, cpH, height)
                 cpH = height
             }
             onReply: {
-                if (editId.length) page.cancelEdit()
-                if (reactToId.length) page.cancelTextReaction()
-                replyToId = eventId
-                replyToText = text
+                if (page.composer) page.composer.reply(eventId, text)
                 page.showComposer()
             }
             onEdit: page.startEdit(eventId, text)
@@ -801,11 +483,11 @@ Page {
     // the picker, which goes once it is covered
     function emojiToKeyboard() {
         emojiToKeys = true
-        if (inputArea) inputArea.forceActiveFocus()
+        if (composer) composer.field.forceActiveFocus()
         Qt.inputMethod.show()
     }
     onKeyboardSizeChanged: {
-        if (cpOn && (keyboardSize === 0 || Math.abs(keyboardSize - cpLastKb) > 40)) { cpLastKb = keyboardSize; cp("kb") }
+        trace.logKeyboard()
         // the keyboard's own height, for the picker next time
         if (Qt.inputMethod.visible && !emojiPanel.open && keyboardSize > 0)
             emojiHeight = keyboardSize
@@ -817,11 +499,7 @@ Page {
         }
     }
     function insertEmoji(emoji) {
-        if (!inputArea) return
-        var at = inputArea.cursorPosition
-        var t = inputArea.text
-        inputArea.text = t.slice(0, at) + emoji + t.slice(at)
-        inputArea.cursorPosition = at + emoji.length
+        if (composer) composer.insert(emoji)
     }
     // the message the picker reacts to, for "React with text"
     property string reactMoreText
@@ -839,7 +517,7 @@ Page {
         onPickedImage: {
             if (mode === "react")
                 rustrx.command({ cmd: "react", room_id: page.roomId, event_id: eventId, key: image.url })
-            else if (stickers && image.sticker && (!page.inputArea || page.inputArea.text.trim().length === 0)) {
+            else if (stickers && image.sticker && (!page.composer || page.composer.text.trim().length === 0)) {
                 rustrx.command({ cmd: "send_sticker", room_id: page.roomId, url: image.url,
                                  body: image.body || image.shortcode, info: image.info })
                 emojiPanel.open = false
@@ -858,67 +536,22 @@ Page {
     Connections {
         target: Qt.inputMethod
         onVisibleChanged: {
-            page.cp("im", "vis=" + Qt.inputMethod.visible)
+            trace.log("im", "vis=" + Qt.inputMethod.visible)
             if (Qt.inputMethod.visible && emojiPanel.open) page.emojiToKeys = true
         }
     }
 
-    // Chat position trace: every move of the list with what caused it, in
-    // the app log. dconf write /apps/harbour-rustrx/debugChatPos true
-    ConfigurationValue { id: debugChatPos; key: "/apps/harbour-rustrx/debugChatPos"; defaultValue: false }
-    readonly property bool cpOn: debugChatPos.value === true
-    property real cpLastY: NaN
-    property real cpLastCh: NaN
-    property real cpLastKb
-    // the first move after a status change is always logged
-    property bool cpFresh
-    onEmojiLiftChanged: if (cpOn && (!emojiLiftAnimated || emojiLift === 0 || emojiLift >= emojiHeight)) cp("lift")
+    onEmojiLiftChanged: trace.logLift()
 
+    // positioning, with a trace line before and after
     function viewAt(tag, index, mode) {
-        cp("pos<" + tag, "i=" + index)
+        trace.log("pos<" + tag, "i=" + index)
         list.positionViewAtIndex(index, mode)
-        cp("pos>" + tag)
+        trace.log("pos>" + tag)
     }
     function viewAtBeginning(tag) {
-        cp("pos<" + tag, "beginning")
+        trace.log("pos<" + tag, "beginning")
         list.positionViewAtBeginning()
-        cp("pos>" + tag)
-    }
-    function cpStatus(s) {
-        return s === PageStatus.Inactive ? "inactive" : s === PageStatus.Activating ? "activating"
-             : s === PageStatus.Active ? "active" : s === PageStatus.Deactivating ? "deactivating" : String(s)
-    }
-    // the row at a content y, stepping past the spacing and footer gaps
-    function cpRow(y, step) {
-        for (var d = 0; d <= 40; d += 8) {
-            var i = list.indexAt(list.contentX + list.width / 2, y + step * d)
-            if (i >= 0) return i
-        }
-        return -1
-    }
-    function cp(ev, extra) {
-        if (!cpOn) return
-        var top = cpRow(list.contentY + 1, 1)
-        var bot = cpRow(list.contentY + list.height - 1, -1)
-        // the composer covers the bottom edge: the row right above it
-        if (bot < 0 && list.headerItem && list.headerItem.y > list.contentY)
-            bot = cpRow(list.headerItem.y - 1, -1)
-        var tb = ""
-        if (top >= 0) {
-            var r = rustrx.timeline.get(top)
-            tb = r.kind === "event" ? (r.body || "").replace(/\s+/g, " ").slice(0, 16) : r.kind
-        }
-        var f = app.activeFocusItem
-        var fn = f === undefined ? "n/a" : f ? (f.objectName || String(f).split("(")[0]) : "none"
-        console.log("chatpos: " + ev + " y=" + Math.round(list.contentY) + " oy=" + Math.round(list.originY)
-                    + " ch=" + Math.round(list.contentHeight) + " h=" + Math.round(list.height)
-                    + " hdr=" + (list.headerItem ? Math.round(list.headerItem.height) : -1)
-                    + " kb=" + Math.round(keyboardSize) + " lift=" + Math.round(emojiLift)
-                    + " top=" + top + " \"" + tb + "\" bot=" + bot + " status=" + cpStatus(status)
-                    + " focus=" + fn + " inp=" + (inputArea && inputArea.activeFocus ? 1 : 0)
-                    + " src=" + (list.dragging ? "drag" : list.flicking ? "flick" : "-")
-                    + (extra ? " " + extra : ""))
-        cpLastY = list.contentY
-        cpLastCh = list.contentHeight
+        trace.log("pos>" + tag)
     }
 }

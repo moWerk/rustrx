@@ -31,12 +31,8 @@ Page {
     // opened from "Reply in thread": the keyboard comes up
     property bool compose
 
-    property string replyToId
-    property string replyToText
-    property string editId
-    property string editText
-    // the text field lives in the list's header, a scope of its own; it registers here
-    property Item inputArea
+    // the composer lives in the list's header, a scope of its own; it registers here
+    property Item composer
 
     Component.onCompleted: rustrx.openThread(roomId, rootId)
     Component.onDestruction: rustrx.closeThread()
@@ -55,30 +51,10 @@ Page {
     onStatusChanged: if (status === PageStatus.Active) markSeen()
     Connections { target: rustrx.thread; onCountChanged: page.markSeen() }
 
-    function send() {
-        var input = inputArea
-        if (!input) return
-        var text = input.text.trim()
-        if (!text.length) return
-        if (editId.length) {
-            if (text !== editText) rustrx.command({ cmd: "edit", room_id: roomId, event_id: editId, body: text })
-            editId = ""; editText = ""
-        } else {
-            rustrx.sendText(roomId, text, replyToId, {}, rootId)
-            replyToId = ""; replyToText = ""
-        }
-        input.text = ""
-        input.forceActiveFocus()
-    }
-
     // the emoji picker in the keyboard's place (as in the room, simpler: it
     // slides in when the keyboard has gone)
     function insertEmoji(emoji) {
-        if (!inputArea) return
-        var at = inputArea.cursorPosition
-        var t = inputArea.text
-        inputArea.text = t.slice(0, at) + emoji + t.slice(at)
-        inputArea.cursorPosition = at + emoji.length
+        if (composer) composer.insert(emoji)
     }
     EmojiPanel {
         id: emojiPanel
@@ -86,7 +62,6 @@ Page {
         height: Math.round(Screen.height * (page.isPortrait ? 0.36 : 0.5))
         visible: open
         onPicked: page.insertEmoji(emoji)
-        onPickedImage: page.insertEmoji(":" + image.shortcode + ":")
     }
     Connections {
         target: Qt.inputMethod
@@ -121,75 +96,25 @@ Page {
 
             Item { width: 1; height: Theme.paddingMedium }
 
-            Item {
-                visible: page.replyToId.length > 0 || page.editId.length > 0
-                width: parent.width
-                height: visible ? Theme.itemSizeExtraSmall : 0
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - x - clearLine.width
-                    anchors.verticalCenter: parent.verticalCenter
-                    truncationMode: TruncationMode.Fade
-                    maximumLineCount: 1
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: Theme.secondaryHighlightColor
-                    text: page.editId.length ? qsTrId("rustrx-la-editing").arg(page.editText.replace(/\s+/g, " "))
-                                             : qsTrId("rustrx-la-replying-to").arg(page.replyToText.replace(/\s+/g, " "))
+            Composer {
+                id: composer
+                roomId: page.roomId
+                rootId: page.rootId
+                emojiOpen: emojiPanel.open
+                //% "Reply in the thread"
+                placeholderText: qsTrId("rustrx-ph-thread")
+                Component.onCompleted: {
+                    page.composer = composer
+                    if (page.compose) field.forceActiveFocus()
                 }
-                IconButton {
-                    id: clearLine
-                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                    icon.source: "image://theme/icon-m-clear"
-                    onClicked: { page.replyToId = ""; page.replyToText = ""; page.editId = ""; page.editText = ""; input.text = "" }
-                }
-            }
-
-            Row {
-                width: parent.width
-                BackgroundItem {
-                    id: emojiButton
-                    width: Theme.itemSizeSmall
-                    height: Math.max(input.height, Theme.itemSizeSmall)
-                    onClicked: {
-                        if (emojiPanel.open) {
-                            emojiPanel.open = false
-                            input.forceActiveFocus()
-                            Qt.inputMethod.show()
-                        } else {
-                            Qt.inputMethod.hide()
-                            emojiPanel.show("insert", "")
-                        }
-                    }
-                    Label {
-                        anchors.centerIn: parent
-                        text: "🙂"
-                        font.pixelSize: Theme.fontSizeLarge
-                        opacity: emojiButton.highlighted || emojiPanel.open ? 1.0 : Theme.opacityHigh
-                    }
-                }
-                TextArea {
-                    id: input
-                    width: parent.width - emojiButton.width - sendButton.width
-                    textLeftMargin: Theme.paddingSmall
-                    //% "Reply in the thread"
-                    placeholderText: qsTrId("rustrx-ph-thread")
-                    focusOutBehavior: FocusBehavior.KeepFocus
-                    Component.onCompleted: {
-                        page.inputArea = input
-                        if (page.compose) forceActiveFocus()
-                    }
-                }
-                BackgroundItem {
-                    id: sendButton
-                    width: Math.max(Theme.itemSizeLarge, sendLabel.implicitWidth + 2 * Theme.paddingLarge)
-                    height: Math.max(input.height, Theme.itemSizeSmall)
-                    onClicked: page.send()
-                    Label {
-                        id: sendLabel
-                        anchors.centerIn: parent
-                        text: page.editId.length ? qsTrId("rustrx-bt-save") : qsTrId("rustrx-bt-send")
-                        color: input.text.trim().length === 0 ? Theme.secondaryColor
-                             : sendButton.highlighted ? Theme.highlightColor : Theme.primaryColor
+                onEmojiClicked: {
+                    if (emojiPanel.open) {
+                        emojiPanel.open = false
+                        field.forceActiveFocus()
+                        Qt.inputMethod.show()
+                    } else {
+                        Qt.inputMethod.hide()
+                        emojiPanel.show("insert", "")
                     }
                 }
             }
@@ -198,10 +123,15 @@ Page {
         delegate: MessageDelegate {
             roomId: page.roomId
             inThread: true
-            onReply: { page.editId = ""; page.replyToId = eventId; page.replyToText = text; if (page.inputArea) page.inputArea.forceActiveFocus() }
+            onReply: {
+                if (!page.composer) return
+                page.composer.reply(eventId, text)
+                page.composer.field.forceActiveFocus()
+            }
             onEdit: {
-                page.replyToId = ""; page.editId = eventId; page.editText = text
-                if (page.inputArea) { page.inputArea.text = text; page.inputArea.forceActiveFocus() }
+                if (!page.composer) return
+                page.composer.edit(eventId, text)
+                page.composer.field.forceActiveFocus()
             }
             onResend: {
                 rustrx.command({ cmd: "redact", room_id: page.roomId, txn_id: txnId })
