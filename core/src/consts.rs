@@ -32,6 +32,10 @@ pub(crate) const ROOM_LIST_FULL_REBUILD: Duration = Duration::from_secs(60);
 pub(crate) const SYNC_RETRY_DELAY: Duration = Duration::from_secs(5);
 /// A single sign-on waits this long for the browser to come back.
 pub(crate) const SSO_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+/// A token refresh the server refused is asked again after these waits
+/// before the session counts as ended (the first at once).
+pub(crate) const SESSION_GONE_WAITS: [Duration; 3] =
+    [Duration::from_secs(0), Duration::from_secs(5), Duration::from_secs(30)];
 /// A logout waits this long for the server; after it, the phone's side is
 /// done anyway (the SDK alone would retry for up to 15 minutes).
 pub(crate) const LOGOUT_SERVER_TIMEOUT: Duration = Duration::from_secs(15);

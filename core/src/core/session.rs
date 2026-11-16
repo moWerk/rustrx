@@ -267,13 +267,31 @@ impl Core {
     /// Whether the server really ended the session. The SDK reports an unknown
     /// token whenever a refresh fails, also when the refresh never reached the
     /// server (no network after a sleep, a proxy error): that logged people
-    /// out. Refreshing again tells: gone only if the server answers with a
-    /// Matrix error (the refresh token refused) or there is no refresh token.
+    /// out. Refreshing again tells: gone only if the server refuses the
+    /// refresh token, or there is none. Asked more than once, spread out: a
+    /// phone waking from sleep had its refresh cut by a connection reset,
+    /// and the one retry a second later was refused (tchncs.de, 2026-11-16),
+    /// although the spec keeps an old refresh token valid for that retry.
     async fn session_gone(client: &Client) -> bool {
+        for (attempt, wait) in SESSION_GONE_WAITS.iter().enumerate() {
+            tokio::time::sleep(*wait).await;
+            match Self::refresh_refused(client).await {
+                Some(false) => return false,
+                Some(true) => tracing::warn!(attempt, "session: the refresh token was refused"),
+                // no answer from the server: not a verdict, the session stays
+                None => return false,
+            }
+        }
+        true
+    }
+
+    /// One refresh: Some(true) refused by the server, Some(false) refreshed,
+    /// None no answer (no network, a timeout).
+    async fn refresh_refused(client: &Client) -> Option<bool> {
         match client.refresh_access_token().await {
-            Ok(_) => false,
-            Err(matrix_sdk::RefreshTokenError::MatrixAuth(e)) => e.client_api_error_kind().is_some(),
-            Err(matrix_sdk::RefreshTokenError::RefreshTokenRequired) => true,
+            Ok(_) => Some(false),
+            Err(matrix_sdk::RefreshTokenError::MatrixAuth(e)) => e.client_api_error_kind().is_some().then_some(true),
+            Err(matrix_sdk::RefreshTokenError::RefreshTokenRequired) => Some(true),
             // an OAuth refresh fails for no network too (the metadata fetch):
             // gone only when the account service refuses the refresh token
             Err(matrix_sdk::RefreshTokenError::OAuth(e)) => {
@@ -281,6 +299,7 @@ impl Core {
                 use matrix_sdk::authentication::oauth::OAuthError;
                 matches!(&*e, OAuthError::RefreshToken(RequestTokenError::ServerResponse(r))
                     if *r.error() == BasicErrorResponseType::InvalidGrant)
+                    .then_some(true)
             }
         }
     }
