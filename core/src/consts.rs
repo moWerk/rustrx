@@ -17,6 +17,9 @@ pub(crate) const ROOM_LIST_BATCH: Duration = Duration::from_millis(150);
 pub(crate) const ROOM_LIST_FULL_REBUILD: Duration = Duration::from_secs(60);
 /// Wait before syncing again after a sync error.
 pub(crate) const SYNC_RETRY_DELAY: Duration = Duration::from_secs(5);
+/// A room's send queue switched off by a network error is switched on
+/// again after this (sooner when the sync comes back).
+pub(crate) const SEND_RETRY_DELAY: Duration = Duration::from_secs(30);
 /// Timeline changes this close together are sent as one snapshot
 /// (rooms and threads).
 pub(crate) const TIMELINE_COALESCE: Duration = Duration::from_millis(60);

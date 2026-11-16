@@ -417,11 +417,8 @@ Page {
                 page.showComposer()
             }
             onEdit: page.startEdit(eventId, text)
-            onResend: {
-                // the failed echo goes, the same text goes out again
-                rustrx.command({ cmd: "redact", room_id: page.roomId, txn_id: txnId })
-                rustrx.sendText(page.roomId, text, "")
-            }
+            // the failed message goes out again as it was
+            onResend: rustrx.command({ cmd: "retry_send", room_id: page.roomId, txn_id: txnId })
             onReactMore: { page.reactMoreText = text; emojiDock.show("react", eventId) }
             onOpenThread: pageStack.push(Qt.resolvedUrl("ThreadPage.qml"),
                                          { roomId: page.roomId, roomName: page.roomName, rootId: eventId, compose: compose })

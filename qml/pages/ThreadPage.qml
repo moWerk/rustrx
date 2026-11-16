@@ -148,10 +148,7 @@ Page {
                 page.composer.edit(eventId, text)
                 page.composer.field.forceActiveFocus()
             }
-            onResend: {
-                rustrx.command({ cmd: "redact", room_id: page.roomId, txn_id: txnId })
-                rustrx.sendText(page.roomId, text, "", {}, page.rootId)
-            }
+            onResend: rustrx.command({ cmd: "retry_send", room_id: page.roomId, txn_id: txnId })
         }
 
         // the thread's title over the oldest end

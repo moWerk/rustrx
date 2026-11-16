@@ -34,7 +34,7 @@ ListItem {
     property string roomId
     signal reply(string eventId, string text)
     signal edit(string eventId, string text)
-    signal resend(string txnId, string text)
+    signal resend(string txnId)
     // "more" in the reactions: the room's emoji picker, for this message
     signal reactMore(string eventId, string text)
     // this message's thread: open it (and type into it, from the menu)
@@ -720,13 +720,13 @@ ListItem {
                     }
                 }
             }
-            // a failed message: send it again or let it go (a failed upload
-            // is discarded and sent anew from the picker)
+            // a failed message, picture or file: send it again as it was, or
+            // let it go
             MenuItem {
-                visible: failed && !isMedia && !isFile
+                visible: failed
                 //% "Send again"
                 text: qsTrId("rustrx-me-send-again")
-                onClicked: msg.resend(model.txn_id || "", model.body || "")
+                onClicked: msg.resend(model.txn_id || "")
             }
             MenuItem {
                 visible: failed

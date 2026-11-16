@@ -11,17 +11,66 @@ impl Core {
     /// after it, across restarts, to keep the order. Such reactions are
     /// dropped: at the start and whenever a send is refused. A refused
     /// message stays, shown as not sent, for the user to retry or delete.
+    ///
+    /// Any send error also switches the room's queue off, and only
+    /// set_enabled switches it on again: after a network error everything
+    /// sent to that room stayed "sending" until a restart. Such rooms are
+    /// switched on again after SEND_RETRY_DELAY, and all of them when the
+    /// sync is running again (sync.rs).
     pub(crate) async fn send_queue_watch(client: Client) {
+        use tokio::sync::broadcast::error::RecvError;
         let mut errors = client.send_queue().subscribe_errors();
         Self::drop_refused_reactions(&client).await;
+        let mut asleep: HashMap<OwnedRoomId, tokio::time::Instant> = HashMap::new();
         loop {
-            match errors.recv().await {
-                Ok(e) if !e.is_recoverable => Self::drop_refused_reactions(&client).await,
-                Ok(_) => {}
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => Self::drop_refused_reactions(&client).await,
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            let next = asleep.values().min().copied();
+            tokio::select! {
+                e = errors.recv() => match e {
+                    Ok(e) if !e.is_recoverable => Self::drop_refused_reactions(&client).await,
+                    Ok(e) => {
+                        tracing::info!(room_id = %e.room_id, "send queue: off after a network error, on again later");
+                        asleep.entry(e.room_id).or_insert_with(|| tokio::time::Instant::now() + SEND_RETRY_DELAY);
+                    }
+                    Err(RecvError::Lagged(_)) => {
+                        Self::drop_refused_reactions(&client).await;
+                        client.send_queue().set_enabled(true).await;
+                    }
+                    Err(RecvError::Closed) => break,
+                },
+                _ = tokio::time::sleep_until(next.unwrap_or_else(tokio::time::Instant::now)), if next.is_some() => {
+                    let now = tokio::time::Instant::now();
+                    asleep.retain(|room_id, at| {
+                        if *at > now {
+                            return true;
+                        }
+                        if let Some(room) = client.get_room(room_id) {
+                            room.send_queue().set_enabled(true);
+                        }
+                        false
+                    });
+                }
             }
         }
+    }
+
+    /// A message the server did not take, sent again as it was (its reply,
+    /// formatting, picture and all): the echo is unwedged and its room's
+    /// queue switched on. "Send again" used to discard it and send the
+    /// text anew, into the same switched-off queue.
+    pub(crate) async fn retry_send(&self, room_id: &str, txn_id: &str) -> Result<()> {
+        let client = self.client().await?;
+        let room = self.room(room_id).await?;
+        let echoes = client.send_queue().local_echoes().await?;
+        let echo = echoes
+            .get(room.room_id())
+            .and_then(|list| list.iter().find(|e| e.transaction_id.as_str() == txn_id))
+            .ok_or_else(|| anyhow!("no unsent message {txn_id}"))?;
+        match &echo.content {
+            LocalEchoContent::Event { send_handle, .. } => send_handle.unwedge().await?,
+            _ => bail!("only a message is sent again"),
+        }
+        room.send_queue().set_enabled(true);
+        Ok(())
     }
 
     async fn drop_refused_reactions(client: &Client) {
@@ -350,7 +399,12 @@ impl Core {
     ) -> Result<()> {
         let room = self.room(room_id).await?;
         let tl = self.timeline_holding(&room, event_id.as_deref()).await?;
+        let echo = given(&txn_id).is_some();
         tl.redact(&Self::item_id(event_id, txn_id)?, reason).await?;
+        // a discarded echo may be the one its room's queue stopped at
+        if echo {
+            room.send_queue().set_enabled(true);
+        }
         Ok(())
     }
 

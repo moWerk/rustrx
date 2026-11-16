@@ -52,6 +52,7 @@ impl Core {
             // we listened left the cover on "Connecting" (0.2.0).
             let mut states = service.state();
             service.start().await;
+            let queues = client.clone();
             let state_task = self.rt.spawn(async move {
                 let mut current = Some(states.get());
                 loop {
@@ -71,6 +72,11 @@ impl Core {
                     };
                     tracing::info!(state = name, message, "sync service");
                     self.emit(json!({"ev": "sync_state", "state": name, "message": message}));
+                    // the server is reachable again: rooms whose queue a
+                    // network error switched off send what waits
+                    if matches!(state, SyncState::Running) {
+                        queues.send_queue().set_enabled(true).await;
+                    }
                 }
             });
             let mut st = self.state.lock().await;
