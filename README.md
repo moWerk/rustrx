@@ -157,9 +157,9 @@ when a process exits after hiding or recreating its window.
 0.4.6. From "let's build a client" to 0.2.0 in one evening, used daily on
 the Jolla Phone 2026 since, and developed and maintained for the long run.
 Tested with two accounts, on matrix.org and on tchncs.de (single sign-on
-through its account service); QR and OIDC login wait for a server that
-offers them (matrix.org has no MSC4108 yet). Not yet there: encrypted calls, pinned messages, forwarding,
-mention completion, QR verification. Push through UnifiedPush
+through its account service); since 0.4.7 servers with an account service
+are logged into through it (OAuth 2.0). Not yet there: QR login, encrypted
+calls, pinned messages, forwarding, mention completion, QR verification. Push through UnifiedPush
 works with [Foghorn](https://openrepos.net/content/projectmoon/foghorn) as the
 distributor; the stand-in remains the fallback without one.
 
