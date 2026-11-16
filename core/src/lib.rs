@@ -163,12 +163,151 @@ pub extern "C" fn rustrx_command(json: *const c_char) -> i32 {
     if json.is_null() {
         return 2;
     }
-    let text = unsafe { CStr::from_ptr(json) }.to_string_lossy();
+    command(core, unsafe { CStr::from_ptr(json) })
+}
+
+/// rustrx_command past its pointer checks; apart so tests reach it without
+/// the process-wide core.
+fn command(core: &'static core::Core, json: &CStr) -> i32 {
+    let text = json.to_string_lossy();
     match serde_json::from_str::<serde_json::Value>(&text) {
         Ok(value) => {
             core.dispatch(value);
             0
         }
         Err(_) => 2,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{json, Value};
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+
+    type Sink = Mutex<Vec<String>>;
+
+    /// The test's callback. It must not panic: a panic cannot unwind out of
+    /// an extern "C" fn, it aborts the whole test run.
+    extern "C" fn collect(ctx: *mut c_void, json: *const c_char) {
+        let sink = unsafe { &*(ctx as *const Sink) };
+        let text = unsafe { CStr::from_ptr(json) }.to_string_lossy().into_owned();
+        if let Ok(mut events) = sink.lock() {
+            events.push(text);
+        }
+    }
+
+    /// A core of the test's own, never logged in, its events collected. Not
+    /// the process-wide CORE: tests run in parallel and in any order.
+    fn test_core() -> (&'static core::Core, &'static Sink) {
+        let sink: &'static Sink = Box::leak(Box::new(Mutex::new(Vec::new())));
+        let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().unwrap();
+        let emitter = Emitter { cb: collect, ctx: Ctx(sink as *const Sink as *mut c_void) };
+        let dir = std::env::temp_dir().join("rustrx-tests-never-written");
+        (Box::leak(Box::new(core::Core::new(rt, dir, emitter))), sink)
+    }
+
+    fn events(sink: &Sink) -> Vec<Value> {
+        sink.lock().unwrap().iter().map(|s| serde_json::from_str(s).expect("every event is JSON")).collect()
+    }
+
+    fn send(core: &'static core::Core, text: &str) -> i32 {
+        command(core, &CString::new(text).unwrap())
+    }
+
+    /// Before rustrx_start every command, even a null pointer, is refused
+    /// with 4 and nothing panics (no test here starts the global core).
+    /// Planted-bug: check `json.is_null()` before `CORE.get()`.
+    #[test]
+    fn commands_before_start_are_refused() {
+        let c = CString::new(r#"{"cmd":"logout"}"#).unwrap();
+        assert_eq!(rustrx_command(c.as_ptr()), 4);
+        assert_eq!(rustrx_command(std::ptr::null()), 4);
+    }
+
+    /// Text that is not JSON is answered with 2 and no event; deep nesting
+    /// hits serde_json's recursion limit instead of the stack's.
+    /// Planted-bug: answer `Err(_) => 0` in `command`.
+    #[test]
+    fn not_json_is_refused_with_2() {
+        let (core, sink) = test_core();
+        let deep = format!("{}{}", "[".repeat(100_000), "]".repeat(100_000));
+        let deep_object = format!("{}1{}", r#"{"a":"#.repeat(50_000), "}".repeat(50_000));
+        let cases = [
+            "", " ", "{", r#"{"cmd":"#, r#"{"cmd":"logout""#, "nul", "logout",
+            r#"{"cmd":"logout"} trailing"#, r#"{'cmd':'logout'}"#, r#"{"cmd":"lo\qout"}"#,
+            r#"{"cmd":"\ud800"}"#, &deep, &deep_object,
+        ];
+        for case in cases {
+            assert_eq!(send(core, case), 2, "{}", &case[..case.len().min(60)]);
+        }
+        // bytes that are not UTF-8 become U+FFFD, and that is no JSON either
+        let bad = CStr::from_bytes_with_nul(b"\xff\xfe{\0").unwrap();
+        assert_eq!(command(core, bad), 2);
+        assert!(events(sink).is_empty());
+    }
+
+    /// JSON that is no command: refused before anything runs, with one
+    /// error event at once (no task, no wait) naming the cmd and serde's
+    /// reason.
+    /// Planted-bug: in `Core::dispatch`, `return` on a parse error without
+    /// `self.error`.
+    #[test]
+    fn bad_commands_give_an_error_event_at_once() {
+        let (core, sink) = test_core();
+        let long = "z".repeat(1 << 20);
+        let long_cmd = json!({"cmd": long}).to_string();
+        let cases: [(&str, &str, &str); 9] = [
+            ("{}", "", "missing field `cmd`"),
+            ("[]", "", ""),
+            (r#"{"cmd":5}"#, "", "invalid type"),
+            (r#"{"cmd":"nope"}"#, "nope", "unknown variant `nope`"),
+            (r#"{"cmd":"send_text","room_id":"!a:b"}"#, "send_text", "missing field `body`"),
+            (r#"{"cmd":"paginate_back","room_id":"!a:b","count":70000}"#, "paginate_back", "70000"),
+            (r#"{"cmd":"poll_vote","room_id":"!a:b","event_id":"$e","answers":[1]}"#, "poll_vote", "invalid type"),
+            (r#"{"cmd":"knock_answer","room_id":"!a:b","user_id":"@u:b"}"#, "knock_answer", "missing field `accept`"),
+            (&long_cmd, &long, "unknown variant"),
+        ];
+        for (text, cmd, reason) in cases {
+            sink.lock().unwrap().clear();
+            assert_eq!(send(core, text), 0);
+            let got = events(sink);
+            assert_eq!(got.len(), 1, "{}: {got:?}", &text[..text.len().min(60)]);
+            assert_eq!(got[0]["ev"], "error");
+            assert_eq!(got[0]["cmd"], cmd);
+            let message = got[0]["message"].as_str().unwrap();
+            assert!(message.contains(reason), "{message}");
+        }
+    }
+
+    /// A NUL inside a command still yields its error event: the event is
+    /// JSON, which escapes it, so the C string is not cut or dropped.
+    /// Planted-bug: in `Emitter::emit`, hand on the text with the NUL raw
+    /// (`value.to_string().replace("\\u0000", "\0")`): CString::new refuses
+    /// it and the event is lost.
+    #[test]
+    fn nul_in_a_command_still_reaches_the_ui() {
+        let (core, sink) = test_core();
+        assert_eq!(send(core, r#"{"cmd":"log\u0000out"}"#), 0);
+        let got = events(sink);
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert_eq!(got[0]["cmd"], "log\u{0}out");
+    }
+
+    /// A well-formed command fails in its handler when nobody is logged in,
+    /// and that error comes back from the task as an event.
+    /// Planted-bug: in `Core::dispatch`, drop the handler's error
+    /// (`let _ = self.handle(command).await;`).
+    #[test]
+    fn handler_errors_come_back_as_events() {
+        let (core, sink) = test_core();
+        assert_eq!(send(core, r#"{"cmd":"open_room","room_id":"!a:b"}"#), 0);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while sink.lock().unwrap().is_empty() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let got = events(sink);
+        assert_eq!(got, vec![json!({"ev": "error", "cmd": "open_room", "message": "not logged in"})]);
     }
 }

@@ -600,3 +600,183 @@ pub(crate) fn items_json<'a>(
 ) -> Value {
     Value::Array(items.into_iter().map(|i| item_json(i, own, names)).collect())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::consts::PREVIEW_CHARS;
+    use matrix_sdk::ruma::user_id;
+
+    fn ids(sorted: Value) -> Vec<String> {
+        sorted.as_array().unwrap().iter().map(|r| r["room_id"].as_str().unwrap_or("?").to_owned()).collect()
+    }
+
+    fn room(id: &str, state: &str, ts: Value) -> Value {
+        json!({"room_id": id, "state": state, "ts": ts})
+    }
+
+    /// Invitations first, then the latest activity; favourites are not
+    /// pinned (the UI has a tab for them).
+    /// Planted-bug: drop the `Reverse` (oldest first), or compare
+    /// `r["state"] == "invited"` (invitations last).
+    #[test]
+    fn rooms_sort_invitations_then_activity() {
+        let rooms = vec![
+            room("!old", "joined", json!(100)),
+            room("!fav", "joined", json!(50)),
+            room("!inv-old", "invited", json!(10)),
+            room("!new", "joined", json!(300)),
+            room("!inv-new", "invited", json!(200)),
+        ];
+        let mut rooms = rooms;
+        rooms[1]["is_fav"] = json!(true);
+        assert_eq!(ids(sorted_rooms(rooms)), ["!inv-new", "!inv-old", "!new", "!old", "!fav"]);
+    }
+
+    /// Equal times sort by id, so the list does not shuffle between two
+    /// updates. The input is in reverse id order: a stable sort without the
+    /// id would keep it.
+    /// Planted-bug: drop the room id from the sort key.
+    #[test]
+    fn rooms_with_equal_times_sort_by_id() {
+        let rooms = vec![room("!c", "joined", json!(5)), room("!b", "joined", json!(5)), room("!a", "joined", json!(5))];
+        assert_eq!(ids(sorted_rooms(rooms)), ["!a", "!b", "!c"]);
+        let rooms = vec![room("!c", "joined", Value::Null), room("!b", "joined", Value::Null), room("!a", "joined", Value::Null)];
+        assert_eq!(ids(sorted_rooms(rooms)), ["!a", "!b", "!c"]);
+    }
+
+    /// A room without a usable time counts as never active (last among its
+    /// kind); one without a state is not an invitation; nothing panics on
+    /// odd shapes, and an empty list stays empty.
+    /// Planted-bug: `r["ts"].as_u64().unwrap_or(u64::MAX)`.
+    #[test]
+    fn rooms_with_missing_fields_sort_last() {
+        let rooms = vec![
+            json!({"room_id": "!no-ts", "state": "joined"}),
+            room("!str-ts", "joined", json!("12")),
+            room("!neg-ts", "joined", json!(-1)),
+            room("!ts", "joined", json!(1)),
+            json!({"room_id": "!no-state", "ts": 2}),
+            json!({"state": "invited"}),
+            json!(null),
+            json!("not a room"),
+        ];
+        let sorted = ids(sorted_rooms(rooms));
+        // the invitation without an id; then by time; then all the "never"s by id
+        // (the id-less non-objects sort as "" first among those)
+        assert_eq!(sorted, ["?", "!no-state", "!ts", "?", "?", "!neg-ts", "!no-ts", "!str-ts"]);
+        assert_eq!(sorted_rooms(vec![]), json!([]));
+    }
+
+    fn msg(v: Value) -> MessageType {
+        serde_json::from_value(v).unwrap()
+    }
+
+    /// The room list's line for a message: the text trimmed, emotes marked,
+    /// media by kind, a file by name.
+    /// Planted-bug: drop the `trim()` in `message_preview`, or the "* " of
+    /// emotes.
+    #[test]
+    fn message_previews() {
+        assert_eq!(message_preview(&msg(json!({"msgtype": "m.text", "body": "  hi\nthere \n"}))), "hi\nthere");
+        assert_eq!(message_preview(&msg(json!({"msgtype": "m.notice", "body": "bot says"}))), "bot says");
+        assert_eq!(message_preview(&msg(json!({"msgtype": "m.emote", "body": " waves "}))), "* waves");
+        assert_eq!(message_preview(&msg(json!({"msgtype": "m.image", "body": "a.png", "url": "mxc://s/i"}))), "Photo");
+        assert_eq!(message_preview(&msg(json!({"msgtype": "m.video", "body": "v", "url": "mxc://s/v"}))), "Video");
+        assert_eq!(message_preview(&msg(json!({"msgtype": "m.audio", "body": "a", "url": "mxc://s/a"}))), "Audio");
+        assert_eq!(message_preview(&msg(json!({"msgtype": "m.location", "body": "here", "geo_uri": "geo:1,2"}))), "Location");
+        assert_eq!(
+            message_preview(&msg(json!({"msgtype": "m.file", "body": "see this", "filename": "r.pdf", "url": "mxc://s/f"}))),
+            "File: r.pdf"
+        );
+        assert_eq!(message_preview(&msg(json!({"msgtype": "m.file", "body": "r.pdf", "url": "mxc://s/f"}))), "File: r.pdf");
+        assert_eq!(message_preview(&msg(json!({"msgtype": "org.example.custom", "body": " own kind "}))), "own kind");
+        assert_eq!(message_preview(&msg(json!({"msgtype": "m.text", "body": ""}))), "");
+    }
+
+    /// Long texts are cut at PREVIEW_CHARS characters, on a character
+    /// boundary (multi-byte text must not panic or lose a character).
+    /// Planted-bug: `nth(PREVIEW_CHARS - 1)`, or cut by bytes (`t[..PREVIEW_CHARS]`).
+    #[test]
+    fn long_previews_are_cut_at_characters() {
+        let long: String = "ä😀".repeat(PREVIEW_CHARS);
+        let got = message_preview(&msg(json!({"msgtype": "m.text", "body": long})));
+        assert_eq!(got.chars().count(), PREVIEW_CHARS);
+        assert!(long.starts_with(&got));
+        let exact = "x".repeat(PREVIEW_CHARS);
+        assert_eq!(message_preview(&msg(json!({"msgtype": "m.text", "body": exact.clone()}))), exact);
+        // the cut comes after the trim: leading blanks do not eat the budget
+        let padded = format!("{}{}", " ".repeat(50), exact);
+        assert_eq!(message_preview(&msg(json!({"msgtype": "m.text", "body": padded}))), exact);
+    }
+
+    fn event(v: Value) -> AnySyncTimelineEvent {
+        serde_json::from_value(v).unwrap()
+    }
+
+    /// The other events the room list names.
+    /// Planted-bug: map `RoomEncrypted` to None.
+    #[test]
+    fn event_previews() {
+        let base = |kind: &str, content: Value, state: bool| {
+            let mut e = json!({"type": kind, "content": content, "event_id": "$e", "sender": "@a:s", "origin_server_ts": 1});
+            if state {
+                e["state_key"] = json!("");
+            }
+            event(e)
+        };
+        let text = base("m.room.message", json!({"msgtype": "m.text", "body": "hello"}), false);
+        assert_eq!(event_preview(&text).as_deref(), Some("hello"));
+        let encrypted = base(
+            "m.room.encrypted",
+            json!({"algorithm": "m.megolm.v1.aes-sha2", "ciphertext": "x", "session_id": "s", "device_id": "D", "sender_key": "k"}),
+            false,
+        );
+        assert_eq!(event_preview(&encrypted).as_deref(), Some("Encrypted message"));
+        let topic = base("m.room.topic", json!({"topic": "t"}), true);
+        assert_eq!(event_preview(&topic).as_deref(), Some("Topic changed"));
+        let name = base("m.room.name", json!({"name": "n"}), true);
+        assert_eq!(event_preview(&name).as_deref(), Some("Room renamed"));
+        let reaction = base("m.reaction", json!({"m.relates_to": {"rel_type": "m.annotation", "event_id": "$x", "key": "👍"}}), false);
+        assert_eq!(event_preview(&reaction), None);
+        // a redacted message has no text to show
+        let redacted = event(json!({"type": "m.room.message", "content": {}, "event_id": "$e", "sender": "@a:s",
+            "origin_server_ts": 1, "unsigned": {"redacted_because": {"type": "m.room.redaction", "content": {},
+            "redacts": "$e", "event_id": "$r", "sender": "@a:s", "origin_server_ts": 2}}}));
+        assert_eq!(event_preview(&redacted), None);
+    }
+
+    /// The timeline's membership lines, each change its own words.
+    /// Planted-bug: swap "was removed" and "was banned".
+    #[test]
+    fn membership_texts() {
+        use MembershipChange::*;
+        let cases = [
+            (Joined, "joined"), (Left, "left"), (Banned, "was banned"), (Unbanned, "was unbanned"),
+            (Kicked, "was removed"), (Invited, "was invited"), (KickedAndBanned, "was removed and banned"),
+            (InvitationAccepted, "accepted the invitation"), (InvitationRejected, "declined the invitation"),
+            (InvitationRevoked, "had the invitation withdrawn"), (Knocked, "asked to join"),
+            (KnockAccepted, "was let in"), (KnockRetracted, "withdrew the request to join"),
+            (KnockDenied, "was turned down"),
+        ];
+        for (change, text) in cases {
+            assert_eq!(membership_text(Some(change)), text, "{change:?}");
+        }
+        // (the glob import shadows Option's None with the change "None")
+        assert_eq!(membership_text(Option::None), "changed membership");
+        assert_eq!(membership_text(Some(NotImplemented)), "changed membership");
+    }
+
+    /// A sender's name: the display name when the profile is there, else
+    /// the localpart (never the whole id, never empty).
+    /// Planted-bug: fall back to `user.to_string()`.
+    #[test]
+    fn profile_names() {
+        let user = user_id!("@anna:example.org");
+        let named = Profile { display_name: Some("Anna K.".to_owned()), ..Default::default() };
+        assert_eq!(profile_name(&TimelineDetails::Ready(named), user), "Anna K.");
+        assert_eq!(profile_name(&TimelineDetails::Ready(Profile::default()), user), "anna");
+        assert_eq!(profile_name(&TimelineDetails::Pending, user), "anna");
+        assert_eq!(profile_name(&TimelineDetails::Unavailable, user), "anna");
+    }
+}

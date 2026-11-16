@@ -193,3 +193,244 @@ pub(crate) enum Command {
 pub(crate) fn given(s: &Option<String>) -> Option<&str> {
     s.as_deref().map(str::trim).filter(|s| !s.is_empty())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{json, Value};
+
+    /// Every command the core accepts, in the enum's order. Adding a command
+    /// is a reviewed act: update this list and docs/PROTOCOL.md.
+    const COMMANDS: &[&str] = &[
+        "probe_server", "login_password", "login_sso", "logout",
+        "open_room", "close_room", "paginate_back", "send_text", "send_sticker",
+        "open_thread", "close_thread", "thread_list", "close_thread_list", "mark_thread_read",
+        "push_set", "push_remove", "push_handle", "send_file", "react", "redact", "edit",
+        "poll_vote", "report", "event_source", "mark_read", "typing", "get_media",
+        "fetch_emote", "image_packs", "add_user_emote",
+        "get_notification_mode", "set_notification_mode", "set_favourite", "set_low_priority",
+        "join_room", "leave_room", "join_by_id_or_alias", "room_preview", "knock", "room_link",
+        "set_join_rule", "space_open", "space_close", "space_add_child", "space_remove_child",
+        "space_leave", "create_dm", "create_room", "room_members", "set_room_name",
+        "set_room_avatar", "set_own_avatar", "set_room_topic", "invite", "search", "refresh_rooms",
+        "verification_request_self", "verification_accept", "verification_start_sas",
+        "verification_confirm", "verification_mismatch", "verification_cancel",
+        "recovery_recover", "recovery_enable", "recovery_reset", "identity_reset",
+        "export_keys", "import_keys",
+        "devices", "delete_device", "profile", "set_display_name", "ignore_user",
+        "unignore_user", "storage_info", "clear_media",
+        "call_start", "call_message", "call_end", "knock_answer", "knock_seen", "call_decline",
+    ];
+
+    /// How many fields the commands require, all together. Like COMMANDS, a
+    /// change here is a change of the contract.
+    const REQUIRED_FIELDS: usize = 96;
+
+    fn parse(v: Value) -> Result<Command, String> {
+        serde_json::from_value::<Command>(v).map_err(|e| e.to_string())
+    }
+
+    /// The names serde knows, from its own error for an unknown tag
+    /// ("unknown variant `x`, expected one of `a`, `b`, ...").
+    fn enum_names() -> Vec<String> {
+        let err = parse(json!({"cmd": "__none__"})).unwrap_err();
+        let (_, list) = err.split_once("expected one of").expect("serde lists the variants");
+        list.split('`').skip(1).step_by(2).map(str::to_owned).collect()
+    }
+
+    /// The smallest object that parses as `name`: each field serde says is
+    /// missing gets the first of "", false, [] that it takes.
+    fn minimal(name: &str) -> Value {
+        let mut v = json!({"cmd": name});
+        for _ in 0..16 {
+            let err = match parse(v.clone()) {
+                Ok(_) => return v,
+                Err(e) => e,
+            };
+            let field = err
+                .split_once("missing field `")
+                .and_then(|(_, rest)| rest.split_once('`'))
+                .map(|(f, _)| f.to_owned())
+                .unwrap_or_else(|| panic!("{name}: {err}"));
+            let fill = [json!(""), json!(false), json!([])]
+                .into_iter()
+                .find(|candidate| {
+                    let mut t = v.clone();
+                    t[&field] = candidate.clone();
+                    parse(t).map_or_else(|e| !e.contains("invalid type"), |_| true)
+                })
+                .unwrap_or_else(|| panic!("{name}.{field}: no simple value fits"));
+            v[&field] = fill;
+        }
+        panic!("{name}: too many required fields");
+    }
+
+    /// The enum's variant names, from serde's own list, are exactly the list
+    /// above.
+    /// Planted-bug: rename `Logout` to `LogOut`, or delete `CallDecline`.
+    #[test]
+    fn command_names_are_pinned() {
+        let pinned: Vec<String> = COMMANDS.iter().map(|s| s.to_string()).collect();
+        assert_eq!(enum_names(), pinned);
+    }
+
+    /// Each pinned name has a valid form, and parses to the variant of that
+    /// name (not to a neighbour through an alias).
+    /// Planted-bug: add `#[serde(rename = "log_out")]` to `Logout`.
+    #[test]
+    fn every_command_has_a_minimal_form() {
+        for name in COMMANDS {
+            let v = minimal(name);
+            let debug = format!("{:?}", parse(v).unwrap());
+            let variant: String = debug.chars().take_while(char::is_ascii_alphanumeric).collect();
+            let snake: String = variant
+                .chars()
+                .enumerate()
+                .flat_map(|(i, c)| {
+                    let sep = (i > 0 && c.is_ascii_uppercase()).then_some('_');
+                    sep.into_iter().chain(std::iter::once(c.to_ascii_lowercase()))
+                })
+                .collect();
+            assert_eq!(&snake, name);
+        }
+    }
+
+    /// docs/PROTOCOL.md's command tables name exactly the enum's commands.
+    /// Planted-bug: delete the `call_decline` row from docs/PROTOCOL.md.
+    #[test]
+    fn protocol_md_lists_every_command() {
+        let doc = include_str!("../../docs/PROTOCOL.md");
+        let start = doc.find("## Commands").expect("a Commands section");
+        let end = doc.find("## Events").expect("an Events section");
+        let mut documented: Vec<String> = doc[start..end]
+            .lines()
+            .filter(|l| l.starts_with("| `"))
+            .flat_map(|l| {
+                let cell = l.split('|').nth(1).unwrap_or("");
+                cell.split('`').skip(1).step_by(2).map(str::to_owned).collect::<Vec<_>>()
+            })
+            .collect();
+        documented.sort();
+        let mut names: Vec<String> = COMMANDS.iter().map(|s| s.to_string()).collect();
+        names.sort();
+        assert_eq!(documented, names);
+    }
+
+    /// Every required field is required: without it, null in its place or a
+    /// number in its place, the command fails to parse. Their number is
+    /// pinned too, so a field that quietly becomes optional is noticed.
+    /// Planted-bug: put `#[serde(default)]` on `SendText::body`.
+    #[test]
+    fn required_fields_are_enforced() {
+        let mut checked = Vec::new();
+        for name in COMMANDS {
+            let full = minimal(name);
+            let fields: Vec<String> = full.as_object().unwrap().keys().filter(|k| *k != "cmd").cloned().collect();
+            for field in fields {
+                let mut without = full.clone();
+                without.as_object_mut().unwrap().remove(&field);
+                let err = parse(without).expect_err(&format!("{name} without {field}"));
+                assert!(err.contains(&format!("missing field `{field}`")), "{name}: {err}");
+                for wrong in [Value::Null, json!(12345)] {
+                    let mut t = full.clone();
+                    t[&field] = wrong.clone();
+                    assert!(parse(t).is_err(), "{name}.{field} = {wrong}");
+                }
+                checked.push(format!("{name}.{field}"));
+            }
+        }
+        assert_eq!(checked.len(), REQUIRED_FIELDS, "required fields now: {checked:?}");
+    }
+
+    /// Input the UI should never send, but a bug or a hostile caller could:
+    /// each is refused by the parser rather than reaching a handler.
+    /// Planted-bug: add `#[serde(other)] Unknown,` as the enum's last variant.
+    #[test]
+    fn hostile_commands_are_refused() {
+        let long = "x".repeat(1 << 20);
+        let cases = [
+            json!({}),
+            json!({"room_id": "!a:b"}),
+            json!({"cmd": null}),
+            json!({"cmd": 5}),
+            json!({"cmd": ["logout"]}),
+            json!({"cmd": ""}),
+            json!({"cmd": "Logout"}),
+            json!({"cmd": "logout "}),
+            json!({"cmd": "log\u{0}out"}),
+            json!({"cmd": long}),
+            json!({"cmd": "send_text", "room_id": "!a:b"}),
+            json!({"cmd": "send_text", "room_id": "!a:b", "body": 1}),
+            json!({"cmd": "send_text", "room_id": "!a:b", "body": "x", "markdown": "yes"}),
+            json!({"cmd": "paginate_back", "room_id": "!a:b", "count": 70000}),
+            json!({"cmd": "paginate_back", "room_id": "!a:b", "count": -1}),
+            json!({"cmd": "paginate_back", "room_id": "!a:b", "count": 1.5}),
+            json!({"cmd": "paginate_back", "room_id": "!a:b", "count": "30"}),
+            json!({"cmd": "poll_vote", "room_id": "!a:b", "event_id": "$e", "answers": [1, 2]}),
+            json!({"cmd": "poll_vote", "room_id": "!a:b", "event_id": "$e", "answers": "a"}),
+            json!({"cmd": "knock_answer", "room_id": "!a:b", "user_id": "@u:b"}),
+            json!({"cmd": "knock_answer", "room_id": "!a:b", "user_id": "@u:b", "accept": "true"}),
+            json!({"cmd": "send_text", "room_id": "!a:b", "body": "x", "emotes": {"a": 1}}),
+            json!({"cmd": "send_file", "room_id": "!a:b", "path": "/x", "w": -5}),
+            json!("logout"),
+            json!(null),
+        ];
+        for case in cases {
+            assert!(parse(case.clone()).is_err(), "accepted: {}", &case.to_string()[..case.to_string().len().min(120)]);
+        }
+    }
+
+    /// A command is an object. serde's internally tagged enums also take a
+    /// sequence with the tag first, so today `["logout"]` (any command
+    /// without fields: identity_reset, clear_media) runs; commands with
+    /// fields are refused in that form. Ignored until the core refuses
+    /// non-objects (a check in `Core::dispatch` before the parse).
+    /// Planted-bug: none needed, it fails against today's code.
+    #[test]
+    #[ignore = "known gap: arrays parse as commands"]
+    fn arrays_are_refused() {
+        let accepted: Vec<String> = [json!(["logout"]), json!(["identity_reset"]), json!(["send_text", "!a:b", "hi"])]
+            .into_iter()
+            .filter_map(|case| parse(case).ok().map(|c| format!("{c:?}")))
+            .collect();
+        assert!(accepted.is_empty(), "accepted: {accepted:?}");
+    }
+
+    /// What the parser must keep accepting: extra fields, null for optional
+    /// ones, empty and odd strings (the handlers judge those, not the parser).
+    /// Planted-bug: add `#[serde(deny_unknown_fields)]` to the enum.
+    #[test]
+    fn lenient_where_documented() {
+        let long = "y".repeat(1 << 20);
+        let cases = [
+            json!({"cmd": "logout", "extra": [1, 2, 3]}),
+            json!({"cmd": "send_text", "room_id": "!a:b", "body": "x", "reply_to": null, "markdown": null,
+                   "emotes": null, "thread_root": null, "from_the_future": true}),
+            json!({"cmd": "send_text", "room_id": "", "body": ""}),
+            json!({"cmd": "send_text", "room_id": "!a:b", "body": long}),
+            json!({"cmd": "send_text", "room_id": "!a:b", "body": "nul \u{0} and \"quotes\" and \\ and \u{1F600}"}),
+            json!({"cmd": "paginate_back", "room_id": "!a:b", "count": 65535}),
+            json!({"cmd": "create_room"}),
+        ];
+        for case in cases {
+            assert!(parse(case.clone()).is_ok(), "refused: {}", &case.to_string()[..case.to_string().len().min(120)]);
+        }
+        // the text arrives as sent, escapes decoded
+        let raw = r#"{"cmd":"send_text","room_id":"!a:b","body":"a\u0000b\n\"c\""}"#;
+        match serde_json::from_str::<Command>(raw).unwrap() {
+            Command::SendText { body, .. } => assert_eq!(body, "a\0b\n\"c\""),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// `given`: the UI's "" (and blank) mean nothing; text is trimmed.
+    /// Planted-bug: drop the `.map(str::trim)`.
+    #[test]
+    fn given_treats_blank_as_absent() {
+        assert_eq!(given(&None), None);
+        assert_eq!(given(&Some(String::new())), None);
+        assert_eq!(given(&Some("  \t\n".to_owned())), None);
+        assert_eq!(given(&Some(" $event ".to_owned())), Some("$event"));
+        assert_eq!(given(&Some("x".to_owned())), Some("x"));
+    }
+}

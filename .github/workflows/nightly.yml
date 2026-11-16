@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# "Refuse a check-in unless all regression tests pass" (beroset).
+# The core's cargo tests. Nightly rather than on every push: they compile
+# matrix-rust-sdk, which takes many minutes even with a warm cache. The fast
+# suites run on every push in ci.yml.
+name: nightly
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v4
+      # the toolchain of the releases (core/build-aarch64.sh); the tests run
+      # for the runner's x86_64, the releases are cross-built for aarch64
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      # --locked: the tests use the Cargo.lock of the releases
+      - name: Core tests
+        run: cargo test --locked
