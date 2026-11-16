@@ -279,9 +279,19 @@ void UnifiedPush::discoverGateway()
     });
 }
 
+// A call on the connector is the distributor's only when it carries the
+// token we registered with. With none stored (logged out, or before the
+// first registration) no call is: "" == "" would let any bus client set
+// the endpoint.
+bool UnifiedPush::fromDistributor(const QVariantMap &args) const
+{
+    const QString token = m_state.value("token").toString();
+    return !token.isEmpty() && args.value("token").toString() == token;
+}
+
 QVariantMap UnifiedPush::newEndpoint(const QVariantMap &args)
 {
-    if (args.value("token").toString() != m_state.value("token").toString())
+    if (!fromDistributor(args))
         return QVariantMap();
     const QString endpoint = args.value("endpoint").toString();
     if (!endpoint.startsWith(QLatin1String("https://"))) {
@@ -306,7 +316,7 @@ QVariantMap UnifiedPush::newEndpoint(const QVariantMap &args)
 
 QVariantMap UnifiedPush::unregistered(const QVariantMap &args)
 {
-    if (args.value("token").toString() != m_state.value("token").toString())
+    if (!fromDistributor(args))
         return QVariantMap();
     m_state.remove("endpoint");
     m_state.remove("pusherSet");
@@ -322,7 +332,7 @@ QVariantMap UnifiedPush::message(const QVariantMap &args)
     QVariantMap answer;
     if (args.contains("id"))
         answer.insert("id", args.value("id"));
-    if (args.value("token").toString() != m_state.value("token").toString())
+    if (!fromDistributor(args))
         return answer;
     const QJsonObject n = QJsonDocument::fromJson(args.value("message").toByteArray()).object().value("notification").toObject();
     const QString roomId = n.value("room_id").toString();

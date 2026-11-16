@@ -89,6 +89,7 @@ private:
     void discoverGateway();
     void setPusherIfNeeded();
     void setStatus(const QString &s);
+    bool fromDistributor(const QVariantMap &args) const;
 
     QString m_path;
     QVariantMap m_state;   // enabled, token, endpoint, oldEndpoint, gateway, pusherSet
