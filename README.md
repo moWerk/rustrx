@@ -36,9 +36,12 @@ stickers. It also works well as the client for a second account next to another 
 
 ## What it does
 
-- Log in with password or single sign-on, everything on one page, errors
-  shown inline, nothing thrown away. "Create an account" opens the server's
-  sign-up page. The session is kept: Rustrx starts in about a second, and if
+- Log in on the server's own page in the browser where the server has an
+  account service (OAuth 2.0 / MAS, matrix.org among them): the password
+  never passes through Rustrx, which only gets a token. Elsewhere with a
+  password or single sign-on. Everything on one page, errors shown
+  inline, nothing thrown away. "Create an account" makes one on the
+  account service's page and logs in, or opens the sign-up page. The session is kept: Rustrx starts in about a second, and if
   a server really ends the session, it goes back to the login page and says
   so.
 - Native sliding sync where the server has it (matrix.org does), classic

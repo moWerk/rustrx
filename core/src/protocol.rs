@@ -17,7 +17,11 @@ pub(crate) enum Command {
     ProbeServer { user: Option<String>, homeserver: Option<String> },
     LoginPassword { user: String, password: String, homeserver: Option<String> },
     LoginSso { user: Option<String>, homeserver: Option<String>, idp: Option<String> },
-    /// A single sign-on still waiting for the browser ends ("login_error").
+    /// Through the server's account service (OAuth 2.0, MAS) in the
+    /// browser: open_url, then logged_in or login_error. `signup` offers to
+    /// make an account first.
+    LoginOauth { user: Option<String>, homeserver: Option<String>, signup: Option<bool> },
+    /// A browser login still waiting ends ("login_error").
     LoginCancel,
     Logout,
 
@@ -216,7 +220,7 @@ mod tests {
     /// Every command the core accepts, in the enum's order. Adding a command
     /// is a reviewed act: update this list and docs/PROTOCOL.md.
     const COMMANDS: &[&str] = &[
-        "probe_server", "login_password", "login_sso", "login_cancel", "logout",
+        "probe_server", "login_password", "login_sso", "login_oauth", "login_cancel", "logout",
         "open_room", "close_room", "paginate_back", "send_text", "send_sticker",
         "open_thread", "close_thread", "retry_send", "thread_list", "close_thread_list", "mark_thread_read",
         "push_set", "push_remove", "push_handle", "send_file", "react", "redact", "edit",

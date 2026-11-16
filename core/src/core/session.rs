@@ -46,7 +46,14 @@ impl Core {
             None => self.build_client(&saved.homeserver, true).await?,
         };
         tracing::info!(ms = t.elapsed().as_millis() as u64, "startup: client built");
-        client.restore_session(saved.session).await?;
+        match saved.client_id {
+            Some(id) => {
+                use matrix_sdk::authentication::oauth::{ClientId, OAuthSession, UserSession};
+                let user = UserSession { meta: saved.session.meta, tokens: saved.session.tokens };
+                client.restore_session(OAuthSession { client_id: ClientId::new(id), user }).await?
+            }
+            None => client.restore_session(saved.session).await?,
+        }
         tracing::info!(ms = t.elapsed().as_millis() as u64, "startup: session restored");
         self.after_login(client).await?;
         tracing::info!(ms = t.elapsed().as_millis() as u64, "startup: sync started");
@@ -146,11 +153,22 @@ impl Core {
     }
 
     pub(crate) fn save_session(&self, client: &Client) -> Result<()> {
-        let session = client.matrix_auth().session().context("no Matrix session after login")?;
+        use matrix_sdk::AuthSession;
+        // an OAuth session is the same user session and tokens, plus the
+        // client id the account service gave Rustrx
+        let (session, client_id) = match client.session().context("no session after login")? {
+            AuthSession::Matrix(s) => (s, None),
+            AuthSession::OAuth(o) => (
+                MatrixSession { meta: o.user.meta, tokens: o.user.tokens },
+                Some(o.client_id.as_str().to_owned()),
+            ),
+            _ => bail!("a session of an unknown kind"),
+        };
         let saved = SavedSession {
             homeserver: client.homeserver().to_string(),
             session,
             sliding_sync: Some(!matches!(client.sliding_sync_version(), Version::None)),
+            client_id,
         };
         // the tokens: owner-only, and complete or absent (a crash mid-write
         // must not leave a half file for the next start)
@@ -256,8 +274,14 @@ impl Core {
             Ok(_) => false,
             Err(matrix_sdk::RefreshTokenError::MatrixAuth(e)) => e.client_api_error_kind().is_some(),
             Err(matrix_sdk::RefreshTokenError::RefreshTokenRequired) => true,
-            // the SDK reports an OAuth session as gone only for invalid_grant
-            Err(matrix_sdk::RefreshTokenError::OAuth(_)) => true,
+            // an OAuth refresh fails for no network too (the metadata fetch):
+            // gone only when the account service refuses the refresh token
+            Err(matrix_sdk::RefreshTokenError::OAuth(e)) => {
+                use matrix_sdk::authentication::oauth::error::{BasicErrorResponseType, RequestTokenError};
+                use matrix_sdk::authentication::oauth::OAuthError;
+                matches!(&*e, OAuthError::RefreshToken(RequestTokenError::ServerResponse(r))
+                    if *r.error() == BasicErrorResponseType::InvalidGrant)
+            }
         }
     }
 
@@ -492,6 +516,73 @@ impl Core {
     /// Ends a single sign-on that waits for the browser ("login_error").
     pub(crate) fn login_cancel(&self) {
         self.sso_cancel.notify_waiters();
+    }
+
+    /// Logging in through the server's account service (OAuth 2.0, MAS):
+    /// its own page in the browser, so the password is never typed into
+    /// Rustrx. Rustrx registers itself with the service, opens the page, and
+    /// takes the answer on a port of its own on 127.0.0.1. With `signup`
+    /// the page offers to make an account first.
+    pub(crate) async fn login_oauth(&'static self, user: Option<String>, homeserver: Option<String>, signup: bool) -> Result<()> {
+        use matrix_sdk::authentication::oauth::registration::{ApplicationType, ClientMetadata, Localized, OAuthGrantType};
+        use matrix_sdk::authentication::oauth::ClientRegistrationData;
+        use matrix_sdk::reqwest::Url;
+        use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerIpAddress};
+        if self.state.lock().await.client.is_some() {
+            bail!("already logged in");
+        }
+        let cancelled = self.sso_cancel.notified();
+        tokio::pin!(cancelled);
+        let result: Result<Client> = async {
+            let server = Self::server_of(user.as_deref(), &homeserver)?;
+            let device = self.kept_device(user.as_deref());
+            let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
+            let (redirect, answer) = LocalServerBuilder::new()
+                .ip_address(LocalServerIpAddress::Localhostv4)
+                .spawn()
+                .await?;
+            let mut meta = ClientMetadata::new(
+                ApplicationType::Native,
+                vec![OAuthGrantType::AuthorizationCode { redirect_uris: vec![redirect.clone()] }],
+                Localized::new(Url::parse(CLIENT_URI)?, []),
+            );
+            meta.client_name = Some(Localized::new(DEVICE_NAME.to_owned(), []));
+            let registration = ClientRegistrationData::new(matrix_sdk::ruma::serde::Raw::new(&meta)?);
+            let device = device.map(|d| matrix_sdk::ruma::OwnedDeviceId::from(d.trim()));
+            let mut login = client.oauth().login(redirect, device, Some(registration), None);
+            if signup {
+                login = login.prompt(vec![matrix_sdk::ruma::api::client::discovery::get_authorization_server_metadata::v1::Prompt::Create]);
+            }
+            let data = login.build().await?;
+            tracing::info!("oauth: the account service's page ready, waiting for the browser");
+            self.emit(json!({"ev": "open_url", "url": data.url.as_str()}));
+            let query = tokio::select! {
+                q = tokio::time::timeout(SSO_TIMEOUT, answer) => match q {
+                    Ok(Some(q)) => q,
+                    Ok(None) => bail!("the browser came back without an answer"),
+                    Err(_) => {
+                        client.oauth().abort_login(&data.state).await;
+                        bail!("no login from the browser within {} minutes", SSO_TIMEOUT.as_secs() / 60)
+                    }
+                },
+                _ = &mut cancelled => {
+                    client.oauth().abort_login(&data.state).await;
+                    bail!("login cancelled")
+                }
+            };
+            client.oauth().finish_login(query.into()).await.map_err(|e| anyhow!("{e}"))?;
+            std::fs::remove_file(self.data_dir.join(DEVICE_ID_FILE)).ok();
+            std::fs::remove_file(self.relogin_path()).ok();
+            Ok(client)
+        }
+        .await;
+        match result {
+            Ok(client) => self.after_login(client).await,
+            Err(e) => {
+                self.emit(json!({"ev": "login_error", "message": format!("{e:#}")}));
+                Ok(())
+            }
+        }
     }
 
     pub(crate) async fn logout(&'static self) -> Result<()> {

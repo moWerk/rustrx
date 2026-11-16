@@ -70,6 +70,10 @@ struct SavedSession {
     /// skips the discovery round trips
     #[serde(default)]
     sliding_sync: Option<bool>,
+    /// an OAuth login (the account service): the id it registered Rustrx
+    /// under, which its refresh token is bound to; none for a Matrix login
+    #[serde(default)]
+    client_id: Option<String>,
 }
 
 struct OpenRoom {
@@ -156,7 +160,8 @@ pub(crate) struct Core {
     data_dir: PathBuf,
     emitter: Emitter,
     state: Mutex<State>,
-    /// "login_cancel": ends a single sign-on still waiting for the browser
+    /// "login_cancel": ends a browser login (single sign-on or OAuth) still
+    /// waiting for the browser
     sso_cancel: tokio::sync::Notify,
     /// one pushed message at a time: each notification client runs its own
     /// encryption sync over the one crypto store, and their mutexes are

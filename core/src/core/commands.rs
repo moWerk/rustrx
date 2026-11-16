@@ -36,6 +36,7 @@ impl Core {
             ProbeServer { user, homeserver } => self.probe_server(user, homeserver).await,
             LoginPassword { user, password, homeserver } => self.login_password(user, password, homeserver).await,
             LoginSso { user, homeserver, idp } => self.login_sso(user, homeserver, idp).await,
+            LoginOauth { user, homeserver, signup } => self.login_oauth(user, homeserver, signup.unwrap_or(false)).await,
             LoginCancel => {
                 self.login_cancel();
                 Ok(())

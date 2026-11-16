@@ -396,7 +396,7 @@ def test_dev_hook_refuses_keys_and_session():
     assert block
     refused = set(re.findall(r'"([a-z_]+)"', block.group(1)))
     must = {"export_keys", "import_keys", "logout", "delete_device", "login_password",
-            "login_sso", "recovery_recover", "recovery_enable", "recovery_reset",
+            "login_sso", "login_oauth", "recovery_recover", "recovery_enable", "recovery_reset",
             "identity_reset", "push_set", "push_remove"}
     assert must <= refused
     assert refused <= protocol_commands()

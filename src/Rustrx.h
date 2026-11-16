@@ -182,6 +182,9 @@ public:
     Q_INVOKABLE void command(const QVariantMap &cmd);
     Q_INVOKABLE void loginPassword(const QString &user, const QString &password, const QString &homeserver);
     Q_INVOKABLE void loginSso(const QString &user, const QString &homeserver, const QString &idp);
+    // through the server's account service in the browser (OAuth); signup:
+    // its page offers to make an account first
+    Q_INVOKABLE void loginOauth(const QString &user, const QString &homeserver, bool signup);
     Q_INVOKABLE void probeServer(const QString &user, const QString &homeserver);
     Q_INVOKABLE void openRoom(const QString &roomId);
     Q_INVOKABLE void closeRoom();

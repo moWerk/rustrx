@@ -27,7 +27,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `probe_server` | `user?`, `homeserver?` | `server_info` |
 | `login_password` | `user`, `password`, `homeserver?` | `logged_in` or `login_error` |
 | `login_sso` | `user?`, `homeserver?`, `idp?` | `open_url`, then `logged_in` or `login_error` (after 10 minutes without the browser coming back, too) |
-| `login_cancel` | | `login_error` of the waiting `login_sso` |
+| `login_oauth` | `user?`, `homeserver?`, `signup?` (make an account first) | `open_url` (the account service's page), then `logged_in` or `login_error` (also after 10 minutes) |
+| `login_cancel` | | `login_error` of the waiting `login_sso` or `login_oauth` |
 | `logout` | | `logged_out` |
 
 ### The open room

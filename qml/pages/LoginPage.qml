@@ -26,6 +26,18 @@ Page {
 
     property var server: ({ probed: false, password: true, sso: false, idps: [], sliding: false, name: "" })
     property string errorText
+    // a server with an account service (MAS: matrix.org and others): the
+    // login happens on its own page in the browser, so the password is
+    // never typed into Rustrx. The password field comes only when asked for.
+    readonly property bool oauth: server.probed && server.accountService === true
+    property bool passwordWanted
+    readonly property bool showPassword: !oauth || passwordWanted
+
+    function loginOauth(signup) {
+        errorText = ""
+        ssoUrl = ""
+        rustrx.loginOauth(userField.text, serverField.text, signup)
+    }
 
     Component.onCompleted: {
         // a session the server ended: the same user again keeps messages and keys
@@ -109,8 +121,41 @@ Page {
                 onTextChanged: page.probeSoon()
             }
 
+            Item { width: 1; height: Theme.paddingMedium; visible: page.oauth }
+
+            Button {
+                visible: page.oauth
+                anchors.horizontalCenter: parent.horizontalCenter
+                //: %1 the server name
+                //% "Log in at %1"
+                text: qsTrId("rustrx-bt-oauth").arg(server.name)
+                enabled: !rustrx.loggingIn
+                onClicked: page.loginOauth(false)
+            }
+
+            Label {
+                visible: page.oauth
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                color: Theme.secondaryColor
+                font.pixelSize: Theme.fontSizeExtraSmall
+                //: %1 the server name
+                //% "Opens the login page of %1 in the browser and brings you back here. Your password stays between you and %1; Rustrx only gets a token."
+                text: qsTrId("rustrx-la-oauth-note").arg(server.name)
+            }
+
+            Button {
+                visible: page.oauth && !page.passwordWanted && server.password
+                anchors.horizontalCenter: parent.horizontalCenter
+                //% "Use a password instead"
+                text: qsTrId("rustrx-bt-password-instead")
+                onClicked: page.passwordWanted = true
+            }
+
             PasswordField {
                 id: passwordField
+                visible: page.showPassword
                 width: parent.width
                 placeholderText: qsTrId("rustrx-ph-password")
                 label: placeholderText
@@ -120,6 +165,7 @@ Page {
             }
 
             Label {
+                visible: page.showPassword
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * x
                 wrapMode: Text.Wrap
@@ -151,7 +197,9 @@ Page {
                     //% "password"
                     if (server.password) ways.push(qsTrId("rustrx-la-way-password"))
                     //% "single sign-on"
-                    if (server.sso) ways.push(qsTrId("rustrx-la-way-sso"))
+                    if (server.sso && !page.oauth) ways.push(qsTrId("rustrx-la-way-sso"))
+                    //% "login in the browser"
+                    if (page.oauth) ways.push(qsTrId("rustrx-la-way-oauth"))
                     //: %1 server, %2 the ways to log in, %3 sync note
                     //% "%1 offers: %2. %3"
                     return qsTrId("rustrx-la-server-offers").arg(server.name).arg(ways.join(", "))
@@ -165,6 +213,7 @@ Page {
             Item { width: 1; height: Theme.paddingLarge }
 
             Button {
+                visible: page.showPassword
                 anchors.horizontalCenter: parent.horizontalCenter
                 //% "Logging in…"
                 text: rustrx.loggingIn ? qsTrId("rustrx-bt-logging-in")
@@ -178,33 +227,6 @@ Page {
                 anchors.horizontalCenter: parent.horizontalCenter
                 running: rustrx.loggingIn
                 size: BusyIndicatorSize.Medium
-            }
-
-            //% "Other ways to log in"
-            SectionHeader { text: qsTrId("rustrx-se-other-ways") }
-
-            Label {
-                visible: server.probed && server.sso && server.accountService === true
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: Theme.highlightColor
-                font.pixelSize: Theme.fontSizeSmall
-                //: %1 the server name
-                //% "%1 manages its logins in the browser. If the password is not accepted, log in with single sign-on."
-                text: qsTrId("rustrx-la-account-service").arg(server.name)
-            }
-
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
-                //% "Log in with single sign-on"
-                text: qsTrId("rustrx-bt-sso")
-                enabled: !rustrx.loggingIn && server.sso
-                onClicked: {
-                    errorText = ""
-                    page.ssoUrl = ""
-                    rustrx.loginSso(userField.text, serverField.text, "")
-                }
             }
 
             // while the browser login runs: the address, to open again or copy
@@ -258,7 +280,25 @@ Page {
                 }
             }
 
+
+            //% "Other ways to log in"
+            SectionHeader { visible: !page.oauth; text: qsTrId("rustrx-se-other-ways") }
+
+            Button {
+                visible: !page.oauth
+                anchors.horizontalCenter: parent.horizontalCenter
+                //% "Log in with single sign-on"
+                text: qsTrId("rustrx-bt-sso")
+                enabled: !rustrx.loggingIn && server.sso
+                onClicked: {
+                    errorText = ""
+                    page.ssoUrl = ""
+                    rustrx.loginSso(userField.text, serverField.text, "")
+                }
+            }
+
             Label {
+                visible: !page.oauth
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * x
                 wrapMode: Text.Wrap
@@ -278,8 +318,12 @@ Page {
                 anchors.horizontalCenter: parent.horizontalCenter
                 //% "Create an account"
                 text: qsTrId("rustrx-bt-create-account")
-                onClicked: app.openExternal(server.signup && server.signup.length
-                                                ? server.signup : "https://account.matrix.org/register")
+                enabled: !rustrx.loggingIn
+                onClicked: {
+                    // made on the account service's page and logged in at once
+                    if (page.oauth) page.loginOauth(true)
+                    else app.openExternal("https://account.matrix.org/register")
+                }
             }
 
             Label {
@@ -288,9 +332,13 @@ Page {
                 wrapMode: Text.Wrap
                 color: Theme.secondaryColor
                 font.pixelSize: Theme.fontSizeExtraSmall
-                //: %1 the server name
-                //% "Opens the sign-up page of %1 in the browser. Come back afterwards and log in here with the new Matrix ID and password."
-                text: qsTrId("rustrx-la-create-account-note").arg(server.signup && server.signup.length ? server.name : "matrix.org")
+                text: page.oauth
+                      //: %1 the server name
+                      //% "Makes the account on the page of %1 in the browser and logs you in here."
+                      ? qsTrId("rustrx-la-create-account-oauth").arg(server.name)
+                      //: %1 the server name
+                      //% "Opens the sign-up page of %1 in the browser. Come back afterwards and log in here with the new Matrix ID."
+                      : qsTrId("rustrx-la-create-account-note").arg("matrix.org")
             }
 
             Item { width: 1; height: Theme.paddingLarge }

@@ -320,4 +320,39 @@ mod tests {
         let got = events(sink);
         assert_eq!(got, vec![json!({"ev": "error", "cmd": "open_room", "message": "not logged in"})]);
     }
+
+    /// Against matrix.org's account service, so ignored by default (run with
+    /// `cargo test -- --ignored`): Rustrx registers itself, gets the page
+    /// for the browser, and a cancel ends the wait with login_error. Nothing
+    /// is logged in; the store goes into a temporary folder.
+    /// Planted-bug: drop the cancel arm's notification (login_cancel then
+    /// waits for the 10 minute timeout and this fails at its deadline).
+    #[test]
+    #[ignore = "network: matrix.org"]
+    fn oauth_login_reaches_the_page_and_cancels() {
+        let sink: &'static Sink = Box::leak(Box::new(Mutex::new(Vec::new())));
+        let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap();
+        let emitter = Emitter { cb: collect, ctx: Ctx(sink as *const Sink as *mut c_void) };
+        let dir = std::env::temp_dir().join(format!("rustrx-oauth-test-{}", std::process::id()));
+        let core: &'static core::Core = Box::leak(Box::new(core::Core::new(rt, dir.clone(), emitter)));
+        assert_eq!(send(core, r#"{"cmd":"login_oauth","homeserver":"matrix.org"}"#), 0);
+        let wait_for = |ev: &str| {
+            let deadline = Instant::now() + Duration::from_secs(60);
+            loop {
+                if let Some(e) = events(sink).into_iter().find(|e| e["ev"] == ev) {
+                    return e;
+                }
+                assert!(Instant::now() < deadline, "no {ev}: {:?}", events(sink));
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        };
+        let page = wait_for("open_url");
+        let url = page["url"].as_str().unwrap();
+        assert!(url.starts_with("https://account.matrix.org/"), "{url}");
+        assert!(url.contains("redirect_uri=http%3A%2F%2F127.0.0.1%3A"), "{url}");
+        assert_eq!(send(core, r#"{"cmd":"login_cancel"}"#), 0);
+        let error = wait_for("login_error");
+        assert_eq!(error["message"], "login cancelled");
+        std::fs::remove_dir_all(dir).ok();
+    }
 }

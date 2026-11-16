@@ -213,7 +213,8 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-se-other-ways">
-        <source>Other ways to log in</source>
+        <source></source>
+        <oldsource>Other ways to log in</oldsource>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-bt-sso">
@@ -844,7 +845,8 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-create-account-note">
-        <source>Opens the sign-up page of %1 in the browser. Come back afterwards and log in here with the new Matrix ID and password.</source>
+        <source>Opens the sign-up page of %1 in the browser. Come back afterwards and log in here with the new Matrix ID.</source>
+        <oldsource>Opens the sign-up page of %1 in the browser. Come back afterwards and log in here with the new Matrix ID and password.</oldsource>
         <extracomment>%1 the server name</extracomment>
         <translation type="unfinished"></translation>
     </message>
@@ -1262,11 +1264,6 @@
     <message id="rustrx-la-session-kept">
         <source>The server ended the session. Log in again as %1: your messages and keys are still on this phone.</source>
         <extracomment>%1 the Matrix ID</extracomment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-la-account-service">
-        <source>%1 manages its logins in the browser. If the password is not accepted, log in with single sign-on.</source>
-        <extracomment>%1 the server name</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-sso-waiting">
@@ -1818,6 +1815,29 @@
     </message>
     <message id="rustrx-bt-sso-cancel">
         <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-oauth">
+        <source>Log in at %1</source>
+        <extracomment>%1 the server name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-oauth-note">
+        <source>Opens the login page of %1 in the browser and brings you back here. Your password stays between you and %1; Rustrx only gets a token.</source>
+        <extracomment>%1 the server name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-password-instead">
+        <source>Use a password instead</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-way-oauth">
+        <source>login in the browser</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-create-account-oauth">
+        <source>Makes the account on the page of %1 in the browser and logs you in here.</source>
+        <extracomment>%1 the server name</extracomment>
         <translation type="unfinished"></translation>
     </message>
 </context>

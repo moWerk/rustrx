@@ -19,6 +19,8 @@ pub(crate) const APP_ID: &str = "net.mowerk.harbour_rustrx";
 /// origin is ORIGIN in qml/call-bridge.js.
 pub(crate) const ELEMENT_CALL_URL: &str = "https://call.element.io/room";
 pub(crate) const WIDGET_ID: &str = "rustrx-element-call";
+/// Rustrx's page, as it registers itself with an account service (OAuth).
+pub(crate) const CLIENT_URI: &str = "https://github.com/moWerk/rustrx";
 
 // Timing
 
