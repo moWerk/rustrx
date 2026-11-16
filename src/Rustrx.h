@@ -98,6 +98,10 @@ class Rustrx : public QObject
     Q_PROPERTY(QString busName READ busName CONSTANT)
     Q_PROPERTY(QString objectPath READ objectPath CONSTANT)
     Q_PROPERTY(QString interfaceName READ interfaceName CONSTANT)
+    // the push connector's bus name: a notification's action sent there wakes
+    // the window-less push process when no Rustrx runs (D-Bus activation),
+    // instead of opening the app
+    Q_PROPERTY(QString connectorName READ connectorName CONSTANT)
 
 public:
     explicit Rustrx(const QString &dataDir, QObject *parent = nullptr);
@@ -154,6 +158,7 @@ public:
     static QString busName();
     static QString objectPath();
     static QString interfaceName();
+    static QString connectorName();
     void setStandIn(bool on) { m_handover.setStandIn(on); }
     // a process the distributor started for one push (no window, no sync)
     void setPushWake(bool on) { m_handover.setPushWake(on); }
@@ -287,6 +292,7 @@ signals:
     void mediaExported(const QString &eventId, const QString &path);
     // count: the room's notifications now
     void newMessages(const QString &roomId, const QString &roomName, int count);
+    void markReadRequested(const QString &roomId);
     // a room's notifications went to none (read here or in another client)
     void roomRead(const QString &roomId);
     // an invitation not notified before (also one that came while closed)
@@ -334,6 +340,9 @@ public slots:
     Q_SCRIPTABLE void answerCall(const QString &roomId);
     // the requests' notification: open the app on the list of requests
     Q_SCRIPTABLE void openKnocks();
+    // a room notification's "Mark as read" (Service.qml sends the receipt,
+    // as the privacy setting has it, once logged in)
+    Q_SCRIPTABLE void markRoomRead(const QString &roomId);
     // Decline: the caller's clients are told (MSC4310)
     Q_SCRIPTABLE void declineCall(const QString &roomId, const QString &eventId);
     // the stand-in's notification: Quit (after QML has closed that notification)

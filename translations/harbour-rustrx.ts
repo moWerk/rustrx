@@ -1838,5 +1838,9 @@
         <extracomment>a thread has replies not read yet</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-me-notification-read">
+        <source>Mark as read</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

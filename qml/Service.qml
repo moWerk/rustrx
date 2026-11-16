@@ -48,6 +48,13 @@ Item {
         }
         // read here or in another client: the banner and its line go
         onRoomRead: service.closeNotification(roomId)
+        // the notification's "Mark as read": it goes at once, the receipt
+        // follows when logged in (a process woken for it logs in first)
+        onMarkReadRequested: {
+            service.closeNotification(roomId)
+            service.markRead(roomId)
+        }
+        onStateChanged: if (rustrx.loggedIn) service.flushMarkRead()
         onInvited: service.notifyInvite(roomId, roomName, inviter, direct)
         onInviteGone: service.closeInvite(roomId)
         onCallRing: service.ringCall(roomId, roomName, senderName, ring, eventId, expiresMs)
@@ -62,10 +69,12 @@ Item {
 
     // a notification's action: a call to Rustrx's D-Bus interface; args and
     // label (the button's text) only where the action has them
-    function action(name, method, args, label) {
+    // viaPush: to the push connector's name, so that with Rustrx closed the
+    // window-less push process takes it instead of the app opening
+    function action(name, method, args, label, viaPush) {
         var a = {
             "name": name,
-            "service": rustrx.busName,
+            "service": viaPush ? rustrx.connectorName : rustrx.busName,
             "path": rustrx.objectPath,
             "iface": rustrx.interfaceName,
             "method": method
@@ -73,6 +82,18 @@ Item {
         if (args) a["arguments"] = args
         if (label) a["displayName"] = label
         return a
+    }
+
+    property var pendingMarkRead: []
+    function markRead(roomId) {
+        if (!rustrx.loggedIn) { pendingMarkRead.push(roomId); return }
+        // the privacy switch: a private receipt moves only our own marker
+        rustrx.command({ cmd: "mark_read", room_id: roomId, "private": !cfg.sendReceipts })
+    }
+    function flushMarkRead() {
+        var ids = pendingMarkRead
+        pendingMarkRead = []
+        for (var i = 0; i < ids.length; i++) markRead(ids[i])
     }
 
     // one notification per room, updated in place: the events view keeps a
@@ -275,7 +296,12 @@ Item {
             appIcon: "harbour-rustrx"
             category: "x-nemo.messaging.im"
             urgency: Notification.Normal
-            remoteActions: [ service.action("default", "openRoomFromNotification", [ roomId ]) ]
+            remoteActions: [
+                service.action("default", "openRoomFromNotification", [ roomId ]),
+                //% "Mark as read"
+                service.action("mark_read", "markRoomRead", [ roomId ], qsTrId("rustrx-me-notification-read"),
+                               rustrx.push.enabled)
+            ]
             onClosed: delete service.roomPending[roomId]
         }
     }

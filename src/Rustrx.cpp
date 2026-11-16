@@ -57,6 +57,7 @@ QString Rustrx::localPath(const QString &path)
 QString Rustrx::busName() { return QString::fromLatin1(Keys::kBusName); }
 QString Rustrx::objectPath() { return QString::fromLatin1(Keys::kObjectPath); }
 QString Rustrx::interfaceName() { return QString::fromLatin1(Keys::kInterface); }
+QString Rustrx::connectorName() { return QString::fromLatin1(UnifiedPush::kConnectorName); }
 
 QString Rustrx::settingsFile()
 {
@@ -184,6 +185,12 @@ void Rustrx::answerCall(const QString &roomId)
     m_handover.setPendingCall(roomId);
     emit callAnswered(roomId);
     openRoomFromNotification(roomId);
+}
+
+void Rustrx::markRoomRead(const QString &roomId)
+{
+    qInfo() << "notification: mark as read";
+    emit markReadRequested(roomId);
 }
 
 void Rustrx::openKnocks()

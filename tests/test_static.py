@@ -479,3 +479,12 @@ def test_command_fields_say_what_they_are():
     bad = [f"{cmd}.{f}" for cmd, fields in protocol_fields().items() for f in fields
            if f in vague and (cmd, f) not in allowed]
     assert not bad
+
+
+def test_notification_actions_reach_a_method():
+    """A notification's button calls a D-Bus method on Rustrx by name; a
+    name that is no Q_SCRIPTABLE method does nothing, silently.
+    Planted-bug: rename markRoomRead in Rustrx.h."""
+    scriptable = set(re.findall(r"Q_SCRIPTABLE\s+\w+\s+(\w+)\s*\(", read("src/Rustrx.h")))
+    called = set(re.findall(r'service\.action\(\s*"[^"]+"\s*,\s*"(\w+)"', code(ROOT / "qml/Service.qml")))
+    assert called and not called - scriptable, called - scriptable

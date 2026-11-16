@@ -118,9 +118,9 @@ ApplicationWindow {
     }
     property bool reopenTried
 
-    // the receipt honours the privacy switch: a private one moves only our own marker
+    // the receipt as the privacy switch has it (Service.qml, one place)
     function markRead(roomId) {
-        rustrx.command({ cmd: "mark_read", room_id: roomId, "private": !sendReceipts })
+        service.markRead(roomId)
     }
 
     // flow ids of verifications that already have a page
