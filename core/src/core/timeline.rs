@@ -31,6 +31,7 @@ impl Core {
                 return;
             }
         };
+        let mut woken = std::collections::HashSet::new();
         for (room_id, list) in echoes {
             for echo in list {
                 let LocalEchoContent::Event { serialized_event, send_handle, send_error: Some(error) } = echo.content else {
@@ -41,6 +42,14 @@ impl Core {
                 }
                 let dropped = send_handle.abort().await;
                 tracing::warn!(%room_id, txn_id = %echo.transaction_id, ?error, ?dropped, "send queue: refused reaction dropped");
+                woken.insert(room_id.clone());
+            }
+        }
+        // the abort wakes the room's sending task; once in a test run the
+        // room still slept until the next start, so it is woken once more
+        for room_id in woken {
+            if let Some(room) = client.get_room(&room_id) {
+                room.send_queue().set_enabled(true);
             }
         }
     }
