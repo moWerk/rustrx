@@ -48,7 +48,7 @@ ListItem {
     Component.onCompleted: if (glowing && !counted) { counted = true; app.favGlowRows += 1 }
     Component.onDestruction: if (counted) app.favGlowRows -= 1
     // the band: the page's whole width, brightest in the row's middle
-    // (5 % at rest, 10 % at the height of a breath), fading to nothing
+    // (3 % at rest, 12 % at the height of a breath), fading to nothing
     // above and below
     Rectangle {
         anchors.fill: parent
@@ -56,7 +56,7 @@ ListItem {
         z: -1
         gradient: Gradient {
             GradientStop { position: 0.0; color: "transparent" }
-            GradientStop { position: 0.5; color: Theme.rgba(Theme.primaryColor, 0.05 + 0.05 * app.favGlow) }
+            GradientStop { position: 0.5; color: Theme.rgba(Theme.primaryColor, 0.03 + 0.09 * app.favGlow) }
             GradientStop { position: 1.0; color: "transparent" }
         }
     }
@@ -322,9 +322,20 @@ ListItem {
 
     // favourite: a yellow star under the age
     Image {
+        id: favStar
         anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; top: age.bottom; topMargin: Theme.paddingSmall }
         visible: model.is_fav && !invited
         source: "image://theme/icon-s-favorite?#ffd54a"
+        sourceSize.width: Theme.iconSizeExtraSmall
+        sourceSize.height: Theme.iconSizeExtraSmall
+    }
+    // its sparkle at the top of each breath of the glow: a lighter star over
+    // it, shown only in the breath's last quarter
+    Image {
+        anchors.fill: favStar
+        visible: item.favGlow && favStar.visible
+        opacity: Math.max(0, (app.favGlow - 0.75) * 4)
+        source: "image://theme/icon-s-favorite?#fff4b8"
         sourceSize.width: Theme.iconSizeExtraSmall
         sourceSize.height: Theme.iconSizeExtraSmall
     }
