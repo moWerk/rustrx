@@ -99,8 +99,16 @@ Page {
         }
         return null
     }
+    // the newest message is in view at the bottom: by the row there, not by
+    // the view's edges (with the composer as the list's header and the
+    // place put back by hand, atYBeginning did not reliably turn true)
+    function atNewest() {
+        if (list.count === 0) return true
+        var r = rowAt(list.contentY + list.height - 1)
+        return !!r && r.index === 0
+    }
     function takeAnchor() {
-        anchorNewest = list.atYBeginning
+        anchorNewest = atNewest()
         anchorId = ""
         var bottom = list.contentY + list.height
         var r = rowAt(bottom - 1)
@@ -183,7 +191,7 @@ Page {
                 rustrx.command({ cmd: "call_start", room_id: roomId })
             // read only at the newest end: marking moves the read marker's
             // row, which shifted what someone scrolled up was reading
-            if (list.atYBeginning) markRead()
+            if (page.atNewest()) markRead()
             // the room's page, one swipe to the right; attached once the
             // transition is over (inside it the stack reports a binding loop)
             if (!infoAttached) attachInfo.start()
@@ -397,7 +405,7 @@ Page {
                     }
                 }
             }
-            if (list.atYBeginning) markRead()
+            if (page.atNewest()) markRead()
         }
         onRowsInserted: if (page.cpOn) page.cp("ins", "rows=" + first + ".." + last)
         onRowsRemoved: if (page.cpOn) page.cp("rem", "rows=" + first + ".." + last)
@@ -433,7 +441,11 @@ Page {
         onOriginYChanged: page.cp("oy")
         onContentHeightChanged: if (page.cpOn && (isNaN(page.cpLastCh) || Math.abs(contentHeight - page.cpLastCh) > 20)) page.cp("ch")
         onHeightChanged: page.cp("h")
-        onMovementEnded: page.cp("moved")
+        onMovementEnded: {
+            page.cp("moved")
+            // scrolled to the newest message: the room is read
+            if (page.status === PageStatus.Active && page.atNewest()) page.markRead()
+        }
 
         // the oldest end is at the top in this layout
         onAtYEndChanged: {
