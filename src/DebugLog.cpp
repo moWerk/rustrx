@@ -109,7 +109,8 @@ QString DebugLog::collect(const QString &dir, const QString &header)
         return QString();
     file.write(header.toUtf8() + "\n");
     QMutexLocker locker(&s_lock);
-    for (const QString &name : { QString::fromLatin1(Keys::kLogApp), QString::fromLatin1(Keys::kLogBackground) }) {
+    for (const QString &name : { QString::fromLatin1(Keys::kLogApp), QString::fromLatin1(Keys::kLogBackground),
+                                 QString::fromLatin1(Keys::kLogPush) }) {
         for (const QString &suffix : { QStringLiteral(".log.1"), QStringLiteral(".log") }) {
             QFile part(logDir() + QLatin1Char('/') + name + suffix);
             if (!part.open(QIODevice::ReadOnly))
