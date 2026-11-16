@@ -134,49 +134,56 @@ Page {
             //% "Notifications"
             SectionHeader { text: qsTrId("rustrx-se-notifications") }
 
-            // push through a UnifiedPush distributor (Foghorn): notifications
-            // with Rustrx closed and nothing kept running; the background
-            // mode below is the fallback without one
-            TextSwitch {
-                enabled: rustrx.push.available
-                //% "Push notifications"
-                text: qsTrId("rustrx-la-push")
-                description: !rustrx.push.available
-                             //% "Install a UnifiedPush distributor such as Foghorn (OpenRepos) to get notifications with Rustrx closed, without keeping it running."
-                             ? qsTrId("rustrx-la-push-none")
-                             : rustrx.push.active
-                             //: %1 the push gateway's host
-                             //% "On, through %1. The gateway and the push server see when a message comes and for which room, never what it says."
-                             ? qsTrId("rustrx-la-push-active").arg(rustrx.push.gatewayHost)
-                             : rustrx.push.enabled
-                             //: %1 what push is doing (registering, waiting for an address, an error)
-                             //% "Setting up: %1"
-                             ? qsTrId("rustrx-la-push-setting-up").arg(rustrx.push.status || "…")
-                             //% "Off: notifications only while Rustrx runs, or with background mode."
-                             : qsTrId("rustrx-la-push-off")
-                checked: rustrx.push.available && rustrx.push.enabled
-                automaticCheck: false
-                onClicked: rustrx.push.enabled = !rustrx.push.enabled
-            }
-
-            TextSwitch {
-                //% "Keep running in the background"
-                text: qsTrId("rustrx-la-background")
-                //% "Notifications also when Rustrx is closed. It starts with the phone and stays connected without a window, shown by a line in the events view: tap it to open Rustrx, or quit it there. While the phone sleeps it checks for messages every five minutes."
-                description: qsTrId("rustrx-la-background-hint")
-                checked: rustrx.background
-                automaticCheck: false
-                onClicked: rustrx.background = !rustrx.background
-            }
-            Label {
-                visible: rustrx.push.active && rustrx.background
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryHighlightColor
-                //% "While push works, background mode is not needed and does not start; it takes over if push stops."
-                text: qsTrId("rustrx-la-background-push")
+            // When Rustrx is closed, one of three: push through a UnifiedPush
+            // distributor (Foghorn; nothing kept running), the background
+            // stand-in (kept running and syncing), or nothing. Until chosen:
+            // push where a distributor is installed, else the stand-in
+            // (app.applyClosedMode). Push is only offered with a distributor.
+            ComboBox {
+                id: closedBox
+                width: parent.width
+                readonly property var modes: rustrx.push.available ? ["push", "background", "off"] : ["background", "off"]
+                readonly property string mode: rustrx.push.available && rustrx.push.enabled ? "push"
+                                               : rustrx.background ? "background" : "off"
+                //% "When Rustrx is closed"
+                label: qsTrId("rustrx-la-closed-mode")
+                currentIndex: Math.max(0, modes.indexOf(mode))
+                menu: ContextMenu {
+                    Repeater {
+                        model: closedBox.modes
+                        MenuItem {
+                            text: modelData === "push"
+                                  //% "Push notifications"
+                                  ? qsTrId("rustrx-la-push")
+                                  : modelData === "background"
+                                  //% "Keep running in the background"
+                                  ? qsTrId("rustrx-la-background")
+                                  //% "No notifications"
+                                  : qsTrId("rustrx-la-closed-off")
+                        }
+                    }
+                }
+                onCurrentIndexChanged: {
+                    var m = modes[currentIndex]
+                    if (m === mode) return
+                    app.closedMode = m
+                    app.applyClosedMode()
+                }
+                description: mode === "push"
+                             ? (rustrx.push.active
+                                //: %1 the push gateway's host
+                                //% "Through Foghorn and %1: nothing of Rustrx keeps running. The gateway and the push server see when a message comes and for which room, never what it says."
+                                ? qsTrId("rustrx-la-push-active").arg(rustrx.push.gatewayHost)
+                                //: %1 what push is doing (registering, waiting for an address, an error)
+                                //% "Setting up: %1"
+                                : qsTrId("rustrx-la-push-setting-up").arg(rustrx.push.status || "…"))
+                             : mode === "background"
+                             //% "Rustrx starts with the phone and stays connected without a window, shown by a line in the events view: tap it to open Rustrx, or quit it there. While the phone sleeps it checks for messages every five minutes."
+                             ? qsTrId("rustrx-la-background-hint") + (rustrx.push.available ? ""
+                             //% " Push needs no running Rustrx: install a UnifiedPush distributor such as Foghorn (OpenRepos)."
+                                                                                            : qsTrId("rustrx-la-push-none-short"))
+                             //% "Notifications only while Rustrx is open."
+                             : qsTrId("rustrx-la-closed-off-hint")
             }
 
             TextSwitch {

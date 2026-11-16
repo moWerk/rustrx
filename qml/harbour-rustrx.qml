@@ -54,6 +54,18 @@ ApplicationWindow {
     // the favourites as a tab of their own (default), or not
     property alias separateFavs: cfgSeparateFavs.value
     ConfigurationValue { id: cfgSeparateFavs; key: "/apps/harbour-rustrx/separateFavs"; defaultValue: true }
+    // when Rustrx is closed: "push", "background" or "off"; "" until chosen
+    property alias closedMode: cfgClosedMode.value
+    ConfigurationValue { id: cfgClosedMode; key: "/apps/harbour-rustrx/closedMode"; defaultValue: "" }
+    // the choice made real; unchosen, push where a distributor is installed,
+    // else the background stand-in (asked again at every start, so installing
+    // Foghorn later moves to push)
+    function applyClosedMode() {
+        var m = closedMode.length ? closedMode : (rustrx.push.available ? "push" : "background")
+        if (m === "push" && !rustrx.push.available) m = "background"
+        rustrx.push.enabled = m === "push"
+        rustrx.background = m === "background"
+    }
     property alias separateSpaces: cfgSeparateSpaces.value
     ConfigurationValue { id: cfgSeparateSpaces; key: "/apps/harbour-rustrx/separateSpaces"; defaultValue: true }
     // how many lines of the last message the room list shows (1 to 3)
@@ -427,7 +439,7 @@ ApplicationWindow {
     ConfigurationValue { id: debugMinimize; key: "/apps/harbour-rustrx/debugMinimize"; defaultValue: false }
     Connections { target: debugMinimize; onValueChanged: if (debugMinimize.value === true) app.deactivate() }
 
-    Component.onCompleted: route()
+    Component.onCompleted: { applyClosedMode(); route() }
 
     // custom emoji in messages: a little taller than the text, like an emoji
     Binding { target: rustrx.timeline; property: "emoteSize"; value: Math.round(Theme.fontSizeMedium * 1.25) }
