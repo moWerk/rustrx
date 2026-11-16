@@ -219,7 +219,7 @@ Page {
             }
 
             TextSwitch {
-                //% "Separate people from rooms"
+                //% "Separate People tab"
                 text: qsTrId("rustrx-la-separate-lists")
                 //% "Rooms and people as two tabs. When off, they share one list; the filter menu sorts and searches it."
                 description: qsTrId("rustrx-la-separate-lists-hint")
@@ -228,7 +228,7 @@ Page {
             }
 
             TextSwitch {
-                //% "Separate favourites"
+                //% "Favourites tab"
                 text: qsTrId("rustrx-la-separate-favs")
                 //% "The favourites as a tab of their own. When off, “Favourites on top” in the filter menu keeps them at hand."
                 description: qsTrId("rustrx-la-separate-favs-hint")
@@ -237,7 +237,7 @@ Page {
             }
 
             TextSwitch {
-                //% "Spaces"
+                //% "Spaces tab"
                 text: qsTrId("rustrx-la-separate-spaces")
                 //% "The spaces you are in (groups of rooms) as a tab: their rooms, joining them, asking to join, and requests to join them."
                 description: qsTrId("rustrx-la-separate-spaces-hint")
