@@ -127,6 +127,8 @@ QtObject {
     readonly property int roomOpenGraceMs: 6000
     // a message menu closes before the composer gets the focus back
     readonly property int menuCloseMs: 350
+    // read receipts from the open room, one per this long at most
+    readonly property int markReadMs: 500
     // the emoji panel slides in and out
     readonly property int panelSlideMs: 250
     // room info re-anchors its list after the header laid out

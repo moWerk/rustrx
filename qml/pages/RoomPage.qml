@@ -68,6 +68,11 @@ Page {
     onStatusChanged: {
         trace.logStatus()
         anchor.pageStatus(status)
+        // a receipt still waiting goes out as the page leaves
+        if (status === PageStatus.Deactivating && markReadTimer.running) {
+            markReadTimer.stop()
+            markReadTimer.triggered()
+        }
         if (status === PageStatus.Active) {
             app.lastRoom = roomId
             // opened by Answer on an incoming call: join it
@@ -95,9 +100,18 @@ Page {
     // a few seconds of patience before an empty room says so
     Timer { id: openGrace; interval: Tunables.roomOpenGraceMs; running: true }
 
+    // at most one receipt per moment: at the newest end the list's
+    // signals can fire every frame (seen: one a frame for five seconds)
     function markRead() {
-        if (rustrx.timeline.count > 0 && Qt.application.state === Qt.ApplicationActive)
-            app.markRead(roomId)
+        if (!markReadTimer.running) markReadTimer.start()
+    }
+    Timer {
+        id: markReadTimer
+        interval: Tunables.markReadMs
+        onTriggered: {
+            if (rustrx.timeline.count > 0 && Qt.application.state === Qt.ApplicationActive)
+                app.markRead(roomId)
+        }
     }
 
     // a message is drafted: the push-up menu attaches to it
