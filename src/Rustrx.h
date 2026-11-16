@@ -17,6 +17,8 @@
 #ifndef RUSTRX_H
 #define RUSTRX_H
 
+#include "Handover.h"
+
 #include <QElapsedTimer>
 #include <QHash>
 #include <QMetaMethod>
@@ -151,18 +153,18 @@ public:
     void setRoomFilter(const QString &text);
     bool background() const;
     void setBackground(bool on);
-    bool standIn() const { return m_standIn; }
-    void setStandIn(bool on) { m_standIn = on; }
+    bool standIn() const { return m_handover.standIn(); }
+    void setStandIn(bool on) { m_handover.setStandIn(on); }
     // a process the distributor started for one push (no window, no sync)
-    void setPushWake(bool on) { m_pushWake = on; }
+    void setPushWake(bool on) { m_handover.setPushWake(on); }
     UnifiedPush *push() const { return m_push; }
     // the file the stand-in's unit looks for (in the sandbox's own config folder)
-    static QString backgroundFlagPath();
+    static QString backgroundFlagPath() { return Handover::backgroundFlagPath(); }
     // a user unit: the stand-in (harbour-rustrx.service) or the app for it to
     // hand over to (harbour-rustrx-open.service)
-    static bool startUnit(const QString &unit);
+    static bool startUnit(const QString &unit) { return Handover::startUnit(unit); }
     // what the stand-in passed on: the room, link or share to show
-    void takeHandover();
+    void takeHandover() { m_handover.takeHandover(); }
     // called by the share adaptor
     void receiveShare(const QStringList &files, const QString &text);
     // a file:// URL as a local path; a path stays as it is
@@ -205,12 +207,12 @@ public:
     Q_INVOKABLE QString draft(const QString &roomId) const;
     Q_INVOKABLE void setDraft(const QString &roomId, const QString &text);
     Q_INVOKABLE void closeWindow() { emit closeRequested(); }
-    Q_INVOKABLE QString takePendingRoom();
-    Q_INVOKABLE QString takePendingCall();
-    Q_INVOKABLE bool takePendingKnocks();
+    Q_INVOKABLE QString takePendingRoom() { return m_handover.takePendingRoom(); }
+    Q_INVOKABLE QString takePendingCall() { return m_handover.takePendingCall(); }
+    Q_INVOKABLE bool takePendingKnocks() { return m_handover.takePendingKnocks(); }
     // a link or a share that arrived before QML was loaded
-    Q_INVOKABLE QString takePendingUri();
-    Q_INVOKABLE QVariantMap takePendingShare();
+    Q_INVOKABLE QString takePendingUri() { return m_handover.takePendingUri(); }
+    Q_INVOKABLE QVariantMap takePendingShare() { return m_handover.takePendingShare(); }
 
 signals:
     // a dev command for the UI (see dev())
@@ -347,8 +349,6 @@ private:
     QMetaMethod m_handleEvent;
     // an avatar picture upright, at most 512 px, in the cache; its path and size
     QString prepareAvatar(const QString &path, const QString &cmd, QSize *size);
-    // the stand-in: pass what was asked for to a new app process and leave
-    bool handOver();
 
     bool m_ready = false;
     bool m_loggedIn = false;
@@ -361,17 +361,12 @@ private:
     QString m_verificationState = QStringLiteral("unknown");
     QString m_recoveryState = QStringLiteral("unknown");
     QString m_openRoomId;
-    QString m_pendingRoom;
-    QString m_pendingCall;
     // before m_lists, which uses it
     QSettings m_settings;
-    bool m_pendingKnocks = false;
-    bool m_standIn = false;
-    bool m_pushWake = false;
+    // the stand-in's and push-woken process's requests, the handover file
+    Handover m_handover;
     QList<QVariantMap> m_pendingPushes;
     UnifiedPush *m_push;
-    QString m_pendingUri;
-    QVariantMap m_pendingShare;
     // the tabs' room lists, their settings, unread totals and requests to join
     RoomLists *m_lists;
     QHash<QString, QString> m_emotePaths;

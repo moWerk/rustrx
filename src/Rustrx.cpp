@@ -28,12 +28,10 @@
 
 #include <QDBusConnection>
 #include <QDBusError>
-#include <QDBusMessage>
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
-#include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
 #include <QImageReader>
@@ -86,7 +84,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     // a push: the woken process fetches the message; a running app or
     // stand-in has it from its sync anyway
     connect(m_push, &UnifiedPush::pushed, this, [this](const QString &roomId, const QString &eventId) {
-        if (!m_pushWake)
+        if (!m_handover.pushWake())
             return;
         const QVariantMap cmd{ { "cmd", "push_handle" }, { "room_id", roomId }, { "event_id", eventId } };
         // the session may still be on its way: after it
@@ -153,8 +151,8 @@ Rustrx::~Rustrx()
 
 void Rustrx::receiveShare(const QStringList &files, const QString &text)
 {
-    m_pendingShare = QVariantMap{{"files", files}, {"text", text}};
-    if (handOver())
+    m_handover.setPendingShare(files, text);
+    if (m_handover.handOver())
         return;
     emit activateRequested();
     emit shareRequested(files, text);
@@ -162,8 +160,8 @@ void Rustrx::receiveShare(const QStringList &files, const QString &text)
 
 void Rustrx::openRoomFromNotification(const QString &roomId)
 {
-    m_pendingRoom = roomId;
-    if (handOver())
+    m_handover.setPendingRoom(roomId);
+    if (m_handover.handOver())
         return;
     emit activateRequested();
     emit openRoomRequested(roomId);
@@ -171,21 +169,21 @@ void Rustrx::openRoomFromNotification(const QString &roomId)
 
 void Rustrx::open()
 {
-    if (!handOver())
+    if (!m_handover.handOver())
         emit activateRequested();
 }
 
 void Rustrx::answerCall(const QString &roomId)
 {
-    m_pendingCall = roomId;
+    m_handover.setPendingCall(roomId);
     emit callAnswered(roomId);
     openRoomFromNotification(roomId);
 }
 
 void Rustrx::openKnocks()
 {
-    m_pendingKnocks = true;
-    if (handOver())
+    m_handover.setPendingKnocks(true);
+    if (m_handover.handOver())
         return;
     emit activateRequested();
     emit knocksRequested();
@@ -204,65 +202,12 @@ void Rustrx::openUrl(const QStringList &urls)
         open();
         return;
     }
-    m_pendingUri = urls.first();
-    if (handOver())
+    const QString uri = urls.first();
+    m_handover.setPendingUri(uri);
+    if (m_handover.handOver())
         return;
     emit activateRequested();
-    emit matrixUriRequested(m_pendingUri);
-}
-
-QString Rustrx::takePendingRoom()
-{
-    const QString r = m_pendingRoom;
-    m_pendingRoom.clear();
-    return r;
-}
-
-QString Rustrx::takePendingCall()
-{
-    const QString r = m_pendingCall;
-    m_pendingCall.clear();
-    return r;
-}
-
-bool Rustrx::takePendingKnocks()
-{
-    const bool r = m_pendingKnocks;
-    m_pendingKnocks = false;
-    return r;
-}
-
-QString Rustrx::takePendingUri()
-{
-    const QString r = m_pendingUri;
-    m_pendingUri.clear();
-    return r;
-}
-
-QVariantMap Rustrx::takePendingShare()
-{
-    const QVariantMap r = m_pendingShare;
-    m_pendingShare.clear();
-    return r;
-}
-
-static QString handoverPath()
-{
-    return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QLatin1Char('/') + QLatin1String(Keys::kHandoverFile);
-}
-
-bool Rustrx::startUnit(const QString &unit)
-{
-    QDBusMessage call = QDBusMessage::createMethodCall(QString::fromLatin1(Keys::kSystemdService),
-            QString::fromLatin1(Keys::kSystemdPath), QString::fromLatin1(Keys::kSystemdManager),
-            QStringLiteral("StartUnit"));
-    call << unit << QStringLiteral("replace");
-    const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::Block, Keys::kStartUnitTimeoutMs);
-    if (reply.type() == QDBusMessage::ErrorMessage) {
-        qWarning() << "starting" << unit << "failed:" << reply.errorMessage();
-        return false;
-    }
-    return true;
+    emit matrixUriRequested(uri);
 }
 
 void Rustrx::quit()
@@ -274,7 +219,7 @@ void Rustrx::quit()
 
 bool Rustrx::activate()
 {
-    if (!m_standIn && !m_pushWake) {
+    if (!m_handover.standIn() && !m_handover.pushWake()) {
         emit activateRequested();
         return false;
     }
@@ -283,65 +228,16 @@ bool Rustrx::activate()
     return true;
 }
 
-// The new process opens the store only when this one is gone (it waits for
-// the bus name), so what it should show goes through a file.
-bool Rustrx::handOver()
-{
-    if (!m_standIn && !m_pushWake)
-        return false;
-    QJsonObject o;
-    o.insert("room", m_pendingRoom);
-    o.insert("call", m_pendingCall);
-    o.insert("knocks", m_pendingKnocks);
-    o.insert("uri", m_pendingUri);
-    o.insert("share", QJsonObject::fromVariantMap(m_pendingShare));
-    QFile f(handoverPath());
-    if (!f.open(QIODevice::WriteOnly) || f.write(QJsonDocument(o).toJson(QJsonDocument::Compact)) < 0)
-        qWarning() << "stand-in: cannot write" << f.fileName() << f.errorString();
-    f.close();
-    qInfo() << "stand-in: handing over to the app";
-    startUnit(QString::fromLatin1(Keys::kOpenUnit));
-    QTimer::singleShot(0, qApp, &QCoreApplication::quit);
-    return true;
-}
-
-void Rustrx::takeHandover()
-{
-    QFile f(handoverPath());
-    if (!f.open(QIODevice::ReadOnly))
-        return;
-    const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
-    f.close();
-    f.remove();
-    m_pendingRoom = o.value("room").toString();
-    m_pendingCall = o.value("call").toString();
-    m_pendingKnocks = o.value("knocks").toBool();
-    m_pendingUri = o.value("uri").toString();
-    m_pendingShare = o.value("share").toObject().toVariantMap();
-}
-
-QString Rustrx::backgroundFlagPath()
-{
-    return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QLatin1Char('/') + QLatin1String(Keys::kBackgroundFlag);
-}
-
 bool Rustrx::background() const
 {
-    return QFile::exists(backgroundFlagPath());
+    return m_handover.background();
 }
 
 void Rustrx::setBackground(bool on)
 {
     if (on == background())
         return;
-    if (on) {
-        QDir().mkpath(QFileInfo(backgroundFlagPath()).path());
-        QFile f(backgroundFlagPath());
-        if (!f.open(QIODevice::WriteOnly))
-            qWarning() << "background: cannot write" << f.fileName() << f.errorString();
-    } else {
-        QFile::remove(backgroundFlagPath());
-    }
+    m_handover.setBackground(on);
     emit settingsChanged();
 }
 
@@ -439,9 +335,9 @@ QString Rustrx::dev(const QString &json)
     const QVariantMap req = QJsonDocument::fromJson(json.toUtf8()).object().toVariantMap();
     qInfo().noquote() << "dev" << req.value("cmd", req.value("ui", req.keys().value(0))).toString();
     QJsonObject out;
-    out["stand_in"] = m_standIn;
+    out["stand_in"] = m_handover.standIn();
     // the stand-in has no window: no pages, no call page
-    if (m_standIn && (req.contains("ui") || req.value("cmd").toString().startsWith(QLatin1String("call_")))) {
+    if (m_handover.standIn() && (req.contains("ui") || req.value("cmd").toString().startsWith(QLatin1String("call_")))) {
         out["error"] = QStringLiteral("the stand-in is running, not the app");
         return QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Compact));
     }
