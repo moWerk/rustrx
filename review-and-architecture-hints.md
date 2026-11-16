@@ -4,7 +4,7 @@ For anyone reviewing Rustrx: where the code comes from, how it is laid out, what
 
 ## Where the code comes from
 
-Rustrx is not a port. It was written from scratch, starting with `1a4b274` (2026-11-09), on one branch, `main`. All of it is new work, so the reliable view is the tree itself, or `git log -p` for how it grew. Each commit message says what changed, why and what was not checked, and ends with an LLMGD line grading it. `docs/AUDIT-2026-11-16.md` is the 0.4.6 audit of the whole code: every finding, its commit, and what is still open.
+Rustrx is not a port. It was written from scratch, starting with `1a4b274` (2026-11-09), on one branch, `main`. All of it is new work, so the reliable view is the tree itself, or `git log -p` for how it grew. Each commit message says what changed, why and what was not checked, and ends with an LLMGD line grading it. `docs/audits/` holds the audits (a dated narrative and a findings ledger each): every finding, its commit, and what is still open.
 
 The app was written by an LLM (Claude), directed and tested by the author, who has not read the code. Everything here is a prototype until a reviewer owns it. That is the point of this file.
 

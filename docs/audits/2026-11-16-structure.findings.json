@@ -1,0 +1,269 @@
+{
+ "audit": "2026-11-16 structure (0.4.6)",
+ "date": "2026-11-16",
+ "baseline": "0c98ae4 (0.4.5)",
+ "method": "LLM agents read the whole tree in six areas (the C++ app object, list models and scroll path, chat pages, Rust core, magic numbers, remaining pages and the notification service); measured on the Jolla Phone 2026 and the Pro1-X; clear findings fixed in small commits that each build; open values decided after the audit (see the .md). Ledger written after the fact (2026-11-17) from the narrative; the narrative is the source.",
+ "findings": [
+  {
+   "id": "S1",
+   "sev": "high",
+   "area": "logout",
+   "what": "Logging out left the old account's room list in memory (a filter change showed it again), its open thread, pending pushes, emote cache and notified invitations",
+   "status": "FIXED 458f9ad"
+  },
+  {
+   "id": "S2",
+   "sev": "high",
+   "area": "logout / crypto",
+   "what": "Verification watchers not tied to the login outlived a logout, keeping the old client's crypto objects alive",
+   "status": "FIXED bc532d9"
+  },
+  {
+   "id": "S3",
+   "sev": "medium",
+   "area": "core lock",
+   "what": "Opening a room held the core's state lock across a network await",
+   "status": "FIXED bc532d9"
+  },
+  {
+   "id": "S4",
+   "sev": "medium",
+   "area": "threads",
+   "what": "In a thread, Reply after an edit sent the edit's text; clearing a reply wiped the typed text",
+   "status": "FIXED a821674"
+  },
+  {
+   "id": "S5",
+   "sev": "low",
+   "area": "composer",
+   "what": "Text put back by the app (draft, cancelled edit) sent typing notices; starting an edit lost the draft",
+   "status": "FIXED a821674"
+  },
+  {
+   "id": "S6",
+   "sev": "medium",
+   "area": "settings",
+   "what": "Settings switches stopped following their setting after the first tap (broken binding)",
+   "status": "FIXED 6a97e2e"
+  },
+  {
+   "id": "S7",
+   "sev": "trivial",
+   "area": "source page",
+   "what": "The 'Latest edit' heading showed its raw id",
+   "status": "FIXED 3338439"
+  },
+  {
+   "id": "S8",
+   "sev": "trivial",
+   "area": "reply quote",
+   "what": "An empty line under the sender's name in some reply quotes",
+   "status": "FIXED 6336785"
+  },
+  {
+   "id": "S9",
+   "sev": "low",
+   "area": "room list",
+   "what": "A binding loop per muted room at every list build",
+   "status": "FIXED 1377cd2"
+  },
+  {
+   "id": "S10",
+   "sev": "medium",
+   "area": "performance",
+   "what": "Message text: HTML rewrite and Twemoji pass ran three to five times per row; any change rebound the whole row; the room list re-emitted every row between first and last change",
+   "status": "FIXED c3e0d48, c2a8c06, 84311d4, 2754eef, ba68435"
+  },
+  {
+   "id": "S11",
+   "sev": "low",
+   "area": "performance",
+   "what": "Each room update rebuilt notification settings per room and asked twice whether the room is direct",
+   "status": "FIXED bc532d9"
+  },
+  {
+   "id": "S12",
+   "sev": "low",
+   "area": "performance",
+   "what": "The room sort re-read every room's fields per comparison; about thirteen QSettings objects made on the fly",
+   "status": "FIXED f3e0dc9, 54cd0cb"
+  },
+  {
+   "id": "S13",
+   "sev": "low",
+   "area": "performance",
+   "what": "Every message row built its reply quote, media, poll, caption, upload bar, reactions and thread lines, shown or not",
+   "status": "FIXED c2a8c06"
+  },
+  {
+   "id": "S14",
+   "sev": "low",
+   "area": "performance",
+   "what": "The chat's place keeping searched the whole timeline every frame while holding the place",
+   "status": "FIXED a821674"
+  },
+  {
+   "id": "S15",
+   "sev": "medium",
+   "area": "structure",
+   "what": "Two composers (room, thread) drifted apart; place keeping and its trace woven through a 924 line page",
+   "status": "FIXED a821674, c322e57"
+  },
+  {
+   "id": "S16",
+   "sev": "low",
+   "area": "structure",
+   "what": "commands.rs mixed dispatch with a dozen commands' logic; seven helpers copied across six core files",
+   "status": "FIXED bc532d9"
+  },
+  {
+   "id": "S17",
+   "sev": "low",
+   "area": "structure",
+   "what": "About a hundred literals, settings keys and D-Bus names repeated; round avatar shader x4, banner rows x4, five texts defined twice",
+   "status": "FIXED 86da668, dfc683d, 2055190, 9c22180, 9d3c995"
+  },
+  {
+   "id": "S18",
+   "sev": "low",
+   "area": "structure",
+   "what": "Rustrx.cpp 1229 lines: room lists, media and process handover in one file",
+   "status": "FIXED 6bd1867, 79632dd, fcbc2de"
+  },
+  {
+   "id": "S19",
+   "sev": "low",
+   "area": "cover",
+   "what": "The cover's unread action skipped direct chats",
+   "status": "FIXED 53f209c"
+  },
+  {
+   "id": "S20",
+   "sev": "low",
+   "area": "errors",
+   "what": "Errors shown in place were also shown as a global notice",
+   "status": "FIXED c27bd41"
+  },
+  {
+   "id": "S21",
+   "sev": "medium",
+   "area": "calls / logout",
+   "what": "A logout during a call left the call membership live",
+   "status": "FIXED 6be8810"
+  },
+  {
+   "id": "S22",
+   "sev": "trivial",
+   "area": "debug log",
+   "what": "The shared debug log bundle missed the push log",
+   "status": "FIXED 8cceb72"
+  },
+  {
+   "id": "S23",
+   "sev": "low",
+   "area": "protocol",
+   "what": "refresh_rooms, unignore_user, recovery_reset never sent",
+   "status": "DECIDED kept; recovery_reset got its button (2c4c3ba); unignore_user's page queued for 0.4.7"
+  },
+  {
+   "id": "S24",
+   "sev": "medium",
+   "area": "send queue",
+   "what": "Whether a network error while sending leaves a room's send queue off until restart was unverified",
+   "status": "OPEN, traced by the 2026-11-17 audit as C1"
+  },
+  {
+   "id": "S25",
+   "sev": "low",
+   "area": "translations",
+   "what": "translations/harbour-rustrx.ts stale",
+   "status": "FIXED 7af5976 (0.4.7)"
+  }
+ ],
+ "found_in_testing": [
+  {
+   "id": "T1",
+   "sev": "high",
+   "area": "settings",
+   "what": "The app's own settings (list order, filters, debug switches) lost at every restart: the sandbox discarded ~/.config/net.mowerk/harbour-rustrx.conf (0.4.5 too)",
+   "status": "FIXED 9c9a82d"
+  },
+  {
+   "id": "T2",
+   "sev": "high",
+   "area": "send queue",
+   "what": "A reaction the server refused blocked its room's send queue, even across restarts",
+   "status": "FIXED 6908884, 73de7d3"
+  },
+  {
+   "id": "T3",
+   "sev": "medium",
+   "area": "threads",
+   "what": "A thread's first message acted on through the thread timeline sent reactions twice",
+   "status": "FIXED 5036ba1"
+  },
+  {
+   "id": "T4",
+   "sev": "low",
+   "area": "threads",
+   "what": "In a thread, + opened no picker and React with text did nothing",
+   "status": "FIXED a355d9f, 4976062"
+  },
+  {
+   "id": "T5",
+   "sev": "low",
+   "area": "media",
+   "what": "A tap on a picture or sound still sending showed an error",
+   "status": "FIXED e0b29e7"
+  },
+  {
+   "id": "T6",
+   "sev": "low",
+   "area": "reactions",
+   "what": "A quick reaction from the menu sometimes did nothing (counting rebuilt the buttons mid-tap)",
+   "status": "FIXED 17eed5a"
+  },
+  {
+   "id": "T7",
+   "sev": "low",
+   "area": "receipts",
+   "what": "A room could send a read receipt every frame",
+   "status": "FIXED aef1af5"
+  },
+  {
+   "id": "T8",
+   "sev": "medium",
+   "area": "composer",
+   "what": "The message field slid under the keyboard as a long message grew (0.4.5, reported by dodoradio)",
+   "status": "FIXED 7defdb1"
+  },
+  {
+   "id": "T9",
+   "sev": "medium",
+   "area": "share",
+   "what": "A shared photo without a known file ending went out as a plain file",
+   "status": "FIXED 7b4899c"
+  },
+  {
+   "id": "T10",
+   "sev": "medium",
+   "area": "recovery",
+   "what": "A lost recovery key could not be replaced",
+   "status": "FIXED 2c4c3ba"
+  },
+  {
+   "id": "T11",
+   "sev": "trivial",
+   "area": "packaging",
+   "what": "Twemoji images installed with the executable bit",
+   "status": "FIXED cdcbe97"
+  },
+  {
+   "id": "T12",
+   "sev": "low",
+   "area": "threads",
+   "what": "The thread emoji picker jumped when swapping with the keyboard",
+   "status": "FIXED 05990c0"
+  }
+ ]
+}

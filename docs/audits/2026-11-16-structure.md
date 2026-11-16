@@ -1,0 +1,166 @@
+# Codebase audit for 0.4.6 (structural refactor)
+
+Rustrx grew from 0.1 to 0.4.5 in one week of fast iteration: each
+feature landed as soon as it worked on the phone, and nobody stepped back
+to plan the structure. This audit is that step back. LLM agents read the
+whole tree in six areas (the C++ app object, the list models and the
+scroll path, the chat pages, the Rust core, magic numbers, the remaining
+pages and the notification service) and measured the app on two phones.
+The findings that were clear went in as small commits that each build;
+the rest is listed at the end for the author to decide.
+
+0.4.6 changes no feature on purpose. Where it does change what the app
+does, it is a bug the audit turned up, named below.
+
+## Baseline (0.4.5, commit `0c98ae4`)
+
+- 16.7k lines without the emoji data. Largest: `src/Rustrx.cpp` 1254,
+  `qml/pages/RoomPage.qml` 924, `qml/components/MessageDelegate.qml`
+  784, `qml/pages/SettingsPage.qml` 719, `core/src/core/commands.rs` 679.
+- Cold start on the Jolla Phone 2026 (69 rooms, matrix.org): first room
+  list after 775 ms.
+- Idle with the app as a cover: 0.12 % of a core and 1.4 wakeups a second
+  (a 10 minute run later: 0.08 %, 1.8 a second, memory flat at 397 MB,
+  no leak). Pro1-X: 0.17 %, memory flat.
+
+## What the audit found
+
+**Bugs nobody had noticed**
+- Logging out left the old account's room list in memory (a filter change
+  afterwards showed it again), with its open thread, pending pushes, emote
+  cache and notified invitations.
+- The verification watchers were not tied to the login and outlived a
+  logout, keeping the old client's crypto objects alive.
+- Opening a room held the core's state lock across a network await.
+- In a thread, Reply after an edit sent the edit's text as the reply, and
+  clearing a reply wiped what was typed.
+- Text put back by the app (a draft, a cancelled edit) sent typing
+  notices; starting an edit lost the draft.
+- Settings switches stopped following their setting after the first tap.
+- The "Latest edit" heading on the source page showed its raw id.
+- An empty line under the sender's name in some reply quotes.
+- A binding loop per muted room at every list build.
+
+**Work done again and again**
+- Every read of a message's text in QML ran the HTML rewrite and the
+  Twemoji pass again: three to five times per row. Any change to a row
+  rebound every part of it; the room list re-emitted every row between
+  the first and last change.
+- Each room update rebuilt the notification settings per room (a store
+  read and a parse of the push rules) and asked twice whether the room is
+  direct.
+- The room sort re-read every room's fields per comparison; about
+  thirteen QSettings objects were made on the fly, some per update.
+- Every message row built its reply quote, media, poll, caption, upload
+  bar, reactions and thread lines, shown or not.
+- The chat's place keeping searched the whole timeline every frame while
+  it held the place.
+
+**Structure**
+- Two composers (room and thread) that had drifted apart, the chat's
+  place keeping and its debug trace woven through a 924 line page.
+- `commands.rs` mixed dispatch with the logic of a dozen commands; seven
+  helpers were copied across six core files.
+- About a hundred literal factors and timings across the QML, settings
+  keys and D-Bus names repeated across C++ files, the round-avatar shader
+  copied four times, banner rows four times, five texts defined twice.
+
+## What 0.4.6 does about it
+
+Commits on top of `0c98ae4`, in order, each revertable:
+
+| Commit | Change |
+|---|---|
+| `6a97e2e` | Pages: dead code out, one banner component, Service helpers, switches keep bindings |
+| `7feb577` | ShareAdaptor in its own file |
+| `2f368c7` | C++ helpers, slots in the .cpp, dead code out |
+| `54cd0cb` | One QSettings; notified invitations kept in memory |
+| `458f9ad` | Logout clears what the old account left |
+| `f3e0dc9` | Room sort keys built once (checked equal to the old sort on 3000 random lists) |
+| `fa3f902` | The queued event call looks its method up once |
+| `c3e0d48` | Models: each row rendered once, changes name their roles |
+| `c2a8c06` | Delegates: read once, hidden parts built only when shown |
+| `a821674` | One Composer for room and thread; ChatAnchor and ChatTrace components; the chat bugs above |
+| `3338439` | Source page heading text |
+| `c322e57` | ChatAnchor/ChatTrace as Items (Qt 5.6 cannot parse a default list property; caught on the phone) |
+| `bc532d9` | Core: dispatch only, shared helpers, lock and logout hygiene |
+| `86da668` | Tunables singleton for the QML numbers, one RoundMask |
+| `dfc683d` | Keys.h for settings keys, D-Bus names and limits |
+| `2055190` | Each translation text defined once |
+| `6336785` | Reply quote without the empty line |
+| `1377cd2` | Muted icon without a binding loop |
+| `8cceb72` | The debug log bundle includes the push log |
+| `9d3c995` | One Settings object for the dconf settings |
+| `9c22180` | Core: the numbers and file names in consts.rs |
+| `0a8d274` | Frame counter behind `RUSTRX_FRAMES=1` |
+| `e072fac` | A repeatable fling (`debugFlick`) for measuring |
+| `bf610e2` | The emoji picker's placement in EmojiDock |
+| `84311d4` | Message body, caption and thread line rendered once in C++ (same bytes as the old JavaScript on about 20,000 strings) |
+| `2754eef` | Room name and preview rendered in the model |
+| `ba68435` | Reaction chip labels rendered once |
+| `a811eeb` | The reaction key limit in Keys.h |
+| `6bd1867` | C++: the room lists in RoomLists |
+| `79632dd` | C++: the process handover in Handover |
+| `fcbc2de` | C++: sending and caching media in Media (Rustrx.cpp 1229 to 739 lines) |
+| `118cc80` | 30 older messages per page, the core's default |
+| `53f209c` | The cover's unread action opens direct chats too |
+| `c27bd41` | Errors shown once, in place |
+| `6be8810` | Logout leaves a call in progress first |
+
+Found while testing the release on two phones, and fixed:
+
+| Commit | Change |
+|---|---|
+| `9c9a82d` | The app's own settings (list order, filters, debug switches) kept in the folder the sandbox keeps; they were lost at every restart, in 0.4.5 too |
+| `6908884`, `73de7d3` | A reaction the server refused no longer blocks its room: refused reactions are dropped from the send queue at start and on error, and the room is woken |
+| `5036ba1` | A thread's first message is acted on through the room's timeline (its reactions were sometimes sent twice, which is how the server came to refuse one) |
+| `a355d9f`, `4976062` | In a thread, + in a message's menu opens the picker, and React with text works |
+| `e0b29e7` | A tap on a picture or sound still sending opens nothing (was an error) |
+| `17eed5a` | A reaction from the message menu is sent before it is counted (counting rebuilt the buttons mid-tap) |
+| `aef1af5` | At most one read receipt per half second from the open room |
+| `7defdb1` | The message field stays in view while a long message grows (0.4.5, reported by dodoradio) |
+| `7b4899c` | A file's type comes from its content too: a shared photo without a known file ending went out as a plain file |
+| `2c4c3ba` | Settings makes a new recovery key when the old one is lost (`recovery_reset` had no button) |
+| `cdcbe97` | Twemoji images installed without the executable bit |
+| `05990c0` | Threads use the room's EmojiDock: the picker swaps with the keyboard in place instead of jumping |
+
+Largest files now: `src/Rustrx.cpp` 739, `qml/components/MessageDelegate.qml`
+831 (its hidden parts are Loaders now), `qml/pages/SettingsPage.qml` 715,
+`qml/pages/RoomPage.qml` 546, `core/src/core/commands.rs` 167.
+
+Measured on the Jolla Phone 2026 with the refactored build:
+- First room list: no change that can be told apart. The same build
+  started between 525 and 1305 ms on the same phone within minutes, as
+  the phone's own state varied; single runs in either direction mean
+  nothing.
+- Idle with the display off: 0.05 % of a core, 2.4 wakeups a second.
+- Scrolling: not measured yet (see below).
+
+## Decided after the audit
+
+The author set the paging and left the rest of the open values and
+behaviours to the LLM's call, listed here so each can be overruled:
+
+| Question | Decision |
+|---|---|
+| Twemoji 1.25 of the text in messages, 1.2 in lists | Both stay as they look today: either way changes how the app looks, in a release that should not |
+| Small text 0.8, the read check mark 0.85 | Both stay: the check mark was set a tad larger on purpose |
+| Emoji panel: keyboard height in rooms, a fixed share in threads | Threads get the room's EmojiDock (`05990c0`), tried on the phones in the test round |
+| 40 older messages per page, the core's default 30 | 30 (`118cc80`) |
+| The cover's unread action skipped direct chats | A bug: it takes the most recent unread room or person now (`53f209c`) |
+| Errors shown in place were also a global notice | Shown once, in place (`c27bd41`) |
+| A logout during a call left the call membership live | Logout leaves the call first (`6be8810`) |
+| `refresh_rooms`, `unignore_user`, `recovery_reset` never sent | Kept. `recovery_reset` got its button in 0.4.6 (Settings, "New recovery key"): a lost recovery key could not be replaced. `unignore_user` gets its page in 0.4.7: an ignored user cannot be un-ignored in Rustrx today |
+
+**Known in 0.4.6, next in 0.4.7**
+- Whether a network error while sending leaves a room's send queue off
+  until a restart is not verified yet.
+
+**Next structural steps**
+- An error `code` field next to the message, so the UI can translate core
+  errors; a login generation counter against concurrent logins.
+- One pending-intents path instead of five retry timers; Service.qml
+  split per process role; an Avatar component.
+- Scroll numbers before and after, with the frame counter and the fixed
+  fling (both in 0.4.6, off by default).
+- `translations/harbour-rustrx.ts` is stale; regenerate or untrack it.

@@ -367,3 +367,21 @@ def test_external_links_go_through_one_gate():
     allowed = [h for h in hits if h.startswith("harbour-rustrx.qml") and "Qt.openUrlExternally(url)" in h
                or 'Qt.openUrlExternally("file://" + path)' in h]
     assert hits == allowed and len(allowed) == 2, hits
+
+
+# --- audits ---
+
+def test_every_audit_has_its_ledger_and_is_listed():
+    """docs/audits: a narrative and a .findings.json per audit, each in the
+    index. Planted-bug: add an audit without its ledger."""
+    import json
+    folder = ROOT / "docs" / "audits"
+    index = (folder / "README.md").read_text(encoding="utf-8")
+    narratives = [p for p in folder.glob("*.md") if p.name != "README.md"]
+    assert narratives
+    for p in narratives:
+        ledger = p.with_suffix(".findings.json")
+        assert ledger.exists(), p.name
+        data = json.loads(ledger.read_text(encoding="utf-8"))
+        assert data["findings"] and all("id" in f and "status" in f for f in data["findings"])
+        assert p.name in index, p.name
