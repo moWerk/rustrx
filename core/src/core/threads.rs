@@ -168,16 +168,30 @@ impl Core {
     pub(crate) async fn timeline_holding(&self, room: &Room, event_id: Option<&str>) -> Result<Arc<Timeline>> {
         let thread = {
             let st = self.state.lock().await;
-            st.thread.as_ref().filter(|t| t.room_id == room.room_id()).map(|t| t.timeline.clone())
+            st.thread
+                .as_ref()
+                .filter(|t| t.room_id == room.room_id())
+                .map(|t| (t.timeline.clone(), event_id == Some(t.root.as_str())))
         };
-        if let Some(tl) = thread {
-            let found = match event_id.filter(|s| !s.is_empty()).map(EventId::parse) {
-                Some(Ok(e)) => tl.item_by_event_id(&e).await.is_some(),
-                _ => false,
-            };
-            if found {
-                return Ok(tl);
+        let event = match event_id.filter(|s| !s.is_empty()).map(EventId::parse) {
+            Some(Ok(e)) => Some(e),
+            _ => None,
+        };
+        let Some((tl, is_root)) = thread else { return self.timeline_for(room).await };
+        let Some(event) = event else { return self.timeline_for(room).await };
+        // the thread's root is the room's when the room has it loaded: the
+        // thread's timeline does not see all of the root's reactions, and a
+        // reaction toggled there was sent a second time (refused by the
+        // server, which then held back everything after it in the room)
+        if is_root {
+            let room_tl = self.timeline_for(room).await?;
+            if room_tl.item_by_event_id(&event).await.is_some() {
+                return Ok(room_tl);
             }
+            return Ok(tl);
+        }
+        if tl.item_by_event_id(&event).await.is_some() {
+            return Ok(tl);
         }
         self.timeline_for(room).await
     }
