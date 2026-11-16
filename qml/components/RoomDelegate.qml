@@ -30,6 +30,8 @@ ListItem {
     // half of this), and the name a tad over the standard medium size.
     readonly property real rowMargin: (Theme.itemSizeMedium - Theme.iconSizeLarge) * 1.5
     readonly property real nameSize: Theme.fontSizeMedium * 1.1
+    // the picture: 10 % smaller than the large icon size
+    readonly property int avatarSize: Math.round(Theme.iconSizeLarge * 0.9)
 
     readonly property bool invited: model.state === "invited"
     readonly property bool hasUnread: model.notifications > 0 || model.unread > 0
@@ -85,7 +87,7 @@ ListItem {
         // at the row's top, where a one-line row has it: rows with more
         // preview lines grow downwards and the pictures stay in line
         y: rowMargin + (Theme.iconSizeLarge - height) / 2
-        width: Math.round(Theme.iconSizeLarge * 0.9)
+        width: avatarSize
         height: width
         radius: width / 2
         color: picture.visible && !app.roundAvatars
@@ -106,8 +108,8 @@ ListItem {
             visible: status === Image.Ready
             asynchronous: true
             fillMode: Image.PreserveAspectCrop
-            sourceSize.width: width
-            sourceSize.height: height
+            sourceSize.width: avatarSize
+            sourceSize.height: avatarSize
             // the version makes a changed picture load past Qt's image cache
             source: model.avatar ? "file://" + model.avatar + "?v=" + (model.avatar_v || 0) : ""
             // clip: true would cut a square; the circle is a mask
@@ -289,6 +291,17 @@ ListItem {
                 color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
                 textFormat: Text.StyledText
                 onLineLaidOut: if (line.number === 0) { line.x += indent; line.width -= indent }
+                // the message with its emoji as pictures, apart from the text: a
+                // press (the highlight) then redoes only the sender's colour
+                readonly property string body: {
+                    if (invited || model.is_space || (model.replaced_by && model.replaced_by.length)
+                            || !model.preview || !model.preview.length)
+                        return ""
+                    var b = model.preview.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                    // one line: the breaks become spaces; more: kept
+                    b = maximumLineCount > 1 ? b.replace(/\n/g, "<br>") : b.replace(/\s+/g, " ")
+                    return rustrx.emojify(b, Math.round(font.pixelSize * 1.2))
+                }
                 text: {
                     // a new indent needs a new layout (Qt 5.6 has no forceLayout)
                     var unused = indent
@@ -305,10 +318,7 @@ ListItem {
                         var who = model.preview_sender
                                   ? "<font color=\"" + (item.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor)
                                     + "\">" + model.preview_sender.replace(/&/g, "&amp;").replace(/</g, "&lt;") + ":</font> " : ""
-                        var body = model.preview.replace(/&/g, "&amp;").replace(/</g, "&lt;")
-                        // one line: the breaks become spaces; more: kept
-                        body = maximumLineCount > 1 ? body.replace(/\n/g, "<br>") : body.replace(/\s+/g, " ")
-                        return who + rustrx.emojify(body, Math.round(font.pixelSize * 1.2))
+                        return who + body
                     }
                     if (model.topic && model.topic.length) return model.topic.replace(/\s+/g, " ")
                     return model.encrypted

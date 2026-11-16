@@ -56,12 +56,16 @@ ListItem {
     readonly property bool mention: model.highlight === true && !own
     // its bar in front of the text, though not in a reply: there the line
     // belongs to the quote above (a reply to us always counts as a mention)
-    readonly property bool mentionBar: mention && !model.reply_to
+    readonly property bool mentionBar: mention && !replyTo
     readonly property color dimColor: own ? Theme.secondaryHighlightColor : Theme.secondaryColor
     // captured here: inside the Repeater, `model` would name the Repeater's own property
     readonly property var reactionList: model.reactions ? model.reactions : []
-    // the custom emoji in the message and its reactions ({ url, shortcode })
-    readonly property var emoteList: model.emotes ? model.emotes : []
+    // read once here: each read of a role asks the model again
+    readonly property string htmlText: model.html || ""
+    readonly property var replyTo: model.reply_to ? model.reply_to : null
+    // the custom emoji in the message and its reactions ({ url, shortcode });
+    // only the menu asks, finding them is a scan of the message
+    function emoteList() { return model.emotes ? model.emotes : [] }
     readonly property string eventId: model.event_id || ""
     readonly property bool failed: model.send_state === "failed"
     // a picture or file on its way: the share of it the server has (0..1)
@@ -283,48 +287,53 @@ ListItem {
                     // the message this one replies to: who said it and its first lines
                     // in a bubble of its own, a shade darker than the message's,
                     // the line its left edge
-                    Item {
-                        visible: !!model.reply_to
-                        width: Math.min(quote.implicitWidth + 2 + 2 * Theme.paddingSmall, innerMax)
-                        height: visible ? quote.height + 2 * Theme.paddingSmall : 0
+                    Loader {
+                        active: replyTo !== null
+                        visible: active
+                        sourceComponent: Component {
+                            Item {
+                                width: Math.min(quote.implicitWidth + 2 + 2 * Theme.paddingSmall, innerMax)
+                                height: quote.height + 2 * Theme.paddingSmall
 
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: Theme.paddingSmall
-                            color: Qt.rgba(0, 0, 0, 0.1)
-                        }
-                        Rectangle {
-                            width: 2
-                            height: parent.height
-                            color: Theme.secondaryHighlightColor
-                        }
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: Theme.paddingSmall
+                                    color: Qt.rgba(0, 0, 0, 0.1)
+                                }
+                                Rectangle {
+                                    width: 2
+                                    height: parent.height
+                                    color: Theme.secondaryHighlightColor
+                                }
 
-                        Label {
-                            id: quote
-                            x: 2 + Theme.paddingSmall
-                            y: Theme.paddingSmall
-                            width: parent.width - 2 - 2 * Theme.paddingSmall
-                            wrapMode: Text.Wrap
-                            maximumLineCount: 3
-                            elide: Text.ElideRight
-                            font.pixelSize: Theme.fontSizeExtraSmall
-                            color: Theme.secondaryColor
-                            textFormat: Text.StyledText
-                            text: {
-                                var r = model.reply_to
-                                if (!r) return ""
-                                var quoted
-                                if (r.html && r.html.length) quoted = r.html
-                                else if (r.body !== undefined) quoted = rustrx.emojify(r.body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>"),
-                                                                                       Math.round(Theme.fontSizeExtraSmall * 1.25))
-                                //: the quoted message of a reply while it is fetched
-                                //% "Loading the original message"
-                                else if (r.pending) quoted = "<i>" + qsTrId("rustrx-la-reply-loading") + "</i>"
-                                //: the quoted message of a reply cannot be had (deleted, or no access)
-                                //% "Original message not available"
-                                else quoted = "<i>" + qsTrId("rustrx-la-reply-missing") + "</i>"
-                                var who = r.sender_name || r.sender || ""
-                                return (who.length ? "<font color=\"" + Theme.secondaryHighlightColor + "\">" + who + "</font><br>" : "") + quoted
+                                Label {
+                                    id: quote
+                                    x: 2 + Theme.paddingSmall
+                                    y: Theme.paddingSmall
+                                    width: parent.width - 2 - 2 * Theme.paddingSmall
+                                    wrapMode: Text.Wrap
+                                    maximumLineCount: 3
+                                    elide: Text.ElideRight
+                                    font.pixelSize: Theme.fontSizeExtraSmall
+                                    color: Theme.secondaryColor
+                                    textFormat: Text.StyledText
+                                    text: {
+                                        var r = replyTo
+                                        if (!r) return ""
+                                        var quoted
+                                        if (r.html && r.html.length) quoted = r.html
+                                        else if (r.body !== undefined) quoted = rustrx.emojify(r.body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>"),
+                                                                                               Math.round(Theme.fontSizeExtraSmall * 1.25))
+                                        //: the quoted message of a reply while it is fetched
+                                        //% "Loading the original message"
+                                        else if (r.pending) quoted = "<i>" + qsTrId("rustrx-la-reply-loading") + "</i>"
+                                        //: the quoted message of a reply cannot be had (deleted, or no access)
+                                        //% "Original message not available"
+                                        else quoted = "<i>" + qsTrId("rustrx-la-reply-missing") + "</i>"
+                                        var who = r.sender_name || r.sender || ""
+                                        return (who.length ? "<font color=\"" + Theme.secondaryHighlightColor + "\">" + who + "</font><br>" : "") + quoted
+                                    }
+                                }
                             }
                         }
                     }
@@ -339,7 +348,7 @@ ListItem {
                             id: body
                             width: parent.width - (mentionBar ? parent.spacing + 2 : 0)
                             wrapMode: Text.Wrap
-                            textFormat: msgType === "text" || msgType === "notice" || msgType === "emote" || (model.html && model.html.length) ? Text.StyledText : Text.PlainText
+                            textFormat: msgType === "text" || msgType === "notice" || msgType === "emote" || htmlText.length > 0 ? Text.StyledText : Text.PlainText
                             color: msgType === "utd" || msgType === "redacted" ? dimColor : (mention ? Theme.highlightColor : mainColor)
                             font.italic: msgType === "emote" || msgType === "utd" || msgType === "redacted"
                             linkColor: Theme.secondaryHighlightColor
@@ -366,7 +375,7 @@ ListItem {
                                 //% "Verification request"
                                 if (msgType === "verification") return qsTrId("rustrx-la-verification-request")
                                 if (msgType === "emote") return rustrx.emojify(escapeText((model.sender_name || model.sender) + " " + (model.body || "")), rustrx.timeline.emoteSize)
-                                if (model.html && model.html.length) return model.html
+                                if (htmlText.length) return htmlText
                                 if (msgType === "text" || msgType === "notice") return rustrx.emojify(linkify(model.body || ""), rustrx.timeline.emoteSize)
                                 return model.body || ""
                             }
@@ -374,224 +383,261 @@ ListItem {
                     }
 
                     // image, video thumbnail or sticker
-                    Item {
-                        visible: isMedia
-                        width: Math.min(innerMax, Math.min(msg.width, Screen.width) * 0.6)
-                        height: visible ? Math.min(width, Math.max(Theme.itemSizeLarge, width * (model.h && model.w ? model.h / model.w : 0.75))) : 0
+                    Loader {
+                        active: isMedia
+                        visible: active
+                        sourceComponent: Component {
+                            Item {
+                                width: Math.min(innerMax, Math.min(msg.width, Screen.width) * 0.6)
+                                height: Math.min(width, Math.max(Theme.itemSizeLarge, width * (model.h && model.w ? model.h / model.w : 0.75)))
 
-                        Image {
-                            anchors.fill: parent
-                            asynchronous: true
-                            autoTransform: true
-                            fillMode: Image.PreserveAspectFit
-                            source: model.thumb_path && model.thumb_path.length ? "file://" + model.thumb_path
-                                  : model.media_path && model.media_path.length ? "file://" + model.media_path : ""
-                            sourceSize.width: parent.width
-                        }
-                        Label {
-                            anchors.centerIn: parent
-                            visible: !(model.thumb_path && model.thumb_path.length) && !(model.media_path && model.media_path.length)
-                            text: model.body || ""
-                            color: dimColor
-                            font.pixelSize: Theme.fontSizeSmall
+                                Image {
+                                    anchors.fill: parent
+                                    asynchronous: true
+                                    autoTransform: true
+                                    fillMode: Image.PreserveAspectFit
+                                    source: model.thumb_path && model.thumb_path.length ? "file://" + model.thumb_path
+                                          : model.media_path && model.media_path.length ? "file://" + model.media_path : ""
+                                    // what the bubble's width comes to in portrait: decoded once
+                                    sourceSize.width: Math.round(Screen.width * 0.6)
+                                }
+                                Label {
+                                    anchors.centerIn: parent
+                                    visible: !(model.thumb_path && model.thumb_path.length) && !(model.media_path && model.media_path.length)
+                                    text: model.body || ""
+                                    color: dimColor
+                                    font.pixelSize: Theme.fontSizeSmall
+                                }
+                            }
                         }
                     }
 
                     // a poll: one line per answer with its votes; a tap votes
                     // (or changes the vote) while it is open
-                    Column {
-                        visible: msgType === "poll"
-                        width: innerMax
-                        Repeater {
-                            model: msgType === "poll" && msg.pollAnswers ? msg.pollAnswers : []
-                            BackgroundItem {
-                                width: parent.width
-                                height: Theme.itemSizeExtraSmall
-                                enabled: !msg.pollEnded
-                                onClicked: rustrx.command({ cmd: "poll_vote", room_id: roomId, event_id: msg.eventId, answers: [modelData.id] })
-                                Rectangle {
-                                    anchors { left: parent.left; verticalCenter: parent.verticalCenter }
-                                    height: parent.height - Theme.paddingSmall
-                                    width: parent.width * (msg.pollTotal > 0 ? modelData.count / msg.pollTotal : 0)
-                                    radius: Theme.paddingSmall
-                                    color: Theme.rgba(modelData.mine ? Theme.highlightColor : Theme.primaryColor, Theme.opacityFaint)
+                    Loader {
+                        active: msgType === "poll"
+                        visible: active
+                        sourceComponent: Component {
+                            Column {
+                                width: innerMax
+                                Repeater {
+                                    model: msgType === "poll" && msg.pollAnswers ? msg.pollAnswers : []
+                                    BackgroundItem {
+                                        width: parent.width
+                                        height: Theme.itemSizeExtraSmall
+                                        enabled: !msg.pollEnded
+                                        onClicked: rustrx.command({ cmd: "poll_vote", room_id: roomId, event_id: msg.eventId, answers: [modelData.id] })
+                                        Rectangle {
+                                            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                                            height: parent.height - Theme.paddingSmall
+                                            width: parent.width * (msg.pollTotal > 0 ? modelData.count / msg.pollTotal : 0)
+                                            radius: Theme.paddingSmall
+                                            color: Theme.rgba(modelData.mine ? Theme.highlightColor : Theme.primaryColor, Theme.opacityFaint)
+                                        }
+                                        Label {
+                                            anchors { left: parent.left; leftMargin: Theme.paddingSmall; verticalCenter: parent.verticalCenter }
+                                            width: parent.width - countLabel.width - 2 * Theme.paddingSmall
+                                            truncationMode: TruncationMode.Fade
+                                            text: (modelData.mine ? "✓ " : "") + modelData.text
+                                            color: modelData.mine ? Theme.highlightColor : Theme.primaryColor
+                                            font.pixelSize: Theme.fontSizeSmall
+                                        }
+                                        Label {
+                                            id: countLabel
+                                            anchors { right: parent.right; rightMargin: Theme.paddingSmall; verticalCenter: parent.verticalCenter }
+                                            text: modelData.count
+                                            color: Theme.secondaryColor
+                                            font.pixelSize: Theme.fontSizeSmall
+                                        }
+                                    }
                                 }
                                 Label {
-                                    anchors { left: parent.left; leftMargin: Theme.paddingSmall; verticalCenter: parent.verticalCenter }
-                                    width: parent.width - countLabel.width - 2 * Theme.paddingSmall
-                                    truncationMode: TruncationMode.Fade
-                                    text: (modelData.mine ? "✓ " : "") + modelData.text
-                                    color: modelData.mine ? Theme.highlightColor : Theme.primaryColor
-                                    font.pixelSize: Theme.fontSizeSmall
-                                }
-                                Label {
-                                    id: countLabel
-                                    anchors { right: parent.right; rightMargin: Theme.paddingSmall; verticalCenter: parent.verticalCenter }
-                                    text: modelData.count
-                                    color: Theme.secondaryColor
-                                    font.pixelSize: Theme.fontSizeSmall
+                                    visible: msg.pollEnded
+                                    //% "The poll has ended"
+                                    text: qsTrId("rustrx-la-poll-ended")
+                                    font.pixelSize: Theme.fontSizeExtraSmall
+                                    color: dimColor
                                 }
                             }
-                        }
-                        Label {
-                            visible: msg.pollEnded
-                            //% "The poll has ended"
-                            text: qsTrId("rustrx-la-poll-ended")
-                            font.pixelSize: Theme.fontSizeExtraSmall
-                            color: dimColor
                         }
                     }
 
                     // the text sent with a picture, a video or a file
-                    Label {
-                        visible: !!(model.caption && model.caption.length)
-                        width: Math.min(implicitWidth, innerMax)
-                        wrapMode: Text.Wrap
-                        textFormat: Text.StyledText
-                        text: visible ? linkify(model.caption) : ""
-                        color: mainColor
-                        linkColor: Theme.secondaryHighlightColor
-                        onLinkActivated: app.openLink(link)
-                    }
-
-                    // an upload on its way: how much of the file is at the server
-                    Rectangle {
-                        visible: uploading
-                        width: Math.min(innerMax, Math.min(msg.width, Screen.width) * 0.6)
-                        height: Theme.paddingSmall
-                        radius: height / 2
-                        color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
-                        Rectangle {
-                            width: parent.width * uploadFraction
-                            height: parent.height
-                            radius: parent.radius
-                            color: Theme.highlightColor
+                    Loader {
+                        active: !!(model.caption && model.caption.length)
+                        visible: active
+                        sourceComponent: Component {
+                            Label {
+                                width: Math.min(implicitWidth, innerMax)
+                                wrapMode: Text.Wrap
+                                textFormat: Text.StyledText
+                                text: linkify(model.caption || "")
+                                color: mainColor
+                                linkColor: Theme.secondaryHighlightColor
+                                onLinkActivated: app.openLink(link)
+                            }
                         }
                     }
 
-                    Flow {
-                        visible: reactionList.length > 0
-                        width: Math.min(innerMax, reactionMeasure.width)
-                        spacing: Theme.paddingMedium
-                        Repeater {
-                            model: reactionList
-                            // a tap toggles our own reaction with this key
-                            Item {
-                                width: chipRow.width
-                                height: chipRow.height
-                                Row {
-                                    id: chipRow
-                                    spacing: Theme.paddingSmall / 2
-                                    // a custom emoji (its mxc address is the key)
-                                    Image {
-                                        visible: modelData.emote !== undefined
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        height: visible ? chip.height : 0
-                                        width: height
-                                        fillMode: Image.PreserveAspectFit
-                                        sourceSize.height: chip.height
-                                        source: modelData.emote || ""
-                                    }
-                                    Label {
-                                        id: chip
-                                        textFormat: Text.StyledText
-                                        text: (modelData.emote !== undefined ? ""
-                                              : rustrx.emojify(escapeText(reactionText(modelData.key)), Math.round(font.pixelSize * 1.25)) + " ") + modelData.count
-                                        font.pixelSize: Theme.fontSizeExtraSmall
-                                        color: modelData.me ? Theme.highlightColor : Theme.secondaryColor
+                    // an upload on its way: how much of the file is at the server
+                    Loader {
+                        active: uploading
+                        visible: active
+                        sourceComponent: Component {
+                            Rectangle {
+                                width: Math.min(innerMax, Math.min(msg.width, Screen.width) * 0.6)
+                                height: Theme.paddingSmall
+                                radius: height / 2
+                                color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
+                                Rectangle {
+                                    width: parent.width * uploadFraction
+                                    height: parent.height
+                                    radius: parent.radius
+                                    color: Theme.highlightColor
+                                }
+                            }
+                        }
+                    }
+
+                    Loader {
+                        active: reactionList.length > 0
+                        visible: active
+                        sourceComponent: Component {
+                            Flow {
+                                width: Math.min(innerMax, reactionMeasure.width)
+                                spacing: Theme.paddingMedium
+                                Repeater {
+                                    model: reactionList
+                                    // a tap toggles our own reaction with this key
+                                    Item {
+                                        width: chipRow.width
+                                        height: chipRow.height
+                                        Row {
+                                            id: chipRow
+                                            spacing: Theme.paddingSmall / 2
+                                            // a custom emoji (its mxc address is the key)
+                                            Image {
+                                                visible: modelData.emote !== undefined
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                height: visible ? chip.height : 0
+                                                width: height
+                                                fillMode: Image.PreserveAspectFit
+                                                sourceSize.height: chip.height
+                                                source: modelData.emote || ""
+                                            }
+                                            Label {
+                                                id: chip
+                                                textFormat: Text.StyledText
+                                                text: (modelData.emote !== undefined ? ""
+                                                      : rustrx.emojify(escapeText(reactionText(modelData.key)), Math.round(font.pixelSize * 1.25)) + " ") + modelData.count
+                                                font.pixelSize: Theme.fontSizeExtraSmall
+                                                color: modelData.me ? Theme.highlightColor : Theme.secondaryColor
+                                            }
+                                        }
+                                        MouseArea {
+                                            anchors { fill: parent; margins: -Theme.paddingSmall }
+                                            onClicked: rustrx.command({ cmd: "react", room_id: roomId, event_id: msg.eventId, key: modelData.key })
+                                        }
                                     }
                                 }
-                                MouseArea {
-                                    anchors { fill: parent; margins: -Theme.paddingSmall }
-                                    onClicked: rustrx.command({ cmd: "react", room_id: roomId, event_id: msg.eventId, key: modelData.key })
+
+                                // the reactions' width in one line, so the bubble is no wider
+                                // than they need (not shown, so the Flow leaves it out)
+                                Row {
+                                    id: reactionMeasure
+                                    visible: false
+                                    spacing: Theme.paddingMedium
+                                    Repeater {
+                                        model: reactionList
+                                        Label {
+                                            textFormat: Text.StyledText
+                                            text: (modelData.emote !== undefined ? "\u2B1C"
+                                                  : rustrx.emojify(escapeText(reactionText(modelData.key)), Math.round(font.pixelSize * 1.25))) + " " + modelData.count
+                                            font.pixelSize: Theme.fontSizeExtraSmall
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                     // a reply in a thread, here in the room's flow: the thread mark,
                     // a tap opens the thread
-                    BackgroundItem {
-                        id: inThreadLine
-                        visible: !inThread && !!model.thread_root
-                        width: Math.min(innerMax, inThreadRow.width + 2 * Theme.paddingSmall)
-                        height: visible ? inThreadRow.height + Theme.paddingSmall : 0
-                        onClicked: msg.openThread(model.thread_root, false)
-                        Row {
-                            id: inThreadRow
-                            x: Theme.paddingSmall
-                            spacing: Theme.paddingSmall
-                            Image {
-                                anchors.verticalCenter: parent.verticalCenter
-                                sourceSize.width: Theme.iconSizeExtraSmall
-                                sourceSize.height: Theme.iconSizeExtraSmall
-                                source: "image://theme/icon-m-menu?" + Theme.secondaryHighlightColor
-                            }
-                            Label {
-                                anchors.verticalCenter: parent.verticalCenter
-                                font.pixelSize: Theme.fontSizeExtraSmall
-                                color: inThreadLine.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor
-                                //% "in a thread"
-                                text: qsTrId("rustrx-la-in-thread")
-                            }
-                        }
-                    }
-
-                    // the replies in this message's thread: a tap opens it
-                    BackgroundItem {
-                        id: threadLine
-                        visible: !inThread && threadSummary !== null && threadSummary.count > 0
-                        width: Math.min(innerMax, threadRow.width + 2 * Theme.paddingSmall)
-                        height: visible ? threadRow.height + 2 * Theme.paddingSmall : 0
-                        onClicked: msg.openThread(msg.eventId, false)
-                        Row {
-                            id: threadRow
-                            x: Theme.paddingSmall
-                            y: Theme.paddingSmall
-                            spacing: Theme.paddingSmall
-                            // the thread mark: Silica's menu lines
-                            Image {
-                                anchors.verticalCenter: parent.verticalCenter
-                                sourceSize.width: Theme.iconSizeSmall
-                                sourceSize.height: Theme.iconSizeSmall
-                                source: "image://theme/icon-m-menu?" + Theme.highlightColor
-                            }
-                            Label {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: Math.min(implicitWidth, innerMax - Theme.iconSizeSmall - 3 * Theme.paddingSmall)
-                                truncationMode: TruncationMode.Fade
-                                font.pixelSize: Theme.fontSizeExtraSmall
-                                color: threadLine.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor
-                                textFormat: Text.StyledText
-                                text: {
-                                    if (!threadSummary) return ""
-                                    //: %n replies in a thread
-                                    //% "%n replies"
-                                    var t = qsTrId("rustrx-la-thread-replies", threadSummary.count)
-                                    //: %n replies not seen yet
-                                    //% "%n new"
-                                    if (threadNew > 0) t += " · <b><font color=\"" + Theme.highlightColor + "\">" + qsTrId("rustrx-la-thread-new", threadNew) + "</font></b>"
-                                    if (threadSummary.latest_sender)
-                                        t += " · " + escapeText(threadSummary.latest_sender) + ": "
-                                             + rustrx.emojify(escapeText((threadSummary.latest_body || "").replace(/\s+/g, " ")),
-                                                              Math.round(font.pixelSize * 1.25))
-                                    return t
+                    Loader {
+                        active: !inThread && !!model.thread_root
+                        visible: active
+                        sourceComponent: Component {
+                            BackgroundItem {
+                                id: inThreadLine
+                                width: Math.min(innerMax, inThreadRow.width + 2 * Theme.paddingSmall)
+                                height: inThreadRow.height + Theme.paddingSmall
+                                onClicked: msg.openThread(model.thread_root, false)
+                                Row {
+                                    id: inThreadRow
+                                    x: Theme.paddingSmall
+                                    spacing: Theme.paddingSmall
+                                    Image {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        sourceSize.width: Theme.iconSizeExtraSmall
+                                        sourceSize.height: Theme.iconSizeExtraSmall
+                                        source: "image://theme/icon-m-menu?" + Theme.secondaryHighlightColor
+                                    }
+                                    Label {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        font.pixelSize: Theme.fontSizeExtraSmall
+                                        color: inThreadLine.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor
+                                        //% "in a thread"
+                                        text: qsTrId("rustrx-la-in-thread")
+                                    }
                                 }
                             }
                         }
                     }
 
-                    // the reactions' width in one line, so the bubble is no wider than they need
-                    Row {
-                        id: reactionMeasure
-                        visible: false
-                        spacing: Theme.paddingMedium
-                        Repeater {
-                            model: reactionList
-                            Label {
-                                textFormat: Text.StyledText
-                                text: (modelData.emote !== undefined ? "\u2B1C"
-                                      : rustrx.emojify(escapeText(reactionText(modelData.key)), Math.round(font.pixelSize * 1.25))) + " " + modelData.count
-                                font.pixelSize: Theme.fontSizeExtraSmall
+                    // the replies in this message's thread: a tap opens it
+                    Loader {
+                        active: !inThread && threadSummary !== null && threadSummary.count > 0
+                        visible: active
+                        sourceComponent: Component {
+                            BackgroundItem {
+                                id: threadLine
+                                width: Math.min(innerMax, threadRow.width + 2 * Theme.paddingSmall)
+                                height: threadRow.height + 2 * Theme.paddingSmall
+                                onClicked: msg.openThread(msg.eventId, false)
+                                Row {
+                                    id: threadRow
+                                    x: Theme.paddingSmall
+                                    y: Theme.paddingSmall
+                                    spacing: Theme.paddingSmall
+                                    // the thread mark: Silica's menu lines
+                                    Image {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        sourceSize.width: Theme.iconSizeSmall
+                                        sourceSize.height: Theme.iconSizeSmall
+                                        source: "image://theme/icon-m-menu?" + Theme.highlightColor
+                                    }
+                                    Label {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: Math.min(implicitWidth, innerMax - Theme.iconSizeSmall - 3 * Theme.paddingSmall)
+                                        truncationMode: TruncationMode.Fade
+                                        font.pixelSize: Theme.fontSizeExtraSmall
+                                        color: threadLine.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor
+                                        textFormat: Text.StyledText
+                                        text: {
+                                            if (!threadSummary) return ""
+                                            //: %n replies in a thread
+                                            //% "%n replies"
+                                            var t = qsTrId("rustrx-la-thread-replies", threadSummary.count)
+                                            //: %n replies not seen yet
+                                            //% "%n new"
+                                            if (threadNew > 0) t += " · <b><font color=\"" + Theme.highlightColor + "\">" + qsTrId("rustrx-la-thread-new", threadNew) + "</font></b>"
+                                            if (threadSummary.latest_sender)
+                                                t += " · " + escapeText(threadSummary.latest_sender) + ": "
+                                                     + rustrx.emojify(escapeText((threadSummary.latest_body || "").replace(/\s+/g, " ")),
+                                                                      Math.round(font.pixelSize * 1.25))
+                                            return t
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -724,7 +770,7 @@ ListItem {
             }
             // a custom emoji seen here, into the user's own pack (the first three)
             Repeater {
-                model: emoteList.slice(0, 3)
+                model: msg.emoteList().slice(0, 3)
                 MenuItem {
                     //: %1 a custom emoji's shortcode
                     //% "Add :%1: to my emoji"
