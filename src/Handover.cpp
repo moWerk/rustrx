@@ -105,7 +105,12 @@ bool Handover::handOver()
         qWarning() << "stand-in: cannot write" << f.fileName() << f.errorString();
     f.close();
     qInfo() << "stand-in: handing over to the app";
-    startUnit(QString::fromLatin1(Keys::kOpenUnit));
+    // the app could not be started: this one stays and keeps notifying,
+    // and the request is dropped rather than shown by a later start
+    if (!startUnit(QString::fromLatin1(Keys::kOpenUnit))) {
+        f.remove();
+        return true;
+    }
     QTimer::singleShot(0, qApp, &QCoreApplication::quit);
     return true;
 }

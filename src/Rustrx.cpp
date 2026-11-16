@@ -588,6 +588,14 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_loggedIn = ev.value("logged_in").toBool();
         m_keptUser = ev.value("kept_user").toString();
         emit stateChanged();
+        // the stand-in has nothing to do logged out. A session it could not
+        // open yet (the store's key before the first unlock) is retried by
+        // its unit after a failure exit; a real logout ends it for good
+        if (m_handover.standIn() && !m_loggedIn) {
+            const bool retry = ev.value("restore_failed").toBool();
+            qWarning() << "stand-in: not logged in," << (retry ? "the unit tries again later" : "leaving");
+            QTimer::singleShot(0, qApp, [retry]() { QCoreApplication::exit(retry ? 1 : 0); });
+        }
     } else if (type == QLatin1String("logged_in")) {
         m_logoutReason.clear();
         m_ready = true;

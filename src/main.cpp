@@ -43,6 +43,7 @@
 #include "TimelineModel.h"
 #include "VoiceRecorder.h"
 #include "Keys.h"
+#include "rustrx_core.h"
 
 static const QString kService = QString::fromLatin1(Keys::kBusName);
 
@@ -116,17 +117,42 @@ int main(int argc, char *argv[])
         if (!standIn) {
             QDBusMessage call = QDBusMessage::createMethodCall(kService, QString::fromLatin1(Keys::kObjectPath),
                     QString::fromLatin1(Keys::kInterface), QStringLiteral("activate"));
-            const QDBusMessage reply = bus.call(call, QDBus::Block, Keys::kActivateTimeoutMs);
+            // one that is still starting (it waits for sailfish-secrets,
+            // say) has the name but not its object yet: asked again
+            QElapsedTimer asked;
+            asked.start();
+            QDBusMessage reply;
+            for (;;) {
+                reply = bus.call(call, QDBus::Block, Keys::kActivateTimeoutMs);
+                const QString error = reply.errorName();
+                const bool starting = error == QLatin1String("org.freedesktop.DBus.Error.UnknownObject")
+                        || error == QLatin1String("org.freedesktop.DBus.Error.UnknownMethod")
+                        || error == QLatin1String("org.freedesktop.DBus.Error.UnknownInterface");
+                if (!starting || asked.elapsed() > Keys::kActivateRetryMs)
+                    break;
+                QThread::msleep(Keys::kNameGonePollMs);
+            }
             // no answer: the stand-in was leaving already
             takeOver = reply.type() == QDBusMessage::ErrorMessage
                     || (!reply.arguments().isEmpty() && reply.arguments().first().toBool());
         }
-        if (!takeOver || !waitForNameToGo(bus) || !bus.registerService(kService))
+        if (!takeOver)
             return 0;
+        if (!waitForNameToGo(bus) || !bus.registerService(kService)) {
+            qWarning() << "startup: the running Rustrx did not make way within"
+                       << Keys::kNameGoneTimeoutMs << "ms; not started";
+            return 1;
+        }
     }
 
     // ~/.local/share/harbour-rustrx/harbour-rustrx: session, store, media
     Rustrx rustrx(dataDir);
+    // at the end the core stops first, then the name (the store's lock)
+    // goes, so the next Rustrx never opens a store this one still writes
+    QObject::connect(app.data(), &QCoreApplication::aboutToQuit, [&bus]() {
+        rustrx_shutdown(Keys::kShutdownMs);
+        bus.unregisterService(kService);
+    });
     rustrx.setStandIn(standIn);
     rustrx.setPushWake(pushWake);
     // the connector (pushes reach whichever Rustrx process runs)

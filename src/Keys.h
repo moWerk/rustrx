@@ -113,6 +113,11 @@ static const int kNameGoneTimeoutMs = 10000;
 static const int kNameGonePollMs = 100;
 // the running process answers activate within this
 static const int kActivateTimeoutMs = 3000;
+// a running Rustrx still starting has the bus name but not yet its object:
+// asked again for this long before it counts as leaving
+static const int kActivateRetryMs = 10000;
+// at exit, the core gets this long to stop before the bus name goes
+static const int kShutdownMs = 3000;
 // a push-woken process quits this long after the last push, at the latest
 // after kPushMaxLifeMs (the same numbers as the ring lifetime in call.rs,
 // which is unrelated)

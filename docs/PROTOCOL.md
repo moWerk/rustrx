@@ -126,7 +126,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 
 | ev | fields |
 |---|---|
-| `ready` | `logged_in`, `proto` (no saved session, or restoring it failed) |
+| `ready` | `logged_in`, `proto`, `kept_user?` (a store kept from an ended session), `restore_failed?` (a saved session could not be opened: no session, or restoring it failed) |
 | `logged_in` | `proto`, `user_id`, `device_id`, `homeserver`, `sliding_sync` |
 | `logged_out` | `reason?` (`session_expired`), `soft_logout?` |
 | `login_error` | `message` |

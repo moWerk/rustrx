@@ -458,3 +458,12 @@ def test_element_call_origin_agrees():
     url = re.search(r'ELEMENT_CALL_URL: &str = "(https://[^/"]+)', read("core/src/consts.rs")).group(1)
     origin = re.search(r'const ORIGIN = "([^"]+)"', read("qml/call-bridge.js")).group(1)
     assert url == origin
+
+
+def test_c_header_matches_the_core():
+    """src/rustrx_core.h is kept by hand: every function the core exports
+    is declared there, and nothing else. Planted-bug: a #[no_mangle]
+    function without its declaration."""
+    exported = set(re.findall(r"#\[no_mangle\]\s*pub extern \"C\" fn (\w+)", read("core/src/lib.rs")))
+    declared = set(re.findall(r"\b(rustrx_\w+)\s*\(", re.sub(r"/\*.*?\*/", "", read("src/rustrx_core.h"), flags=re.S)))
+    assert exported == declared, (exported ^ declared)

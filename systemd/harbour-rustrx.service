@@ -13,7 +13,10 @@ ConditionPathExists=%h/.config/net.mowerk/harbour-rustrx/background
 [Service]
 Environment=RUSTRX_BACKGROUND=1
 ExecStart=/usr/bin/sailjail -p harbour-rustrx.desktop /usr/bin/harbour-rustrx
-Restart=no
+# a session that cannot be opened yet (the store's key before the first
+# unlock) ends the stand-in with a failure: tried again a minute later
+Restart=on-failure
+RestartSec=60
 
 [Install]
 WantedBy=post-user-session.target

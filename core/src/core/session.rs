@@ -24,8 +24,11 @@ impl Core {
                     self.emit(json!({"ev": "ready", "logged_in": false, "proto": PROTO, "kept_user": kept}))
                 }
                 Err(e) => {
+                    // a saved session that could not be opened (the store's
+                    // key not there yet, before the first unlock, say): not
+                    // a logout, so the stand-in tries again later
                     self.error("restore", &e);
-                    self.emit(json!({"ev": "ready", "logged_in": false, "proto": PROTO}));
+                    self.emit(json!({"ev": "ready", "logged_in": false, "proto": PROTO, "restore_failed": true}));
                 }
             }
         });
@@ -464,6 +467,19 @@ impl Core {
                 self.emit(json!({"ev": "login_error", "message": format!("{e:#}")}));
                 Ok(())
             }
+        }
+    }
+
+    /// At the process's end: the login's tasks and the sync stop and the
+    /// client goes, so nothing writes to the store once the bus name (the
+    /// store's lock) is released. Blocks the caller up to `limit`.
+    pub(crate) fn shutdown(&'static self, limit: Duration) {
+        let done = self.rt.block_on(tokio::time::timeout(limit, async {
+            let teardown = self.state.lock().await.take_login();
+            drop(teardown.stop().await);
+        }));
+        if done.is_err() {
+            tracing::warn!("shutdown: not finished in time");
         }
     }
 

@@ -56,6 +56,16 @@ pub extern "C" fn rustrx_stop() {
     LIVE.store(false, Ordering::Release);
 }
 
+/// Stop syncing and let go of the stores, waiting at most `timeout_ms`.
+/// Called before the process gives up its bus name, which is the only lock
+/// on the store: the next Rustrx opens it as soon as the name is gone.
+#[no_mangle]
+pub extern "C" fn rustrx_shutdown(timeout_ms: u32) {
+    if let Some(core) = CORE.get() {
+        core.shutdown(std::time::Duration::from_millis(timeout_ms.into()));
+    }
+}
+
 static CORE: OnceLock<core::Core> = OnceLock::new();
 
 /// Collects formatted log lines and emits each as `{"ev":"log",...}`.
