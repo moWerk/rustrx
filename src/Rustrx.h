@@ -28,6 +28,7 @@
 
 class RoomModel;
 class TimelineModel;
+class UnifiedPush;
 
 // The bridge to librustrx: commands go out as JSON, events come back on
 // tokio threads and are re-posted onto the GUI thread before anything here
@@ -62,6 +63,8 @@ class Rustrx : public QObject
     // every joined room and chat, whatever the filter: what sharing offers
     Q_PROPERTY(RoomModel *targets READ targets CONSTANT)
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
+    // push through UnifiedPush (Foghorn), the stand-in's lighter successor
+    Q_PROPERTY(UnifiedPush *push READ push CONSTANT)
     // the open thread's messages (root and replies), beside the room's
     Q_PROPERTY(TimelineModel *thread READ thread CONSTANT)
     // changes whenever a thread is marked seen (bindings read it to update)
@@ -147,6 +150,10 @@ public:
     void setBackground(bool on);
     bool standIn() const { return m_standIn; }
     void setStandIn(bool on) { m_standIn = on; }
+    // a process the distributor started for one push (no window, no sync)
+    bool pushWake() const { return m_pushWake; }
+    void setPushWake(bool on) { m_pushWake = on; }
+    UnifiedPush *push() const { return m_push; }
     // the file the stand-in's unit looks for (in the sandbox's own config folder)
     static QString backgroundFlagPath();
     // a user unit: the stand-in (harbour-rustrx.service) or the app for it to
@@ -211,6 +218,9 @@ signals:
     // starting a call opened the room's calls to everyone (permissions)
     void callsAllowed(const QString &roomId);
     void knockRequestsChanged();
+    // a pushed message, fetched (the woken process shows it)
+    void pushNotification(const QString &roomId, const QString &roomName, const QString &senderName,
+                          const QString &body, bool isDm, bool noisy);
     void threadsSeenChanged();
     // a room's threads (thread_list): { root, latest, count }
     void threadList(const QString &roomId, const QVariantList &threads, bool loading);
@@ -403,6 +413,9 @@ private:
     QMap<QString, QVariantMap> m_knocks;
     QSet<QString> m_knocksNotified;
     bool m_standIn = false;
+    bool m_pushWake = false;
+    QList<QVariantMap> m_pendingPushes;
+    UnifiedPush *m_push;
     QString m_pendingUri;
     QVariantMap m_pendingShare;
     int m_unreadTotal = 0;

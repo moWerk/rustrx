@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.unifiedpush.Connector.rustrx
+Exec=/usr/bin/env RUSTRX_PUSH_WAKE=1 /usr/bin/sailjail -p harbour-rustrx.desktop -- /usr/bin/harbour-rustrx

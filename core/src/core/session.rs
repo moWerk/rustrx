@@ -186,6 +186,12 @@ impl Core {
             let mut st = self.state.lock().await;
             st.client = Some(client.clone());
         }
+        // woken for one push: the session only (no sync, no room list); the
+        // pushed message is fetched by push_handle
+        if push::push_wake() {
+            tracing::info!("push: woken, no sync");
+            return Ok(());
+        }
         let watch = self.rt.spawn(self.session_watch(client.clone()));
         // the previews come from the event cache; the sync service subscribes
         // it itself, the classic sync loop does not

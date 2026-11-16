@@ -6,7 +6,7 @@ TARGET = harbour-rustrx
 isEmpty(VERSION): VERSION = 0.4.3
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
-QT += dbus multimedia
+QT += dbus multimedia network
 
 CONFIG += sailfishapp sailfishapp_i18n sailfishapp_i18n_idbased sailfishapp_i18n_unfinished
 
@@ -15,6 +15,7 @@ SOURCES += src/main.cpp \
     src/RoomModel.cpp \
     src/TimelineModel.cpp \
     src/Twemoji.cpp \
+    src/UnifiedPush.cpp \
     src/VoiceRecorder.cpp \
     src/DebugLog.cpp
 
@@ -22,6 +23,7 @@ HEADERS += src/Rustrx.h \
     src/RoomModel.h \
     src/TimelineModel.h \
     src/Twemoji.h \
+    src/UnifiedPush.h \
     src/VoiceRecorder.h \
     src/DebugLog.h \
     src/rustrx_core.h
@@ -34,7 +36,8 @@ corelib.path = /usr/share/$${TARGET}/lib
 INSTALLS += corelib
 
 # notifications open their room through this service, also when the app is closed
-dbusservice.files = dbus/net.mowerk.harbour_rustrx.service
+# and a push (UnifiedPush) wakes it through its connector name, without a window
+dbusservice.files = dbus/net.mowerk.harbour_rustrx.service dbus/org.unifiedpush.Connector.rustrx.service
 dbusservice.path = /usr/share/dbus-1/services
 INSTALLS += dbusservice
 

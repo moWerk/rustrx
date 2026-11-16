@@ -171,6 +171,7 @@ pub(crate) struct Core {
 mod call;
 mod commands;
 mod knock;
+mod push;
 mod spaces;
 mod threads;
 pub(crate) use spaces::join_rule_name;

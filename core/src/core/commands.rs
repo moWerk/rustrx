@@ -378,6 +378,9 @@ impl Core {
                 Ok(())
             }
             MarkThreadRead => self.mark_thread_read().await,
+            PushSet { endpoint, gateway, old, lang } => self.push_set(&endpoint, &gateway, given(&old), given(&lang)).await,
+            PushRemove { endpoint } => self.push_remove(&endpoint).await,
+            PushHandle { room_id, event_id } => self.push_handle(&room_id, &event_id).await,
             CloseThread => {
                 self.close_thread().await;
                 Ok(())

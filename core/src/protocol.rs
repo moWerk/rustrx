@@ -44,6 +44,13 @@ pub(crate) enum Command {
     CloseThreadList,
     /// The open thread read to its end.
     MarkThreadRead,
+    /// The homeserver pushes this endpoint through this gateway (UnifiedPush);
+    /// `old`, a previous endpoint, is removed. Answered by "pusher_set".
+    PushSet { endpoint: String, gateway: String, old: Option<String>, lang: Option<String> },
+    PushRemove { endpoint: String },
+    /// A pushed message (room and event id): fetched and shown. Answered by
+    /// "push_notification" (or nothing, when the account's rules keep it quiet).
+    PushHandle { room_id: String, event_id: String },
     /// A file; pictures carry their size and a thumbnail from the UI, voice
     /// messages their duration.
     SendFile {

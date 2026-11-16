@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Twemoji.h"
+#include "UnifiedPush.h"
 #include "Rustrx.h"
 #include "DebugLog.h"
 #include <QLibrary>
@@ -209,8 +210,22 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     , m_targets(new RoomModel(this))
     , m_timeline(new TimelineModel(this))
     , m_thread(new TimelineModel(this))
+    , m_push(new UnifiedPush(dataDir, this))
 {
     s_instance = this;
+    connect(m_push, &UnifiedPush::command, this, &Rustrx::command);
+    // a push: the woken process fetches the message; a running app or
+    // stand-in has it from its sync anyway
+    connect(m_push, &UnifiedPush::pushed, this, [this](const QString &roomId, const QString &eventId) {
+        if (!m_pushWake)
+            return;
+        const QVariantMap cmd{ { "cmd", "push_handle" }, { "room_id", roomId }, { "event_id", eventId } };
+        // the session may still be on its way: after it
+        if (m_loggedIn)
+            command(cmd);
+        else
+            m_pendingPushes << cmd;
+    });
     connect(m_thread, &TimelineModel::emoteWanted, this, [this](const QString &mxc) {
         command({ { "cmd", "fetch_emote" }, { "mxc", mxc } });
     });
@@ -301,7 +316,7 @@ void Rustrx::quit()
 
 bool Rustrx::activate()
 {
-    if (!m_standIn) {
+    if (!m_standIn && !m_pushWake) {
         emit activateRequested();
         return false;
     }
@@ -314,7 +329,7 @@ bool Rustrx::activate()
 // the bus name), so what it should show goes through a file.
 bool Rustrx::handOver()
 {
-    if (!m_standIn)
+    if (!m_standIn && !m_pushWake)
         return false;
     QJsonObject o;
     o.insert("room", m_pendingRoom);
@@ -1059,12 +1074,17 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_userId = ev.value("user_id").toString();
         m_homeserver = ev.value("homeserver").toString();
         emit stateChanged();
+        m_push->loggedIn();
+        for (const QVariantMap &cmd : m_pendingPushes)
+            command(cmd);
+        m_pendingPushes.clear();
     } else if (type == QLatin1String("login_error")) {
         m_loggingIn = false;
         emit stateChanged();
         emit loginError(ev.value("message").toString());
     } else if (type == QLatin1String("logged_out")) {
         m_loggedIn = false;
+        m_push->loggedOut();
         m_logoutReason = ev.value("reason").toString();
         m_keptUser = ev.value("user_id").toString();
         m_userId.clear();
@@ -1153,6 +1173,12 @@ void Rustrx::handleEvent(const QVariantMap &ev)
                           r.value("name").toString(), r.value("reason").toString());
         }
         emit knockRequestsChanged();
+    } else if (type == QLatin1String("pusher_set")) {
+        m_push->pusherSet(ev.value("endpoint").toString());
+    } else if (type == QLatin1String("push_notification")) {
+        emit pushNotification(ev.value("room_id").toString(), ev.value("room_name").toString(),
+                              ev.value("sender_name").toString(), ev.value("body").toString(),
+                              ev.value("is_dm").toBool(), ev.value("noisy").toBool());
     } else if (type == QLatin1String("calls_allowed")) {
         emit callsAllowed(ev.value("room_id").toString());
     } else if (type == QLatin1String("call_ring")) {

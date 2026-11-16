@@ -49,6 +49,7 @@ Item {
         onInviteGone: service.closeInvite(roomId)
         onCallRing: service.ringCall(roomId, roomName, senderName, ring, eventId, expiresMs)
         onNewKnock: service.notifyKnock(roomName, isSpace, name, reason)
+        onPushNotification: service.notifyPush(roomId, roomName, senderName, body, isDm)
         onKnockRequestsChanged: if (rustrx.knockRequests.length === 0) knockNote.close()
         onCallAnswered: service.stopRinging(roomId)
         onUnreadChanged: if (rustrx.standIn) console.log("stand-in: unread", rustrx.unreadTotal, "in", rustrx.unreadChats)
@@ -212,6 +213,26 @@ Item {
                 "arguments": [ roomId, eventId ]
             }]
         }
+    }
+
+    // a pushed message (a process woken for it): the room's line, as a
+    // message seen by the sync would make it; text as Settings has it
+    function notifyPush(roomId, roomName, senderName, body, isDm) {
+        console.log("notify: push")
+        var n = roomNotifications[roomId]
+        if (!n) {
+            n = notificationComponent.createObject(service, { roomId: roomId })
+            roomNotifications[roomId] = n
+        }
+        var pending = (roomPending[roomId] || 0) + 1
+        roomPending[roomId] = pending
+        var who = senderName && !isDm ? senderName + ": " : ""
+        n.summary = roomName
+        n.previewSummary = roomName
+        n.body = body && notifyText ? who + body : qsTrId("rustrx-no-new-messages", pending)
+        n.previewBody = n.body
+        n.itemCount = pending
+        n.publish()
     }
 
     // requests to join: one notification, the latest request in it, a tap
