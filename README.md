@@ -32,7 +32,7 @@ without sailfish-secrets. Since 0.4.4 it also has calls (unencrypted rooms for
 now), threads, spaces with requests to join, and Twemoji with custom emoji and
 stickers. It also works well as the client for a second account next to another one.
 
-![Rustrx 0.4.4 on a Jolla Phone 2026: the room list with its Rooms, People, Favs and Spaces tabs, the Spaces tab with its pulley menu, a thread with its own message field, and the emoji picker with Twemoji in the keyboard's place](screenshots/rustrx-0.4.4.jpg)
+![Rustrx 0.4.5 on a Jolla Phone 2026: the member search of a 708-member room, Settings with push notifications through Foghorn and the favourites highlight, a message menu with Twemoji reactions and Reply in thread above the emoji picker, and a text reaction being typed](screenshots/rustrx-0.4.5.jpg)
 
 ## What it does
 
