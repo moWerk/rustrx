@@ -1,6 +1,15 @@
-# UnifiedPush beside the stand-in (plan for 0.4.4)
+# UnifiedPush beside the stand-in
 
-Status: plan, nothing built. Written 2026-11-15 from public sources:
+Status: built in 0.4.5 (2026-11-16), tested on two phones with Foghorn
+0.7.1. The implementation has an own QtDBus connector
+(no Leghorn), the connector name org.unifiedpush.Connector.rustrx with
+its D-Bus service file (RUSTRX_PUSH_WAKE, sailjail's UnifiedPush
+permission), the push server's own Matrix gateway or the UnifiedPush
+common gateway, an HTTP pusher with event ids only, and the SDK's
+notification client fetching the one message in the woken process. The
+plan below is the original one.
+
+Original plan: Written 2026-11-15 from public sources:
 the UnifiedPush idea, Foghorn's OpenRepos page, and Xmatic's push work
 (ProjectMoon's pull request 9 on JimKnopfIoT/harbour-xmatic, merged
 2026-10-09, Apache-2.0, with its docs/PUSH.md), which uses the same

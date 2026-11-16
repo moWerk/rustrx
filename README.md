@@ -99,10 +99,14 @@ stickers. It also works well as the client for a second account next to another 
   leave, and its own notification level.
 - Notifications per room, updated in place, opening the room on a tap, and
   one for each new invitation.
-- Background mode (Settings > Notifications, off by default): when Rustrx is
-  closed, a stand-in without a window stays connected, notifies within seconds
-  even while the phone sleeps, and starts with the phone. A line in the events
-  view shows it runs; tap it to open Rustrx, or quit it there.
+- Notifications with Rustrx closed, one choice in Settings > Notifications:
+  push through UnifiedPush (Foghorn from OpenRepos as the distributor; the
+  homeserver pushes through a Matrix gateway, D-Bus activation wakes Rustrx
+  for one message, nothing keeps running), or, without a distributor, the
+  background mode: a stand-in without a window stays connected, notifies
+  within seconds even while the phone sleeps, and starts with the phone. A
+  line in the events view shows it runs; tap it to open Rustrx, or quit it
+  there.
 - Device verification by emoji comparison, incoming or started from
   Settings (tested with nheko); restoring encrypted history with the
   recovery key; key backup; room key export and import.
@@ -143,14 +147,14 @@ when a process exits after hiding or recreating its window.
 
 ## Status
 
-0.4.4. From "let's build a client" to 0.2.0 in one evening, used daily on
+0.4.5. From "let's build a client" to 0.2.0 in one evening, used daily on
 the Jolla Phone 2026 since, and developed and maintained for the long run.
 Tested with two accounts, on matrix.org and on tchncs.de (single sign-on
 through its account service); QR and OIDC login wait for a server that
 offers them (matrix.org has no MSC4108 yet). Not yet there: encrypted calls, pinned messages, forwarding,
 mention completion, QR verification. Push through UnifiedPush
-([Foghorn](https://git.agnos.is/projectmoon/foghorn) and its Leghorn crate)
-is planned as a lighter second option next to the stand-in.
+works with [Foghorn](https://openrepos.net/content/projectmoon/foghorn) as the
+distributor; the stand-in remains the fallback without one.
 
 ## Install
 

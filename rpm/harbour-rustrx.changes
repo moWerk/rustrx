@@ -1,3 +1,18 @@
+* Mon Nov 16 2026 moWerk <mo@mowerk.net> - 0.4.5
+- New: push notifications through UnifiedPush (Foghorn): nothing of
+  Rustrx keeps running while it is closed; one choice in Settings for
+  when Rustrx is closed (push, background, none).
+- New: favourites with new messages glow in the lists (Appearance).
+- New: each tab keeps its own order and filter switches; room settings
+  list threads and members (searchable) on pages of their own; the
+  emoji button in threads.
+- Fixed: idle CPU about 30 times lower (an SDK store lock renewed 20
+  times a second; room updates redid work for every room).
+- Fixed: the chat keeps its place after a picture, a thread or settings;
+  rooms are marked read once the newest message is in view.
+- Fixed: membership changes named in the room list; reply quotes in
+  threads load; the invitations header no longer overlaps a row.
+
 * Sun Nov 15 2026 moWerk <mo@mowerk.net> - 0.4.4
 - New: calls through Element Call (unencrypted rooms; encrypted ones
   need a newer browser engine); incoming calls ring with Answer and
