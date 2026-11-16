@@ -207,7 +207,7 @@ void UnifiedPush::loggedOut()
 void UnifiedPush::registerApp()
 {
     if (m_state.value("token").toString().isEmpty()) {
-        m_state.insert("token", QUuid::createUuid().toString(QUuid::WithoutBraces));
+        m_state.insert("token", QUuid::createUuid().toString().mid(1, 36));
         save();
     }
     QDBusMessage call = QDBusMessage::createMethodCall(m_distributor, QStringLiteral("/org/unifiedpush/Distributor"),

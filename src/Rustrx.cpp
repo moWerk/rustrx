@@ -210,9 +210,9 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     , m_targets(new RoomModel(this))
     , m_timeline(new TimelineModel(this))
     , m_thread(new TimelineModel(this))
-    , m_push(new UnifiedPush(dataDir, this))
 {
     s_instance = this;
+    m_push = new UnifiedPush(dataDir, this);
     connect(m_push, &UnifiedPush::command, this, &Rustrx::command);
     // a push: the woken process fetches the message; a running app or
     // stand-in has it from its sync anyway
