@@ -476,7 +476,13 @@ impl Core {
     pub(crate) fn shutdown(&'static self, limit: Duration) {
         let done = self.rt.block_on(tokio::time::timeout(limit, async {
             let teardown = self.state.lock().await.take_login();
-            drop(teardown.stop().await);
+            // the sync stopped first, then the stores closed: running
+            // writes finish, connections and file locks are let go
+            if let Some(client) = teardown.stop().await {
+                if let Err(e) = client.pause().await {
+                    tracing::warn!("shutdown: stores not closed: {e}");
+                }
+            }
         }));
         if done.is_err() {
             tracing::warn!("shutdown: not finished in time");
