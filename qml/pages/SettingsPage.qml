@@ -186,8 +186,9 @@ Page {
                              : qsTrId("rustrx-la-closed-off-hint")
             }
 
+            // only with the background stand-in, the line's subject
             TextSwitch {
-                enabled: rustrx.background
+                visible: rustrx.background
                 //% "Show the background line"
                 text: qsTrId("rustrx-la-background-line")
                 //% "The line in the events view while Rustrx runs in the background. Without it, Rustrx runs unseen: open it from its icon, and switch background mode off to end it."
