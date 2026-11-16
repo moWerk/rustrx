@@ -215,8 +215,10 @@ ApplicationWindow {
             if (data.state === "requested" && !data.we_started) showVerification(data)
         }
         onErrorOccurred: {
-            // the settings page shows the recovery errors in place
-            if (cmd === "recovery_recover" || cmd === "recovery_enable" || cmd === "recovery_reset") return
+            // the pages that sent these show their errors in place: settings
+            // (recovery), keys, message source, devices, the login's server
+            if (["recovery_recover", "recovery_enable", "recovery_reset", "identity_reset",
+                 "export_keys", "import_keys", "event_source", "devices", "probe_server"].indexOf(cmd) >= 0) return
             var what = actionLabel(cmd)
             Notices.show(what.length
                          //: transient error line, %1 what was tried, %2 the server's or the network's message
