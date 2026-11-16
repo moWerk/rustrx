@@ -36,15 +36,23 @@ The app was written by an LLM (Claude), directed and tested by the author, who h
 
 ## Worth questioning
 
-- No automated tests and no CI. The audit checked its two rewrites against the old code (formatting on about 20,000 messages, sorting on 3000 random lists), but those checks are not in the tree.
+- The tests are young (0.4.7). They hold the wiring between the three languages, the message HTML and the plain texts, the room order, and the core's command parsing; nothing yet exercises a live server, the three processes or Qt 5.6 itself. The open findings of the lifecycle audit are listed in its ledger.
 - Without sailfish-secrets (community ports), the store is unencrypted.
 - The debug log is on by default until 1.0. It holds room and user ids, never message texts or passwords. Check that claim in `DebugLog.cpp` and the core's tracing calls.
 - The stand-in never gets a window, because lipstick 0.37.6 crashed when a process exited after hiding one. It is a workaround, not a fix.
 - `MainPage.qml` imports `Sailfish.Silica.private` (one reason it is no Jolla Store app, besides the bundled core).
-- Send queue recovery after a network error is not verified (next for 0.4.7).
+- Other people's text reaches StyledText only escaped (`markup.js`, `TimelineModel`), Labels default to plain text, the QML engines have no network, and links leave the app through one gate (`openExternal`). Try to break that.
 
 ## How it was tested
 
 By the author, as a daily client on the Jolla Phone 2026 (SailfishOS 5.2) and on the hybris Pro¹-X port, with two accounts (matrix.org, and tchncs.de with single sign-on); verification was tested against nheko. Before each handover, the LLM checked builds, `qmllint`, package contents and start logs on those phones.
 
-There are no automated tests; the on-device checks are listed in the commit messages.
+Since 0.4.7 (see `docs/audits/2026-11-16-lifecycle-and-input.md`):
+
+- `python3 -m pytest -q tests`: static and wiring checks, on every push (`.github/workflows/ci.yml`).
+- `tests/cpp/run.sh`: QtTest suites against the host's Qt 5, on every push.
+- `cargo test --locked` in `core/`: nightly (`.github/workflows/nightly.yml`), because matrix-sdk takes minutes to compile.
+
+Every test says which planted bug it was proven against, and each commit names its plants.
+
+**Proof gate** for a change to count as done: the three suites pass, the RPM builds in the Sailfish SDK (which also catches what Qt 5.15 accepts and Qt 5.6 does not), and the change was seen working on a phone. Commit messages say which of these did not happen.

@@ -9,3 +9,4 @@ recorded too, so the next audit does not measure them again.
 | Date | Topic | Release |
 |---|---|---|
 | [2026-11-16](2026-11-16-structure.md) | Structure: the whole tree after one week of fast iteration | 0.4.6 |
+| [2026-11-16](2026-11-16-lifecycle-and-input.md) | Lifecycle and untrusted input, after the first tests | 0.4.7 |

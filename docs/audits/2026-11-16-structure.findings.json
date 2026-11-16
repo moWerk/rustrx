@@ -170,7 +170,7 @@
    "sev": "medium",
    "area": "send queue",
    "what": "Whether a network error while sending leaves a room's send queue off until restart was unverified",
-   "status": "OPEN, traced by the 2026-11-17 audit as C1"
+   "status": "FIXED 760903c (0.4.7), traced by the lifecycle audit as C1"
   },
   {
    "id": "S25",

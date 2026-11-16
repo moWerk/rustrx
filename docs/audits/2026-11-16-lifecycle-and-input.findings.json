@@ -1,0 +1,613 @@
+{
+ "audit": "2026-11-16 lifecycle and untrusted input (0.4.7)",
+ "date": "2026-11-16",
+ "baseline": "69f284730d968adcf717a156a2bd9804ca3558b1 (working tree: only .gitignore modified, no source change)",
+ "method": "Two read-only LLM agents with the scope the first audit left out, after the static and wiring tests were in. Lifecycle: every spawn, lock, abort, loop and timeout in the core, the three processes and their units, checked against the matrix-sdk 0.19.1 sources on the build host. Untrusted input, privacy and names: every path from other people's servers and other apps into StyledText, links, shares, D-Bus and the log, with Qt 5.6 StyledText and Silica's Label read from source. Findings fixed in small commits, each with a test where one can reach it (I2 and I3 written failing first).",
+ "findings": [
+  {
+   "id": "C1",
+   "severity": "high",
+   "area": "send queue (timeline.rs)",
+   "status": "FIXED 760903c (re-enable after 30 s and on sync Running; retry_send; discard re-enables)",
+   "summary": "CONFIRMED: after any send error the SDK switches the room's send queue off, and Rustrx switches it back on only for rooms where it dropped a refused reaction. After a network error (recoverable) or a refused message (unrecoverable), every later message in that room stays 'sending' until the app restarts; 'Send again' and 'Discard' do not help.",
+   "detail": "SDK: on any error in the room's sending task, `locally_enabled.store(false, Ordering::SeqCst);` (send_queue/mod.rs:1019). Recoverable (transient HTTP, NetworkFailure, ConcurrentRequestFailed, mod.rs:999-1013): the request is kept, `queue.mark_as_not_being_sent` (mod.rs:1026). Unrecoverable: `queue.mark_as_wedged` (mod.rs:1035), which blocks the room's later requests to keep the order. The task then loops: `if !locally_enabled.load(..) { notifier.notified().await; continue; }` (mod.rs:696-700). A new send, an abort (mod.rs:2864, 2883) or an unwedge (mod.rs:3012) only calls `notifier.notify_one()`; the task wakes, sees the flag still false and sleeps again. The only code that stores true is `RoomSendQueue::set_enabled` (mod.rs:1232-1238) and `SendQueue::set_enabled` (mod.rs:286-297); in the SDK they are called only by `Client::resume` (client/mod.rs:3840). The SyncService does not touch the send queue (no send_queue reference in sync_service.rs), also not when it comes back from Offline. Rustrx: `send_queue_watch` (core/src/core/timeline.rs:14-25) handles `Ok(e) if !e.is_recoverable => Self::drop_refused_reactions(&client).await` and `Ok(_) => {}` (timeline.rs:19-20): a recoverable error is ignored. `drop_refused_reactions` calls `room.send_queue().set_enabled(true)` only for rooms in `woken`, i.e. rooms where an m.reaction was aborted (timeline.rs:41-55); a room whose refused event is a message is not re-enabled. UI: a failed echo is `send_state: \"failed\"` for both kinds (serialize.rs:571-574, `SendingFailed { .. }`). 'Send again' is `rustrx.command({ cmd: \"redact\", room_id: page.roomId, txn_id: txnId }); rustrx.sendText(page.roomId, text, \"\")` (qml/pages/RoomPage.qml:418-421; ThreadPage.qml:151): the redact aborts the echo (notify only), the new text is queued into the still-disabled queue and shows 'sending' forever. 'Discard' (MessageDelegate.qml:728-732) is the same abort. Why a restart helps: a new Client starts with `SendQueueData::new(true)` (client/builder/mod.rs:724), and at start `drop_refused_reactions` calls `client.send_queue().local_echoes()`, which calls `self.for_room(room)` for every room with unsent requests (send_queue/mod.rs:321-338) and so spawns their tasks enabled; that resume is incidental. A wedged message survives a restart and still blocks its room until it is discarded (after a restart Discard then works, because the queue is enabled again).",
+   "fix": "proposed: (1) in send_queue_watch, on `Ok(e) if e.is_recoverable`, re-enable that room (`client.get_room(&e.room_id).map(|r| r.send_queue().set_enabled(true))`) after a backoff (e.g. 2 s doubling to 60 s, reset on success), and also call `client.send_queue().set_enabled(true).await` whenever the SyncService state goes to Running (sync.rs:55-75 already sees every transition; it also respawns rooms with unsent requests, mod.rs:222-241); for the classic sync, on the first successful `sync` after an error (sync.rs:26-33). (2) A `retry_send {room_id, txn_id}` command that finds the echo in `local_echoes()`, calls `send_handle.unwedge()` when it is wedged, then `room.send_queue().set_enabled(true)`; 'Send again' uses it instead of redact+sendText (keeps the order and the txn id, works for media too). (3) After a Discard of a failed echo (redact with txn_id), call `room.send_queue().set_enabled(true)`. (4) Optionally expose `room.send_queue().is_enabled()` in the timeline event so the UI can show 'paused'.",
+   "test": "Rust integration test with the SDK's MatrixMockServer (matrix-sdk test-utils) or wiremock: send in a room with the /send endpoint answering a connection reset (recoverable) once, then 200; assert that a second message reaches the mock without a new Client. Second case: answer 400 M_FORBIDDEN (unrecoverable) for a message, discard it, send again, assert it arrives. Phone: airplane mode, send a message, network back, wait for sync 'running': the message must leave; today it stays 'sending' until restart."
+  },
+  {
+   "id": "C2",
+   "severity": "medium",
+   "area": "logout (session.rs)",
+   "status": "FIXED cb14789 (login generation; server logout bounded to 15 s; wipe only for the same generation)",
+   "summary": "CONFIRMED path: logout wipes the store and deletes session.json after an unbounded network await, with nothing tying the wipe to the login it belongs to. A second Logout tap during that wait reports logged_out at once; a login made then has its fresh store and session file deleted when the first logout's network call returns.",
+   "detail": "session.rs:444-460: `self.call_end().await;` (network: leave_own_memberships, call.rs:273-295), `let teardown = self.state.lock().await.take_login();`, `if let Some(client) = teardown.stop().await { if let Err(e) = client.logout().await {..} }`, then `std::fs::remove_file(self.session_path()).ok(); self.wipe_local_data(); self.emit(json!({\"ev\": \"logged_out\"}));`. `client.logout()` uses the default RequestConfig: 30 s per attempt and transient errors retried for up to 15 minutes (http_client/native.rs:56-60, http_client/mod.rs:51). The UI stays logged in until logged_out arrives; the Log out button stays enabled (qml/pages/SettingsPage.qml:354-362, remorse only). A second `logout` finds `client` already None (take_login returns empty), skips the network, wipes, emits logged_out. login_password/login_sso only check `client.is_some()` (session.rs:369, 404), so the user can log in again (same or other account) while the first logout task is still in `client.logout().await`. When it returns, session.rs:457-458 delete the new session.json and `remove_dir_all` the new account's live store (session.rs:303-311), and a second logged_out is emitted. The same unguarded pattern is in session_expired (session.rs:281-300, but its awaits are local).",
+   "fix": "proposed: a login generation counter in State (the next structural step the first audit named): take_login bumps it and returns it; logout does the local part first (remove session.json, wipe, emit logged_out) and the server logout last, on a request with `RequestConfig::short_retry()` / a short timeout, and only the local part if the generation is still the one it took. Disable the Log out button while a logout is pending.",
+   "test": "Rust unit test with a mock server whose /logout answers after a delay: send logout twice, then login_password, release the delayed answer, assert the new session file and store still exist. Phone only otherwise: slow network (tc netem), tap Log out twice, log in again."
+  },
+  {
+   "id": "C3",
+   "severity": "medium",
+   "area": "processes / bus name (main.cpp, Rustrx.cpp, SecretStore.cpp)",
+   "status": "OPEN: register the object before the secrets fetch; retry activate; needs a phone to test the start paths",
+   "summary": "CONFIRMED: the bus name is taken before the D-Bus object exists, and any error answer to `activate` is read as 'the holder is leaving'. A launch while the holder is still starting (or hung) waits 10 s and exits silently; the holder stays.",
+   "detail": "main.cpp:110 `bus.registerService(kService)` happens before `Rustrx rustrx(dataDir);` (main.cpp:128). The constructor first loads the sailfish-secrets plugin and fetches the store key synchronously on the GUI thread (Rustrx.cpp:107-125; SecretStore.cpp:46-47, 67-68, 101-102: `request.waitForFinished();` with `SystemInteraction`, no timeout of its own, QtDBus default 25 s per call), then `rustrx_start` (Rustrx.cpp:130), and only then `bus.registerObject(Keys::kObjectPath, this, ..)` (Rustrx.cpp:142). A second process meanwhile calls `activate` (main.cpp:116-118, 3 s timeout, Keys.h:115); the answer is UnknownObject (or NoReply if the GUI thread is busy > 3 s), and `takeOver = reply.type() == QDBusMessage::ErrorMessage || ..` (main.cpp:120-121) is true, so it waits in `waitForNameToGo` (10 s, Keys.h:112, main.cpp:50-60) for a holder that never got the request, then `return 0` (main.cpp:123-124) with no message. Cases: the stand-in at session start (post-user-session.target) while the device is not unlocked yet, if sailfish-secrets waits for the unlock (SUSPECTED: not verified what the daemon does before the first unlock); any hung holder (Restart=no in both units, nothing kills it). A crashed holder is fine: the bus drops its names on disconnect.",
+   "fix": "proposed: register the object path (a small responder that can already answer activate) right after registerService, before the secrets fetch; in main.cpp retry `activate` on UnknownObject/UnknownMethod until a deadline and treat only NoReply/ServiceUnknown/Disconnected as 'leaving'; when waitForNameToGo fails, log it and show a notification instead of exiting silently; give the SecretStore requests a bounded wait.",
+   "test": "phone only: delay the stand-in's constructor (e.g. a test-only sleep env var before registerObject), start the stand-in, tap the launcher within the delay: today the app does not appear; after the fix it does. A unit test of the main.cpp decision table (error name -> take over / retry) is possible if that logic is moved into a function."
+  },
+  {
+   "id": "C4",
+   "severity": "medium",
+   "area": "SSO login (session.rs)",
+   "status": "FIXED cb14789 (10 min timeout, login_cancel and a Cancel button)",
+   "summary": "CONFIRMED: a single sign-on login that is not completed in the browser waits forever; the login page has no cancel and stays in 'logging in' with both login buttons disabled until the app is restarted.",
+   "detail": "session.rs:429 `builder.send().await` -> SDK SsoLoginBuilder::send: `let (redirect_url, server_handle) = server_builder.spawn().await?;` then `server_handle.await` (authentication/matrix/login_builder.rs:327-337); the local redirect server has no timeout. Rustrx adds none and has no cancel command (protocol.rs has no such Command). UI: `m_loggingIn = true` (Rustrx.cpp:395) is cleared only by logged_in, login_error or an error for login_sso (Rustrx.cpp:580-595, 689-692); LoginPage disables both buttons on `!rustrx.loggingIn` (LoginPage.qml:173, 202) and only offers 'Open again' and 'Copy link' (LoginPage.qml:211-251). The pending task also holds a Client with the store open (built at session.rs:412) and kept_device may already have wiped a kept store (session.rs:410, 269).",
+   "fix": "proposed: wrap the SSO send in `tokio::time::timeout` (e.g. 10 min) and add a `login_cancel` command that aborts the pending login task (keep its JoinHandle in State); a Cancel button in the waiting block of LoginPage. Both end in login_error.",
+   "test": "Rust test: login_sso against a mock server, never call the redirect URL, send login_cancel, assert login_error and that a second login_sso starts. Phone: start SSO, close the browser, press Cancel."
+  },
+  {
+   "id": "C5",
+   "severity": "medium",
+   "area": "task lifetimes / logout (commands.rs, timeline.rs)",
+   "status": "FIXED cb14789 (get_media and fetch_emote check the generation before writing)",
+   "summary": "CONFIRMED path: command tasks are not tied to the login. A media download in flight at logout finishes afterwards and writes the old account's decrypted file into the freshly wiped media folder, and emits a media event.",
+   "detail": "Every command runs on its own detached task: `self.rt.spawn(async move { if let Err(e) = self.handle(command).await {..} })` (commands.rs:21-25), never aborted. get_media holds the Room/Client it resolved and, after its network awaits (timeline.rs:448-469, SDK default up to 15 min of retries on 5xx), writes `self.data_dir.join(MEDIA_DIR).join(..)` (timeline.rs:499-501) and emits \"media\" (timeline.rs:502). logout's `wipe_local_data` removes and recreates MEDIA_DIR (session.rs:307-310) before that write can happen. Same for fetch_emote (timeline.rs:536-547, writes media/emotes). The decrypted file of the old account then stays on disk after the logout, against what logout promises ('Everything of the account on this phone', session.rs:302). Other detached tasks hold the old timeline/client briefly but write nothing: open_room's first page (timeline.rs:195-197), fetch_replied (timeline.rs:96-100), the thread's page_in (threads.rs:55-57).",
+   "fix": "proposed: keep command tasks of the current login in a `JoinSet`/Vec in State (abort on take_login), or capture the login generation at dispatch and check it before every file write and emit in get_media/fetch_emote; simplest: get_media writes to a temp name and renames only if the generation still matches.",
+   "test": "Rust test with a mock media endpoint that answers after a delay: get_media, logout, release the answer, assert media/ is empty. Phone: open a large picture on a slow link and log out at once."
+  },
+  {
+   "id": "C6",
+   "severity": "medium",
+   "area": "push wake (push.rs)",
+   "status": "FIXED b1fe4ce (push_handle serialised)",
+   "summary": "CONFIRMED that concurrent push_handle commands each build their own NotificationClient; SUSPECTED that their encryption syncs then run concurrently over one crypto store (the SDK assumes one per process).",
+   "detail": "push.rs:82 `let nc = NotificationClient::new(client.clone(), NotificationProcessSetup::MultipleProcesses).await?;` per command, and each command is its own task (commands.rs:21). Pushes queued before login are flushed in one loop (Rustrx.cpp:589-591), later ones arrive per D-Bus call, so a burst gives parallel push_handle tasks. In the SDK the encryption sync is serialised by `self.encryption_sync_mutex` and a dummy permit that is unique 'since we've acquired the encryption_sync_mutex' (notification_client.rs:336-343) - both per NotificationClient instance. Each instance gets its own Client copy over the same crypto store with `CrossProcessLockConfig::multi_process(Self::LOCK_ID)` (notification_client.rs:208-214, client/mod.rs:3583-3617), all with the same lock id, so they do not exclude each other. Possible results (not observed): duplicate one-time-key / to-device processing, M_UNKNOWN_POS on the shared sliding sync connection, a room key processed by one instance not seen by the other's decryption retry.",
+   "fix": "proposed: one NotificationClient per process, made once (tokio::sync::OnceCell in Core) and reused by every push_handle; or serialise push_handle behind a tokio Mutex. Either keeps the SDK's own mutex meaningful.",
+   "test": "phone only: send five encrypted messages within a second to a device whose app is closed with push on, and compare the push log (logs/push.log) for UTD notifications / M_UNKNOWN_POS before and after."
+  },
+  {
+   "id": "C7",
+   "severity": "low",
+   "area": "task lifetimes (threads.rs, spaces.rs, call.rs, timeline.rs)",
+   "status": "FIXED b1fe4ce in part: a replaced task is aborted; a close during the build still loses to the open",
+   "summary": "CONFIRMED: open_thread, thread_list, space_open and call_start close the previous one first, then await, then store the new handle by assignment. A close (or a second open) that arrives during the await is lost: the replaced JoinHandle is dropped, which detaches the task instead of aborting it.",
+   "detail": "open_thread: `self.close_thread().await;` (threads.rs:41), `build_timeline(.., TimelineFocus::Thread ..).await?` (threads.rs:42, a thread focus loads the root and its relations from the server), then `self.state.lock().await.thread = Some(OpenThread {..})` (threads.rs:62). A close_thread processed during the build finds nothing; the thread then stays open in the core with its task streaming thread_timeline (dropped by the UI, Rustrx.cpp:654) until the next open_thread or logout, and `timeline_holding` (threads.rs:169-198) may route reactions in that room through the stale thread timeline. Two overlapping open_thread: the first OpenThread is overwritten and its task is never aborted (only take_login or close_thread abort the stored one). Same pattern: thread_list (threads.rs:70, 110), space_open (spaces.rs ~85-129, `space_lists.insert` returns the old handle, dropped), call_start (call.rs:161, 243 `call = Some(..)`, the old CallSession's driver keeps running), open_room vs close_room (timeline.rs:185-191; narrower: a live-focus build is mostly local).",
+   "fix": "proposed: when storing, take the previous value and abort it (`if let Some(old) = st.thread.replace(new) { old.task.abort() }`, `if let Some(old) = st.space_lists.insert(..) { old.abort() }`); plus a per-slot sequence number bumped by close_* and checked before storing, so a close during the build wins.",
+   "test": "Rust test with a mock server delaying /relations: open_thread then close_thread immediately; assert State.thread is None after both complete and no thread_timeline event follows."
+  },
+  {
+   "id": "C8",
+   "severity": "low",
+   "area": "task lifetimes / login (session.rs, sync.rs, verification.rs, knock.rs, core.rs)",
+   "status": "FIXED cb14789 (registration checks the generation; finished login tasks pruned)",
+   "summary": "CONFIRMED structure, SUSPECTED timing: tasks and the SyncService are registered in State after awaits, without checking that the login they belong to is still current. A teardown that runs in between misses them; they are pushed into the next login's state and keep the old client alive and emitting.",
+   "detail": "after_login sets `st.client` (session.rs:186-189) and only later pushes watch/rooms/sends (session.rs:196-203); start_sync stores the service and its tasks after `SyncService::builder(..).build().await` and `service.start().await` (sync.rs:43-54, 76-81). Also spawn_login_task (core.rs:191-194; called from the verification event handlers verification.rs:217, 226 and verification.rs:377), watch_request's SAS task (verification.rs:292-294), the knock watchers (knock.rs:77-79). The realistic trigger is session_expired: session_watch is spawned at session.rs:196, before start_sync finishes; an UnknownToken on the first request of an expired restore spawns session_expired (session.rs:224) whose take_login (session.rs:283-287) can run before sync.rs:76-81. Then the old SyncService keeps running (401s), its state_task emits sync_state into the logged-out UI, and the leftovers are aborted only at the next logout. Also login_tasks is never pruned: finished verification, SAS and knock handles accumulate per login (trivial memory).",
+   "fix": "proposed: the login generation counter (see C2): after_login captures it, every registration checks it under the lock and, if it changed, aborts the handle / stops the service instead of storing it. Prune finished handles (`login_tasks.retain(|h| !h.is_finished())`) when pushing.",
+   "test": "Rust test: restore with a mock server that answers 401 M_UNKNOWN_TOKEN (soft_logout false) to everything, assert no sync_state event after logged_out and that State.sync_service is None."
+  },
+  {
+   "id": "C9",
+   "severity": "low",
+   "area": "processes / exit (lib.rs, Rustrx.cpp, main.cpp)",
+   "status": "OPEN: a shutdown command before the bus name goes; handOver to check StartUnit",
+   "summary": "SUSPECTED: nothing stops the core before the bus name is released. The bus name is the only store lock (cross-process lock off), yet the old process's sync and crypto tasks run until the process is gone.",
+   "detail": "session.rs:111-115: `.cross_process_store_config(CrossProcessLockConfig::SingleProcess)` with the comment that the D-Bus name is the lock. On exit: `~Rustrx` only calls `rustrx_stop()` (Rustrx.cpp:146-151), which only clears LIVE so events are dropped (lib.rs:38-57); the runtime lives in a static OnceLock and is never shut down (lib.rs:59, 151-155). The name goes when QtDBus closes the session connection (during QGuiApplication teardown or at process exit; not verified for Qt 5.6) while the tokio workers may still be inside a sync response or a crypto write. The waiting process polls every 100 ms (main.cpp:54-58) and then opens the store. The window is short (milliseconds); SQLite transactions keep the files consistent, but two OlmMachines on one crypto store for even a moment is what the cross-process lock exists for. Also the stand-in's handOver() quits whether or not StartUnit succeeded (Handover.cpp:108-109: result ignored).",
+   "fix": "proposed: a `shutdown` command (or a blocking `rustrx_shutdown(timeout_ms)` C function) that stops the SyncService, aborts login tasks and calls `client.pause()` (closes all stores, client/mod.rs:3813-3823), called from aboutToQuit before `bus.unregisterService(kService)` is done explicitly. In handOver(), quit only if startUnit returned true (else stay and log), or leave the quit to the new app's activate call (Rustrx.cpp:221-230).",
+   "test": "phone only: log the timestamps of 'name released' (old process) and 'store opened' (new process) during a stand-in -> app handover; after the fix the old process logs 'stores closed' before the release."
+  },
+  {
+   "id": "C10",
+   "severity": "low",
+   "area": "error paths (QML waiting flags)",
+   "status": "FIXED 0c953c0 (and the same pattern in the member, picture and message pages)",
+   "summary": "CONFIRMED: the core answers every failed command with an error event, but three UI flags wait only for the success event, so one failure leaves them stuck.",
+   "detail": "paginate_back errors go out as {\"ev\":\"error\",\"cmd\":\"paginate_back\"} (commands.rs:21-25, timeline.rs:233). RoomPage sets `paginating = true` (RoomPage.qml:272) and clears it only in `onPaginated` (RoomPage.qml:151); there is no onErrorOccurred in RoomPage, so after one failed page (no network while scrolling up) older history never loads again in that page and the spinner stays (RoomPage.qml:331-335). SearchPage: `page.searching = true` (SearchPage.qml:40), cleared only in onSearchResults (SearchPage.qml:53); its onErrorOccurred clears `pending` only (SearchPage.qml:72). harbour-rustrx.qml:318 `pendingDm = true` before create_dm; on error it stays true and the next unrelated `joined` or `dm_ready` opens that room (harbour-rustrx.qml:336-337).",
+   "fix": "proposed: RoomPage/ThreadPage: `onErrorOccurred: if (cmd === \"paginate_back\") paginating = false`; SearchPage: clear `searching` for cmd \"search\"; harbour-rustrx.qml: clear pendingDm on error for \"create_dm\". Longer term the error code field the first audit proposed.",
+   "test": "QML test (qmltestrunner) with a fake rustrx object emitting errorOccurred(\"paginate_back\", ..) and checking `paginating`; or phone: airplane mode, scroll up, network back, scroll up again."
+  },
+  {
+   "id": "C11",
+   "severity": "low",
+   "area": "panics (commands.rs, lib.rs)",
+   "status": "FIXED b1fe4ce (catch_unwind in dispatch answers with an error event)",
+   "summary": "CONFIRMED: a panic inside a command task is contained by tokio but answers nothing: no error event, so the UI waits as in C10. A panic in a login task (rooms_task, encryption_task, send_queue_watch) ends it silently; nothing notices.",
+   "detail": "Cargo.toml [profile.release] `panic = \"unwind\"`; the hook logs it (lib.rs:147-150). dispatch spawns `self.handle(command).await` and maps only `Err` to an error event (commands.rs:21-25); a panic unwinds out of the future and the JoinHandle (dropped) carries it. Login tasks' handles are only aborted, never awaited (core.rs:138-146), so a panicked rooms_task leaves the room list frozen with no sign but the log line. No reachable panic site was found (see CN6), so this is defence in depth. Across the C ABI: rustrx_command's synchronous part (lib.rs:161-174, dispatch's parse at commands.rs:9-20) has no panic site; an unwind out of an `extern \"C\"` fn aborts the process on Rust >= 1.81.",
+   "fix": "proposed: in dispatch, `AssertUnwindSafe(self.handle(command)).catch_unwind().await` (FutureExt is already imported, core.rs:13) and emit {\"ev\":\"error\",\"cmd\":..,\"message\":\"internal error\"} on a panic; a supervisor that awaits the login tasks' handles and logs/restarts rooms_task if it ends with a panic.",
+   "test": "Rust unit test: a test-only command that panics; assert an error event arrives."
+  },
+  {
+   "id": "C12",
+   "severity": "low",
+   "area": "processes / stand-in at boot (session.rs, main.cpp)",
+   "status": "OPEN: stand-in restore without the store key is not retried (sailfish-secrets before the first unlock unverified)",
+   "summary": "SUSPECTED: if the stand-in starts before sailfish-secrets can give the store key (before the first unlock), restore fails once and is never retried; the stand-in then runs logged out, holding the bus name, with no notifications until something restarts it.",
+   "detail": "session.rs:82-83 bails 'the encrypted store's key is not available'; boot() runs once (session.rs:13-31) and emits ready logged_in:false; STORE_KEY is a OnceLock set once before start (lib.rs:90-108, Rustrx.cpp:111-125). Nothing in Service.qml or main.cpp quits or retries on a logged-out stand-in (main.cpp:158-159 just runs the loop). Whether sailfish-secrets returns an error or blocks before the first unlock was not verified (if it blocks, see C3 instead).",
+   "fix": "proposed: the stand-in quits when ready says logged_in:false with a restore error, and its unit gets `Restart=on-failure` with a RestartSec (exit non-zero in that case); or retry the key and restore on a timer / on the device lock state changing to unlocked.",
+   "test": "phone only: reboot with background mode on and push off, do not unlock for a minute, unlock, send a message from another account: a notification must arrive."
+  },
+  {
+   "id": "C13",
+   "severity": "trivial",
+   "area": "thread hop at process exit (lib.rs, Rustrx.cpp)",
+   "status": "OPEN: goes with C9 (runtime stopped before exit)",
+   "summary": "CONFIRMED but harmless today: Emitter::emit checks LIVE and then calls the callback without a lock, so a tokio thread can be inside eventCallback while main() returns and static destructors run.",
+   "detail": "lib.rs:43-50 load LIVE then `(self.cb)(..)`; ~Rustrx sets LIVE false under s_lock (Rustrx.cpp:146-151). A thread that passed the check blocks on s_lock, then sees s_instance null and returns (Rustrx.cpp:320-323) - correct while the process lives. After main returns, the static QMutex s_lock and Qt's globals are destroyed while tokio workers still run (the runtime is never shut down); QJsonDocument::fromJson runs before the lock (Rustrx.cpp:317). No crash has been seen.",
+   "fix": "proposed: the shutdown in C9 (runtime stopped before exit) removes it; or a reader-count/RwLock in the Emitter so rustrx_stop waits for callbacks in flight.",
+   "test": "none practical; covered by C9's change."
+  },
+  {
+   "id": "I1",
+   "severity": "high",
+   "area": "untrusted input / QML Text",
+   "status": "FIXED 4a5290d (Labels plain by default), 634beaa (QML engines without network)",
+   "evidence": "CONFIRMED (code + Silica and Qt sources; not reproduced on a phone)",
+   "summary": "Silica Label defaults to Text.AutoText, so every Label without textFormat that shows a remote string renders it as StyledText when it looks like HTML: a display name such as `Bob <img src=\"https://t.example/p.png\">` makes the phone fetch that address each time the row is drawn, with no tap.",
+   "detail": "Silica Label.qml (SFOS 5.1 rootfs, /usr/lib64/qt5/qml/Sailfish/Silica/Label.qml): `textFormat: _defaultLabelFormat`; ApplicationWindow.qml:108 `property int _defaultLabelFormat: Text.AutoText`; Rustrx never overrides it. Qt qquicktext.cpp:1851 `d->styledText = d->format == StyledText || (d->format == AutoText && Qt::mightBeRichText(n))`; Qt 5.6 qtextdocument.cpp Qt::mightBeRichText (read on the 5.6 branch) scans the first line to the first '<', reads the tag name and returns `QTextHtmlParser::lookupElement(tag.toLower()) != -1`, so `Bob <img src=...>` is rich text (img, a, font, b... are known). StyledText <img> takes any URL (qquickstyledtext.cpp 5.6 `image->url = QUrl(attr.second.toString())`) and QQuickText loads it through QQuickPixmap with the engine's network access (qquicktext.cpp:1325, `imageDownloadFinished`); no QQmlNetworkAccessManagerFactory is installed (grep NetworkAccess: only UnifiedPush's own QNAM) and the app has the Internet permission. Remote strings in AutoText Labels: MessageDelegate.qml:275 `text: model.sender_name || model.sender || \"\"` (every message from anyone in the room), :244 membership/state line `model.body` (core-built, contains display names and room names), :403 media placeholder `model.body`, :437 poll answer `modelData.text`, :361-365 file/audio name (the body Label's textFormat is PlainText only when htmlText is empty, fine); KnockPage.qml:91 `item.request.name`, :120 `item.request.reason` (anyone may knock), :104/:107 room_name via qsTrId().arg; JoinPage.qml:138 preview name, :165 `page.preview.topic` (a room seen only through a link); SpacePage.qml:118,130,185; RoomInfoPage.qml:160,228,267 (`info.topic`); ThreadsPage.qml:78 `row.t.root.sender_name`; CoverPage.qml:140,162; PageHeader titles/descriptions with room names (RoomPage.qml:172, ThreadPage.qml:161, MembersPage.qml:75, ThreadsPage.qml:54). What leaks: the phone's IP address, the time the row was shown (read tracking), which room. The README/renderHtml comment claims 'a message cannot make the phone fetch from any address'; through the names it can.",
+   "fix": "Two layers. (1) Set `_defaultLabelFormat: Text.PlainText` on the ApplicationWindow (harbour-rustrx.qml) so every Label is plain unless it says StyledText; check each Label that relies on AutoText (the about lines already set StyledText). (2) Defence in depth: install a QQmlNetworkAccessManagerFactory on both engines (app and Service.qml) whose QNAM refuses every non-file, non-image:// request, since the app never shows remote pictures through QML (avatars, media and emotes are cached files).",
+   "test": "QML test (qmltestrunner with Silica stubs, or on the phone): a MessageDelegate with sender_name `<img src=\"http://127.0.0.1:PORT/p.png\">` and a local HTTP listener; assert no request arrives. Unit level: a C++ test that the factory's QNAM returns an error reply for http(s) URLs."
+  },
+  {
+   "id": "I2",
+   "severity": "high",
+   "area": "untrusted input / renderHtml",
+   "status": "FIXED d54a44c (text between tags escaped; tests written failing first in 2dfb481)",
+   "evidence": "CONFIRMED (code + Qt 5.6 StyledText source)",
+   "summary": "renderHtml lets a tag through when a space follows the '<': `< img src=\"https://t.example/p.png\">` and `< a href=\"javascript:x\">` bypass the tag filter, the image filter and the scheme filter, because the text between tags is never escaped and StyledText skips the space.",
+   "detail": "src/TimelineModel.cpp:287 `tagRe(\"<(/?)([a-zA-Z][a-zA-Z0-9-]*)([^>]*)>\")` needs a letter right after '<', so `< img ...>` stays in the text segment; the `text` lambda (:303-325) only decodes numeric entities and never escapes a literal '<'; emitText -> Twemoji::inHtml (Twemoji.cpp:165) passes `<[^>]*>` through unchanged. Qt 5.6 qquickstyledtext.cpp parseTag begins with `skipSpace(ch);` (checked on the 5.6 branch and in the local 6.11.3 source), so StyledText reads `< img src=...>` as an img tag and loads it (see I1 for the fetch) and `< a href=...>` as a link with any scheme. Same for reply quotes (renderReply -> renderHtml). The emojify path from QML is not affected (callers escape '<' first).",
+   "fix": "In the text lambda, escape every '<' (and '>' for symmetry) left in a text segment: all real tags were consumed by tagRe, so any '<' still there is text. One line at the top of the lambda, BEFORE its early `if (!seg.contains('&')) return seg;` (otherwise a segment without '&' skips it): `seg.replace('<', \"&lt;\")` (the decoder already maps &#60; to &lt;).",
+   "test": "For the renderHtml unit tests being written: input `< img src=\"https://x/p.png\">` must give no '<img' and no 'https://x' in an src; `< a href=\"javascript:alert(1)\">x</a>` must give no '<a'; `<\\nimg src=\"https://x/p.png\">` likewise; regression guard `&#60;img src=x&#62;` must stay text (`&lt;img src=x&gt;`)."
+  },
+  {
+   "id": "I3",
+   "severity": "medium",
+   "area": "untrusted input / links",
+   "status": "FIXED d54a44c (hrefSafe), c735bd7 (one gate for external links)",
+   "evidence": "CONFIRMED (code + Qt 5.6 StyledText parseAttribute/parseValue)",
+   "summary": "A quote inside a link address injects a second href that StyledText takes (last href wins, either quote ends a value), so a link that looks like https can open any scheme on tap (file:, sms:, tel:, javascript:, anything a handler is registered for). Worst in plain bodies, which anyone can send.",
+   "detail": "Plain text path: Twemoji.cpp:209 linkEnd stops only at white space or '<', StyledText::escaped (:216) does not escape '\"', linkified (:243) writes `<a href=\"` + url + `\">`. Body `https://a\"href=\"file:///etc/passwd\"` becomes `<a href=\"https://a\"href=\"file:///etc/passwd\"\">`; StyledText parseAnchorAttributes loops over attributes and calls setAnchorHref for each href, parseValue ends a value at either quote, so the href is file:///etc/passwd. HTML path: TimelineModel.cpp:395 replaces '\"' with %22 but not \"'\": `<a href=\"https://a/'href='file:///etc/passwd'\">x</a>` passes schemeRe (starts with https) and yields href file:///etc/passwd. The sinks: MessageDelegate.qml:350 and :473 `onLinkActivated: app.openLink(link)`; harbour-rustrx.qml:365-366 `if (!openMatrixUri(link)) Qt.openUrlExternally(link)`, no scheme check at the sink. What file:// opens from inside sailjail (another app's viewer) was not tested.",
+   "fix": "Percent-encode both quote characters (and '<', '>', whitespace) in the href in both linkified and renderHtml (QUrl::toPercentEncoding with a safe set, or replace '\"' -> %22 and '\\'' -> %27); stop linkEnd at '\"' too. And check the scheme at the sink: openLink opens only http, https, mailto, magnet externally (matrix: stays in the app), everything else is dropped.",
+   "test": "Unit: linkified(`https://a\"href=\"file:///p\"`) must contain exactly one href and it must start with https://a; renderHtml(`<a href=\"https://a/'href='file:///etc/passwd'\">x</a>`) must not contain an unencoded \"'\" inside the href. A QML/JS test for openLink with file:/javascript:/sms: inputs asserting Qt.openUrlExternally is not called."
+  },
+  {
+   "id": "I4",
+   "severity": "medium",
+   "area": "untrusted input / StyledText without escaping",
+   "status": "FIXED 4a5290d (markup.js escaped)",
+   "evidence": "CONFIRMED (code)",
+   "summary": "Three StyledText Labels build markup from remote strings without escaping: the sender's name in a reply quote, and a room's or space's topic in the room list. Same effect as I1 (remote image fetch, fake formatting), and the room list is drawn at start.",
+   "detail": "MessageDelegate.qml:330-331 `var who = r.sender_name || r.sender || \"\"` then `\"<font color=...>\" + who + \"</font><br>\" + quoted` in a `textFormat: Text.StyledText` Label (:313). RoomDelegate.qml:294 `if (model.is_space) return model.topic ... .replace(/\\s+/g, \" \")` and :306 `if (model.topic && model.topic.length) return model.topic.replace(/\\s+/g, \" \")` in the preview Label with `textFormat: Text.StyledText` (:284); the whitespace fold even turns `<img\\nsrc=` into `<img src=`. The other StyledText sites are escaped: RoomModel.cpp:100,107 (name, preview), RoomDelegate.qml:301 preview_sender, MembersPage.qml:110, ThreadsPage.qml:44/89/103, TimelineModel cachedBody/cachedThread/renderReactions.",
+   "fix": "Escape with the same helper the model uses (move the topic and the quote's sender into the model as topic_html / reply sender html via StyledText::escaped, or escape & and < in QML before concatenating).",
+   "test": "Model/QML test: a room with topic `<img src=\"https://x/p.png\">` and no preview; the preview Label's text must contain `&lt;img`. Reply with sender_name `<b>x` must show literally."
+  },
+  {
+   "id": "I5",
+   "severity": "medium",
+   "area": "untrusted input / matrix links",
+   "status": "FIXED c735bd7 (a dialog before a link starts a direct chat)",
+   "evidence": "CONFIRMED (code)",
+   "summary": "A tapped matrix:u/ or matrix.to/#/@user link creates a direct chat with that user at once and invites them, without asking: anyone who gets a link tapped (in a message, or on a web page handed to Rustrx through the desktop file's matrix: handler, or by any session-bus client calling openUrl) learns the tapper's Matrix id and gets a DM room.",
+   "detail": "harbour-rustrx.qml openMatrixUri: `if (id.charAt(0) === \"@\") { pendingDm = true; rustrx.command({ cmd: \"create_dm\", user_id: id }) }`; core rooms.rs:73-79 `match client.get_dm_room(&user) { Some(r) => r, None => client.create_dm(&user).await? }` (create_dm makes the room and invites). Entry points: openLink (message links), Rustrx::openUrl (Rustrx.cpp:200, D-Bus net.mowerk.harbour_rustrx.openUrl, the desktop file's `MimeType=x-scheme-handler/matrix`), route() on a cold start (harbour-rustrx.qml:143-144). Rooms and aliases go to JoinPage, which asks first; only users do not.",
+   "fix": "Show the user (profile name, id, 'Start chat') on a page first, as JoinPage does for rooms; send create_dm only from that page's button.",
+   "test": "QML test: openMatrixUri(\"matrix:u/eve:example.org\") must push a page and must not call rustrx.command with create_dm."
+  },
+  {
+   "id": "I6",
+   "severity": "low",
+   "area": "untrusted input / location",
+   "status": "FIXED c735bd7 (geo: only)",
+   "evidence": "CONFIRMED (code)",
+   "summary": "A location message's geo_uri goes to Qt.openUrlExternally unchecked: a message can carry any URI as its 'location', shown as 'Location (tap to open)'.",
+   "detail": "core/src/serialize.rs:392 `put(o, \"geo_uri\", l.geo_uri.as_str())` (no check); MessageDelegate.qml:148 `Qt.openUrlExternally(model.geo_uri)   // a maps app (Pure Maps) takes geo:`. The visible label is the body, not the URI (MessageDelegate.qml:369).",
+   "fix": "Open only when the URI starts with `geo:` (core or QML); otherwise show it as text.",
+   "test": "QML/JS: a location item with geo_uri `https://x` or `file:///x` must not reach Qt.openUrlExternally."
+  },
+  {
+   "id": "I7",
+   "severity": "low",
+   "area": "untrusted input / external URLs from the server",
+   "status": "FIXED c735bd7 (openExternal: https, http, mailto, geo)",
+   "evidence": "CONFIRMED (code)",
+   "summary": "URLs the homeserver hands over are opened without a scheme check: the SSO page (open_url), the identity-reset approval page, the sign-up URL.",
+   "detail": "Rustrx.cpp:683-686 `open_url` -> browserUrl -> harbour-rustrx.qml:212 `onBrowserUrl: Qt.openUrlExternally(url)` with no user action; SettingsPage.qml:468 resetApprovalUrl; LoginPage.qml:240/274. The SSO URL is built by the SDK from the homeserver address (https), so the realistic risk is a hostile homeserver for identity_reset/signup only. Rustrx adds nothing else to the SDK's SSO flow (session.rs:403-442: localhost listener in the SDK, the token never reaches Rustrx code or a log).",
+   "fix": "One `openExternal(url)` helper that only passes https (and http for localhost SSO, if ever needed), used by every Qt.openUrlExternally call, including openLink (I3) and geo_uri (I6).",
+   "test": "grep test in CI: no Qt.openUrlExternally outside the helper."
+  },
+  {
+   "id": "I8",
+   "severity": "low",
+   "area": "share sheet",
+   "status": "FIXED 8409035 (own folders refused, 512 MB cap, old copies pruned)",
+   "evidence": "CONFIRMED (code)",
+   "summary": "A string resource in a share is taken as a local path to any file Rustrx can read, including its own session.json (access and refresh tokens), and the share page shows only its base name; fd copies have no size cap and run on the GUI thread; shared copies are never deleted.",
+   "detail": "ShareAdaptor.cpp:44-53 `const QString path = Rustrx::localPath(r.toString()); if (QFileInfo(path).isFile()) files << path;` (any path, no check that it lies in a user folder); SharePage.qml:53 shows `files[0].split(\"/\").pop()`. session.rs:145-169 writes the session (tokens) to the data folder, mode 0600 but readable by the app itself, so a caller that cannot read it can ask Rustrx to send it, if the user then picks a room. copyFromDescriptor (:89-111) loops `while (!in.atEnd())` with no limit (a pipe or /dev/zero fills the cache) inside the D-Bus slot on the GUI thread. Nothing removes cache/shared (grep kSharedDir: only ShareAdaptor), so every shared photo stays as a copy. Names: `QFileInfo(name).fileName()` (:79, :94) blocks traversal (non-finding IN6); same names overwrite each other.",
+   "fix": "Accept string paths only under the user's media folders (Pictures, Videos, Music, Documents, Downloads) and never under the app's own data/config/cache folders; cap fd copies (e.g. the server's upload limit) and copy off the GUI thread; delete cache/shared files after sending or at start.",
+   "test": "Unit: share({resources:[\"<AppDataLocation>/session.json\"]}) must not yield it in files; an fd to /dev/zero must stop at the cap."
+  },
+  {
+   "id": "I9",
+   "severity": "low",
+   "area": "D-Bus dev method",
+   "status": "FIXED 837a499 in part: key and session commands refused through dev; the hook stays in test builds by design",
+   "evidence": "CONFIRMED (code)",
+   "summary": "dev() is compiled into release builds and gated only by a file in the data folder; once the file is there, any process that can reach the session bus name can run every core command, e.g. export_keys with its own path and passphrase, or read the room list.",
+   "detail": "Rustrx.h:342 `Q_SCRIPTABLE QString dev(const QString &json);` (no #ifdef); Rustrx.cpp:327-331 checks `QFile::exists(flag)` only, then `command(req)` for any `cmd`. No package creates the flag (comment Rustrx.h:336), and sailjailed apps cannot write the data folder, so the exposure is a phone where the flag was left behind after testing.",
+   "fix": "Compile dev() only in debug builds (or behind a CONFIG flag the release spec does not set), and refuse export_keys/import_keys/logout/delete_device there even in debug.",
+   "test": "Build check: `nm`/`strings` on the release binary must not contain the dev method name; or a unit test that the release Q_CLASSINFO introspection lacks it."
+  },
+  {
+   "id": "I10",
+   "severity": "low",
+   "area": "push connector",
+   "status": "FIXED c721905 (no connector call without a stored token)",
+   "evidence": "CONFIRMED (code), exploit window SUSPECTED",
+   "summary": "The UnifiedPush connector compares the caller's token with the stored one, but after a logout (and before the first Register) the stored token is empty, so a call with no token passes: any session-bus client can set the endpoint, which the next login then registers as the pusher (with a gateway probed from that host) until the distributor's own NewEndpoint replaces it.",
+   "detail": "UnifiedPush.cpp:186-197 loggedOut `m_state.clear()` (token gone); :293 `if (args.value(\"token\").toString() != m_state.value(\"token\").toString()) return` passes for \"\" == \"\"; same in unregistered (:312) and message (:327). newEndpoint stores the endpoint (https only); loggedIn -> registerApp (new token) -> setPusherIfNeeded uses the stored endpoint and discoverGateway probes its host (:263-282). The connector is exported in every process, whether push is on or not (main.cpp:132 `rustrx.push()->exportConnector();`), so the empty-token window is open whenever no token is stored. What leaks while it lasts: room and event ids, unread counts, times (docs/PUSH.md 'What leaves the phone').",
+   "fix": "Refuse every connector call while the stored token is empty, and compare tokens only when both are non-empty.",
+   "test": "Unit: UnifiedPush with empty state; newEndpoint({token:\"\", endpoint:\"https://evil\"}) must leave the endpoint empty."
+  },
+  {
+   "id": "I11",
+   "severity": "low",
+   "area": "privacy / debug log",
+   "status": "FIXED c5f8de8 (one capped, masked forward; origin check), 8409035 (shared file names out of the log); matrix-sdk WARN lines not read",
+   "evidence": "CONFIRMED (code)",
+   "summary": "The claim 'room and user ids, never message texts or passwords' holds for Rustrx's own lines, with three gaps: Element Call's own error and warning text goes into the log (third-party text, up to 600-800 characters, which can carry names, URLs and tokens Element Call chose to print); any frame of any origin in the call WebView can write lines through the `rustrx-console` event, without the 2000-line cap; and shared files are logged by name.",
+   "detail": "call-bridge.js:86-90 listener for the page's `rustrx-console` CustomEvent: no origin check (unlike the message listener at :103), no count limit (the cap `sent++ > 2000` is only in forward(), :128); :115-140 console-api-log-event and nsIScriptError observers forward page text; CallPage.qml:89-90 `console.log(\"call page\", data.level + \":\", data.text)` -> DebugLog. ShareAdaptor.cpp:110 `qInfo() << \"share: received\" << file`. Checked clean: all 72 tracing calls in core/src (ids, counts, error text), commands.rs:12 (cmd and room id), Rustrx.cpp:381-383 (command name only, password never), UnifiedPush.cpp:301 (endpoint size only, never the endpoint), CallPage.qml:60-67 (widget api/action only), CallPage.qml:73 (URL cut at '?'), the SSO URL is never logged. Not checked: what matrix-sdk logs at WARN (default filter lib.rs:131 `warn,rustrx=info,...`; tools/run-on-phone.sh raises it to info for tests).",
+   "fix": "Forward Element Call's lines only when a debug switch for calls is on, or only their first 120 characters with URLs and long base64 runs masked; check origin (`e.target.ownerGlobal.location.origin === ORIGIN`) and the cap in the rustrx-console listener; log shared files by size only. State in the README that the log can hold Element Call's own messages during a call.",
+   "test": "JS test of call-bridge with a fake window: a rustrx-console event from another origin must not reach sendAsyncMessage; the 2001st must be dropped."
+  },
+  {
+   "id": "I12",
+   "severity": "low",
+   "area": "privacy at rest",
+   "status": "FIXED 7190dfd in part (threadsSeen cleared at logout); OPEN: drafts in the plain settings file",
+   "evidence": "CONFIRMED (code)",
+   "summary": "Drafts (message text being typed) are kept in the plain QSettings file, outside the encrypted store, and the per-thread seen counts (keyed by event id) survive a logout.",
+   "detail": "Rustrx.cpp:542-548 setDraft -> `m_settings.setValue(\"drafts/<room id>\", text)` in ~/.config/net.mowerk/harbour-rustrx/harbour-rustrx.conf (Rustrx.cpp:57-60); the store is encrypted with the sailfish-secrets key (session.rs:58-95) but this file is not. Logout removes drafts (Rustrx.cpp:621) and RoomLists::clear removes invitesNotified (RoomLists.cpp:377-380, the first audit's 458f9ad), but nothing removes `threadsSeen/*` (Rustrx.cpp:437-455).",
+   "fix": "Either keep drafts in the core's store (encrypted) or say in Settings that drafts are stored unencrypted; remove threadsSeen at logout with the drafts.",
+   "test": "After a logout event, the settings file must contain no drafts/ or threadsSeen/ keys."
+  },
+  {
+   "id": "I13",
+   "severity": "low",
+   "area": "distrust / thread unread",
+   "status": "OPEN: thread new counts from the SDK's thread receipts instead of the UI's own",
+   "evidence": "CONFIRMED (code)",
+   "summary": "Thread 'new' counts are the UI's own: a reply count saved per thread in QSettings, beside the SDK's threaded read receipt that the same page sends. Reading a thread in another client never clears Rustrx's count, and the first time a thread is seen all its replies count as read; threadSeen() writes settings from inside a binding.",
+   "detail": "MessageDelegate.qml:46-47 and ThreadsPage.qml:60 `Math.max(0, count - rustrx.threadSeen(root, count))`; Rustrx.cpp:437-445 threadSeen stores `count` when the key is missing (a write from a binding evaluation); ThreadPage.qml:49-50 `rustrx.markThreadSeen(...)` and `rustrx.command({ cmd: \"mark_thread_read\" })` both. The SDK knows the thread's unread state from receipts (matrix-sdk-ui thread summaries / read receipts).",
+   "fix": "Take the thread's unread count from the core (thread receipts) and drop threadsSeen; if kept, make threadSeen read-only and set the baseline where the thread is first listed.",
+   "test": "Core test: after a threaded receipt from another device the thread_list entry reports 0 new; UI shows the core's number."
+  },
+  {
+   "id": "I14",
+   "severity": "low",
+   "area": "distrust / notification counts and push state",
+   "status": "OPEN: notification count from the room's counts; pusher checked against the server at login",
+   "evidence": "CONFIRMED (code)",
+   "summary": "Two more UI-kept claims: the notification's 'N new messages' is a counter in Service.qml that only grows until the notification closes, apart from the SDK's unread/notification counts; and UnifiedPush's 'active' trusts a pusherSet flag saved once and never checked against the server's pusher list.",
+   "detail": "Service.qml:91-93 `var pending = (roomPending[roomId] || 0) + count` and :219-221 (push path); reset only in closeNotification (:256-258). A room read on another device keeps its banner and count until the next local action. UnifiedPush.cpp:96-99 active() = enabled && pusherSet && endpoint; pusherSet is set in pusherSet() (:247-255) and cleared only by a new endpoint, logout or off; a server that dropped the pusher (password change, admin, expiry) is not noticed.",
+   "fix": "Notifications: take the count from the room's notifications/unread when it changes and close the banner when it reaches 0. Push: at login, list the pushers (client.pusher / GET /pushers) and clear pusherSet when ours is missing.",
+   "test": "Integration: mark a room read from another client; the banner must go. Delete the pusher server side; after restart status must not say active."
+  },
+  {
+   "id": "I15",
+   "severity": "low",
+   "area": "names",
+   "status": "FIXED 448a5f2 in part (every field in PROTOCOL.md, tested); OPEN for protocol 2: one wire name per concept",
+   "evidence": "CONFIRMED (code)",
+   "summary": "Wire names are consistent snake_case and QML/C++ locals camelCase, but several names mean two things on the wire, and a few concepts have two names in one layer (see name_table).",
+   "detail": "One name, two things: `id` = room id or alias (room_preview, knock, join_by_id_or_alias, protocol.rs:107-109) vs the timeline item's row id (`id`, PROTOCOL.md timeline item) vs a poll answer id; `url` = an mxc address (send_sticker protocol.rs:39, add_user_emote :93, image pack images) vs an https page (open_url, call_url, identity_reset_approval) while fetch_emote/emote say `mxc` and space_rooms/room_preview say `avatar_mxc`; `key` = a reaction key (react) vs a recovery key (recovery_recover, recovery_key); `avatar` = a cached file path in the room object vs `avatar_mxc` elsewhere; `members` = a count (search_results, room_preview, space_rooms) vs a list (members event); `state` = membership (room object), sync state, verification, recovery, sas. Two names, one thing: thread root is `root` (open_thread, thread_timeline, thread_list) and `thread_root` (send_text, send_sticker, timeline item) on the wire, `root`/`rootId`/`threadRoot`/`m_threadRoot` in QML/C++; user id is `user_id`, `sender`, `other_user`, `inviter`, `latest_sender` (a display name there, not an id: serialize.rs:455-456 `let who = profile_name(&latest.sender_profile, &latest.sender); put(&mut t, \"latest_sender\", who)`); space id is `space_id` and `parent` (create_room's parent, CreateRoomPage.qml:45, missing from PROTOCOL.md's create_room row together with `space` and `join_rule`); room id is `rid` only in call.rs:226-244 and threads.rs.",
+   "fix": "Pick one wire name per concept for protocol 2 (thread_root everywhere, mxc for every mxc address, room_or_alias for id, recovery_key for the key) and add the missing create_room fields to PROTOCOL.md now.",
+   "test": "protocol.rs already has a field test (COMMANDS list); extend it with a deny-list: no field named `url` whose value starts with mxc://, no `id` on room commands."
+  },
+  {
+   "id": "I16",
+   "severity": "low",
+   "area": "one source per value",
+   "status": "FIXED 229f4e3, 16d1056 in part; OPEN: the dconf path in nine places; the Element Call origin in Rust and JS (cross-referenced in consts.rs)",
+   "evidence": "CONFIRMED (code)",
+   "summary": "Values defined twice, or as literals beside their constant: the bus name/path/interface in Service.qml, the Element Call origin in Rust and JS, a third spelling of the app id, the page size in QML and Rust, a menu delay literal, the dconf base path in eight files, and core names outside consts.rs.",
+   "detail": "Service.qml:66-68 `\"net.mowerk.harbour-rustrx\"`, `\"/net/mowerk/harbour_rustrx\"`, `\"net.mowerk.harbour_rustrx\"` duplicate Keys.h kBusName/kObjectPath/kInterface (could come from a rustrx property); call.rs:26 `ELEMENT_CALL_URL = \"https://call.element.io/room\"` vs call-bridge.js:9 `ORIGIN = \"https://call.element.io\"` (nothing checks they agree; a self-hosted Element Call later would break the origin check silently); call.rs:200 `ClientProperties::new(\"net.mowerk.rustrx\", ...)` vs push.rs:14 `APP_ID = \"net.mowerk.harbour_rustrx\"` vs kInterface; Tunables.qml:88 `paginateBatch: 30` sent explicitly by RoomPage.qml:273 while consts.rs PAGINATE_DEFAULT = 30 (two sources since 118cc80); RoomPage.qml:135 `interval: 350` = Tunables.menuCloseMs (350, 'menu closed'); `/apps/harbour-rustrx` in Settings.qml:25 plus 8 debug ConfigurationValues (ChatTrace.qml:55-56, MainPage.qml:46-48, VoicePage.qml:63, harbour-rustrx.qml:450,453); consts.rs says 'tunables and fixed names in one place' but ELEMENT_CALL_URL, WIDGET_ID (call.rs:26-27), APP_ID (push.rs:14), DEVICE_NAME, USER_AGENT (core.rs:62-63) and the event type strings live in their files; kPushIdleMs/kPushMaxLifeMs equal RING_LIFETIME_* by coincidence (commented in Keys.h:118-120, fine). dbus/net.mowerk.harbour_rustrx.service declares `Name=net.mowerk.harbour-rustrx` (file name and bus name differ; the session bus accepts it).",
+   "fix": "Expose kBusName/kObjectPath/kInterface to QML as constants; pass the call origin to the page (CallPage property set from call_url's origin) instead of a JS literal; one app id constant per layer, named after kInterface; drop paginateBatch (send no count) or drop the core default; use Tunables.menuCloseMs; one Settings path constant for the debug keys.",
+   "test": "A repo grep check (tools/): each literal on a deny-list appears exactly once outside Keys.h/consts.rs/Tunables.qml."
+  },
+  {
+   "id": "I17",
+   "severity": "low",
+   "area": "calls / trust in remote code",
+   "status": "DECIDED: documented design (docs/CALLS.md); Element Call is trusted with the capabilities it asks for",
+   "evidence": "CONFIRMED (code, documented design)",
+   "summary": "The Element Call page is loaded from call.element.io at call time and its widget gets every capability it asks for; the origin check in the bridge only keeps other origins out, it does not limit what that page can make the driver do in the room.",
+   "detail": "docs/CALLS.md:41-42 'every capability Element Call asks for is granted'; call-bridge.js:103 `if (!content || e.origin !== ORIGIN) return;` and :124 `content.postMessage(..., ORIGIN)` (both correct). CallPage.qml sets global WebEngine prefs (autoplay) at :34-39 for every WebView in the process.",
+   "fix": "Already planned in CALLS.md (bundle Element Call); until then grant only the capabilities Element Call needs for the call (state/events of call.member, to-device for keys, delayed events) rather than all.",
+   "test": "Driver capability test: a widget asking for m.room.message send must be refused."
+  }
+ ],
+ "found_by_tests": [
+  {
+   "id": "T1",
+   "sev": "medium",
+   "area": "docs",
+   "what": "docs/PROTOCOL.md lacked 14 commands and 10 events, a table spliced, wrong files named",
+   "status": "FIXED f656a61; held by test_static"
+  },
+  {
+   "id": "T2",
+   "sev": "low",
+   "area": "translations",
+   "what": "the .ts file had 231 of 426 texts",
+   "status": "FIXED 7af5976; held by test_static"
+  },
+  {
+   "id": "T3",
+   "sev": "trivial",
+   "area": "licence",
+   "what": "13 core modules, protocol.rs, call-bridge.js and the tools had no licence line",
+   "status": "FIXED 8a7f7ff; held by test_static"
+  },
+  {
+   "id": "T4",
+   "sev": "low",
+   "area": "core protocol",
+   "what": "[\"logout\"] (a JSON array) parsed and ran as a command",
+   "status": "FIXED 3048484; found by the cargo tests"
+  },
+  {
+   "id": "T5",
+   "sev": "trivial",
+   "area": "docs",
+   "what": "four components missing from the review hints",
+   "status": "FIXED 69f2847; held by test_static"
+  },
+  {
+   "id": "T6",
+   "sev": "medium",
+   "area": "picture viewer",
+   "what": "pinch zoomed from the top left corner (dodoradio, reproduced by the author)",
+   "status": "FIXED cf160f5 (resizeContent around the pinch centre); why 0.4.6 changed it not found"
+  }
+ ],
+ "non_findings": [
+  {
+   "id": "CN1",
+   "what": "State lock: one tokio::sync::Mutex (core.rs:153), no std::sync / parking_lot lock anywhere in the core, so no lock ordering and no std guard across an await. Every `.lock().await` was checked; each guard is a temporary or a block that ends before the next network/long await: core.rs:182, 193; session.rs:187, 203, 283-287, 369, 404, 451; sync.rs:35, 76-78, 81; timeline.rs:179, 187-192 (explicit drop), 202, 220, 404; threads.rs:62, 110, 115, 123, 138, 148, 171; spaces.rs:83, 89-93, 129, 134; knock.rs:77-79; verification.rs:51 (block), 119, 160, 164, 250-255, 292-294 (spawn only); call.rs:243, 251-256 (holds across `handle.send`, which is synchronous: `pub fn send(&self, message: String) -> bool`, widget/mod.rs:120), 260. The open_room fix of the first audit is complete."
+  },
+  {
+   "id": "CN2",
+   "what": "Thread hop: eventCallback (Rustrx.cpp:314-325) parses on the calling thread, then under s_lock checks s_instance and posts handleEvent with Qt::QueuedConnection; every QObject access (models, signals, m_settings, DebugLog via qInfo) happens in handleEvent on the GUI thread (Rustrx.cpp:551-745), including log lines ('log' events, Rustrx.cpp:554-562). The callback also fires synchronously on the GUI thread from rustrx_command (dispatch logs 'command', commands.rs:12), which is fine: the queued post does not re-enter, and s_lock is only held by the destructor, which does not call into the core except rustrx_stop. m_handleEvent and s_instance are written before rustrx_start creates the worker threads (Rustrx.cpp:70, 126-130): happens-before via thread creation."
+  },
+  {
+   "id": "CN3",
+   "what": "DebugLog: the Qt message handler may run on any Qt thread; appendLine and collect take a recursive QMutex (DebugLog.cpp:31, 44, 111); s_path/s_previous are written once in install() before other threads exist. Thread-safe. FrameStats (debug only) counts on the render thread with atomics and reads on the GUI thread (FrameStats.cpp:40-66): fine."
+  },
+  {
+   "id": "CN4",
+   "what": "Events cannot be lost to NUL bytes: Emitter::emit drops the event if CString::new fails (lib.rs:47), but serde_json escapes U+0000 as \\u0000, so a serialized Value never contains a raw NUL."
+  },
+  {
+   "id": "CN5",
+   "what": "Network awaits never hang forever by themselves: every SDK request has a 30 s per-attempt timeout (http_client/mod.rs:51) and transient retries end after 15 minutes total (http_client/native.rs:56-60); network failures are not retried without a retry limit (native.rs:133-138). The exception is the SSO redirect wait (C4). No command holds the state lock across these awaits (CN1)."
+  },
+  {
+   "id": "CN6",
+   "what": "Panic sites in the core are all guarded: lib.rs:85 expect (only after start), lib.rs:113 unwrap on a constant; account.rs:109 `ids[0]` of a one-element array; packs.rs:47 `out[0]` after `if out.is_empty() { return None }`; packs.rs:191 `as_object_mut().unwrap()` after `if !v.is_object() { v = json!({}) }`; serialize.rs:152 slices at a char_indices boundary; call.rs:109 `lifetime - age` after `if age >= lifetime { return }`. protocol.rs index/asserts are in tests."
+  },
+  {
+   "id": "CN7",
+   "what": "Logout teardown (first audit's fix, 458cd54/bc532d9) is complete for what is stored in State: take_login (core.rs:112-135) collects login_tasks, the open room, sync task, call (stopped), requests/sas, thread, thread list, space service and space lists; Teardown::stop aborts them and stops the SyncService outside the lock (core.rs:137-147). The verification watchers are login tasks now (verification.rs:217, 226, 294, 377). What remains is registration after teardown (C8), replaced-not-aborted handles (C7) and command tasks (C5)."
+  },
+  {
+   "id": "CN8",
+   "what": "Late events after logged_out from aborted tasks: abort takes effect at the task's next await; logout emits logged_out only after `service.stop().await` and the network logout, session_expired after `service.stop().await` (session.rs:290, 299), so an aborted task would need one poll longer than those awaits. Events already queued before logged_out are delivered before it (one Qt event queue, FIFO), and logged_out clears the models (Rustrx.cpp:596-625)."
+  },
+  {
+   "id": "CN9",
+   "what": "Crash while holding the bus name: the bus daemon releases a name when the owner's connection closes, so a crashed or killed process frees the lock at once and the next start proceeds (main.cpp:110, 123). Only a hung holder blocks (C3)."
+  },
+  {
+   "id": "CN10",
+   "what": "Push wake never opens the store beside another Rustrx: it exits if push is off (main.cpp:99-100), if any process has the connector name (main.cpp:101-102), or if the bus name is taken (main.cpp:110-113: `if (pushWake) return 0;`). A launcher start while push wake runs makes it quit through activate (Rustrx.cpp:221-230) and waits for its name. The stand-in exits at once when push is active (main.cpp:94-95)."
+  },
+  {
+   "id": "CN11",
+   "what": "Handover file ordering: the stand-in writes the file before StartUnit (Handover.cpp:97-108); the new app reads and removes it only after it owns the bus name (main.cpp:133-134, Handover.cpp:113-126), so it never reads a half-written file from a live writer."
+  },
+  {
+   "id": "CN12",
+   "what": "Spawned loops that end: session_watch breaks on Closed and after UnknownToken (session.rs:212-230); rooms_task breaks on Closed (sync.rs:113-119); the SyncService state task ends with the stream (sync.rs:57-64); encryption_task's select has `else => break` (sync.rs:283-295); send_queue_watch breaks on Closed (timeline.rs:22); verification/SAS watchers end on Done/Cancelled (verification.rs:300-315, 343-351); thread/space/knock/call forwarders end with their streams. The classic sync loop (sync.rs:26-33) loops forever with a 5 s pause on error by design and is aborted on logout. No task swallows errors silently except those that log at info (thread list, space list, avatars, emotes), which is intended."
+  },
+  {
+   "id": "CN13",
+   "what": "Every command ends in either its answering event, an intended silent Ok (send_*/react/redact/edit: the timeline update is the answer; fetch_emote failures are logged on purpose, timeline.rs:534-541; mark_thread_read with no thread), or {\"ev\":\"error\",\"cmd\":..} via dispatch (commands.rs:21-25) - including login_password/login_sso, which answer login_error (session.rs:394-400, 435-441). Unparsable commands get an error event before anything runs (commands.rs:13-19). The gaps are UI-side (C10) and panics (C11)."
+  },
+  {
+   "id": "IN1",
+   "what": "renderHtml decodes numeric entities to text and re-escapes <, >, & (TimelineModel.cpp:316-322): `&#60;img src=x&#62;` stays text."
+  },
+  {
+   "id": "IN2",
+   "what": "renderHtml drops every non-mxc <img> (keeps alt with '<' escaped) and emits cached mxc emotes as file:// with escaped path (TimelineModel.cpp:366-381); only the space bypass (I2) gets around it."
+  },
+  {
+   "id": "IN3",
+   "what": "Room names and previews are escaped in the model (RoomModel.cpp:100,107); preview_sender in RoomDelegate.qml:301; MembersPage.qml:110; ThreadsPage.qml:44; reaction labels (TimelineModel.cpp:446); thread line (:198-200); emote body (:170)."
+  },
+  {
+   "id": "IN4",
+   "what": "call-bridge.js message listener checks `e.origin !== ORIGIN` (:103), polyfill only into ORIGIN windows (:94), and posts to the page with targetOrigin ORIGIN (:124): another page cannot talk to the widget driver through postMessage."
+  },
+  {
+   "id": "IN5",
+   "what": "SSO: Rustrx adds only the open_url hop; the localhost listener and the login token stay in the SDK (session.rs:414-429); nothing logs the URL or the token."
+  },
+  {
+   "id": "IN6",
+   "what": "ShareAdaptor names go through QFileInfo(name).fileName() (:79, :94): no path traversal out of cache/shared."
+  },
+  {
+   "id": "IN7",
+   "what": "Push payload: room and event ids are parsed by OwnedRoomId/OwnedEventId::try_from in push.rs:77-78 before use; the connector checks the token (but see I10 for the empty-token case); the endpoint must be https (UnifiedPush.cpp:293-297)."
+  },
+  {
+   "id": "IN8",
+   "what": "The notification text setting is honoured on both message paths: Service.qml:99 (sync) and :224 (push); the cover too (CoverPage.qml:155). Invitation, call and knock banners carry names regardless, by design (no message text)."
+  },
+  {
+   "id": "IN9",
+   "what": "Core logging: all 72 tracing calls in core/src carry ids, counts, timings or error text; no body, password, recovery key, token or endpoint. The C++ command log line carries only the command name (Rustrx.cpp:379-383); the push endpoint is logged by size (UnifiedPush.cpp:301); session.json is written 0600 and atomically (session.rs:152-168)."
+  },
+  {
+   "id": "IN10",
+   "what": "push_handle's classic path checks only Mute (push.rs:111-113), but the homeserver pushes only events its push rules mark notify, so mentions-only rooms are already filtered server side."
+  },
+  {
+   "id": "IN11",
+   "what": "openMatrixUri sends rooms and aliases to JoinPage, which asks before joining; only users skip the question (I5)."
+  },
+  {
+   "id": "IN12",
+   "what": "dev() refuses everything without the flag file, and no package installs it (Rustrx.cpp:327-331)."
+  }
+ ],
+ "dead_ends": [
+  "Looked for a SyncService hook that re-enables send queues on reconnect (matrix-sdk-ui 0.19.1 sync_service.rs): there is none; the only SDK caller of set_enabled(true) is Client::resume (client/mod.rs:3840).",
+  "Checked whether RoomSendQueueHandle::abort or unwedge re-enable the queue: both only notify (send_queue/mod.rs:2864, 2883, 3012); only set_enabled stores true (mod.rs:1233).",
+  "Checked whether login can overlap restore at boot: the UI only shows the login page after ready logged_in:false, and the buttons are disabled while loggingIn (LoginPage.qml:117, 173, 202); the double-login race the first audit named needs a direct D-Bus/dev command, so it is folded into C2/C8 rather than reported alone.",
+  "Checked open_room vs close_room for the C7 race: possible but narrow, the live-focus timeline build is mostly local; reported under C7 only as the narrow case.",
+  "Checked the NotificationClient for cross-instance exclusion: its encryption_sync_mutex and permit are per instance (notification_client.rs:336-343); the multi-process lock uses one shared LOCK_ID, so instances in one process do not exclude each other (C6). Not run.",
+  "Qt 5.6's moment of closing the session bus connection (QGuiApplication destruction vs exit) was not verified; C9 stays SUSPECTED either way because the tokio runtime outlives both.",
+  "sailfish-secrets behaviour before the first unlock (blocks vs returns an error) was not verified; C3 and C12 cover the two outcomes.",
+  "QML 'Send again' for media is hidden (MessageDelegate.qml:724); a failed upload can only be discarded, which hits the same disabled queue (C1).",
+  "matrix-sdk 0.19 sources are not on this machine (no cargo registry; builds run on e15), so what the SDK itself logs at WARN (the default filter) was not read; a run with the default filter and a grep of the log for bodies is the way to check.",
+  "Qt StyledText behaviour was read from the qtdeclarative 5.6 branch (GitHub raw) and the local 6.11.3 source; not reproduced on a phone with Qt 5.6.3.",
+  "Not checked: whether sailfish-browser hands a matrix: link to Rustrx without a prompt (decides how easy I5 is from the web); whether lipstick renders notification bodies as rich text (would carry I1 into the notification server); what Qt.openUrlExternally(file://...) opens from inside sailjail (decides the impact of I3).",
+  "A grep for zsh-style `--include=*.qml` failed under the tool shell (zsh globbing); the QML sweeps were redone without it."
+ ],
+ "name_table": [
+  {
+   "concept": "room id",
+   "wire": "room_id (also `id` for room-or-alias)",
+   "rust": "room_id, rid (call.rs, threads.rs), id (preview/knock)",
+   "cpp": "roomId, room_id keys",
+   "qml": "roomId, room_id keys, id (openMatrixUri)",
+   "issues": "`id` means room-or-alias on three commands; `rid` in two Rust files",
+   "canonical": "room_id; room_or_alias where an alias may come"
+  },
+  {
+   "concept": "room id or alias",
+   "wire": "id, address (JoinPage)",
+   "rust": "id",
+   "cpp": "-",
+   "qml": "address, id",
+   "issues": "no own name",
+   "canonical": "room_or_alias"
+  },
+  {
+   "concept": "event id",
+   "wire": "event_id",
+   "rust": "event_id, id (timeline.rs:98 `event = %id`)",
+   "cpp": "eventId",
+   "qml": "eventId, event_id",
+   "issues": "consistent",
+   "canonical": "event_id"
+  },
+  {
+   "concept": "timeline row id",
+   "wire": "id",
+   "rust": "id",
+   "cpp": "id (TimelineModel cache key)",
+   "qml": "model.id",
+   "issues": "same word as room-or-alias id",
+   "canonical": "row_id (protocol 2)"
+  },
+  {
+   "concept": "transaction id",
+   "wire": "txn_id",
+   "rust": "txn_id, transaction_id (SDK)",
+   "cpp": "txn_id key",
+   "qml": "txn_id, txnId",
+   "issues": "fine (SDK name differs)",
+   "canonical": "txn_id"
+  },
+  {
+   "concept": "thread root",
+   "wire": "root (open_thread, thread_timeline, thread_list), thread_root (send_text, send_sticker, items)",
+   "rust": "root, thread_root",
+   "cpp": "root, threadRoot, m_threadRoot",
+   "qml": "rootId, root, thread_root",
+   "issues": "two wire names for one concept",
+   "canonical": "thread_root"
+  },
+  {
+   "concept": "user id",
+   "wire": "user_id, sender, other_user, inviter",
+   "rust": "user_id, user, sender",
+   "cpp": "userId, m_userId",
+   "qml": "userId, user_id, sender",
+   "issues": "four wire names; `latest_sender` in the thread summary is a display name (serialize.rs:455-456 `profile_name(...)`)",
+   "canonical": "user_id; sender_id for senders"
+  },
+  {
+   "concept": "display name",
+   "wire": "name, sender_name, display_name, room_name, latest_sender",
+   "rust": "display_name, sender_name, name",
+   "cpp": "senderName, roomName",
+   "qml": "displayName, sender_name, roomName, name",
+   "issues": "`name` = room, member, device, pack, idp names",
+   "canonical": "<thing>_name"
+  },
+  {
+   "concept": "space id",
+   "wire": "space_id, parent (create_room)",
+   "rust": "space_id, parent",
+   "cpp": "spaceId (1)",
+   "qml": "spaceId, parentId",
+   "issues": "`parent` undocumented in PROTOCOL.md",
+   "canonical": "space_id"
+  },
+  {
+   "concept": "mxc address",
+   "wire": "mxc (fetch_emote, emote), url (send_sticker, add_user_emote, image packs), avatar_mxc, key (reaction with custom emoji)",
+   "rust": "mxc, url",
+   "cpp": "mxc",
+   "qml": "mxc, url",
+   "issues": "`url` also means https pages (open_url, call_url)",
+   "canonical": "mxc"
+  },
+  {
+   "concept": "cached file",
+   "wire": "path, avatar (room object), media_path/thumb_path (model only)",
+   "rust": "path",
+   "cpp": "path, media_path",
+   "qml": "path, avatar, media_path",
+   "issues": "`avatar` is a path, `avatar_mxc` an mxc",
+   "canonical": "<thing>_path"
+  },
+  {
+   "concept": "verification flow",
+   "wire": "flow_id",
+   "rust": "flow_id, flow",
+   "cpp": "-",
+   "qml": "flowId, flow_id",
+   "issues": "fine",
+   "canonical": "flow_id"
+  },
+  {
+   "concept": "key",
+   "wire": "key (reaction), key (recovery)",
+   "rust": "key",
+   "cpp": "key",
+   "qml": "key",
+   "issues": "one name, two very different things",
+   "canonical": "reaction_key / recovery_key"
+  },
+  {
+   "concept": "members",
+   "wire": "members (count in search/preview/space_rooms; list in members event)",
+   "rust": "members",
+   "cpp": "-",
+   "qml": "members",
+   "issues": "count vs list",
+   "canonical": "member_count / members"
+  }
+ ]
+}
