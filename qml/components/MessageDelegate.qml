@@ -322,7 +322,8 @@ ListItem {
                                         var r = replyTo
                                         if (!r) return ""
                                         var quoted
-                                        if (r.html && r.html.length) quoted = r.html
+                                        // a leading paragraph or break would leave an empty line under the name
+                                        if (r.html && r.html.length) quoted = r.html.replace(/^(\s|<p[^>]*>|<br\s*\/?>)+/i, "")
                                         else if (r.body !== undefined) quoted = rustrx.emojify(r.body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>"),
                                                                                                Math.round(Theme.fontSizeExtraSmall * Tunables.emojiScale))
                                         //: the quoted message of a reply while it is fetched
