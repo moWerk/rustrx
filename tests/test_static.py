@@ -417,3 +417,26 @@ def test_names_live_in_one_place():
         text = code(p)
         assert "net.mowerk" not in text and "call.element.io" not in text, p.name
     assert 'APP_ID: &str = "' + key_value("kInterface") + '"' in read("core/src/consts.rs")
+
+
+def protocol_fields():
+    """Each command's field names, from protocol.rs's enum."""
+    src = read("core/src/protocol.rs")
+    body = src[src.index("pub(crate) enum Command"):]
+    body = body[:body.index("\n}\n")]
+    body = re.sub(r"//[^\n]*", "", body)
+    out = {}
+    for m in re.finditer(r"^    ([A-Z][A-Za-z]+)\s*(\{(.*?)\})?,", body, re.M | re.S):
+        out[snake(m.group(1))] = re.findall(r"(?<![:\w])(\w+)\s*:(?!:)", m.group(3) or "")
+    return out
+
+
+def test_every_field_is_documented():
+    """A command's row in PROTOCOL.md names all its fields (create_room's
+    last three were missing, audit I15). Planted-bug: a new field."""
+    rows = [l for l in read("docs/PROTOCOL.md").splitlines() if l.startswith("| `")]
+    missing = []
+    for cmd, fields in protocol_fields().items():
+        row = next((r for r in rows if r.split("|")[1].find(f"`{cmd}`") >= 0), "")
+        missing += [f"{cmd}.{f}" for f in fields if f"`{f}" not in row]
+    assert not missing
