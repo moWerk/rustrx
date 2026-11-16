@@ -34,17 +34,19 @@ ListItem {
     readonly property bool invited: model.state === "invited"
     readonly property bool hasUnread: model.notifications > 0 || model.unread > 0
     // a favourite with something unread glows (Settings): a band across the
-    // row breathes, a breath of three seconds. Only while
-    // shown and Rustrx is in front: an animation keeps the screen drawing.
+    // row breathes with the app's one breath (app.favGlow), so all glowing
+    // rows breathe together; a shown glowing row counts itself in, which
+    // keeps the breath running only while one is on screen
     readonly property bool favGlow: app.highlightFavs && model.is_fav === true && hasUnread && !invited
-    property real glow: 0
-    SequentialAnimation on glow {
-        running: item.favGlow && Qt.application.active && item.visible
-        loops: Animation.Infinite
-        NumberAnimation { from: 0; to: 1; duration: 1500; easing.type: Easing.InOutSine }
-        NumberAnimation { from: 1; to: 0; duration: 1500; easing.type: Easing.InOutSine }
-        onStopped: item.glow = 0
+    readonly property bool glowing: favGlow && visible
+    property bool counted
+    onGlowingChanged: {
+        if (glowing === counted) return
+        counted = glowing
+        app.favGlowRows += glowing ? 1 : -1
     }
+    Component.onCompleted: if (glowing && !counted) { counted = true; app.favGlowRows += 1 }
+    Component.onDestruction: if (counted) app.favGlowRows -= 1
     // the band: the page's whole width, brightest in the row's middle
     // (5 % at rest, 10 % at the height of a breath), fading to nothing
     // above and below
@@ -54,7 +56,7 @@ ListItem {
         z: -1
         gradient: Gradient {
             GradientStop { position: 0.0; color: "transparent" }
-            GradientStop { position: 0.5; color: Theme.rgba(Theme.primaryColor, 0.05 + 0.05 * item.glow) }
+            GradientStop { position: 0.5; color: Theme.rgba(Theme.primaryColor, 0.05 + 0.05 * app.favGlow) }
             GradientStop { position: 1.0; color: "transparent" }
         }
     }

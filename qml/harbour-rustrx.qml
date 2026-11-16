@@ -69,6 +69,18 @@ ApplicationWindow {
     // favourites with new messages glow in the lists (Settings, on unless switched off)
     property alias highlightFavs: cfgHighlightFavs.value
     ConfigurationValue { id: cfgHighlightFavs; key: "/apps/harbour-rustrx/highlightFavs"; defaultValue: true }
+    // the glow's one breath, shared by every glowing row so they breathe
+    // together: three seconds, while a glowing row is shown and Rustrx is
+    // in front (rows count themselves in favGlowRows)
+    property int favGlowRows: 0
+    property real favGlow: 0
+    SequentialAnimation on favGlow {
+        running: app.highlightFavs && app.favGlowRows > 0 && Qt.application.active
+        loops: Animation.Infinite
+        NumberAnimation { from: 0; to: 1; duration: 1500; easing.type: Easing.InOutSine }
+        NumberAnimation { from: 1; to: 0; duration: 1500; easing.type: Easing.InOutSine }
+        onStopped: app.favGlow = 0
+    }
     property alias separateSpaces: cfgSeparateSpaces.value
     ConfigurationValue { id: cfgSeparateSpaces; key: "/apps/harbour-rustrx/separateSpaces"; defaultValue: true }
     // how many lines of the last message the room list shows (1 to 3)
