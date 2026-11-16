@@ -146,7 +146,7 @@ ListItem {
             wantPlay = true
             rustrx.getMedia(roomId, eventId, false)
         } else if (msgType === "location" && model.geo_uri) {
-            Qt.openUrlExternally(model.geo_uri)   // a maps app (Pure Maps) takes geo:
+            if (/^geo:/i.test(model.geo_uri)) app.openExternal(model.geo_uri)   // a maps app (Pure Maps) takes geo:
         } else if (msgType === "video") {
             pageStack.push(Qt.resolvedUrl("../pages/VideoPage.qml"), { roomId: roomId, eventId: eventId,
                            source: model.media_path || "" })

@@ -1802,5 +1802,19 @@
         <extracomment>in place of a hidden part of a message</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-he-start-chat">
+        <source>Start chat</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-start-chat-ask">
+        <source>Start a direct chat with %1? They are invited and see your Matrix address.</source>
+        <extracomment>%1 a Matrix user id from a link</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-link-refused">
+        <source>Not opened: %1 links are not handed on</source>
+        <extracomment>%1 the part of a link before the colon, e.g. &quot;file&quot;</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

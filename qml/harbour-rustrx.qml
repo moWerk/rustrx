@@ -213,7 +213,7 @@ ApplicationWindow {
     Connections {
         target: rustrx
         onStateChanged: route()
-        onBrowserUrl: Qt.openUrlExternally(url)
+        onBrowserUrl: openExternal(url)
         onVerification: {
             // an incoming request opens its page; one we started has its page already
             if (data.state === "requested" && !data.we_started) showVerification(data)
@@ -319,8 +319,8 @@ ApplicationWindow {
             }
         }
         if (id.charAt(0) === "@") {
-            pendingDm = true
-            rustrx.command({ cmd: "create_dm", user_id: id })
+            // a link must not start a chat (and tell them our id) by itself
+            pageStack.push(dmDialog, { userId: id })
         } else if (id.charAt(0) === "!" && rustrx.roomInfo(id).name && rustrx.roomInfo(id).state === "joined") {
             if (rustrx.roomInfo(id).is_space)
                 pageStack.push(Qt.resolvedUrl("pages/SpacePage.qml"), { spaceId: id, spaceName: rustrx.roomInfo(id).name })
@@ -332,6 +332,32 @@ ApplicationWindow {
             pageStack.push(Qt.resolvedUrl("pages/JoinPage.qml"), { address: id, via: via })
         }
         return true
+    }
+    Component {
+        id: dmDialog
+        Dialog {
+            property string userId
+            onAccepted: {
+                app.pendingDm = true
+                rustrx.command({ cmd: "create_dm", user_id: userId })
+            }
+            Column {
+                width: parent.width
+                DialogHeader {
+                    //% "Start chat"
+                    acceptText: qsTrId("rustrx-he-start-chat")
+                }
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * x
+                    wrapMode: Text.Wrap
+                    color: Theme.highlightColor
+                    //: %1 a Matrix user id from a link
+                    //% "Start a direct chat with %1? They are invited and see your Matrix address."
+                    text: qsTrId("rustrx-la-start-chat-ask").arg(userId)
+                }
+            }
+        }
     }
     // a direct chat asked for by a matrix:u/ link: shown once it is there
     property bool pendingDm
@@ -367,7 +393,24 @@ ApplicationWindow {
 
     // a link tapped inside the app: Matrix links stay here, the rest goes out
     function openLink(link) {
-        if (!openMatrixUri(link)) Qt.openUrlExternally(link)
+        if (!openMatrixUri(link)) openExternal(link)
+    }
+
+    // Everything that leaves the app for another one goes through here. Links
+    // come from other people's messages and servers: only web, mail and map
+    // links are handed on, never file:, data: or anything a handler might
+    // act on without asking.
+    function openExternal(url) {
+        var scheme = (/^([a-z][a-z0-9+.-]*):/i.exec(String(url)) || ["", ""])[1].toLowerCase()
+        if (["https", "http", "mailto", "geo"].indexOf(scheme) >= 0) {
+            Qt.openUrlExternally(url)
+            return true
+        }
+        console.log("openExternal: not opened, scheme", scheme)
+        //: %1 the part of a link before the colon, e.g. "file"
+        //% "Not opened: %1 links are not handed on"
+        Notices.show(qsTrId("rustrx-no-link-refused").arg(scheme || "?"))
+        return false
     }
 
     // a room asked for before the main page is up (the app started from a notification)

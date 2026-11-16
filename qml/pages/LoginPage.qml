@@ -237,7 +237,7 @@ Page {
                     Button {
                         //% "Open again"
                         text: qsTrId("rustrx-bt-sso-open-again")
-                        onClicked: Qt.openUrlExternally(page.ssoUrl)
+                        onClicked: app.openExternal(page.ssoUrl)
                     }
                     Button {
                         //% "Copy link"
@@ -271,7 +271,7 @@ Page {
                 anchors.horizontalCenter: parent.horizontalCenter
                 //% "Create an account"
                 text: qsTrId("rustrx-bt-create-account")
-                onClicked: Qt.openUrlExternally(server.signup && server.signup.length
+                onClicked: app.openExternal(server.signup && server.signup.length
                                                 ? server.signup : "https://account.matrix.org/register")
             }
 

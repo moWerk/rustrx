@@ -465,7 +465,7 @@ Page {
                 Button {
                     //% "Open approval"
                     text: qsTrId("rustrx-bt-open-approval")
-                    onClicked: Qt.openUrlExternally(resetApprovalUrl)
+                    onClicked: app.openExternal(resetApprovalUrl)
                 }
                 Button {
                     text: qsTrId("rustrx-bt-sso-copy")
@@ -646,7 +646,7 @@ Page {
                 color: Theme.secondaryColor
                 linkColor: Theme.highlightColor
                 textFormat: Text.StyledText
-                onLinkActivated: Qt.openUrlExternally(link)
+                onLinkActivated: app.openExternal(link)
                 //: %1 app version, %2 core version; lines separated by <br>, keep the link
                 //% "Rustrx %1, core %2<br>A Matrix client built on <a href='https://github.com/matrix-org/matrix-rust-sdk'>matrix-rust-sdk</a><br>GPLv3+, from moWerk with love<br><a href='https://github.com/moWerk/rustrx'>github.com/moWerk/rustrx</a>"
                 text: qsTrId("rustrx-la-about-lines").arg(appVersion).arg(rustrx.coreVersion)
@@ -661,7 +661,7 @@ Page {
                 color: Theme.secondaryColor
                 linkColor: Theme.highlightColor
                 textFormat: Text.StyledText
-                onLinkActivated: Qt.openUrlExternally(link)
+                onLinkActivated: app.openExternal(link)
                 //: attribution of the emoji pictures; keep the links and names as they are
                 //% "Emoji: <a href='https://github.com/jdecked/twemoji'>Twemoji</a> by Twitter, Inc. and other contributors and Jason Sofonia &amp; Justine De Caires, <a href='https://creativecommons.org/licenses/by/4.0/'>CC-BY 4.0</a>"
                 text: qsTrId("rustrx-la-about-twemoji")
@@ -678,7 +678,7 @@ Page {
                 color: Theme.secondaryColor
                 linkColor: Theme.highlightColor
                 textFormat: Text.StyledText
-                onLinkActivated: Qt.openUrlExternally(link)
+                onLinkActivated: app.openExternal(link)
                 //: the LLM disclosure grade; keep the link and the grade as they are
                 //% "<a href='https://github.com/moWerk/llmgd-specs'>LLMGD-3</a> · origin O1: written by an LLM, directed, understood and tested on the phone by the author; not yet reviewed by others"
                 text: qsTrId("rustrx-la-about-llmgd")

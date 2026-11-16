@@ -353,3 +353,17 @@ def test_one_escaping_helper():
               if p.name != "markup.js" and 'replace(/&/g' in code(p)]
     assert not copies
 
+
+def test_external_links_go_through_one_gate():
+    """Links from messages and servers are handed to other apps only by
+    app.openExternal, which refuses file:, data: and the like (audit I3,
+    I6, I7). Our own exported file is the one exception.
+    Planted-bug: Qt.openUrlExternally(link) in a page."""
+    hits = []
+    for p in QML:
+        for i, line in enumerate(code(p).splitlines(), 1):
+            if "Qt.openUrlExternally(" in line:
+                hits.append(f"{p.name}:{i}: {line.strip()}")
+    allowed = [h for h in hits if h.startswith("harbour-rustrx.qml") and "Qt.openUrlExternally(url)" in h
+               or 'Qt.openUrlExternally("file://" + path)' in h]
+    assert hits == allowed and len(allowed) == 2, hits
