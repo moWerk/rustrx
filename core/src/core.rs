@@ -98,6 +98,10 @@ struct State {
     thread_list: Option<JoinHandle<()>>,
     /// open space pages: the task that sends each one's rooms
     space_lists: HashMap<String, JoinHandle<()>>,
+    /// which login this is: bumped by every login and every teardown, so
+    /// work begun for one (a download, a logout's server call) can tell
+    /// that another has begun since
+    generation: u64,
 }
 
 /// What a logout has to stop, taken out of the state so the lock is not
@@ -110,6 +114,7 @@ struct Teardown {
 
 impl State {
     fn take_login(&mut self) -> Teardown {
+        self.generation += 1;
         let mut tasks = std::mem::take(&mut self.login_tasks);
         if let Some(open) = self.open.take() {
             tasks.push(open.task);
@@ -151,6 +156,8 @@ pub(crate) struct Core {
     data_dir: PathBuf,
     emitter: Emitter,
     state: Mutex<State>,
+    /// "login_cancel": ends a single sign-on still waiting for the browser
+    sso_cancel: tokio::sync::Notify,
 }
 
 mod account;
@@ -171,11 +178,25 @@ pub(crate) use spaces::join_rule_name;
 
 impl Core {
     pub(crate) fn new(rt: Runtime, data_dir: PathBuf, emitter: Emitter) -> Self {
-        Core { rt, data_dir, emitter, state: Mutex::new(State::default()) }
+        Core { rt, data_dir, emitter, state: Mutex::new(State::default()), sso_cancel: tokio::sync::Notify::new() }
     }
 
     pub(crate) fn emit(&self, value: Value) {
         self.emitter.emit(value);
+    }
+
+    /// The current login's number (State::generation).
+    pub(crate) async fn generation(&self) -> u64 {
+        self.state.lock().await.generation
+    }
+
+    /// Err when another login (or a logout) began since `generation`: what
+    /// was fetched for the old one must not be written for it any more.
+    pub(crate) async fn same_login(&self, generation: u64) -> Result<()> {
+        if self.generation().await != generation {
+            bail!("logged out meanwhile");
+        }
+        Ok(())
     }
 
     pub(crate) async fn client(&self) -> Result<Client> {

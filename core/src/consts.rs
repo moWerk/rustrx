@@ -17,6 +17,11 @@ pub(crate) const ROOM_LIST_BATCH: Duration = Duration::from_millis(150);
 pub(crate) const ROOM_LIST_FULL_REBUILD: Duration = Duration::from_secs(60);
 /// Wait before syncing again after a sync error.
 pub(crate) const SYNC_RETRY_DELAY: Duration = Duration::from_secs(5);
+/// A single sign-on waits this long for the browser to come back.
+pub(crate) const SSO_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+/// A logout waits this long for the server; after it, the phone's side is
+/// done anyway (the SDK alone would retry for up to 15 minutes).
+pub(crate) const LOGOUT_SERVER_TIMEOUT: Duration = Duration::from_secs(15);
 /// A room's send queue switched off by a network error is switched on
 /// again after this (sooner when the sync comes back).
 pub(crate) const SEND_RETRY_DELAY: Duration = Duration::from_secs(30);

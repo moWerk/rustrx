@@ -1816,5 +1816,9 @@
         <extracomment>%1 the part of a link before the colon, e.g. &quot;file&quot;</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-bt-sso-cancel">
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

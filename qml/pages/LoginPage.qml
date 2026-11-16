@@ -249,6 +249,13 @@ Page {
                         }
                     }
                 }
+                // two buttons fit a row in portrait; the way back gets its own
+                Button {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    //% "Cancel"
+                    text: qsTrId("rustrx-bt-sso-cancel")
+                    onClicked: rustrx.command({ cmd: "login_cancel" })
+                }
             }
 
             Label {

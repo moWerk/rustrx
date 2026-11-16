@@ -32,6 +32,10 @@ impl Core {
             ProbeServer { user, homeserver } => self.probe_server(user, homeserver).await,
             LoginPassword { user, password, homeserver } => self.login_password(user, password, homeserver).await,
             LoginSso { user, homeserver, idp } => self.login_sso(user, homeserver, idp).await,
+            LoginCancel => {
+                self.login_cancel();
+                Ok(())
+            }
             Logout => self.logout().await,
 
             // --- the open room (timeline.rs, threads.rs, push.rs, packs.rs) ---

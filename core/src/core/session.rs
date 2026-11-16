@@ -183,10 +183,12 @@ impl Core {
         }));
         self.install_handlers(&client);
         self.install_call_handlers(&client);
-        {
+        let generation = {
             let mut st = self.state.lock().await;
             st.client = Some(client.clone());
-        }
+            st.generation += 1;
+            st.generation
+        };
         // woken for one push: the session only (no sync, no room list); the
         // pushed message is fetched by push_handle
         if push::push_wake() {
@@ -200,7 +202,18 @@ impl Core {
         // the cached room list first, before anything waits for the network
         let rooms = self.rt.spawn(self.rooms_task(client.clone()));
         let sends = self.rt.spawn(Self::send_queue_watch(client.clone()));
-        self.state.lock().await.login_tasks.extend([watch, rooms, sends]);
+        {
+            let mut st = self.state.lock().await;
+            if st.generation != generation {
+                // ended already (an expired session's first request)
+                for t in [watch, rooms, sends] {
+                    t.abort();
+                }
+                return Ok(());
+            }
+            st.login_tasks.retain(|t| !t.is_finished());
+            st.login_tasks.extend([watch, rooms, sends]);
+        }
         self.start_sync(client).await
     }
 
@@ -404,6 +417,9 @@ impl Core {
         if self.state.lock().await.client.is_some() {
             bail!("already logged in");
         }
+        // made before anything awaits, so a cancel from now on reaches it
+        let cancelled = self.sso_cancel.notified();
+        tokio::pin!(cancelled);
         let result: Result<Client> = async {
             let server = Self::server_of(user.as_deref(), &homeserver)?;
             // before the store opens: this user's kept store, or a clean one
@@ -426,7 +442,17 @@ impl Core {
             if let Some(d) = device.as_deref() {
                 builder = builder.device_id(d);
             }
-            builder.send().await.map_err(|e| anyhow!("{e}"))?;
+            // the SDK waits for the browser's redirect without end; the
+            // login page could only be left by restarting the app
+            tokio::select! {
+                sent = tokio::time::timeout(SSO_TIMEOUT, builder.send()) => match sent {
+                    Ok(r) => {
+                        r.map_err(|e| anyhow!("{e}"))?;
+                    }
+                    Err(_) => bail!("no login from the browser within {} minutes", SSO_TIMEOUT.as_secs() / 60),
+                },
+                _ = &mut cancelled => bail!("login cancelled"),
+            }
             std::fs::remove_file(self.data_dir.join(DEVICE_ID_FILE)).ok();
             std::fs::remove_file(self.relogin_path()).ok();
             Ok(client)
@@ -441,6 +467,11 @@ impl Core {
         }
     }
 
+    /// Ends a single sign-on that waits for the browser ("login_error").
+    pub(crate) fn login_cancel(&self) {
+        self.sso_cancel.notify_waiters();
+    }
+
     pub(crate) async fn logout(&'static self) -> Result<()> {
         // a call in progress is left while the client can still say so;
         // the teardown below only stops it, and the room would show this
@@ -448,11 +479,24 @@ impl Core {
         self.call_end().await;
         // out of the state first: nothing below may hold the lock, or every
         // other command waits for the server (or its timeout) too
-        let teardown = self.state.lock().await.take_login();
+        let (teardown, generation) = {
+            let mut st = self.state.lock().await;
+            let teardown = st.take_login();
+            (teardown, st.generation)
+        };
+        // the server's side, bounded: the SDK retries for up to 15 minutes
         if let Some(client) = teardown.stop().await {
-            if let Err(e) = client.logout().await {
-                tracing::warn!("logout: {e}");
+            match tokio::time::timeout(LOGOUT_SERVER_TIMEOUT, client.logout()).await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => tracing::warn!("logout: {e}"),
+                Err(_) => tracing::warn!("logout: the server did not answer, logged out here only"),
             }
+        }
+        // a login (or another logout) since: its store and session are
+        // not this logout's to remove
+        if self.state.lock().await.generation != generation {
+            tracing::warn!("logout: a newer login or logout came first, nothing removed");
+            return Ok(());
         }
         std::fs::remove_file(self.session_path()).ok();
         self.wipe_local_data();

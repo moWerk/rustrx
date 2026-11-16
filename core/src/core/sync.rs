@@ -20,6 +20,7 @@ pub(super) struct ListSeen {
 
 impl Core {
     pub(crate) async fn start_sync(&'static self, client: Client) -> Result<()> {
+        let generation = self.generation().await;
         if matches!(client.sliding_sync_version(), Version::None) {
             let c = client.clone();
             let task = self.rt.spawn(async move {
@@ -80,6 +81,14 @@ impl Core {
                 }
             });
             let mut st = self.state.lock().await;
+            // the session ended while the service was being built: it is
+            // not this login's any more, and nothing would ever stop it
+            if st.generation != generation {
+                drop(st);
+                state_task.abort();
+                service.stop().await;
+                return Ok(());
+            }
             st.sync_service = Some(service);
             st.login_tasks.push(state_task);
         }

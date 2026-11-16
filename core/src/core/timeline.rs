@@ -495,6 +495,7 @@ impl Core {
     }
 
     pub(crate) async fn get_media(&'static self, room_id: &str, event_id: &str, thumb: bool, dest_dir: Option<String>) -> Result<()> {
+        let generation = self.generation().await;
         let room = self.room(room_id).await?;
         let client = self.client().await?;
         let tl = self.timeline_holding(&room, Some(event_id)).await?;
@@ -552,6 +553,7 @@ impl Core {
             }
             None => self.data_dir.join(MEDIA_DIR).join(format!("{safe}{}.{ext}", if thumb { "-thumb" } else { "" })),
         };
+        self.same_login(generation).await?;
         tokio::fs::write(&path, &bytes).await?;
         self.emit(json!({"ev": "media", "room_id": room.room_id().as_str(), "event_id": event_id,
                          "thumb": thumb, "exported": exported,
@@ -574,6 +576,7 @@ impl Core {
         let path = match cached {
             Some(p) => p,
             None => {
+                let generation = self.generation().await;
                 let client = self.client().await?;
                 let url = OwnedMxcUri::from(mxc);
                 if url.validate().is_err() {
@@ -595,6 +598,7 @@ impl Core {
                     }
                 };
                 let ext = sniff_extension(&bytes).unwrap_or("png");
+                self.same_login(generation).await?;
                 tokio::fs::create_dir_all(&dir).await?;
                 let path = dir.join(format!("{safe}.{ext}"));
                 tokio::fs::write(&path, &bytes).await?;
