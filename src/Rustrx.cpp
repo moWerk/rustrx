@@ -16,6 +16,7 @@
  */
 #include "Rustrx.h"
 #include "DebugLog.h"
+#include "Media.h"
 #include "RoomLists.h"
 #include "RoomModel.h"
 #include "ShareAdaptor.h"
@@ -33,8 +34,6 @@
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
-#include <QImage>
-#include <QImageReader>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -44,29 +43,21 @@
 #include <QMutexLocker>
 #include <QStandardPaths>
 #include <QTimer>
-#include <QUrl>
 
 // The core's tokio threads call eventCallback until the process ends; the
 // lock and the pointer keep them away from a Rustrx that is being destroyed.
 static QMutex s_lock;
 static Rustrx *s_instance = nullptr;
 
-// pictures prepared for sending (scaled, thumbnails, avatars)
-static QString outgoingDir()
-{
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QLatin1Char('/') + QLatin1String(Keys::kOutgoingDir);
-    QDir().mkpath(dir);
-    return dir;
-}
-
 QString Rustrx::localPath(const QString &path)
 {
-    return path.startsWith(QLatin1String("file://")) ? QUrl(path).toLocalFile() : path;
+    return Media::localPath(path);
 }
 
 Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     : QObject(parent)
     , m_lists(new RoomLists(&m_settings, this))
+    , m_media(new Media(&m_settings, this))
     , m_timeline(new TimelineModel(this))
     , m_thread(new TimelineModel(this))
 {
@@ -79,6 +70,10 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     connect(m_lists, &RoomLists::newMessages, this, &Rustrx::newMessages);
     connect(m_lists, &RoomLists::invited, this, &Rustrx::invited);
     connect(m_lists, &RoomLists::inviteGone, this, &Rustrx::inviteGone);
+    connect(m_media, &Media::command, this, &Rustrx::command);
+    connect(m_media, &Media::errorOccurred, this, &Rustrx::errorOccurred);
+    connect(m_media, &Media::emoteReady, this, &Rustrx::emoteReady);
+    connect(m_media, &Media::settingsChanged, this, &Rustrx::settingsChanged);
     m_push = new UnifiedPush(dataDir, this);
     connect(m_push, &UnifiedPush::command, this, &Rustrx::command);
     // a push: the woken process fetches the message; a running app or
@@ -243,15 +238,12 @@ void Rustrx::setBackground(bool on)
 
 bool Rustrx::downscaleImages() const
 {
-    return m_settings.value(QLatin1String(Keys::kDownscaleImages), Keys::kDownscaleImagesDefault).toBool();
+    return m_media->downscaleImages();
 }
 
 void Rustrx::setDownscaleImages(bool on)
 {
-    if (on == downscaleImages())
-        return;
-    m_settings.setValue(QLatin1String(Keys::kDownscaleImages), on);
-    emit settingsChanged();
+    m_media->setDownscaleImages(on);
 }
 
 bool Rustrx::debugLog() const
@@ -374,8 +366,7 @@ void Rustrx::command(const QVariantMap &cmd)
     if (cmd.value("cmd").toString() == QLatin1String("clear_media")) {
         m_timeline->clearEmotes();
         m_thread->clearEmotes();
-        m_emotePaths.clear();
-        m_emotesAsked.clear();
+        m_media->clearEmotes();
     }
     const QByteArray json = QJsonDocument(QJsonObject::fromVariantMap(cmd)).toJson(QJsonDocument::Compact);
     const int rc = rustrx_command(json.constData());
@@ -487,117 +478,41 @@ QString Rustrx::emojiUrl(const QString &emoji) const
     return Twemoji::url(emoji);
 }
 
+// the media side, kept in Media
 QString Rustrx::emotePath(const QString &mxc)
 {
-    const QString path = m_emotePaths.value(mxc);
-    if (!path.isEmpty())
-        return QStringLiteral("file://") + path;
-    if (mxc.startsWith(QLatin1String("mxc://")) && !m_emotesAsked.contains(mxc)) {
-        m_emotesAsked.insert(mxc);
-        command({ { "cmd", "fetch_emote" }, { "mxc", mxc } });
-    }
-    return QString();
-}
-
-QString Rustrx::prepareAvatar(const QString &path, const QString &cmd, QSize *size)
-{
-    QImageReader reader(localPath(path));
-    reader.setAutoTransform(true);
-    QImage image = reader.read();
-    if (image.isNull()) {
-        emit errorOccurred(cmd, reader.errorString());
-        return QString();
-    }
-    if (qMax(image.width(), image.height()) > Keys::kAvatarMaxEdge)
-        image = image.scaled(Keys::kAvatarMaxEdge, Keys::kAvatarMaxEdge, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    // PNG keeps a transparent picture (an icon) as it is; photos go as JPEG
-    const bool alpha = image.hasAlphaChannel();
-    const QString out = outgoingDir() + "/avatar-" + QString::number(QDateTime::currentMSecsSinceEpoch()) + (alpha ? ".png" : ".jpg");
-    if (!image.save(out, alpha ? "PNG" : "JPG", alpha ? -1 : Keys::kAvatarJpegQuality)) {
-        emit errorOccurred(cmd, QStringLiteral("cannot write ") + out);
-        return QString();
-    }
-    if (size)
-        *size = image.size();
-    return out;
+    return m_media->emotePath(mxc);
 }
 
 void Rustrx::setRoomAvatar(const QString &roomId, const QString &path)
 {
-    QSize size;
-    const QString out = prepareAvatar(path, QStringLiteral("set_room_avatar"), &size);
-    if (out.isEmpty())
-        return;
-    command({{"cmd", "set_room_avatar"}, {"room_id", roomId}, {"path", out},
-             {"w", size.width()}, {"h", size.height()}});
+    m_media->setRoomAvatar(roomId, path);
 }
 
 void Rustrx::setOwnAvatar(const QString &path)
 {
-    const QString out = prepareAvatar(path, QStringLiteral("set_own_avatar"), nullptr);
-    if (!out.isEmpty())
-        command({{"cmd", "set_own_avatar"}, {"path", out}});
+    m_media->setOwnAvatar(path);
 }
 
 void Rustrx::sendFile(const QString &roomId, const QString &path, const QString &caption,
                       const QString &threadRoot)
 {
-    const QString p = localPath(path);
-    QVariantMap cmd{{"cmd", "send_file"}, {"room_id", roomId}, {"path", p}};
-    if (!threadRoot.isEmpty())
-        cmd.insert("thread_root", threadRoot);
-    if (!caption.trimmed().isEmpty())
-        cmd.insert("caption", caption.trimmed());
-
-    // pictures go out the way Element expects them: upright, at most 2048 px
-    // on the long side when the setting asks for it, with their size and a
-    // thumbnail, so the other side shows a preview instead of a bare file
-    QImageReader reader(p);
-    reader.setAutoTransform(true);
-    const QByteArray format = reader.format();
-    if (!format.isEmpty() && format != "gif") {
-        QImage image = reader.read();
-        if (!image.isNull()) {
-            const QString stem = outgoingDir() + "/" + QString::number(QDateTime::currentMSecsSinceEpoch());
-            const bool shrink = downscaleImages()
-                    && qMax(image.width(), image.height()) > Keys::kUploadMaxEdge;
-            if (shrink) {
-                image = image.scaled(Keys::kUploadMaxEdge, Keys::kUploadMaxEdge, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-                const QString out = stem + ".jpg";
-                if (image.save(out, "JPEG", Keys::kUploadJpegQuality))
-                    cmd.insert("path", out);
-            }
-            cmd.insert("w", image.width());
-            cmd.insert("h", image.height());
-            const QImage thumb = image.scaled(Keys::kThumbEdge, Keys::kThumbEdge, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-            const QString thumbPath = stem + "-thumb.jpg";
-            if (thumb.save(thumbPath, "JPEG", Keys::kThumbJpegQuality)) {
-                cmd.insert("thumb_path", thumbPath);
-                cmd.insert("thumb_w", thumb.width());
-                cmd.insert("thumb_h", thumb.height());
-            }
-        }
-    }
-    command(cmd);
+    m_media->sendFile(roomId, path, caption, threadRoot);
 }
 
 void Rustrx::sendVoice(const QString &roomId, const QString &path, qint64 durationMs, const QString &caption)
 {
-    QVariantMap cmd{{"cmd", "send_file"}, {"room_id", roomId}, {"path", path}, {"voice", true}, {"duration_ms", durationMs}};
-    if (!caption.isEmpty())
-        cmd.insert("caption", caption);
-    command(cmd);
+    m_media->sendVoice(roomId, path, durationMs, caption);
 }
 
 void Rustrx::getMedia(const QString &roomId, const QString &eventId, bool thumb)
 {
-    command({{"cmd", "get_media"}, {"room_id", roomId}, {"event_id", eventId}, {"thumb", thumb}});
+    m_media->getMedia(roomId, eventId, thumb);
 }
 
 void Rustrx::exportMedia(const QString &roomId, const QString &eventId)
 {
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation) + QLatin1Char('/') + QLatin1String(Keys::kDownloadDir);
-    command({{"cmd", "get_media"}, {"room_id", roomId}, {"event_id", eventId}, {"thumb", false}, {"dest_dir", dir}});
+    m_media->exportMedia(roomId, eventId);
 }
 
 QString Rustrx::formatTime(const QVariant &ms) const
@@ -685,8 +600,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_timeline->clear();
         m_threadRoot.clear();
         m_thread->clear();
-        m_emotePaths.clear();
-        m_emotesAsked.clear();
+        m_media->clearEmotes();
         // the lists, the requests to join, the invitation banners
         m_lists->clear();
         m_homeserver.clear();
@@ -727,8 +641,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         const QString mxc = ev.value("mxc").toString(), path = ev.value("path").toString();
         m_timeline->setEmotePath(mxc, path);
         m_thread->setEmotePath(mxc, path);
-        m_emotePaths.insert(mxc, path);
-        emit emoteReady(mxc, QStringLiteral("file://") + path);
+        m_media->emoteArrived(mxc, path);
     } else if (type == QLatin1String("thread_list")) {
         emit threadList(ev.value("room_id").toString(), ev.value("threads").toList(), ev.value("loading").toBool());
     } else if (type == QLatin1String("thread_timeline")) {

@@ -13,6 +13,7 @@ CONFIG += sailfishapp sailfishapp_i18n sailfishapp_i18n_idbased sailfishapp_i18n
 SOURCES += src/main.cpp \
     src/Rustrx.cpp \
     src/Handover.cpp \
+    src/Media.cpp \
     src/ShareAdaptor.cpp \
     src/RoomLists.cpp \
     src/RoomModel.cpp \
@@ -25,6 +26,7 @@ SOURCES += src/main.cpp \
 
 HEADERS += src/Rustrx.h \
     src/Handover.h \
+    src/Media.h \
     src/Keys.h \
     src/ShareAdaptor.h \
     src/RoomLists.h \

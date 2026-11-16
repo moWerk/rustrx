@@ -20,15 +20,13 @@
 #include "Handover.h"
 
 #include <QElapsedTimer>
-#include <QHash>
 #include <QMetaMethod>
 #include <QObject>
-#include <QSet>
 #include <QSettings>
-#include <QSize>
 #include <QVariantList>
 #include <QVariantMap>
 
+class Media;
 class RoomLists;
 class RoomModel;
 class TimelineModel;
@@ -347,8 +345,6 @@ private:
     static void eventCallback(void *ctx, const char *json);
     // handleEvent, looked up once for the queued calls from the core's threads
     QMetaMethod m_handleEvent;
-    // an avatar picture upright, at most 512 px, in the cache; its path and size
-    QString prepareAvatar(const QString &path, const QString &cmd, QSize *size);
 
     bool m_ready = false;
     bool m_loggedIn = false;
@@ -361,7 +357,7 @@ private:
     QString m_verificationState = QStringLiteral("unknown");
     QString m_recoveryState = QStringLiteral("unknown");
     QString m_openRoomId;
-    // before m_lists, which uses it
+    // before m_lists and m_media, which use it
     QSettings m_settings;
     // the stand-in's and push-woken process's requests, the handover file
     Handover m_handover;
@@ -369,8 +365,8 @@ private:
     UnifiedPush *m_push;
     // the tabs' room lists, their settings, unread totals and requests to join
     RoomLists *m_lists;
-    QHash<QString, QString> m_emotePaths;
-    QSet<QString> m_emotesAsked;
+    // sending files and pictures, avatars, media downloads, emote pictures
+    Media *m_media;
     TimelineModel *m_timeline;
     TimelineModel *m_thread;
     QString m_threadRoot;

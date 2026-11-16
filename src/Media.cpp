@@ -1,0 +1,183 @@
+/*
+ * Copyright (C) 2026 - Timo Könnecke <github.com/moWerk>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+#include "Media.h"
+#include "Keys.h"
+
+#include <QDateTime>
+#include <QDir>
+#include <QImage>
+#include <QImageReader>
+#include <QSettings>
+#include <QStandardPaths>
+#include <QUrl>
+
+// pictures prepared for sending (scaled, thumbnails, avatars)
+static QString outgoingDir()
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QLatin1Char('/') + QLatin1String(Keys::kOutgoingDir);
+    QDir().mkpath(dir);
+    return dir;
+}
+
+Media::Media(QSettings *settings, QObject *parent)
+    : QObject(parent)
+    , m_settings(settings)
+{
+}
+
+QString Media::localPath(const QString &path)
+{
+    return path.startsWith(QLatin1String("file://")) ? QUrl(path).toLocalFile() : path;
+}
+
+bool Media::downscaleImages() const
+{
+    return m_settings->value(QLatin1String(Keys::kDownscaleImages), Keys::kDownscaleImagesDefault).toBool();
+}
+
+void Media::setDownscaleImages(bool on)
+{
+    if (on == downscaleImages())
+        return;
+    m_settings->setValue(QLatin1String(Keys::kDownscaleImages), on);
+    emit settingsChanged();
+}
+
+QString Media::emotePath(const QString &mxc)
+{
+    const QString path = m_emotePaths.value(mxc);
+    if (!path.isEmpty())
+        return QStringLiteral("file://") + path;
+    if (mxc.startsWith(QLatin1String("mxc://")) && !m_emotesAsked.contains(mxc)) {
+        m_emotesAsked.insert(mxc);
+        emit command({ { "cmd", "fetch_emote" }, { "mxc", mxc } });
+    }
+    return QString();
+}
+
+void Media::emoteArrived(const QString &mxc, const QString &path)
+{
+    m_emotePaths.insert(mxc, path);
+    emit emoteReady(mxc, QStringLiteral("file://") + path);
+}
+
+void Media::clearEmotes()
+{
+    m_emotePaths.clear();
+    m_emotesAsked.clear();
+}
+
+QString Media::prepareAvatar(const QString &path, const QString &cmd, QSize *size)
+{
+    QImageReader reader(localPath(path));
+    reader.setAutoTransform(true);
+    QImage image = reader.read();
+    if (image.isNull()) {
+        emit errorOccurred(cmd, reader.errorString());
+        return QString();
+    }
+    if (qMax(image.width(), image.height()) > Keys::kAvatarMaxEdge)
+        image = image.scaled(Keys::kAvatarMaxEdge, Keys::kAvatarMaxEdge, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    // PNG keeps a transparent picture (an icon) as it is; photos go as JPEG
+    const bool alpha = image.hasAlphaChannel();
+    const QString out = outgoingDir() + "/avatar-" + QString::number(QDateTime::currentMSecsSinceEpoch()) + (alpha ? ".png" : ".jpg");
+    if (!image.save(out, alpha ? "PNG" : "JPG", alpha ? -1 : Keys::kAvatarJpegQuality)) {
+        emit errorOccurred(cmd, QStringLiteral("cannot write ") + out);
+        return QString();
+    }
+    if (size)
+        *size = image.size();
+    return out;
+}
+
+void Media::setRoomAvatar(const QString &roomId, const QString &path)
+{
+    QSize size;
+    const QString out = prepareAvatar(path, QStringLiteral("set_room_avatar"), &size);
+    if (out.isEmpty())
+        return;
+    emit command({{"cmd", "set_room_avatar"}, {"room_id", roomId}, {"path", out},
+                  {"w", size.width()}, {"h", size.height()}});
+}
+
+void Media::setOwnAvatar(const QString &path)
+{
+    const QString out = prepareAvatar(path, QStringLiteral("set_own_avatar"), nullptr);
+    if (!out.isEmpty())
+        emit command({{"cmd", "set_own_avatar"}, {"path", out}});
+}
+
+void Media::sendFile(const QString &roomId, const QString &path, const QString &caption,
+                     const QString &threadRoot)
+{
+    const QString p = localPath(path);
+    QVariantMap cmd{{"cmd", "send_file"}, {"room_id", roomId}, {"path", p}};
+    if (!threadRoot.isEmpty())
+        cmd.insert("thread_root", threadRoot);
+    if (!caption.trimmed().isEmpty())
+        cmd.insert("caption", caption.trimmed());
+
+    // pictures go out the way Element expects them: upright, at most 2048 px
+    // on the long side when the setting asks for it, with their size and a
+    // thumbnail, so the other side shows a preview instead of a bare file
+    QImageReader reader(p);
+    reader.setAutoTransform(true);
+    const QByteArray format = reader.format();
+    if (!format.isEmpty() && format != "gif") {
+        QImage image = reader.read();
+        if (!image.isNull()) {
+            const QString stem = outgoingDir() + "/" + QString::number(QDateTime::currentMSecsSinceEpoch());
+            const bool shrink = downscaleImages()
+                    && qMax(image.width(), image.height()) > Keys::kUploadMaxEdge;
+            if (shrink) {
+                image = image.scaled(Keys::kUploadMaxEdge, Keys::kUploadMaxEdge, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                const QString out = stem + ".jpg";
+                if (image.save(out, "JPEG", Keys::kUploadJpegQuality))
+                    cmd.insert("path", out);
+            }
+            cmd.insert("w", image.width());
+            cmd.insert("h", image.height());
+            const QImage thumb = image.scaled(Keys::kThumbEdge, Keys::kThumbEdge, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            const QString thumbPath = stem + "-thumb.jpg";
+            if (thumb.save(thumbPath, "JPEG", Keys::kThumbJpegQuality)) {
+                cmd.insert("thumb_path", thumbPath);
+                cmd.insert("thumb_w", thumb.width());
+                cmd.insert("thumb_h", thumb.height());
+            }
+        }
+    }
+    emit command(cmd);
+}
+
+void Media::sendVoice(const QString &roomId, const QString &path, qint64 durationMs, const QString &caption)
+{
+    QVariantMap cmd{{"cmd", "send_file"}, {"room_id", roomId}, {"path", path}, {"voice", true}, {"duration_ms", durationMs}};
+    if (!caption.isEmpty())
+        cmd.insert("caption", caption);
+    emit command(cmd);
+}
+
+void Media::getMedia(const QString &roomId, const QString &eventId, bool thumb)
+{
+    emit command({{"cmd", "get_media"}, {"room_id", roomId}, {"event_id", eventId}, {"thumb", thumb}});
+}
+
+void Media::exportMedia(const QString &roomId, const QString &eventId)
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation) + QLatin1Char('/') + QLatin1String(Keys::kDownloadDir);
+    emit command({{"cmd", "get_media"}, {"room_id", roomId}, {"event_id", eventId}, {"thumb", false}, {"dest_dir", dir}});
+}
