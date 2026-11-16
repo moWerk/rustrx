@@ -62,7 +62,12 @@ Page {
         anchors.bottom: parent.bottom
         height: Math.round(Screen.height * (page.isPortrait ? Tunables.emojiPanelPortrait : Tunables.emojiPanelLandscape))
         visible: open
-        onPicked: page.insertEmoji(emoji)
+        onPicked: {
+            if (mode === "react")
+                rustrx.command({ cmd: "react", room_id: page.roomId, event_id: eventId, key: emoji })
+            else
+                page.insertEmoji(emoji)
+        }
     }
     Connections {
         target: Qt.inputMethod
@@ -124,6 +129,8 @@ Page {
         delegate: MessageDelegate {
             roomId: page.roomId
             inThread: true
+            // "+" in the message menu: the picker reacts to this message
+            onReactMore: { Qt.inputMethod.hide(); emojiPanel.show("react", eventId) }
             onReply: {
                 if (!page.composer) return
                 page.composer.reply(eventId, text)
