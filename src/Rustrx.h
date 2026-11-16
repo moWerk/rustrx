@@ -20,6 +20,7 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QMap>
+#include <QMetaMethod>
 #include <QObject>
 #include <QSet>
 #include <QSettings>
@@ -341,6 +342,8 @@ private slots:
 
 private:
     static void eventCallback(void *ctx, const char *json);
+    // handleEvent, looked up once for the queued calls from the core's threads
+    QMetaMethod m_handleEvent;
     void distributeRooms(const QVariantList &rooms);
     // a tab's ("rooms", "people", "favs", "all", "spaces") own setting; one
     // never set starts from the setting all tabs shared before

@@ -138,6 +138,10 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
                       << "after" << secretsTime.elapsed() << "ms";
     if (!storeKey.isEmpty())
         rustrx_set_store_key(storeKey.constData());
+    m_handleEvent = staticMetaObject.method(staticMetaObject.indexOfMethod(
+            QMetaObject::normalizedSignature("handleEvent(QVariantMap)").constData()));
+    if (!m_handleEvent.isValid())
+        qWarning() << "handleEvent not found: no event will arrive";
     const int rc = rustrx_start(dataDir.toUtf8().constData(), &Rustrx::eventCallback, this);
     if (rc != 0)
         qWarning() << "rustrx_start failed:" << rc;
@@ -552,8 +556,7 @@ void Rustrx::eventCallback(void *ctx, const char *json)
     Rustrx *self = static_cast<Rustrx *>(ctx);
     if (!s_instance || self != s_instance)
         return;
-    QMetaObject::invokeMethod(self, "handleEvent", Qt::QueuedConnection,
-                              Q_ARG(QVariantMap, doc.object().toVariantMap()));
+    self->m_handleEvent.invoke(self, Qt::QueuedConnection, Q_ARG(QVariantMap, doc.object().toVariantMap()));
 }
 
 QString Rustrx::dev(const QString &json)
