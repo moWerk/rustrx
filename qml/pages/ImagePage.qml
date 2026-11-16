@@ -59,9 +59,20 @@ Page {
     SilicaFlickable {
         id: flick
         anchors.fill: parent
-        contentWidth: Math.max(width, image.width * image.scale)
-        contentHeight: Math.max(height, image.height * image.scale)
+        // the picture is as big as the content; zooming resizes the content
+        // around a point (resizeContent), so that point stays put
+        contentWidth: width
+        contentHeight: height
         clip: true
+        // a turn of the phone starts over at the whole picture
+        onWidthChanged: zoomTo(1, Qt.point(0, 0))
+        onHeightChanged: zoomTo(1, Qt.point(0, 0))
+
+        function zoomTo(factor, at) {
+            var f = Math.max(1, Math.min(Tunables.imageMaxZoom, factor))
+            resizeContent(width * f, height * f, at)
+            returnToBounds()
+        }
 
         PullDownMenu {
             MenuItem {
@@ -73,24 +84,30 @@ Page {
 
         Image {
             id: image
-            anchors.centerIn: parent
-            width: flick.width
-            height: flick.height
+            width: flick.contentWidth
+            height: flick.contentHeight
             fillMode: Image.PreserveAspectFit
             asynchronous: true
             autoTransform: true
             smooth: true
             source: page.source.length ? "file://" + page.source : ""
-            transformOrigin: Item.Center
 
             PinchArea {
                 anchors.fill: parent
-                pinch.target: image
-                pinch.minimumScale: 1
-                pinch.maximumScale: Tunables.imageMaxZoom
+                property real startZoom: 1
+                onPinchStarted: startZoom = flick.contentWidth / flick.width
+                onPinchUpdated: {
+                    // follow the fingers as they move, zoom around their centre
+                    flick.contentX += pinch.previousCenter.x - pinch.center.x
+                    flick.contentY += pinch.previousCenter.y - pinch.center.y
+                    var f = Math.max(1, Math.min(Tunables.imageMaxZoom, startZoom * pinch.scale))
+                    flick.resizeContent(flick.width * f, flick.height * f, pinch.center)
+                }
+                onPinchFinished: flick.returnToBounds()
                 MouseArea {
                     anchors.fill: parent
-                    onDoubleClicked: image.scale = image.scale > 1 ? 1 : Tunables.imageTapZoom
+                    onDoubleClicked: flick.zoomTo(flick.contentWidth > flick.width ? 1 : Tunables.imageTapZoom,
+                                                  Qt.point(mouse.x, mouse.y))
                 }
             }
         }
