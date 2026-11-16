@@ -206,10 +206,11 @@ ListItem {
         y: rowMargin + Math.max(0, (Theme.iconSizeLarge - height) / 2)
 
         Label {
+            id: nameLabel
             width: parent.width
-            // emoji in the name as Twemoji pictures
+            // emoji in the name as Twemoji pictures, rendered by the model
             textFormat: Text.StyledText
-            text: rustrx.emojify((model.name || "").replace(/&/g, "&amp;").replace(/</g, "&lt;"), Math.round(font.pixelSize * Tunables.emojiScaleList))
+            text: model.name_html
             truncationMode: TruncationMode.Fade
             font.pixelSize: nameSize
             font.bold: hasUnread
@@ -282,17 +283,6 @@ ListItem {
                 color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
                 textFormat: Text.StyledText
                 onLineLaidOut: if (line.number === 0) { line.x += indent; line.width -= indent }
-                // the message with its emoji as pictures, apart from the text: a
-                // press (the highlight) then redoes only the sender's colour
-                readonly property string body: {
-                    if (invited || model.is_space || (model.replaced_by && model.replaced_by.length)
-                            || !model.preview || !model.preview.length)
-                        return ""
-                    var b = model.preview.replace(/&/g, "&amp;").replace(/</g, "&lt;")
-                    // one line: the breaks become spaces; more: kept
-                    b = maximumLineCount > 1 ? b.replace(/\n/g, "<br>") : b.replace(/\s+/g, " ")
-                    return rustrx.emojify(b, Math.round(font.pixelSize * Tunables.emojiScaleList))
-                }
                 text: {
                     // a new indent needs a new layout (Qt 5.6 has no forceLayout)
                     var unused = indent
@@ -309,7 +299,9 @@ ListItem {
                         var who = model.preview_sender
                                   ? "<font color=\"" + (item.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor)
                                     + "\">" + model.preview_sender.replace(/&/g, "&amp;").replace(/</g, "&lt;") + ":</font> " : ""
-                        return who + body
+                        // the message with its emoji as pictures, rendered by the
+                        // model: a press (the highlight) only redoes the sender's colour
+                        return who + model.preview_html
                     }
                     if (model.topic && model.topic.length) return model.topic.replace(/\s+/g, " ")
                     return model.encrypted
@@ -373,6 +365,24 @@ ListItem {
             //% "%1y"
             return qsTrId("rustrx-la-age-years").arg(Math.floor(s / (365 * 86400)))
         }
+    }
+
+    // what the model renders the name and the preview with, from the labels'
+    // own sizes and the preview's lines (one line: the breaks become spaces)
+    Binding {
+        target: item.ListView.view ? item.ListView.view.model : null
+        property: "nameEmojiSize"
+        value: Math.round(nameLabel.font.pixelSize * Tunables.emojiScaleList)
+    }
+    Binding {
+        target: item.ListView.view ? item.ListView.view.model : null
+        property: "previewEmojiSize"
+        value: Math.round(preview.font.pixelSize * Tunables.emojiScaleList)
+    }
+    Binding {
+        target: item.ListView.view ? item.ListView.view.model : null
+        property: "previewMultiLine"
+        value: preview.maximumLineCount > 1
     }
 
     Component {
