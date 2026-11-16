@@ -688,9 +688,12 @@ ListItem {
                         width: Theme.itemSizeSmall
                         height: Theme.itemSizeSmall
                         onClicked: {
-                            app.countEmoji(modelData)
-                            rustrx.command({ cmd: "react", room_id: roomId, event_id: msg.eventId, key: modelData })
+                            var key = modelData
+                            rustrx.command({ cmd: "react", room_id: roomId, event_id: msg.eventId, key: key })
                             msg.closeMenu()
+                            // last: counting can reorder the five, and the
+                            // Repeater then destroys this button mid-handler
+                            app.countEmoji(key)
                         }
                         // a Twemoji picture where there is one
                         Image {
