@@ -32,6 +32,10 @@ ApplicationWindow {
     // camera page keeps to portrait)
     allowedOrientations: Orientation.All
     _defaultPageOrientations: Orientation.All
+    // Labels show plain text unless they ask for StyledText: Silica's
+    // default (AutoText) would turn a name like "Bob <img src=...>" into a
+    // picture fetched from anywhere
+    _defaultLabelFormat: Text.PlainText
 
     // the rows' "3m" age labels follow this clock
     property real now: Date.now()

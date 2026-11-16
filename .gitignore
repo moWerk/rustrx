@@ -2,3 +2,5 @@ core/target/
 lib/
 *.rpm
 *.qm
+__pycache__/
+.pytest_cache/

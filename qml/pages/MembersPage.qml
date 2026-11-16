@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Rustrx 1.0
 import Sailfish.Silica 1.0
+import "../markup.js" as Markup
 
 // A room's members, a search on top that narrows them by name or Matrix
 // ID while typing. A member's menu: a direct chat, or ignoring them.
@@ -107,7 +108,7 @@ Page {
                     width: parent.width
                     truncationMode: TruncationMode.Fade
                     textFormat: Text.StyledText
-                    text: rustrx.emojify((modelData.name || modelData.user_id).replace(/&/g, "&amp;").replace(/</g, "&lt;"),
+                    text: rustrx.emojify(Markup.escaped(modelData.name || modelData.user_id),
                                          Math.round(font.pixelSize * Tunables.emojiScaleList))
                           + (page.powerLabel(modelData.power).length ? "  ·  " + page.powerLabel(modelData.power) : "")
                     color: row.highlighted ? Theme.highlightColor : Theme.primaryColor

@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Rustrx 1.0
 import Sailfish.Silica 1.0
+import "../markup.js" as Markup
 
 // All threads of a room, the latest activity first: who started each and
 // with what, how many replies, the latest, and how many are new here.
@@ -41,7 +42,7 @@ Page {
         }
     }
 
-    function escapeText(t) { return (t || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\s+/g, " ") }
+    function escapeText(t) { return Markup.escaped(t).replace(/\s+/g, " ") }
 
     SilicaListView {
         id: list

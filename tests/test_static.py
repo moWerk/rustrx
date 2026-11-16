@@ -334,3 +334,22 @@ def test_qmllint():
         pytest.skip("no qmllint")
     r = subprocess.run([lint] + [str(p) for p in QML], capture_output=True, text=True)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# --- text from other people ---
+
+def test_labels_default_to_plain_text():
+    """Silica's Label renders AutoText by default, so a remote display name
+    with a tag became StyledText and fetched its <img> (audit I1).
+    Planted-bug: remove _defaultLabelFormat from the window."""
+    assert re.search(r"_defaultLabelFormat:\s*Text\.PlainText", read("qml/harbour-rustrx.qml"))
+
+
+def test_one_escaping_helper():
+    """One source for escaping remote text into StyledText (markup.js);
+    a hand-written copy forgot `>` or a field before (audit I4).
+    Planted-bug: an inline .replace(/&/g, "&amp;") in a delegate."""
+    copies = [p.name for p in QML_JS
+              if p.name != "markup.js" and 'replace(/&/g' in code(p)]
+    assert not copies
+

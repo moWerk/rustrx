@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Rustrx 1.0
 import Sailfish.Silica 1.0
+import "../markup.js" as Markup
 
 // One room: name and a second line (topic, or the invitation), the unread
 // count at the right. Long press for favourite, mark read, leave.
@@ -291,19 +292,19 @@ ListItem {
                     // a space: its topic, else how many rooms it holds
                     //: %n the rooms in a space
                     //% "%n rooms"
-                    if (model.is_space) return model.topic && model.topic.length ? model.topic.replace(/\s+/g, " ")
+                    if (model.is_space) return model.topic && model.topic.length ? Markup.escaped(model.topic).replace(/\s+/g, " ")
                                                                                    : qsTrId("rustrx-la-space-rooms", model.children || 0)
                     //% "Replaced by a new room. Tap to go there."
                     if (model.replaced_by && model.replaced_by.length) return qsTrId("rustrx-la-replaced")
                     if (model.preview && model.preview.length) {
                         var who = model.preview_sender
                                   ? "<font color=\"" + (item.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor)
-                                    + "\">" + model.preview_sender.replace(/&/g, "&amp;").replace(/</g, "&lt;") + ":</font> " : ""
+                                    + "\">" + Markup.escaped(model.preview_sender) + ":</font> " : ""
                         // the message with its emoji as pictures, rendered by the
                         // model: a press (the highlight) only redoes the sender's colour
                         return who + model.preview_html
                     }
-                    if (model.topic && model.topic.length) return model.topic.replace(/\s+/g, " ")
+                    if (model.topic && model.topic.length) return Markup.escaped(model.topic).replace(/\s+/g, " ")
                     return model.encrypted
                             //% "Encrypted"
                             ? qsTrId("rustrx-la-encrypted")

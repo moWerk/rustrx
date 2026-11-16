@@ -18,6 +18,7 @@ import QtQuick 2.6
 import Rustrx 1.0
 import QtMultimedia 5.6
 import Sailfish.Silica 1.0
+import "../markup.js" as Markup
 
 // One timeline row: a date divider, a read marker, or an event. An event is
 // a bubble, own messages at the right in the highlight colour, others at the
@@ -317,7 +318,7 @@ ListItem {
                                         var quoted
                                         // a leading paragraph or break would leave an empty line under the name
                                         if (r.html && r.html.length) quoted = r.html.replace(/^(\s|<p[^>]*>|<br\s*\/?>)+/i, "")
-                                        else if (r.body !== undefined) quoted = rustrx.emojify(r.body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>"),
+                                        else if (r.body !== undefined) quoted = rustrx.emojify(Markup.escaped(r.body).replace(/\n/g, "<br>"),
                                                                                                Math.round(Theme.fontSizeExtraSmall * Tunables.emojiScale))
                                         //: the quoted message of a reply while it is fetched
                                         //% "Loading the original message"
@@ -325,7 +326,7 @@ ListItem {
                                         //: the quoted message of a reply cannot be had (deleted, or no access)
                                         //% "Original message not available"
                                         else quoted = "<i>" + qsTrId("rustrx-la-reply-missing") + "</i>"
-                                        var who = r.sender_name || r.sender || ""
+                                        var who = Markup.escaped(r.sender_name || r.sender)
                                         return (who.length ? "<font color=\"" + Theme.secondaryHighlightColor + "\">" + who + "</font><br>" : "") + quoted
                                     }
                                 }
