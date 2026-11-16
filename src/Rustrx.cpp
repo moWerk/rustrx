@@ -42,7 +42,6 @@
 #include <QMetaObject>
 #include <QMutex>
 #include <QMutexLocker>
-#include <QSettings>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QUrl>
@@ -93,6 +92,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     , m_thread(new TimelineModel(this))
 {
     s_instance = this;
+    m_invitesNotified = m_settings.value("invitesNotified").toStringList();
     m_push = new UnifiedPush(dataDir, this);
     connect(m_push, &UnifiedPush::command, this, &Rustrx::command);
     // a push: the woken process fetches the message; a running app or
@@ -354,14 +354,14 @@ void Rustrx::setBackground(bool on)
 
 bool Rustrx::downscaleImages() const
 {
-    return QSettings().value("downscaleImages", true).toBool();
+    return m_settings.value("downscaleImages", true).toBool();
 }
 
 void Rustrx::setDownscaleImages(bool on)
 {
     if (on == downscaleImages())
         return;
-    QSettings().setValue("downscaleImages", on);
+    m_settings.setValue("downscaleImages", on);
     emit settingsChanged();
 }
 
@@ -377,14 +377,14 @@ void Rustrx::setRoomFilter(const QString &text)
 
 bool Rustrx::debugLog() const
 {
-    return QSettings().value("debugLog", true).toBool();
+    return m_settings.value("debugLog", true).toBool();
 }
 
 void Rustrx::setDebugLog(bool on)
 {
     if (on == debugLog())
         return;
-    QSettings().setValue("debugLog", on);
+    m_settings.setValue("debugLog", on);
     DebugLog::setEnabled(on);
     emit settingsChanged();
 }
@@ -414,8 +414,7 @@ QVariant Rustrx::tabValue(const QString &kind, const QString &key, const QVarian
     const auto cached = m_tabCache.constFind(own);
     if (cached != m_tabCache.constEnd())
         return *cached;
-    QSettings settings;
-    const QVariant v = settings.contains(own) ? settings.value(own) : settings.value(key, fallback);
+    const QVariant v = m_settings.contains(own) ? m_settings.value(own) : m_settings.value(key, fallback);
     m_tabCache.insert(own, v);
     return v;
 }
@@ -423,7 +422,7 @@ QVariant Rustrx::tabValue(const QString &kind, const QString &key, const QVarian
 void Rustrx::setTabValue(const QString &key, const QVariant &value)
 {
     const QString own = QStringLiteral("tabs/") + m_currentTab + QLatin1Char('/') + key;
-    QSettings().setValue(own, value);
+    m_settings.setValue(own, value);
     m_tabCache.insert(own, value);
     emit settingsChanged();
     distributeRooms(m_lastRooms);
@@ -642,22 +641,20 @@ void Rustrx::openThread(const QString &roomId, const QString &root)
 
 int Rustrx::threadSeen(const QString &root, int count)
 {
-    QSettings settings;
     const QString key = QStringLiteral("threadsSeen/") + QString(root).remove(QLatin1Char('$'));
-    if (!settings.contains(key)) {
-        settings.setValue(key, count);
+    if (!m_settings.contains(key)) {
+        m_settings.setValue(key, count);
         return count;
     }
-    return settings.value(key).toInt();
+    return m_settings.value(key).toInt();
 }
 
 void Rustrx::markThreadSeen(const QString &root, int count)
 {
-    QSettings settings;
     const QString key = QStringLiteral("threadsSeen/") + QString(root).remove(QLatin1Char('$'));
-    if (settings.value(key, -1).toInt() == count)
+    if (m_settings.value(key, -1).toInt() == count)
         return;
-    settings.setValue(key, count);
+    m_settings.setValue(key, count);
     ++m_threadsSeenVersion;
     emit threadsSeenChanged();
 }
@@ -779,7 +776,7 @@ void Rustrx::sendFile(const QString &roomId, const QString &path, const QString 
         QImage image = reader.read();
         if (!image.isNull()) {
             const QString stem = outgoingDir() + "/" + QString::number(QDateTime::currentMSecsSinceEpoch());
-            const bool shrink = QSettings().value("downscaleImages", true).toBool()
+            const bool shrink = downscaleImages()
                     && qMax(image.width(), image.height()) > 2048;
             if (shrink) {
                 image = image.scaled(2048, 2048, Qt::KeepAspectRatio, Qt::SmoothTransformation);
@@ -851,18 +848,16 @@ QString Rustrx::formatDate(const QVariant &ms) const
 
 QString Rustrx::draft(const QString &roomId) const
 {
-    QSettings settings;
-    return settings.value(QStringLiteral("drafts/") + roomId).toString();
+    return m_settings.value(QStringLiteral("drafts/") + roomId).toString();
 }
 
 void Rustrx::setDraft(const QString &roomId, const QString &text)
 {
-    QSettings settings;
     const QString key = QStringLiteral("drafts/") + roomId;
     if (text.trimmed().isEmpty())
-        settings.remove(key);
+        m_settings.remove(key);
     else
-        settings.setValue(key, text);
+        m_settings.setValue(key, text);
 }
 
 void Rustrx::distributeRooms(const QVariantList &rooms)
@@ -935,8 +930,7 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
     // kept in the settings (pruned to the open ones), so a restart does not
     // repeat them and one that came while Rustrx was closed still shows
     {
-        QSettings settings;
-        const QStringList notified = settings.value("invitesNotified").toStringList();
+        const QStringList notified = m_invitesNotified;
         QStringList open;
         for (const QVariant &v : rooms) {
             const QVariantMap r = v.toMap();
@@ -952,8 +946,10 @@ void Rustrx::distributeRooms(const QVariantList &rooms)
         for (const QString &id : notified)
             if (!open.contains(id))
                 emit inviteGone(id);
-        if (open != notified)
-            settings.setValue("invitesNotified", open);
+        if (open != notified) {
+            m_invitesNotified = open;
+            m_settings.setValue("invitesNotified", open);
+        }
     }
     sortRooms(groups, QStringLiteral("rooms"));
     sortRooms(dms, QStringLiteral("people"));
@@ -1050,8 +1046,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
             emit unreadChanged();
         }
         // the drafts belonged to that account
-        QSettings settings;
-        settings.remove(QStringLiteral("drafts"));
+        m_settings.remove(QStringLiteral("drafts"));
         emit stateChanged();
         emit openRoomChanged();
         emit syncStateChanged();

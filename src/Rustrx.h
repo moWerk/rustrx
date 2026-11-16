@@ -22,6 +22,7 @@
 #include <QMap>
 #include <QObject>
 #include <QSet>
+#include <QSettings>
 #include <QSize>
 #include <QVariantList>
 #include <QVariantMap>
@@ -367,9 +368,12 @@ private:
     QString m_pendingRoom;
     QString m_pendingCall;
     QString m_currentTab = QStringLiteral("rooms");
+    QSettings m_settings;
     // the tabs' settings as read (QSettings per room update was a file
     // check each time); filled on first use, changed in setTabValue
     mutable QHash<QString, QVariant> m_tabCache;
+    // the invitations already notified, as in the settings
+    QStringList m_invitesNotified;
     bool m_pendingKnocks = false;
     // per room: { room_name, is_space, requests }
     QMap<QString, QVariantMap> m_knocks;
