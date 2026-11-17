@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Rustrx 1.0
 import Sailfish.Silica 1.0
+import "../components"
 
 // A room or space not joined yet, by its address or a link: what it is
 // (the server's preview), then Join, or Ask to join where its rule wants
@@ -119,13 +120,16 @@ Page {
                 Rectangle {
                     width: Theme.iconSizeLarge
                     height: width
-                    radius: width / 2
-                    color: Theme.rgba(Theme.highlightBackgroundColor, Tunables.cardOpacity)
-                    clip: true
+                    radius: width * app.avatarRadius
+                    color: joinPicture.status === Image.Ready ? "transparent" : Theme.rgba(Theme.highlightBackgroundColor, Tunables.cardOpacity)
                     Image {
+                        id: joinPicture
                         anchors.fill: parent
                         fillMode: Image.PreserveAspectCrop
                         source: page.preview.avatar_mxc ? rustrx.emotePath(page.preview.avatar_mxc) : ""
+                        // clip: true would cut a square
+                        layer.enabled: app.avatarRadius > 0
+                        layer.effect: RoundMask { radius: app.avatarRadius }
                     }
                 }
                 Column {

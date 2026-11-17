@@ -26,6 +26,9 @@ ConfigurationGroup {
     path: Names.dconfPath
 
     // appearance
+    // avatar corners: the radius in percent of the side, 0 square, 50 a
+    // circle. roundAvatars is the old switch, read once (off: square)
+    property int avatarCorners: 50
     property bool roundAvatars: true
     property bool showReadBy: true
     property bool highlightFavs: true

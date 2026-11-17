@@ -512,12 +512,16 @@
         <source>Appearance</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-round-avatars">
-        <source>Round avatars</source>
+    <message id="rustrx-la-avatar-corners">
+        <source>Avatar corners</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-round-avatars-hint">
-        <source>Cut room and people pictures to a circle.</source>
+    <message id="rustrx-la-avatar-round">
+        <source>Round</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-avatar-square">
+        <source>Square</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-show-read-by">

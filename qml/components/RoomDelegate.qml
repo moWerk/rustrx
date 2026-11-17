@@ -91,8 +91,10 @@ ListItem {
         y: rowMargin + (Theme.iconSizeLarge - height) / 2
         width: avatarSize
         height: width
-        radius: width / 2
-        color: picture.visible && !app.roundAvatars
+        radius: width * app.avatarRadius
+        // behind a picture nothing: one with transparency (dodoradio's, the
+        // AsteroidOS room) shows the list through it, not a circle
+        color: picture.visible
                ? "transparent"
                : Theme.rgba(item.highlighted ? Theme.highlightColor : Theme.primaryColor, Theme.opacityFaint)
 
@@ -114,9 +116,9 @@ ListItem {
             sourceSize.height: avatarSize
             // the version makes a changed picture load past Qt's image cache
             source: model.avatar_path ? "file://" + model.avatar_path + "?v=" + (model.avatar_v || 0) : ""
-            // clip: true would cut a square; the circle is a mask
-            layer.enabled: app.roundAvatars
-            layer.effect: RoundMask {}
+            // clip: true would cut a square; the rounding is a mask
+            layer.enabled: app.avatarRadius > 0
+            layer.effect: RoundMask { radius: app.avatarRadius }
         }
 
         // the badge's shadow, offset a little further than the digits' shadow,

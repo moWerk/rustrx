@@ -16,16 +16,22 @@
  */
 import QtQuick 2.6
 
-// The circle mask for a room or own picture: layer.effect: RoundMask {}
-// (clip: true would cut a square). The edge softens over the outer 1 %.
+// The mask for a room or own picture: layer.effect: RoundMask {} (clip:
+// true would cut a square). A square with rounded corners, the radius a
+// share of the side: 0.5 (the default) a circle, the setting's value
+// app.avatarRadius elsewhere. The edge softens over the outer 1 %.
 ShaderEffect {
+    property real radius: 0.5
     fragmentShader: "
         varying highp vec2 qt_TexCoord0;
         uniform sampler2D source;
         uniform lowp float qt_Opacity;
+        uniform highp float radius;
         void main() {
-            highp float d = length(qt_TexCoord0 - vec2(0.5));
-            lowp float a = 1.0 - smoothstep(0.49, 0.5, d);
+            // distance outside the rounded square (negative inside)
+            highp vec2 q = abs(qt_TexCoord0 - vec2(0.5)) - vec2(0.5 - radius);
+            highp float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
+            lowp float a = 1.0 - smoothstep(-0.01, 0.0, d);
             gl_FragColor = texture2D(source, qt_TexCoord0) * a * qt_Opacity;
         }"
 }

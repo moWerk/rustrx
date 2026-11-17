@@ -55,7 +55,9 @@ ApplicationWindow {
         onEmojiCountsChanged: app.favouriteEmoji = service.favouriteEmoji()
     }
     // appearance, shared by every page and delegate
-    property alias roundAvatars: cfg.roundAvatars
+    property alias avatarCorners: cfg.avatarCorners
+    // the avatars' corner radius as a share of the side (RoundMask)
+    readonly property real avatarRadius: cfg.avatarCorners / 100
     property alias showReadBy: cfg.showReadBy
     property alias highlightFavs: cfg.highlightFavs
     property alias previewLines: cfg.previewLines
@@ -492,7 +494,11 @@ ApplicationWindow {
     DebugValue { id: debugMinimize; name: "debugMinimize"; defaultValue: false }
     Connections { target: debugMinimize; onValueChanged: if (debugMinimize.value === true) app.deactivate() }
 
-    Component.onCompleted: { applyClosedMode(); route() }
+    Component.onCompleted: {
+        // the old "Round avatars" switch, off: square corners, once
+        if (!cfg.roundAvatars) { cfg.avatarCorners = 0; cfg.roundAvatars = true }
+        applyClosedMode(); route()
+    }
 
     // custom emoji in messages: a little taller than the text, like an emoji
     Binding { target: rustrx.timeline; property: "emoteSize"; value: Math.round(Theme.fontSizeMedium * Tunables.emoteScale) }

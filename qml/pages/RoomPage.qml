@@ -212,8 +212,8 @@ Page {
             sourceSize.width: width * 2
             sourceSize.height: height * 2
             source: page.hasPicture ? "file://" + page.roomInfo.avatar_path + "?v=" + (page.roomInfo.avatar_v || 0) : ""
-            layer.enabled: app.roundAvatars
-            layer.effect: RoundMask {}
+            layer.enabled: app.avatarRadius > 0
+            layer.effect: RoundMask { radius: app.avatarRadius }
         }
         description: rustrx.syncState === "idle"
                      ? qsTrId("rustrx-la-cover-connecting")

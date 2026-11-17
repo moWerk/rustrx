@@ -259,14 +259,56 @@ Page {
                 onClicked: app.highlightFavs = !app.highlightFavs
             }
 
-            TextSwitch {
-                //% "Round avatars"
-                text: qsTrId("rustrx-la-round-avatars")
-                //% "Cut room and people pictures to a circle."
-                description: qsTrId("rustrx-la-round-avatars-hint")
-                checked: app.roundAvatars
-                automaticCheck: false
-                onClicked: app.roundAvatars = !app.roundAvatars
+            // the avatars' corners, from square to a circle, with one's own
+            // picture beside it as it will look
+            Item {
+                width: parent.width
+                height: Math.max(cornerSlider.height, cornerPreview.height)
+                Slider {
+                    id: cornerSlider
+                    anchors { left: parent.left; right: cornerPreview.left; verticalCenter: parent.verticalCenter }
+                    //% "Avatar corners"
+                    label: qsTrId("rustrx-la-avatar-corners")
+                    minimumValue: 0
+                    maximumValue: 50
+                    stepSize: 5
+                    valueText: value >= maximumValue
+                               //% "Round"
+                               ? qsTrId("rustrx-la-avatar-round")
+                               : value <= minimumValue
+                                 //% "Square"
+                                 ? qsTrId("rustrx-la-avatar-square")
+                                 : Math.round(value * 2) + " %"
+                    Component.onCompleted: value = app.avatarCorners
+                    onValueChanged: if (Math.round(value) !== app.avatarCorners) app.avatarCorners = Math.round(value)
+                }
+                Rectangle {
+                    id: cornerPreview
+                    anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                    width: Theme.iconSizeLarge
+                    height: width
+                    radius: width * app.avatarRadius
+                    color: previewPicture.visible ? "transparent" : Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
+                    Label {
+                        anchors.centerIn: parent
+                        visible: !previewPicture.visible
+                        text: (displayName || rustrx.userId.slice(1) || "?").charAt(0).toUpperCase()
+                        font.pixelSize: Theme.fontSizeLarge
+                        color: Theme.primaryColor
+                    }
+                    Image {
+                        id: previewPicture
+                        anchors.fill: parent
+                        visible: status === Image.Ready
+                        asynchronous: true
+                        fillMode: Image.PreserveAspectCrop
+                        sourceSize.width: width
+                        sourceSize.height: height
+                        source: ownAvatar.length ? "file://" + ownAvatar + "?v=" + ownAvatarVersion : ""
+                        layer.enabled: app.avatarRadius > 0
+                        layer.effect: RoundMask { radius: app.avatarRadius }
+                    }
+                }
             }
 
             TextSwitch {
@@ -357,7 +399,7 @@ Page {
                 onClicked: pageStack.push(ownPicturePicker)
                 Rectangle {
                     anchors.fill: parent
-                    radius: app.roundAvatars ? width / 2 : 0
+                    radius: width * app.avatarRadius
                     visible: !ownPicture.visible
                     color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
                     Label {
@@ -377,8 +419,8 @@ Page {
                     sourceSize.height: height
                     // the version makes a changed picture load past Qt's image cache
                     source: ownAvatar.length ? "file://" + ownAvatar + "?v=" + ownAvatarVersion : ""
-                    layer.enabled: app.roundAvatars
-                    layer.effect: RoundMask {}
+                    layer.enabled: app.avatarRadius > 0
+                    layer.effect: RoundMask { radius: app.avatarRadius }
                 }
             }
 

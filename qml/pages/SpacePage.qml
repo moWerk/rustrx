@@ -157,10 +157,10 @@ Page {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Theme.iconSizeMedium
                 height: width
-                // a space a rounded square, a room a circle
-                radius: row.r.is_space ? Theme.paddingSmall : width / 2
-                color: Theme.rgba(Theme.highlightBackgroundColor, Tunables.cardOpacity)
-                clip: true
+                // a space a square with small corners, a room as the setting has it
+                readonly property real share: row.r.is_space ? Theme.paddingSmall / width : app.avatarRadius
+                radius: width * share
+                color: picture.status === Image.Ready ? "transparent" : Theme.rgba(Theme.highlightBackgroundColor, Tunables.cardOpacity)
                 Label {
                     anchors.centerIn: parent
                     visible: !picture.source.toString().length
@@ -173,6 +173,9 @@ Page {
                     fillMode: Image.PreserveAspectCrop
                     sourceSize.width: width
                     source: row.r.avatar_mxc ? rustrx.emotePath(row.r.avatar_mxc) : ""
+                    // clip: true would cut a square
+                    layer.enabled: avatar.share > 0
+                    layer.effect: RoundMask { radius: avatar.share }
                 }
             }
 

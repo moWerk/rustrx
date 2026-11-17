@@ -281,7 +281,7 @@ Page {
                 onClicked: pageStack.push(roomPicturePicker)
                 Rectangle {
                     anchors.fill: parent
-                    radius: app.roundAvatars ? width / 2 : 0
+                    radius: width * app.avatarRadius
                     visible: !roomPicture.visible
                     color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
                     Label {
@@ -301,9 +301,9 @@ Page {
                     sourceSize.height: height
                     // the version makes a changed picture load past Qt's image cache
                     source: info.avatar_path ? "file://" + info.avatar_path + "?v=" + (info.avatar_v || 0) : ""
-                    // the same circle mask as the room list
-                    layer.enabled: app.roundAvatars
-                    layer.effect: RoundMask {}
+                    // the same mask as the room list
+                    layer.enabled: app.avatarRadius > 0
+                    layer.effect: RoundMask { radius: app.avatarRadius }
                 }
             }
 
