@@ -111,9 +111,12 @@ Item {
         pendingCommands = []
         for (var i = 0; i < cmds.length; i++) rustrx.command(cmds[i])
     }
-    function markRead(roomId) {
+    // shown: false when the room was only opened ("read on opening"): the
+    // unread line stays until the messages were on screen
+    function markRead(roomId, shown) {
         // the privacy switch: a private receipt moves only our own marker
-        whenLoggedIn({ cmd: "mark_read", room_id: roomId, "private": !cfg.sendReceipts })
+        whenLoggedIn({ cmd: "mark_read", room_id: roomId, "private": !cfg.sendReceipts,
+                       marker: shown !== false })
     }
 
     // the emoji used most (five; the defaults fill up until five have been

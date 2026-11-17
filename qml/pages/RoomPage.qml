@@ -80,7 +80,7 @@ Page {
                 rustrx.command({ cmd: "call_start", room_id: roomId })
             // read only at the newest end: marking moves the read marker's
             // row, which shifted what someone scrolled up was reading
-            if (anchor.atNewest()) markRead()
+            readOnArrival()
             // the room's page, one swipe to the right; attached once the
             // transition is over (inside it the stack reports a binding loop)
             if (!infoAttached) attachInfo.start()
@@ -102,15 +102,26 @@ Page {
 
     // at most one receipt per moment: at the newest end the list's
     // signals can fire every frame (seen: one a frame for five seconds)
-    function markRead() {
+    // shown: false for a receipt on opening alone (readWhenShown off), which
+    // leaves the unread line; a shown one in the same moment wins
+    function markRead(shown) {
+        markReadTimer.shown = markReadTimer.shown || shown !== false
         if (!markReadTimer.running) markReadTimer.start()
+    }
+    // the room opened or its messages changed: read when the newest is in
+    // view, or at once when the setting says opening is enough
+    function readOnArrival() {
+        if (anchor.atNewest()) markRead()
+        else if (!app.readWhenShown) markRead(false)
     }
     Timer {
         id: markReadTimer
+        property bool shown
         interval: Tunables.markReadMs
         onTriggered: {
             if (rustrx.timeline.count > 0 && Qt.application.state === Qt.ApplicationActive)
-                app.markRead(roomId)
+                app.markRead(roomId, shown)
+            shown = false
         }
     }
 
@@ -246,7 +257,7 @@ Page {
                 page.positioned = true
                 if (page.markerRow >= 0) page.viewAt("readmarker", page.markerRow, ListView.Center)
             }
-            if (anchor.atNewest()) markRead()
+            readOnArrival()
         }
     }
     // the first unread message is above the view: a pill under the header

@@ -808,6 +808,14 @@
         <source>Others see how far you have read. When off, only your own devices know.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-read-when-shown">
+        <source>Mark messages as read only when they have been shown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-read-when-shown-hint">
+        <source>A room counts as read once you scrolled to its newest message. When off, opening the room is enough; the unread line still waits until you saw the messages.</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-la-send-typing">
         <source>Show others that I am typing</source>
         <translation type="unfinished"></translation>

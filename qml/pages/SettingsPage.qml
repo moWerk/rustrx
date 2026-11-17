@@ -94,6 +94,16 @@ Page {
             }
 
             TextSwitch {
+                //% "Mark messages as read only when they have been shown"
+                text: qsTrId("rustrx-la-read-when-shown")
+                //% "A room counts as read once you scrolled to its newest message. When off, opening the room is enough; the unread line still waits until you saw the messages."
+                description: qsTrId("rustrx-la-read-when-shown-hint")
+                checked: app.readWhenShown
+                automaticCheck: false
+                onClicked: app.readWhenShown = !app.readWhenShown
+            }
+
+            TextSwitch {
                 //% "Show who has read a message"
                 text: qsTrId("rustrx-la-show-read-by")
                 //% "Names appear under the last message each person has read."

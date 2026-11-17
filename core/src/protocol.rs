@@ -101,7 +101,9 @@ pub(crate) enum Command {
     Report { room_id: String, event_id: String, reason: Option<String> },
     /// The event's JSON as received (and its latest edit): "event_source".
     EventSource { room_id: String, event_id: String },
-    MarkRead { room_id: String, private: Option<bool> },
+    /// marker: false sends the receipt only and leaves the fully-read
+    /// marker (the unread line) until the messages were shown
+    MarkRead { room_id: String, private: Option<bool>, marker: Option<bool> },
     Typing { room_id: String, typing: Option<bool> },
     /// The picture (or its thumbnail) of an event, into the media cache;
     /// with dest_dir a copy for other apps. Answered by "media".

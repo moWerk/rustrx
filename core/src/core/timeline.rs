@@ -550,7 +550,7 @@ impl Core {
         Ok(())
     }
 
-    pub(crate) async fn mark_read(&self, room_id: &str, private: bool) -> Result<()> {
+    pub(crate) async fn mark_read(&self, room_id: &str, private: bool, marker: bool) -> Result<()> {
         let room = self.room(room_id).await?;
         // the open room's timeline knows its newest item; any other room
         // gets the receipt on its latest event (a throwaway timeline is
@@ -564,13 +564,19 @@ impl Core {
         // The fully-read marker is where a room opens: only our own
         // account sees it, so it moves with "receipts off" too.
         // Without it a room opened where another client left it.
+        // Without `marker` (read on opening) it stays where the messages
+        // were last shown, so the unread line is still there to read from.
         if is_open {
             let tl = self.timeline_for(&room).await?;
             tl.mark_as_read(kind).await?;
-            tl.mark_as_read(ReceiptType::FullyRead).await?;
+            if marker {
+                tl.mark_as_read(ReceiptType::FullyRead).await?;
+            }
         } else if let Some(event_id) = crate::serialize::latest_event_id(&room) {
             room.send_single_receipt(kind, ReceiptThread::Unthreaded, event_id.clone()).await?;
-            room.send_single_receipt(ReceiptType::FullyRead, ReceiptThread::Unthreaded, event_id).await?;
+            if marker {
+                room.send_single_receipt(ReceiptType::FullyRead, ReceiptThread::Unthreaded, event_id).await?;
+            }
         }
         let _ = room.set_unread_flag(false).await;
         Ok(())

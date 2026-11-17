@@ -66,6 +66,7 @@ ApplicationWindow {
     property alias separateSpaces: cfg.separateSpaces
     // privacy: what others learn from us
     property alias sendReceipts: cfg.sendReceipts
+    property alias readWhenShown: cfg.readWhenShown
     property alias sendTyping: cfg.sendTyping
     // the line under the message field that says the room sees you typing
     property alias typingHint: cfg.typingHint
@@ -108,8 +109,8 @@ ApplicationWindow {
     property bool reopenTried
 
     // the receipt as the privacy switch has it (Service.qml, one place)
-    function markRead(roomId) {
-        service.markRead(roomId)
+    function markRead(roomId, shown) {
+        service.markRead(roomId, shown)
     }
 
     // flow ids of verifications that already have a page
