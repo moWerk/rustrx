@@ -210,6 +210,10 @@ Page {
             TextField {
                 visible: service.notifyReactions
                 width: parent.width
+                // in line with the switches' texts above (Silica TextSwitch:
+                // its toggle, then the label)
+                textLeftMargin: Theme.horizontalPageMargin - Theme.paddingLarge + Theme.itemSizeExtraSmall
+                                + (palette.colorScheme === Theme.DarkOnLight ? Theme.paddingMedium : 0)
                 //% "Up to three emoji, with spaces between"
                 label: qsTrId("rustrx-la-notify-emoji")
                 placeholderText: label
