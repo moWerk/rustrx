@@ -141,7 +141,11 @@ int main(int argc, char *argv[])
         if (!waitForNameToGo(bus) || !bus.registerService(kService)) {
             qWarning() << "startup: the running Rustrx did not make way within"
                        << Keys::kNameGoneTimeoutMs << "ms; not started";
-            return 1;
+            // a stand-in that finds the app in front is not needed, which is
+            // no failure: its unit restarts on failure, and did so every
+            // minute for as long as the app ran (dodoradio's log, 98 times
+            // in two hours). The app starts the stand-in when it closes.
+            return standIn ? 0 : 1;
         }
     }
 
