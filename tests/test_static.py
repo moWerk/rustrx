@@ -486,5 +486,5 @@ def test_notification_actions_reach_a_method():
     name that is no Q_SCRIPTABLE method does nothing, silently.
     Planted-bug: rename markRoomRead in Rustrx.h."""
     scriptable = set(re.findall(r"Q_SCRIPTABLE\s+\w+\s+(\w+)\s*\(", read("src/Rustrx.h")))
-    called = set(re.findall(r'service\.action\(\s*"[^"]+"\s*,\s*"(\w+)"', code(ROOT / "qml/Service.qml")))
+    called = set(re.findall(r'\baction\(\s*[^,()]+,\s*"(\w+)"', code(ROOT / "qml/Service.qml")))
     assert called and not called - scriptable, called - scriptable

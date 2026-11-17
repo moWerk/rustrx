@@ -1842,5 +1842,25 @@
         <source>Mark as read</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-notify-reply">
+        <source>Reply in notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-notify-reply-hint">
+        <source>A Reply button that opens a text field in the notification.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-notify-reactions">
+        <source>Emoji in notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-notify-reactions-hint">
+        <source>Your five most used emoji as buttons, to react to the latest message.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-notification-reply">
+        <source>Reply</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

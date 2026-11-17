@@ -36,6 +36,8 @@ Item {
     Settings { id: cfg }
     // whether a notification shows the message itself or only a count
     property alias notifyText: cfg.notifyText
+    property alias notifyReply: cfg.notifyReply
+    property alias notifyReactions: cfg.notifyReactions
     // the stand-in's line in the events view, on unless switched off
     property alias showBackgroundLine: cfg.showBackgroundLine
 
@@ -54,12 +56,24 @@ Item {
             service.closeNotification(roomId)
             service.markRead(roomId)
         }
-        onStateChanged: if (rustrx.loggedIn) service.flushMarkRead()
+        // its reply field and emoji buttons: answered means read
+        onReplyRequested: {
+            service.closeNotification(roomId)
+            service.whenLoggedIn({ cmd: "send_text", room_id: roomId, body: text })
+            service.markRead(roomId)
+        }
+        onReactRequested: {
+            service.closeNotification(roomId)
+            service.countEmoji(key)
+            service.whenLoggedIn({ cmd: "react", room_id: roomId, event_id: eventId, key: key })
+            service.markRead(roomId)
+        }
+        onStateChanged: if (rustrx.loggedIn) service.flushPending()
         onInvited: service.notifyInvite(roomId, roomName, inviter, direct)
         onInviteGone: service.closeInvite(roomId)
         onCallRing: service.ringCall(roomId, roomName, senderName, ring, eventId, expiresMs)
         onNewKnock: service.notifyKnock(roomName, isSpace, name, reason)
-        onPushNotification: service.notifyPush(roomId, roomName, senderName, body, isDm)
+        onPushNotification: service.notifyPush(roomId, eventId, roomName, senderName, body, isDm)
         onKnockRequestsChanged: if (rustrx.knockRequests.length === 0) knockNote.close()
         onCallAnswered: service.stopRinging(roomId)
         onUnreadChanged: if (rustrx.standIn) console.log("stand-in: unread", rustrx.unreadTotal, "in", rustrx.unreadChats)
@@ -84,16 +98,65 @@ Item {
         return a
     }
 
-    property var pendingMarkRead: []
-    function markRead(roomId) {
-        if (!rustrx.loggedIn) { pendingMarkRead.push(roomId); return }
-        // the privacy switch: a private receipt moves only our own marker
-        rustrx.command({ cmd: "mark_read", room_id: roomId, "private": !cfg.sendReceipts })
+    // commands from a notification's buttons: a process woken for one
+    // (push wake) logs in first, so they wait for it
+    property var pendingCommands: []
+    function whenLoggedIn(cmd) {
+        if (rustrx.loggedIn) rustrx.command(cmd)
+        else pendingCommands.push(cmd)
     }
-    function flushMarkRead() {
-        var ids = pendingMarkRead
-        pendingMarkRead = []
-        for (var i = 0; i < ids.length; i++) markRead(ids[i])
+    function flushPending() {
+        var cmds = pendingCommands
+        pendingCommands = []
+        for (var i = 0; i < cmds.length; i++) rustrx.command(cmds[i])
+    }
+    function markRead(roomId) {
+        // the privacy switch: a private receipt moves only our own marker
+        whenLoggedIn({ cmd: "mark_read", room_id: roomId, "private": !cfg.sendReceipts })
+    }
+
+    // the emoji used most (five; the defaults fill up until five have been
+    // used), for the picker and the notifications' buttons
+    function favouriteEmoji() {
+        var counts = {}
+        try { counts = JSON.parse(cfg.emojiCounts || "{}") } catch (e) {}
+        var used = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a] }).slice(0, Tunables.recentEmojiCount)
+        var defaults = ["👍", "❤️", "😂", "😮", "😢"]
+        for (var i = 0; used.length < Tunables.recentEmojiCount && i < defaults.length; i++)
+            if (used.indexOf(defaults[i]) < 0) used.push(defaults[i])
+        return used
+    }
+    function countEmoji(emoji) {
+        var counts = {}
+        try { counts = JSON.parse(cfg.emojiCounts || "{}") } catch (e) {}
+        counts[emoji] = (counts[emoji] || 0) + 1
+        cfg.emojiCounts = JSON.stringify(counts)
+    }
+
+    // a room notification's buttons: open (a tap), Mark as read, Reply (a
+    // text field in the notification), the favourite emoji on the latest
+    // message; reply and emoji can be switched off in Settings. With push on
+    // they go to the push connector, so a closed Rustrx answers them
+    // without its window.
+    function roomActions(roomId, eventId) {
+        var viaPush = rustrx.push.enabled
+        var actions = [
+            action("default", "openRoomFromNotification", [ roomId ]),
+            //% "Mark as read"
+            action("mark_read", "markRoomRead", [ roomId ], qsTrId("rustrx-me-notification-read"), viaPush)
+        ]
+        if (cfg.notifyReply) {
+            //% "Reply"
+            var reply = action("reply", "replyFromNotification", [ roomId ], qsTrId("rustrx-me-notification-reply"), viaPush)
+            reply["type"] = "input"
+            actions.push(reply)
+        }
+        if (cfg.notifyReactions && eventId && eventId.length) {
+            var emoji = favouriteEmoji()
+            for (var i = 0; i < emoji.length; i++)
+                actions.push(action("react" + i, "reactFromNotification", [ roomId, eventId, emoji[i] ], emoji[i], viaPush))
+        }
+        return actions
     }
 
     // one notification per room, updated in place: the events view keeps a
@@ -117,6 +180,7 @@ Item {
         var last = (info.preview_sender ? info.preview_sender + ": " : "") + (info.preview || "")
         var pending = count
         roomPending[roomId] = pending
+        n.remoteActions = roomActions(roomId, info.latest_event_id || "")
         n.summary = roomName
         n.previewSummary = roomName
         //: notification body, %n new messages
@@ -238,12 +302,13 @@ Item {
 
     // a pushed message (a process woken for it): the room's line, as a
     // message seen by the sync would make it; text as Settings has it
-    function notifyPush(roomId, roomName, senderName, body, isDm) {
+    function notifyPush(roomId, eventId, roomName, senderName, body, isDm) {
         console.log("notify: push")
         var n = roomNote(roomId)
         var pending = (roomPending[roomId] || 0) + 1
         roomPending[roomId] = pending
         var who = senderName && !isDm ? senderName + ": " : ""
+        n.remoteActions = roomActions(roomId, eventId)
         n.summary = roomName
         n.previewSummary = roomName
         n.body = body && notifyText ? who + body : qsTrId("rustrx-no-new-messages", pending)
@@ -296,12 +361,7 @@ Item {
             appIcon: "harbour-rustrx"
             category: "x-nemo.messaging.im"
             urgency: Notification.Normal
-            remoteActions: [
-                service.action("default", "openRoomFromNotification", [ roomId ]),
-                //% "Mark as read"
-                service.action("mark_read", "markRoomRead", [ roomId ], qsTrId("rustrx-me-notification-read"),
-                               rustrx.push.enabled)
-            ]
+            remoteActions: service.roomActions(roomId, "")
             onClosed: delete service.roomPending[roomId]
         }
     }

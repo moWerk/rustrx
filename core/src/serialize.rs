@@ -267,6 +267,8 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path, setting
         "notifications": counts.notification_count.max(room.num_unread_notifications()),
         "highlights": counts.highlight_count.max(room.num_unread_mentions()),
         "ts": room.latest_event_timestamp().map(ms),
+        // what a notification's reaction answers
+        "latest_event_id": latest_event_id(room).map(|e| e.to_string()),
         "state": match room.state() { RoomState::Invited => "invited", RoomState::Joined => "joined", _ => "other" },
         "encrypted": room.encryption_state().is_encrypted(),
         "is_space": room.is_space(),

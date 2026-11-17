@@ -243,7 +243,7 @@ signals:
     void callsAllowed(const QString &roomId);
     void knockRequestsChanged();
     // a pushed message, fetched (the woken process shows it)
-    void pushNotification(const QString &roomId, const QString &roomName, const QString &senderName,
+    void pushNotification(const QString &roomId, const QString &eventId, const QString &roomName, const QString &senderName,
                           const QString &body, bool isDm, bool noisy);
     // a room's threads (thread_list): { root, latest, count }
     void threadList(const QString &roomId, const QVariantList &threads, bool loading);
@@ -293,6 +293,8 @@ signals:
     // count: the room's notifications now
     void newMessages(const QString &roomId, const QString &roomName, int count);
     void markReadRequested(const QString &roomId);
+    void replyRequested(const QString &roomId, const QString &text);
+    void reactRequested(const QString &roomId, const QString &eventId, const QString &key);
     // a room's notifications went to none (read here or in another client)
     void roomRead(const QString &roomId);
     // an invitation not notified before (also one that came while closed)
@@ -343,6 +345,10 @@ public slots:
     // a room notification's "Mark as read" (Service.qml sends the receipt,
     // as the privacy setting has it, once logged in)
     Q_SCRIPTABLE void markRoomRead(const QString &roomId);
+    // a room notification's reply field (lipstick adds the typed text as
+    // the last argument) and its emoji buttons
+    Q_SCRIPTABLE void replyFromNotification(const QString &roomId, const QString &text);
+    Q_SCRIPTABLE void reactFromNotification(const QString &roomId, const QString &eventId, const QString &key);
     // Decline: the caller's clients are told (MSC4310)
     Q_SCRIPTABLE void declineCall(const QString &roomId, const QString &eventId);
     // the stand-in's notification: Quit (after QML has closed that notification)

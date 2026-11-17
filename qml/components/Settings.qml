@@ -40,6 +40,9 @@ ConfigurationGroup {
 
     // privacy
     property bool sendReceipts: true
+    // a room notification's reply field and its favourite emoji buttons
+    property bool notifyReply: true
+    property bool notifyReactions: true
     property bool sendTyping: true
     property bool typingHint: true
 

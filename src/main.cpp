@@ -180,6 +180,10 @@ int main(int argc, char *argv[])
         idle.setInterval(Keys::kPushIdleMs);
         QObject::connect(&idle, &QTimer::timeout, app.data(), &QCoreApplication::quit);
         QObject::connect(rustrx.push(), &UnifiedPush::pushed, &idle, [&idle]() { idle.start(); });
+        // woken by a notification's button instead: as long again for it
+        QObject::connect(&rustrx, &Rustrx::markReadRequested, &idle, [&idle]() { idle.start(); });
+        QObject::connect(&rustrx, &Rustrx::replyRequested, &idle, [&idle]() { idle.start(); });
+        QObject::connect(&rustrx, &Rustrx::reactRequested, &idle, [&idle]() { idle.start(); });
         idle.start();
         QTimer::singleShot(Keys::kPushMaxLifeMs, app.data(), &QCoreApplication::quit);
         return app->exec();

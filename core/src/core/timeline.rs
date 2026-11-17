@@ -468,9 +468,21 @@ impl Core {
 
     pub(crate) async fn react(&self, room_id: &str, event_id: &str, key: &str) -> Result<()> {
         let room = self.room(room_id).await?;
-        let tl = self.timeline_holding(&room, Some(event_id)).await?;
-        let id = TimelineEventItemId::EventId(EventId::parse(event_id)?);
-        tl.toggle_reaction(&id, key).await?;
+        let event = EventId::parse(event_id)?;
+        let id = TimelineEventItemId::EventId(event.clone());
+        let toggled = match self.timeline_holding(&room, Some(event_id)).await {
+            Ok(tl) => tl.toggle_reaction(&id, key).await.map_err(|e| anyhow!("{e}")),
+            Err(e) => Err(e),
+        };
+        if let Err(e) = toggled {
+            // not in a timeline here: a notification's reaction, perhaps in
+            // the process woken for a push, which syncs nothing. Sent as it
+            // is, through the room's send queue.
+            tracing::info!("react: {e}; sent without the timeline");
+            use matrix_sdk::ruma::events::{reaction::ReactionEventContent, relation::Annotation};
+            let content = ReactionEventContent::new(Annotation::new(event, key.to_owned()));
+            room.send_queue().send(content.into()).await?;
+        }
         Ok(())
     }
 

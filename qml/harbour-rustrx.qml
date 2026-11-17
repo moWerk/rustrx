@@ -52,7 +52,7 @@ ApplicationWindow {
     Settings {
         id: cfg
         // the emoji used most: the picker's top row and a message's reactions
-        onEmojiCountsChanged: app.favouriteEmoji = app.computeFavourites()
+        onEmojiCountsChanged: app.favouriteEmoji = service.favouriteEmoji()
     }
     // appearance, shared by every page and delegate
     property alias roundAvatars: cfg.roundAvatars
@@ -99,22 +99,11 @@ ApplicationWindow {
         NumberAnimation { from: 1; to: 0; duration: Tunables.favGlowPulseMs; easing.type: Easing.OutCubic }
         onStopped: app.favGlow = 0
     }
-    // the emoji used most (five; the defaults fill up until five have been used)
-    property var favouriteEmoji: computeFavourites()
-    function computeFavourites() {
-        var counts = {}
-        try { counts = JSON.parse(cfg.emojiCounts || "{}") } catch (e) {}
-        var used = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a] }).slice(0, Tunables.recentEmojiCount)
-        var defaults = ["👍", "❤️", "😂", "😮", "😢"]
-        for (var i = 0; used.length < Tunables.recentEmojiCount && i < defaults.length; i++)
-            if (used.indexOf(defaults[i]) < 0) used.push(defaults[i])
-        return used
-    }
+    // the emoji used most: Service.qml's list, which the notifications'
+    // buttons use too (read again when the counts change)
+    property var favouriteEmoji: service.favouriteEmoji()
     function countEmoji(emoji) {
-        var counts = {}
-        try { counts = JSON.parse(cfg.emojiCounts || "{}") } catch (e) {}
-        counts[emoji] = (counts[emoji] || 0) + 1
-        cfg.emojiCounts = JSON.stringify(counts)
+        service.countEmoji(emoji)
     }
     property bool reopenTried
 

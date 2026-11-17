@@ -193,6 +193,18 @@ void Rustrx::markRoomRead(const QString &roomId)
     emit markReadRequested(roomId);
 }
 
+void Rustrx::replyFromNotification(const QString &roomId, const QString &text)
+{
+    qInfo() << "notification: reply";
+    emit replyRequested(roomId, text);
+}
+
+void Rustrx::reactFromNotification(const QString &roomId, const QString &eventId, const QString &key)
+{
+    qInfo() << "notification: reaction";
+    emit reactRequested(roomId, eventId, key);
+}
+
 void Rustrx::openKnocks()
 {
     m_handover.setPendingKnocks(true);
@@ -701,7 +713,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     } else if (type == QLatin1String("pusher_set")) {
         m_push->pusherSet(ev.value("endpoint").toString());
     } else if (type == QLatin1String("push_notification")) {
-        emit pushNotification(ev.value("room_id").toString(), ev.value("room_name").toString(),
+        emit pushNotification(ev.value("room_id").toString(), ev.value("event_id").toString(), ev.value("room_name").toString(),
                               ev.value("sender_name").toString(), ev.value("body").toString(),
                               ev.value("is_dm").toBool(), ev.value("noisy").toBool());
     } else if (type == QLatin1String("calls_allowed")) {

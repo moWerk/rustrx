@@ -184,7 +184,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 ### Room object
 `room_id`, `name`, `topic`, `alias`, `avatar_path` (a cached file), `avatar_v`, `has_avatar`,
 `state` (`joined`, `invited`), `is_dm`, `is_fav`, `is_low`, `encrypted`,
-`unread`, `notifications`, `highlights`, `ts` (last activity, ms),
+`unread`, `notifications`, `highlights`, `ts` (last activity, ms), `latest_event_id`,
 `preview`, `preview_sender`.
 
 ### Timeline item

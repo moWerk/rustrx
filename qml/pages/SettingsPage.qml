@@ -114,6 +114,26 @@ Page {
             }
 
             TextSwitch {
+                //% "Reply in notifications"
+                text: qsTrId("rustrx-la-notify-reply")
+                //% "A Reply button that opens a text field in the notification."
+                description: qsTrId("rustrx-la-notify-reply-hint")
+                checked: service.notifyReply
+                automaticCheck: false
+                onClicked: service.notifyReply = !service.notifyReply
+            }
+
+            TextSwitch {
+                //% "Emoji in notifications"
+                text: qsTrId("rustrx-la-notify-reactions")
+                //% "Your five most used emoji as buttons, to react to the latest message."
+                description: qsTrId("rustrx-la-notify-reactions-hint")
+                checked: service.notifyReactions
+                automaticCheck: false
+                onClicked: service.notifyReactions = !service.notifyReactions
+            }
+
+            TextSwitch {
                 //% "Show others that I am typing"
                 text: qsTrId("rustrx-la-send-typing")
                 checked: app.sendTyping
