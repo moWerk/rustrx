@@ -45,6 +45,8 @@ Page {
     DebugValue { id: debugOpenRoom; name: "debugOpenRoom"; defaultValue: "" }
     DebugValue { id: debugNavigate; name: "debugNavigate"; defaultValue: "" }
     DebugValue { id: debugMarkRead; name: "debugMarkRead"; defaultValue: "" }
+    // the filter menu opened and closed from a shell, for looking at it
+    DebugValue { id: debugSortOpen; name: "debugSortOpen"; defaultValue: false; onValueChanged: page.sortOpen = value === true }
     property bool debugDone
     // the key may hold a room id or a room name; names are looked up in the list
     Instantiator {
