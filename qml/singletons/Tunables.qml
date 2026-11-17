@@ -84,6 +84,10 @@ QtObject {
     readonly property string favSparkleColor: "#fff4b8"
 
     // counts and limits
+    // a reply's quote tapped: older pages loaded at most to find the original
+    readonly property int jumpMaxPages: 10
+    // the original's highlight fades in this long (and stays three times it)
+    readonly property int jumpFlashMs: 400
     // people offered in the invite dialog while typing
     readonly property int inviteContactsMax: 8
     // custom emoji of one message offered to add to the own pack

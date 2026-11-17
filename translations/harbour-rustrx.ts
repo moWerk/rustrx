@@ -1893,5 +1893,9 @@
         <source>Name or Matrix ID, like @name:server</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-no-jump-too-far">
+        <source>The original message is too far back</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

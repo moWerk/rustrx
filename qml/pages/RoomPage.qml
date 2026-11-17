@@ -148,7 +148,12 @@ Page {
 
     Connections {
         target: rustrx
-        onPaginated: if (roomId === page.roomId) { paginating = false; page.atStart = atStart }
+        onPaginated: if (roomId === page.roomId) {
+            paginating = false
+            page.atStart = atStart
+            // the older page is in the model once the timeline came
+            if (page.jumpTarget.length) jumpRetry.restart()
+        }
         // a failed page (no network while scrolling up): the next scroll tries again
         onErrorOccurred: if (cmd === "paginate_back") paginating = false
         onTyping: if (roomId === page.roomId) page.typingNames = names
@@ -420,6 +425,8 @@ Page {
             // the failed message goes out again as it was
             onResend: rustrx.command({ cmd: "retry_send", room_id: page.roomId, txn_id: txnId })
             onReactMore: { page.reactMoreText = text; emojiDock.show("react", eventId) }
+            onJumpTo: page.jumpTo(eventId)
+            flash: model.event_id !== undefined && model.event_id === page.flashEventId
             onOpenThread: pageStack.push(Qt.resolvedUrl("ThreadPage.qml"),
                                          { roomId: page.roomId, roomName: page.roomName, rootId: eventId, compose: compose })
         }
@@ -480,6 +487,42 @@ Page {
                 page.insertEmoji(emoji)
         }
     }
+
+    // A reply's quote tapped: the chat goes to the message it answers. Not
+    // loaded yet, older pages come in until it is (a few at most), then it
+    // shows in the middle with a moment of highlight.
+    property string jumpTarget
+    property int jumpPages
+    property string flashEventId
+    function jumpTo(eventId) {
+        jumpTarget = eventId
+        jumpPages = 0
+        tryJump()
+    }
+    function tryJump() {
+        if (!jumpTarget.length) return
+        var row = rustrx.timeline.rowOfEvent(jumpTarget)
+        if (row >= 0) {
+            viewAt("jump", row, ListView.Center)
+            flashEventId = jumpTarget
+            flashOff.restart()
+            jumpTarget = ""
+            return
+        }
+        if (atStart || jumpPages >= Tunables.jumpMaxPages) {
+            jumpTarget = ""
+            //% "The original message is too far back"
+            Notices.show(qsTrId("rustrx-no-jump-too-far"), Notice.Short)
+            return
+        }
+        if (!paginating) {
+            ++jumpPages
+            paginating = true
+            rustrx.command({ cmd: "paginate_back", room_id: roomId })
+        }
+    }
+    Timer { id: jumpRetry; interval: Tunables.menuCloseMs; onTriggered: page.tryJump() }
+    Timer { id: flashOff; interval: Tunables.jumpFlashMs * 3; onTriggered: page.flashEventId = "" }
 
     // positioning, with a trace line before and after
     function viewAt(tag, index, mode) {

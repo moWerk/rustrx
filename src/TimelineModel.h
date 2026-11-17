@@ -59,6 +59,8 @@ public:
     void setSmallEmojiSize(int size);
     void clear();
     Q_INVOKABLE QVariantMap get(int row) const;
+    // the row of an event, or -1 while it is not loaded (a reply's original)
+    Q_INVOKABLE int rowOfEvent(const QString &eventId) const;
     // the cached full file for an event, or an empty string
     Q_INVOKABLE QString mediaPath(const QString &eventId) const { return m_media.value(eventId); }
 

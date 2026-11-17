@@ -583,6 +583,16 @@ void TimelineModel::setSmallEmojiSize(int size)
         emit dataChanged(index(0), index(m_items.size() - 1), { m_reactionsRole, m_threadHtmlRole });
 }
 
+int TimelineModel::rowOfEvent(const QString &eventId) const
+{
+    if (eventId.isEmpty())
+        return -1;
+    for (int i = 0; i < m_items.size(); ++i)
+        if (m_items.at(i).toMap().value(QStringLiteral("event_id")).toString() == eventId)
+            return i;
+    return -1;
+}
+
 QVariantMap TimelineModel::get(int row) const
 {
     return row >= 0 && row < m_items.size() ? withMedia(m_items.at(row).toMap()) : QVariantMap();

@@ -39,6 +39,10 @@ ListItem {
     signal reactMore(string eventId, string text)
     // this message's thread: open it (and type into it, from the menu)
     signal openThread(string eventId, bool compose)
+    // a tap on the reply's quote: to the message it answers
+    signal jumpTo(string eventId)
+    // shown for a moment when the chat jumped here
+    property bool flash
     // shown in a thread's page: no thread of its own there
     property bool inThread
     // a thread's root: how many replies and the latest
@@ -257,6 +261,14 @@ ListItem {
                 width: inner.width + 2 * pad
                 height: visible ? inner.height + 2 * pad : 0
 
+                // the chat jumped here from a reply's quote: a moment of highlight
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.paddingLarge / 2
+                    color: Theme.rgba(Theme.highlightBackgroundColor, Theme.opacityHigh)
+                    opacity: msg.flash ? 1 : 0
+                    Behavior on opacity { FadeAnimation { duration: Tunables.jumpFlashMs } }
+                }
                 Rectangle {
                     anchors.fill: parent
                     radius: Theme.paddingLarge / 2
@@ -289,6 +301,11 @@ ListItem {
                             Item {
                                 width: Math.min(quote.implicitWidth + Tunables.barWidth + 2 * Theme.paddingSmall, innerMax)
                                 height: quote.height + 2 * Theme.paddingSmall
+                                MouseArea {
+                                    anchors.fill: parent
+                                    enabled: !!(replyTo && replyTo.event_id)
+                                    onClicked: msg.jumpTo(replyTo.event_id)
+                                }
 
                                 Rectangle {
                                     anchors.fill: parent
