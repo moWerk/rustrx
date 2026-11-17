@@ -114,6 +114,12 @@ Page {
         if (anchor.atNewest()) markRead()
         else if (!app.readWhenShown) markRead(false)
     }
+    // back from the cover with this room in front: what is shown now is
+    // read (its notification goes with the receipt)
+    Connections {
+        target: Qt.application
+        onActiveChanged: if (Qt.application.active && page.status === PageStatus.Active) page.readOnArrival()
+    }
     Timer {
         id: markReadTimer
         property bool shown

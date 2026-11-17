@@ -455,7 +455,6 @@ void Rustrx::openRoom(const QString &roomId)
     if (m_openRoomId != roomId) {
         m_timeline->clear();
         m_openRoomId = roomId;
-        m_lists->setOpenRoomId(roomId);
         emit openRoomChanged();
     }
     command({{"cmd", "open_room"}, {"room_id", roomId}});
@@ -467,7 +466,6 @@ void Rustrx::closeRoom()
         return;
     command({{"cmd", "close_room"}});
     m_openRoomId.clear();
-    m_lists->setOpenRoomId(QString());
     m_timeline->clear();
     emit openRoomChanged();
 }
@@ -658,7 +656,6 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_keptUser = ev.value("user_id").toString();
         m_userId.clear();
         m_openRoomId.clear();
-        m_lists->setOpenRoomId(QString());
         m_timeline->clear();
         m_threadRoot.clear();
         m_thread->clear();

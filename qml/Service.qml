@@ -44,9 +44,13 @@ Item {
 
     Connections {
         target: rustrx
-        // the stand-in has no window, and without one Qt reports it active
+        // every room notifies, also while Rustrx is open, except the room in
+        // front of you (dodoradio: a chat open, the others went silent; on
+        // the cover, the open one did). The stand-in has no window, and
+        // without one Qt reports it active
         onNewMessages: {
-            if (!rustrx.standIn && Qt.application.state === Qt.ApplicationActive) return
+            if (!rustrx.standIn && Qt.application.state === Qt.ApplicationActive
+                    && roomId === rustrx.openRoomId) return
             service.notify(roomId, roomName, count)
         }
         // read here or in another client: the banner and its line go

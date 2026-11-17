@@ -67,8 +67,6 @@ public:
     QString roomFilter() const { return m_roomFilter; }
     void setRoomFilter(const QString &text);
 
-    // the open room gains no notification (kept in step with Rustrx's)
-    void setOpenRoomId(const QString &roomId) { m_openRoomId = roomId; }
     // the core's `rooms` event
     void setRooms(const QVariantList &rooms);
     // the core's `knock_requests` event
@@ -101,7 +99,6 @@ private:
     QSettings *m_settings;
     QVariantList m_lastRooms;   // as the core sent them, for a new order
     QString m_roomFilter;
-    QString m_openRoomId;
     QString m_currentTab = QStringLiteral("rooms");
     // the tabs' settings as read (QSettings per room update was a file
     // check each time); filled on first use, changed in setTabValue
