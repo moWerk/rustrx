@@ -42,6 +42,9 @@ pub(crate) enum Command {
         thread_root: Option<String>,
         /// an emote, as /me sends it ("* name does this")
         emote: Option<bool>,
+        /// people picked while typing: their names in the body become
+        /// pills, and the message mentions them (m.mentions)
+        mentions: Option<Vec<MentionArg>>,
     },
     /// A sticker from an image pack.
     SendSticker { room_id: String, mxc: String, body: String, info: Option<serde_json::Value>, thread_root: Option<String> },
@@ -208,6 +211,13 @@ pub(crate) enum Command {
 }
 
 /// A non-empty string, or nothing (the UI sends "" for "no reply" and the like).
+/// A person mentioned in a message: the name as written in its body.
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct MentionArg {
+    pub(crate) user_id: String,
+    pub(crate) name: String,
+}
+
 /// A command from its JSON. Only an object is one: serde's internally
 /// tagged enums would also take a sequence with the tag first, so
 /// `["logout"]` would run.

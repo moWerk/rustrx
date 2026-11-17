@@ -378,6 +378,7 @@ impl Core {
         emotes: Option<&HashMap<String, String>>,
         thread_root: Option<&str>,
         emote: bool,
+        mentions: &[crate::protocol::MentionArg],
     ) -> Result<()> {
         let room = self.room(room_id).await?;
         let tl = self.timeline_target(&room, thread_root).await?;
@@ -390,6 +391,7 @@ impl Core {
         if let Some(emotes) = emotes {
             packs::with_emotes(&mut content, emotes);
         }
+        with_mentions(&mut content, body, mentions);
         match reply_to {
             Some(reply) => {
                 let without: RoomMessageEventContentWithoutRelation = content.into();
@@ -728,5 +730,128 @@ fn sniff_extension(bytes: &[u8]) -> Option<&'static str> {
         Some("ogg")
     } else {
         None
+    }
+}
+
+/// The people picked while typing: the first place each one's name is
+/// written becomes a pill (a matrix.to link, as Element writes them), and
+/// the message says whom it mentions, "@room" the whole room (m.mentions:
+/// their clients notify on it). The plain body keeps the names.
+fn with_mentions(content: &mut RoomMessageEventContent, body: &str, mentions: &[crate::protocol::MentionArg]) {
+    use matrix_sdk::ruma::events::room::message::FormattedBody;
+    use matrix_sdk::ruma::events::Mentions;
+    let room = body.contains("@room");
+    if mentions.is_empty() && !room {
+        return;
+    }
+    let escape = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
+    let mut ids = Vec::new();
+    let link = |formatted: &mut Option<FormattedBody>, ids: &mut Vec<OwnedUserId>| {
+        let mut html = formatted.take().map(|f| f.body).unwrap_or_else(|| escape(body).replace('\n', "<br>"));
+        for m in mentions {
+            let Ok(user) = UserId::parse(m.user_id.trim()) else { continue };
+            let name = escape(m.name.trim());
+            if !name.is_empty() && html.contains(&name) {
+                let pill = format!("<a href=\"https://matrix.to/#/{}\">{}</a>", user, name);
+                html = html.replacen(&name, &pill, 1);
+            }
+            ids.push(user);
+        }
+        *formatted = Some(FormattedBody::html(html));
+    };
+    match &mut content.msgtype {
+        MessageType::Text(t) => link(&mut t.formatted, &mut ids),
+        MessageType::Emote(t) => link(&mut t.formatted, &mut ids),
+        _ => {}
+    }
+    let mut m = Mentions::with_user_ids(ids);
+    m.room = room;
+    content.mentions = Some(m);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::MentionArg;
+
+    fn mention(user_id: &str, name: &str) -> MentionArg {
+        MentionArg { user_id: user_id.to_owned(), name: name.to_owned() }
+    }
+
+    fn html(c: &RoomMessageEventContent) -> String {
+        match &c.msgtype {
+            MessageType::Text(t) => t.formatted.as_ref().map(|f| f.body.clone()).unwrap_or_default(),
+            MessageType::Emote(t) => t.formatted.as_ref().map(|f| f.body.clone()).unwrap_or_default(),
+            _ => String::new(),
+        }
+    }
+
+    /// The first place a picked name is written becomes a pill, the plain
+    /// body keeps the name, the message mentions the person.
+    /// Planted-bug: skip the replacement (`html.contains` never true).
+    #[test]
+    fn a_picked_name_becomes_a_pill() {
+        let body = "hi Ann, and Ann again";
+        let mut c = RoomMessageEventContent::text_markdown(body);
+        with_mentions(&mut c, body, &[mention("@ann:example.org", "Ann")]);
+        assert_eq!(html(&c), "hi <a href=\"https://matrix.to/#/@ann:example.org\">Ann</a>, and Ann again");
+        assert_eq!(c.body(), body);
+        let m = c.mentions.expect("mentions");
+        assert!(m.user_ids.contains(&UserId::parse("@ann:example.org").unwrap()));
+        assert!(!m.room);
+    }
+
+    /// Markdown keeps its formatting around the pill; new lines in a plain
+    /// message become <br>. Planted-bug: build the HTML from the body
+    /// always (the bold goes).
+    #[test]
+    fn formatting_stays() {
+        let body = "**look** Bob";
+        let mut c = RoomMessageEventContent::text_markdown(body);
+        with_mentions(&mut c, body, &[mention("@bob:b.org", "Bob")]);
+        assert!(html(&c).contains("<strong>look</strong>"), "{}", html(&c));
+        assert!(html(&c).contains("<a href=\"https://matrix.to/#/@bob:b.org\">Bob</a>"));
+        let body = "line one\nBob";
+        let mut c = RoomMessageEventContent::text_plain(body);
+        with_mentions(&mut c, body, &[mention("@bob:b.org", "Bob")]);
+        assert_eq!(html(&c), "line one<br><a href=\"https://matrix.to/#/@bob:b.org\">Bob</a>");
+    }
+
+    /// A name with markup in it is escaped in the pill, an id that is no
+    /// user id is left out, a name not in the text still mentions, "@room"
+    /// mentions the room, and nothing picked and no @room changes nothing.
+    /// Planted-bug: no escaping of the name.
+    #[test]
+    fn edges() {
+        let body = "x <b>ad</b> y";
+        let mut c = RoomMessageEventContent::text_plain(body);
+        with_mentions(&mut c, body, &[mention("@a:b.org", "<b>ad</b>"), mention("not an id", "y")]);
+        assert_eq!(html(&c), "x <a href=\"https://matrix.to/#/@a:b.org\">&lt;b&gt;ad&lt;/b&gt;</a> y");
+        assert_eq!(c.mentions.as_ref().unwrap().user_ids.len(), 1);
+
+        let body = "no name here";
+        let mut c = RoomMessageEventContent::text_plain(body);
+        with_mentions(&mut c, body, &[mention("@a:b.org", "Zed")]);
+        assert_eq!(c.mentions.as_ref().unwrap().user_ids.len(), 1);
+
+        let body = "@room look";
+        let mut c = RoomMessageEventContent::text_plain(body);
+        with_mentions(&mut c, body, &[]);
+        assert!(c.mentions.as_ref().unwrap().room);
+
+        let body = "plain";
+        let mut c = RoomMessageEventContent::text_plain(body);
+        with_mentions(&mut c, body, &[]);
+        assert!(c.mentions.is_none());
+        assert_eq!(html(&c), "");
+    }
+
+    /// An emote gets its pills too. Planted-bug: handle Text only.
+    #[test]
+    fn emotes_too() {
+        let body = "waves at Ann";
+        let mut c = RoomMessageEventContent::emote_plain(body);
+        with_mentions(&mut c, body, &[mention("@ann:a.org", "Ann")]);
+        assert!(html(&c).contains("matrix.to/#/@ann:a.org"));
     }
 }

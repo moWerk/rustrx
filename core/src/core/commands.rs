@@ -50,9 +50,9 @@ impl Core {
                 Ok(())
             }
             PaginateBack { room_id, count } => self.paginate_back(&room_id, count).await,
-            SendText { room_id, body, reply_to, markdown, emotes, thread_root, emote } => {
+            SendText { room_id, body, reply_to, markdown, emotes, thread_root, emote, mentions } => {
                 self.send_text(&room_id, &body, given(&reply_to), markdown.unwrap_or(true), emotes.as_ref(),
-                               given(&thread_root), emote.unwrap_or(false))
+                               given(&thread_root), emote.unwrap_or(false), mentions.as_deref().unwrap_or(&[]))
                     .await
             }
             SendSticker { room_id, mxc, body, info, thread_root } => {

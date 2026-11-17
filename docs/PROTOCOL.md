@@ -38,7 +38,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `save_draft` | `room_id`, `text` ("" removes it; kept in the encrypted store) | |
 | `close_room` | | |
 | `paginate_back` | `room_id`, `count?` (30) | `paginated` |
-| `send_text` | `room_id`, `body`, `reply_to?`, `markdown?` (true), `emotes?` (shortcode → mxc: custom emoji in the HTML), `thread_root?`, `emote?` (an m.emote, as /me sends) | `timeline` |
+| `send_text` | `room_id`, `body`, `reply_to?`, `markdown?` (true), `emotes?` (shortcode → mxc: custom emoji in the HTML), `thread_root?`, `emote?` (an m.emote, as /me sends), `mentions?` (`{user_id, name}`: the names become pills, m.mentions; "@room" in the body mentions the room) | `timeline` |
 | `send_sticker` | `room_id`, `mxc`, `body`, `info?`, `thread_root?` | `timeline` |
 | `open_thread` | `room_id`, `thread_root` | `thread_timeline` (live until `close_thread`) |
 | `close_thread` | | |

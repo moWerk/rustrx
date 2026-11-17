@@ -1902,5 +1902,9 @@
         <extracomment>%1 the command typed, e.g. /home</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-mention-room">
+        <source>Everyone in the room</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

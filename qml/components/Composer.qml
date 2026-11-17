@@ -169,7 +169,8 @@ Column {
         else if (c.invite) rustrx.command({ cmd: "invite", room_id: roomId, user_id: c.invite })
         else if (c.join) app.openMatrixUri("https://matrix.to/#/" + c.join)
         else rustrx.sendText(roomId, c.send, mode === "reply" ? targetId : "", emotesIn(c.send), rootId,
-                             { markdown: c.markdown, emote: c.emote })
+                             { markdown: c.markdown, emote: c.emote, mentions: mentionsIn(c.send) })
+        picked = []
         put("")
         if (drafts) rustrx.setDraft(roomId, "")
         mode = ""; targetId = ""; targetText = ""
@@ -200,6 +201,92 @@ Column {
         id: draftSave
         interval: Tunables.typingDebounceMs
         onTriggered: if (composer.drafts && composer.holdsDraft) rustrx.setDraft(composer.roomId, input.text)
+    }
+
+    // @mentions: "@" and some letters list the room's members that match
+    // (and @room); a tap writes the name, and the message makes it a pill
+    // and mentions that person (the core's with_mentions)
+    property var members: []
+    property bool membersAsked
+    property var picked: []
+    readonly property string mentionQuery: {
+        if (!input.activeFocus || mode === "edit" || mode === "react") return ""
+        var before = input.text.slice(0, input.cursorPosition)
+        var m = /(?:^|\s)@([^\s@:]*)$/.exec(before)
+        return m ? m[1] : ""
+    }
+    readonly property bool mentioning: input.activeFocus && /(?:^|\s)@[^\s@:]*$/.test(input.text.slice(0, input.cursorPosition))
+    onMentioningChanged: if (mentioning && !membersAsked) {
+        membersAsked = true
+        rustrx.command({ cmd: "room_members", room_id: roomId })
+    }
+    onRoomIdChanged: { members = []; membersAsked = false; picked = [] }
+    Connections {
+        target: rustrx
+        onMembers: if (roomId === composer.roomId) composer.members = members
+    }
+    function suggestions() {
+        if (!mentioning) return []
+        var q = mentionQuery.toLowerCase(), out = []
+        if ("room".indexOf(q) === 0)
+            //% "Everyone in the room"
+            out.push({ user_id: "", name: "@room", info: qsTrId("rustrx-la-mention-room") })
+        for (var i = 0; i < members.length && out.length < Tunables.mentionSuggestions; i++) {
+            var m = members[i]
+            if (m.user_id === rustrx.userId) continue
+            var name = m.name || m.user_id
+            if (q.length && name.toLowerCase().indexOf(q) < 0 && m.user_id.toLowerCase().indexOf(q) < 0) continue
+            out.push({ user_id: m.user_id, name: name, info: m.user_id })
+        }
+        return out
+    }
+    function pickMention(s) {
+        var cursor = input.cursorPosition
+        var start = input.text.slice(0, cursor).lastIndexOf("@")
+        if (start < 0) return
+        var name = s.user_id.length ? s.name : "@room"
+        input.text = input.text.slice(0, start) + name + " " + input.text.slice(cursor)
+        input.cursorPosition = start + name.length + 1
+        if (s.user_id.length) {
+            var p = picked.slice()
+            p.push({ user_id: s.user_id, name: name })
+            picked = p
+        }
+    }
+    // the picked people whose names are still in the text
+    function mentionsIn(text) {
+        var out = []
+        for (var i = 0; i < picked.length; i++)
+            if (text.indexOf(picked[i].name) >= 0) out.push(picked[i])
+        return out
+    }
+    Column {
+        width: parent.width
+        Repeater {
+            model: composer.suggestions()
+            BackgroundItem {
+                width: parent.width
+                height: Theme.itemSizeSmall
+                onClicked: composer.pickMention(modelData)
+                Label {
+                    id: mentionName
+                    x: Theme.horizontalPageMargin
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(implicitWidth, parent.width / 2)
+                    truncationMode: TruncationMode.Fade
+                    color: highlighted ? Theme.highlightColor : Theme.primaryColor
+                    text: modelData.name
+                }
+                Label {
+                    anchors { left: mentionName.right; leftMargin: Theme.paddingMedium; right: parent.right
+                              rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                    truncationMode: TruncationMode.Fade
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    color: highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
+                    text: modelData.info
+                }
+            }
+        }
     }
 
     // the message replied to, edited or reacted to: tap it or the clear

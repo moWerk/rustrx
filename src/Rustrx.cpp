@@ -487,6 +487,8 @@ void Rustrx::sendText(const QString &roomId, const QString &body, const QString 
         cmd.insert("markdown", options.value("markdown").toBool());
     if (options.value("emote").toBool())
         cmd.insert("emote", true);
+    if (!options.value("mentions").toList().isEmpty())
+        cmd.insert("mentions", options.value("mentions"));
     if (!threadRoot.isEmpty())
         cmd.insert("thread_root", threadRoot);
     if (!replyTo.isEmpty())
