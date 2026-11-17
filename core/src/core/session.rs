@@ -210,13 +210,23 @@ impl Core {
             st.generation += 1;
             st.generation
         };
+        // in every process, the one woken for a push too: a token refresh
+        // there rotates the refresh token, and unsaved, the next start
+        // restores the spent one and the server ends the session
+        // (invalid_grant on the Prawn, 2026-11-17 01:52)
+        let watch = self.rt.spawn(self.session_watch(client.clone()));
         // woken for one push: the session only (no sync, no room list); the
         // pushed message is fetched by push_handle
         if push::push_wake() {
             tracing::info!("push: woken, no sync");
+            let mut st = self.state.lock().await;
+            if st.generation == generation {
+                st.login_tasks.push(watch);
+            } else {
+                watch.abort();
+            }
             return Ok(());
         }
-        let watch = self.rt.spawn(self.session_watch(client.clone()));
         // the previews come from the event cache; the sync service subscribes
         // it itself, the classic sync loop does not
         let _ = client.event_cache().subscribe();
@@ -519,6 +529,15 @@ impl Core {
     pub(crate) fn shutdown(&'static self, limit: Duration) {
         let done = self.rt.block_on(tokio::time::timeout(limit, async {
             let teardown = self.state.lock().await.take_login();
+            // the tokens as they are now: a refresh that ended while this
+            // process was leaving may not have reached session.json yet
+            if let Some(client) = teardown.client.as_ref() {
+                if client.session().is_some() {
+                    if let Err(e) = self.save_session(client) {
+                        tracing::warn!("shutdown: session not saved: {e}");
+                    }
+                }
+            }
             // the sync stopped first, then the stores closed: running
             // writes finish, connections and file locks are let go
             if let Some(client) = teardown.stop().await {
