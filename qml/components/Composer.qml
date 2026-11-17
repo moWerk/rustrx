@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Rustrx 1.0
 import Sailfish.Silica 1.0
+import "../commands.js" as Commands
 
 // The text field with its emoji and Send buttons, and the line above it
 // for a reply, an edit or a text reaction in progress. Used by the room
@@ -154,7 +155,21 @@ Column {
             input.forceActiveFocus()
             return
         }
-        rustrx.sendText(roomId, text, mode === "reply" ? targetId : "", emotesIn(text), rootId)
+        // slash commands (commands.js): /me, /shrug, /plain, /topic, /nick,
+        // /invite, /join; an unknown one is not sent, "//" sends a "/"
+        var c = Commands.parse(text)
+        if (c.unknown) {
+            //: %1 the command typed, e.g. /home
+            //% "%1 is no command. Start with // to send it as text."
+            Notices.show(qsTrId("rustrx-no-unknown-command").arg(c.unknown), Notice.Short)
+            return
+        }
+        if (c.topic !== undefined) rustrx.command({ cmd: "set_room_topic", room_id: roomId, topic: c.topic })
+        else if (c.nick) rustrx.command({ cmd: "set_display_name", name: c.nick })
+        else if (c.invite) rustrx.command({ cmd: "invite", room_id: roomId, user_id: c.invite })
+        else if (c.join) app.openMatrixUri("https://matrix.to/#/" + c.join)
+        else rustrx.sendText(roomId, c.send, mode === "reply" ? targetId : "", emotesIn(c.send), rootId,
+                             { markdown: c.markdown, emote: c.emote })
         put("")
         if (drafts) rustrx.setDraft(roomId, "")
         mode = ""; targetId = ""; targetText = ""

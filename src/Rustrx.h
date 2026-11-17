@@ -189,8 +189,10 @@ public:
     Q_INVOKABLE void closeRoom();
     // emotes: the custom emoji the text uses, shortcode to mxc address
     // threadRoot: into that thread
+    // options: markdown (default true) and emote, as the slash commands set them
     Q_INVOKABLE void sendText(const QString &roomId, const QString &body, const QString &replyTo,
-                              const QVariantMap &emotes = QVariantMap(), const QString &threadRoot = QString());
+                              const QVariantMap &emotes = QVariantMap(), const QString &threadRoot = QString(),
+                              const QVariantMap &options = QVariantMap());
     // a custom emoji's cached picture (file://), or "" while it is fetched
     // (emoteReady follows)
     Q_INVOKABLE QString emotePath(const QString &mxc);

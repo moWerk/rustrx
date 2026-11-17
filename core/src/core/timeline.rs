@@ -377,13 +377,15 @@ impl Core {
         markdown: bool,
         emotes: Option<&HashMap<String, String>>,
         thread_root: Option<&str>,
+        emote: bool,
     ) -> Result<()> {
         let room = self.room(room_id).await?;
         let tl = self.timeline_target(&room, thread_root).await?;
-        let mut content = if markdown {
-            RoomMessageEventContent::text_markdown(body)
-        } else {
-            RoomMessageEventContent::text_plain(body)
+        let mut content = match (emote, markdown) {
+            (true, true) => RoomMessageEventContent::emote_markdown(body),
+            (true, false) => RoomMessageEventContent::emote_plain(body),
+            (false, true) => RoomMessageEventContent::text_markdown(body),
+            (false, false) => RoomMessageEventContent::text_plain(body),
         };
         if let Some(emotes) = emotes {
             packs::with_emotes(&mut content, emotes);

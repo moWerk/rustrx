@@ -40,6 +40,8 @@ pub(crate) enum Command {
         emotes: Option<std::collections::HashMap<String, String>>,
         /// into this thread (its root event)
         thread_root: Option<String>,
+        /// an emote, as /me sends it ("* name does this")
+        emote: Option<bool>,
     },
     /// A sticker from an image pack.
     SendSticker { room_id: String, mxc: String, body: String, info: Option<serde_json::Value>, thread_root: Option<String> },

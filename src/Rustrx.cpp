@@ -480,9 +480,13 @@ void Rustrx::closeThread()
 }
 
 void Rustrx::sendText(const QString &roomId, const QString &body, const QString &replyTo,
-                      const QVariantMap &emotes, const QString &threadRoot)
+                      const QVariantMap &emotes, const QString &threadRoot, const QVariantMap &options)
 {
     QVariantMap cmd{{"cmd", "send_text"}, {"room_id", roomId}, {"body", body}};
+    if (options.contains("markdown"))
+        cmd.insert("markdown", options.value("markdown").toBool());
+    if (options.value("emote").toBool())
+        cmd.insert("emote", true);
     if (!threadRoot.isEmpty())
         cmd.insert("thread_root", threadRoot);
     if (!replyTo.isEmpty())

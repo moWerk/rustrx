@@ -1897,5 +1897,10 @@
         <source>The original message is too far back</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-no-unknown-command">
+        <source>%1 is no command. Start with // to send it as text.</source>
+        <extracomment>%1 the command typed, e.g. /home</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>
