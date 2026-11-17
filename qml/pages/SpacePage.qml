@@ -91,23 +91,12 @@ Page {
                 text: qsTrId("rustrx-me-copy-space-link")
                 onClicked: rustrx.command({ cmd: "room_link", room_id: page.spaceId })
             }
+            // a manager's three ways to add, on a page of their own
             MenuItem {
                 visible: page.canManage
-                //% "Add an existing room"
-                text: qsTrId("rustrx-me-space-add")
-                onClicked: pageStack.push(Qt.resolvedUrl("AddToSpacePage.qml"), { spaceId: page.spaceId, spaceName: page.spaceName, existing: page.rooms })
-            }
-            MenuItem {
-                visible: page.canManage
-                //% "New subspace"
-                text: qsTrId("rustrx-me-space-new-space")
-                onClicked: pageStack.push(Qt.resolvedUrl("CreateRoomPage.qml"), { space: true, parentId: page.spaceId, parentName: page.spaceName })
-            }
-            MenuItem {
-                visible: page.canManage
-                //% "New room in this space"
-                text: qsTrId("rustrx-me-space-new-room")
-                onClicked: pageStack.push(Qt.resolvedUrl("CreateRoomPage.qml"), { parentId: page.spaceId, parentName: page.spaceName })
+                //% "Add to this space…"
+                text: qsTrId("rustrx-me-space-add-more")
+                onClicked: pageStack.push(Qt.resolvedUrl("SpaceAddPage.qml"), { spaceId: page.spaceId, spaceName: page.spaceName, existing: page.rooms })
             }
         }
 

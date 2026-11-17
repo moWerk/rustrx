@@ -1701,6 +1701,14 @@
         <source>Copy link</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-me-space-add-more">
+        <source>Add to this space…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-space-add">
+        <source>Add to this space</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-me-space-add">
         <source>Add an existing room</source>
         <translation type="unfinished"></translation>
