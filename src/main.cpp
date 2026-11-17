@@ -32,6 +32,8 @@
 #include <QThread>
 #include <QTimer>
 
+#include <malloc.h>
+
 #include "LocalOnly.h"
 #include "Rustrx.h"
 #include "UnifiedPush.h"
@@ -63,6 +65,9 @@ static bool waitForNameToGo(QDBusConnection &bus)
 
 int main(int argc, char *argv[])
 {
+    // before any thread: few malloc arenas (Keys.h)
+    mallopt(M_ARENA_MAX, Keys::kMallocArenas);
+
     // the stand-in: started by the user unit, with the session or when the
     // app is closed in background mode. It never has a window and does not
     // even connect to the display: the home screen counts any connected

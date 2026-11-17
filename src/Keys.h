@@ -119,6 +119,10 @@ static const int kActivateTimeoutMs = 3000;
 static const int kActivateRetryMs = 10000;
 // at exit, the core gets this long to stop before the bus name goes
 static const int kShutdownMs = 3000;
+// glibc's malloc arenas: by default up to 8 per core, one per new thread
+// (tokio's blocking threads come and go for every store access); a
+// measured 55 arenas held 242 MB for 83 MB in use. Two keep it close.
+static const int kMallocArenas = 2;
 // a push-woken process quits this long after the last push, at the latest
 // after kPushMaxLifeMs (the same numbers as the ring lifetime in call.rs,
 // which is unrelated)
