@@ -49,6 +49,10 @@
         <source>Copy text</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-me-select-text">
+        <source>Select text</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-me-remove">
         <source>Remove</source>
         <translation type="unfinished"></translation>
@@ -674,6 +678,14 @@
         <source>Copy link</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-me-copy-all">
+        <source>Copy all</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-copy-selection">
+        <source>Copy selection</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-me-report">
         <source>Report</source>
         <translation type="unfinished"></translation>
@@ -814,6 +826,10 @@
     </message>
     <message id="rustrx-la-read-when-shown-hint">
         <source>A room counts as read once you scrolled to its newest message. When off, opening the room is enough; the unread line still waits until you saw the messages.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-select-text-hint">
+        <source>Drag the handles to select more; the selection is copied when you let go. Hold a word to start a new selection.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-send-typing">
@@ -1655,6 +1671,10 @@
     </message>
     <message id="rustrx-he-source">
         <source>Message source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-select-text">
+        <source>Select text</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-se-latest-edit">

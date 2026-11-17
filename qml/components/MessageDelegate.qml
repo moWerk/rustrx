@@ -41,6 +41,8 @@ ListItem {
     signal openThread(string eventId, bool compose)
     // a tap on the reply's quote: to the message it answers
     signal jumpTo(string eventId)
+    // "Select text": the loaded chat as text, from this message (its row id)
+    signal selectText(string rowId)
     // shown for a moment when the chat jumped here
     property bool flash
     // shown in a thread's page: no thread of its own there
@@ -782,6 +784,17 @@ ListItem {
                     Clipboard.text = model.body
                     //% "Text copied"
                     Notices.show(qsTrId("rustrx-no-text-copied"), Notice.Short)
+                }
+            }
+            MenuItem {
+                //% "Select text"
+                text: qsTrId("rustrx-me-select-text")
+                // the transcript is the room's timeline, not a thread's
+                visible: !inThread
+                onClicked: {
+                    var id = model.id
+                    msg.closeMenu()
+                    msg.selectText(id)
                 }
             }
             // a custom emoji seen here, into the user's own pack (the first three)

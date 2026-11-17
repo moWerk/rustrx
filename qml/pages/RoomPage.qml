@@ -476,6 +476,8 @@ Page {
             onResend: rustrx.command({ cmd: "retry_send", room_id: page.roomId, txn_id: txnId })
             onReactMore: { page.reactMoreText = text; emojiDock.show("react", eventId) }
             onJumpTo: page.jumpTo(eventId)
+            onSelectText: pageStack.push(Qt.resolvedUrl("TranscriptPage.qml"),
+                                         { roomName: page.roomName, startId: rowId })
             flash: model.event_id !== undefined && model.event_id === page.flashEventId
             onOpenThread: pageStack.push(Qt.resolvedUrl("ThreadPage.qml"),
                                          { roomId: page.roomId, roomName: page.roomName, rootId: eventId, compose: compose })
