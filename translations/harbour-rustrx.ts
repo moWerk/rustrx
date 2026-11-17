@@ -1851,7 +1851,8 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-notify-reactions">
-        <source>Emoji in notifications</source>
+        <source>Emoji replies in notifications</source>
+        <oldsource>Emoji in notifications</oldsource>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-notify-reactions-hint">
@@ -1864,7 +1865,8 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-notify-emoji">
-        <source>The emoji buttons, up to three, with spaces between</source>
+        <source>Up to three emoji, with spaces between</source>
+        <oldsource>The emoji buttons, up to three, with spaces between</oldsource>
         <translation type="unfinished"></translation>
     </message>
 </context>

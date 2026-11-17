@@ -114,39 +114,6 @@ Page {
             }
 
             TextSwitch {
-                //% "Reply in notifications"
-                text: qsTrId("rustrx-la-notify-reply")
-                //% "A Reply button that opens a text field in the notification."
-                description: qsTrId("rustrx-la-notify-reply-hint")
-                checked: service.notifyReply
-                automaticCheck: false
-                onClicked: service.notifyReply = !service.notifyReply
-            }
-
-            TextSwitch {
-                //% "Emoji in notifications"
-                text: qsTrId("rustrx-la-notify-reactions")
-                //% "Three emoji as buttons, to react to the latest message."
-                description: qsTrId("rustrx-la-notify-reactions-hint")
-                checked: service.notifyReactions
-                automaticCheck: false
-                onClicked: service.notifyReactions = !service.notifyReactions
-            }
-
-            TextField {
-                visible: service.notifyReactions
-                width: parent.width
-                //% "The emoji buttons, up to three, with spaces between"
-                label: qsTrId("rustrx-la-notify-emoji")
-                placeholderText: label
-                text: service.notifyEmoji
-                inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
-                EnterKey.iconSource: "image://theme/icon-m-enter-close"
-                EnterKey.onClicked: focus = false
-                onActiveFocusChanged: if (!activeFocus) service.notifyEmoji = text.trim()
-            }
-
-            TextSwitch {
                 //% "Show others that I am typing"
                 text: qsTrId("rustrx-la-send-typing")
                 checked: app.sendTyping
@@ -218,6 +185,39 @@ Page {
                                                                                             : qsTrId("rustrx-la-push-none-short"))
                              //% "Notifications only while Rustrx is open."
                              : qsTrId("rustrx-la-closed-off-hint")
+            }
+
+            TextSwitch {
+                //% "Reply in notifications"
+                text: qsTrId("rustrx-la-notify-reply")
+                //% "A Reply button that opens a text field in the notification."
+                description: qsTrId("rustrx-la-notify-reply-hint")
+                checked: service.notifyReply
+                automaticCheck: false
+                onClicked: service.notifyReply = !service.notifyReply
+            }
+
+            TextSwitch {
+                //% "Emoji replies in notifications"
+                text: qsTrId("rustrx-la-notify-reactions")
+                //% "Three emoji as buttons, to react to the latest message."
+                description: qsTrId("rustrx-la-notify-reactions-hint")
+                checked: service.notifyReactions
+                automaticCheck: false
+                onClicked: service.notifyReactions = !service.notifyReactions
+            }
+
+            TextField {
+                visible: service.notifyReactions
+                width: parent.width
+                //% "Up to three emoji, with spaces between"
+                label: qsTrId("rustrx-la-notify-emoji")
+                placeholderText: label
+                text: service.notifyEmoji
+                inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+                EnterKey.iconSource: "image://theme/icon-m-enter-close"
+                EnterKey.onClicked: focus = false
+                onActiveFocusChanged: if (!activeFocus) service.notifyEmoji = text.trim()
             }
 
             // only with the background stand-in, the line's subject
