@@ -678,14 +678,6 @@
         <source>Copy link</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-me-copy-all">
-        <source>Copy all</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-me-copy-selection">
-        <source>Copy selection</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-me-report">
         <source>Report</source>
         <translation type="unfinished"></translation>

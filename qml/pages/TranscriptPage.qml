@@ -75,30 +75,20 @@ Page {
     // not take by itself
     onStatusChanged: if (status === PageStatus.Active) area.forceActiveFocus()
 
+    // the field copies the selection itself when a handle is let go; say so
+    Connections {
+        target: Clipboard
+        ignoreUnknownSignals: true
+        onTextChanged: {
+            if (page.status === PageStatus.Active && Clipboard.text.length && Clipboard.text === area.selectedText)
+                Notices.show(qsTrId("rustrx-no-text-copied"), Notice.Short)
+        }
+    }
+
     SilicaFlickable {
         id: flick
         anchors.fill: parent
         contentHeight: column.height + Theme.paddingLarge
-
-        PullDownMenu {
-            MenuItem {
-                //% "Copy all"
-                text: qsTrId("rustrx-me-copy-all")
-                onClicked: {
-                    Clipboard.text = page.built.text
-                    Notices.show(qsTrId("rustrx-no-text-copied"), Notice.Short)
-                }
-            }
-            MenuItem {
-                //% "Copy selection"
-                text: qsTrId("rustrx-me-copy-selection")
-                enabled: area.selectedText.length > 0
-                onClicked: {
-                    Clipboard.text = area.selectedText
-                    Notices.show(qsTrId("rustrx-no-text-copied"), Notice.Short)
-                }
-            }
-        }
 
         Column {
             id: column
