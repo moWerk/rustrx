@@ -15,6 +15,8 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Twemoji.h"
+#include <QSet>
+#include <QStringList>
 
 #include <QDir>
 #include <QRegularExpression>
@@ -211,6 +213,55 @@ int linkEnd(const QString &s, int at)
     return end > from ? end : -1;
 }
 
+// A bare domain starting at "at" ("example.org", "www.x.de/path"), the end
+// of it with its path, or -1. Only at the start of a word (not after "@",
+// ":" or "/": addresses, room aliases and paths stay text), and only a
+// www. name or one ending in a common top-level domain, so "v1.2",
+// "file.txt" or "e.g." stay text. Trailing punctuation is not taken.
+int bareEnd(const QString &s, int at)
+{
+    if (at > 0) {
+        const QChar before = s.at(at - 1);
+        if (!isSpace(before.unicode()) && before != QLatin1Char('(') && before != QLatin1Char('[')
+                && before != QLatin1Char('>') && before != QLatin1Char('"') && before != QLatin1Char('\''))
+            return -1;
+    }
+    auto hostChar = [](QChar c) { return c.isLetterOrNumber() || c == QLatin1Char('-') || c == QLatin1Char('.'); };
+    int end = at;
+    while (end < s.size() && hostChar(s.at(end)))
+        ++end;
+    QString host = s.mid(at, end - at);
+    while (host.endsWith(QLatin1Char('.'))) {
+        host.chop(1);
+        --end;
+    }
+    const QStringList labels = host.split(QLatin1Char('.'));
+    if (labels.size() < 2 || labels.contains(QString()))
+        return -1;
+    static const QSet<QString> tlds = {
+        "com", "org", "net", "edu", "gov", "io", "dev", "app", "info", "me", "co", "tv", "ai", "gg", "fm",
+        "im", "is", "ly", "to", "xyz", "online", "site", "tech", "social", "chat", "eu", "de", "at", "ch",
+        "uk", "fr", "nl", "be", "it", "es", "pt", "se", "no", "fi", "dk", "pl", "cz", "sk", "hu", "ro",
+        "gr", "ie", "lu", "ru", "ua", "us", "ca", "au", "nz", "jp", "cn", "kr", "in", "br", "mx", "ar" };
+    const QString tld = labels.last().toLower();
+    const bool www = labels.first().toLower() == QLatin1String("www") && labels.size() >= 3;
+    if (!www && !tlds.contains(tld))
+        return -1;
+    for (const QString &l : labels)
+        if (l.startsWith(QLatin1Char('-')) || l.endsWith(QLatin1Char('-')))
+            return -1;
+    // a path, a port or a query after the host, to the end of the word
+    if (end < s.size() && (s.at(end) == QLatin1Char('/') || s.at(end) == QLatin1Char(':')
+                           || s.at(end) == QLatin1Char('?') || s.at(end) == QLatin1Char('#'))) {
+        while (end < s.size() && s.at(end) != QLatin1Char('<') && !isSpace(s.at(end).unicode()))
+            ++end;
+        static const QString trailing = QStringLiteral(".,;:!?)]'\"");
+        while (end > at && trailing.contains(s.at(end - 1)))
+            --end;
+    }
+    return end;
+}
+
 }
 
 QString escaped(const QString &text, bool greater)
@@ -243,14 +294,19 @@ QString linkified(const QString &text)
     out.reserve(s.size());
     int last = 0;
     for (int i = 0; i < s.size();) {
-        const int end = linkEnd(s, i);
-        if (end < 0) {
+        int end = linkEnd(s, i);
+        QString href;
+        if (end >= 0) {
+            href = s.mid(i, end - i);
+        } else if ((end = bareEnd(s, i)) >= 0) {
+            href = QStringLiteral("https://") + s.mid(i, end - i);
+        } else {
             ++i;
             continue;
         }
         const QString url = s.mid(i, end - i);
         out += s.midRef(last, i - last);
-        out += QLatin1String("<a href=\"") + hrefSafe(url) + QLatin1String("\">") + url + QLatin1String("</a>");
+        out += QLatin1String("<a href=\"") + hrefSafe(href) + QLatin1String("\">") + url + QLatin1String("</a>");
         i = last = end;
     }
     out += s.midRef(last);

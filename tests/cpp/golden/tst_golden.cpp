@@ -83,16 +83,39 @@ class TestGolden : public QObject
         return old;
     }
 
+    // The second intended change (0.4.8): a bare domain ("example.org",
+    // "www.x.zz") is linked, where the old JavaScript left it text. Cases
+    // with one are set aside here, found by the test's own pattern (the
+    // unit tests in tst_twemoji hold the rule itself), and counted.
+    static bool hasBareDomain(const QString &text)
+    {
+        static const QRegularExpression bare(QStringLiteral(
+            "(^|[\\s(\\[>\"'])(www\\.[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+"
+            "|[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*\\.(com|org|net|edu|gov|io|dev|app|info|me|co|tv|ai|gg|fm|im|is|ly|to"
+            "|xyz|online|site|tech|social|chat|eu|de|at|ch|uk|fr|nl|be|it|es|pt|se|no|fi|dk|pl|cz|sk|hu|ro|gr|ie"
+            "|lu|ru|ua|us|ca|au|nz|jp|cn|kr|in|br|mx|ar))(?![A-Za-z0-9-])"),
+            QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
+        return bare.match(text).hasMatch();
+    }
+
     // every case of a kind (and message type, for bodies): the number
     // checked; a difference fails with the first few shown
     void check(const QString &kind, const QString &type = QString())
     {
-        int checked = 0, differ = 0;
+        int checked = 0, differ = 0, setAside = 0;
         for (const QJsonValue &v : cases) {
             const QJsonObject c = v.toObject();
             const QVariantMap in = c.value("in").toObject().toVariantMap();
             if (c.value("kind").toString() != kind || (!type.isEmpty() && in.value("type").toString() != type))
                 continue;
+            bool aside = false;
+            for (const QVariant &v : in)
+                aside = aside || (v.type() == QVariant::String && hasBareDomain(v.toString()))
+                        || (v.type() == QVariant::Map && hasBareDomain(QStringList(v.toMap().value("latest_body").toString()).join(QString())));
+            if (aside) {
+                ++setAside;
+                continue;
+            }
             ++checked;
             const QString want = withI3(c.value("out").toString().replace(QStringLiteral("@DIR@"), kDir));
             const QString got = now(kind, in);
@@ -101,7 +124,8 @@ class TestGolden : public QObject
                          QJsonDocument(c.value("in").toObject()).toJson(QJsonDocument::Compact).constData(),
                          qPrintable(want.left(300)), qPrintable(got.left(300)));
         }
-        qInfo("%s%s: %d cases", qPrintable(kind), qPrintable(type.isEmpty() ? type : QLatin1Char(' ') + type), checked);
+        qInfo("%s%s: %d cases, %d set aside (bare domains)", qPrintable(kind),
+              qPrintable(type.isEmpty() ? type : QLatin1Char(' ') + type), checked, setAside);
         QVERIFY(checked > 100);
         QCOMPARE(differ, 0);
     }

@@ -284,8 +284,23 @@ private slots:
         QTest::addColumn<QString>("out");
         auto a = [](const QString &u) { return QStringLiteral("<a href=\"%1\">%1</a>").arg(u); };
         QTest::newRow("scheme alone") << U("http:// and matrix: and https://") << U("http:// and matrix: and https://");
-        QTest::newRow("bare domain not linked") << U("example.org") << U("example.org");
-        QTest::newRow("www not linked") << U("www.example.org") << U("www.example.org");
+        // bare domains (0.4.8): linked as https, the text as written
+        auto bare = [](const QString &d) { return QStringLiteral("<a href=\"https://%1\">%1</a>").arg(d); };
+        QTest::newRow("bare domain") << U("example.org") << bare("example.org");
+        QTest::newRow("www") << U("www.example.xyz") << bare("www.example.xyz");
+        QTest::newRow("www with any tld") << U("www.example.zz") << bare("www.example.zz");
+        QTest::newRow("bare with path") << U("see example.org/a?b=1.") << U("see ") + bare("example.org/a?b=1") + U(".");
+        QTest::newRow("bare full stop") << U("go to example.org.") << U("go to ") + bare("example.org") + U(".");
+        QTest::newRow("bare in brackets") << U("(example.org)") << U("(") + bare("example.org") + U(")");
+        QTest::newRow("bare subdomain") << U("matrix.tchncs.de") << bare("matrix.tchncs.de");
+        QTest::newRow("room alias not linked") << U("#room:example.org") << U("#room:example.org");
+        QTest::newRow("user id not linked") << U("@me:example.org") << U("@me:example.org");
+        QTest::newRow("address not linked") << U("me@example.org") << U("me@example.org");
+        QTest::newRow("version not linked") << U("v1.2 and 3.14") << U("v1.2 and 3.14");
+        QTest::newRow("file not linked") << U("notes.txt") << U("notes.txt");
+        QTest::newRow("unknown tld not linked") << U("example.zz") << U("example.zz");
+        QTest::newRow("abbreviation not linked") << U("e.g. i.e.") << U("e.g. i.e.");
+        QTest::newRow("hyphen edge not linked") << U("-a.com") << U("-a.com");
         QTest::newRow("capital scheme not linked") << U("HTTP://A.B") << U("HTTP://A.B");
         QTest::newRow("mailto not linked") << U("mailto:a@b.c") << U("mailto:a@b.c");
         QTest::newRow("javascript not linked") << U("javascript:alert(1)") << U("javascript:alert(1)");
