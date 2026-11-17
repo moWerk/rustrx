@@ -53,6 +53,11 @@ dbusservice.files = dbus/net.mowerk.harbour_rustrx.service dbus/org.unifiedpush.
 dbusservice.path = /usr/share/dbus-1/services
 INSTALLS += dbusservice
 
+# notification categories: a message vibrates, a call rings
+categories.files = notificationcategories/x-harbour-rustrx.message.conf notificationcategories/x-harbour-rustrx.call.conf
+categories.path = /usr/share/lipstick/notificationcategories
+INSTALLS += categories
+
 # background mode: started with the session when the user switched it on
 autostart.files = systemd/harbour-rustrx.service systemd/harbour-rustrx-open.service
 autostart.path = /usr/lib/systemd/user

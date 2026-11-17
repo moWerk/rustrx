@@ -86,6 +86,7 @@ desktop-file-install --delete-original \
 %{_datadir}/applications/%{name}.desktop
 %{_datadir}/dbus-1/services/net.mowerk.harbour_rustrx.service
 %{_datadir}/dbus-1/services/org.unifiedpush.Connector.rustrx.service
+%{_datadir}/lipstick/notificationcategories/x-harbour-rustrx.*.conf
 %{_userunitdir}/harbour-rustrx.service
 %{_userunitdir}/harbour-rustrx-open.service
 %{_userunitdir}/post-user-session.target.wants/harbour-rustrx.service

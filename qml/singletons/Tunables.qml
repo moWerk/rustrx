@@ -147,6 +147,4 @@ QtObject {
     readonly property int wakeHoldMs: 20000
     // shortest notification expiry (a ringing call)
     readonly property int ringMinMs: 5000
-    // x-nemo-priority of a ringing call
-    readonly property int ringPriority: 120
 }

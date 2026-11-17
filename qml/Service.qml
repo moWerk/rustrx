@@ -178,11 +178,6 @@ Item {
             n = notificationComponent.createObject(service, { roomId: roomId })
             roomNotifications[roomId] = n
         }
-        // the category's own feedback (chat_exists) is sound and light only;
-        // Messages vibrates through a preview of its own (chat). Both here,
-        // as the system's voicemail-waiting category does (also on lines
-        // taken over from an earlier process)
-        n.setHintValue("x-nemo-feedback", "chat,chat_exists")
         return n
     }
     // count: the room's own notification count, as the server and the SDK
@@ -258,11 +253,6 @@ Item {
                 //% "%1 started a call"
                 : qsTrId("rustrx-no-call-started").arg(senderName)
         n.previewBody = n.body
-        if (ring) {
-            n.setHintValue("x-nemo-feedback", "voip_ringtone")
-            n.setHintValue("x-nemo-display-on", true)
-            n.setHintValue("x-nemo-priority", Tunables.ringPriority)
-        }
         n.expiry.interval = Math.max(Tunables.ringMinMs, expiresMs)
         n.expiry.start()
         n.publish()
@@ -302,6 +292,9 @@ Item {
             property Timer expiry: Timer { onTriggered: service.stopRinging(ringNote.roomId) }
             appName: "Rustrx"
             appIcon: "harbour-rustrx"
+            // a ringing call: the VoIP ringtone, the display on
+            // (notificationcategories/)
+            category: ring ? "x-harbour-rustrx.call" : "x-harbour-rustrx.message"
             urgency: ring ? Notification.Critical : Notification.Normal
             isTransient: false
             remoteActions: [
@@ -373,7 +366,11 @@ Item {
             property string roomId
             appName: "Rustrx"
             appIcon: "harbour-rustrx"
-            category: "x-nemo.messaging.im"
+            // our own (notificationcategories/): x-nemo.messaging.im's
+            // feedback is sound and light only, Messages vibrates through a
+            // preview of its own; this one names both (the QML type has no
+            // way to set the hint itself)
+            category: "x-harbour-rustrx.message"
             urgency: Notification.Normal
             remoteActions: service.roomActions(roomId, "")
             onClosed: delete service.roomPending[roomId]
