@@ -41,12 +41,12 @@ ListItem {
     signal openThread(string eventId, bool compose)
     // a tap on the reply's quote: to the message it answers
     signal jumpTo(string eventId)
-    // "Select text": the loaded chat as text, from this message (its row id)
-    signal selectText(string rowId)
     // shown for a moment when the chat jumped here
     property bool flash
     // shown in a thread's page: no thread of its own there
     property bool inThread
+    // for the text selection's header (the More page)
+    property string roomName
     // a thread's root: how many replies and the latest
     readonly property var threadSummary: model.thread ? model.thread : null
     // replies none of our read receipts reaches yet (the core's check:
@@ -73,6 +73,21 @@ ListItem {
     // the custom emoji in the message and its reactions ({ url, shortcode });
     // only the menu asks, finding them is a scan of the message
     function emoteList() { return model.emotes ? model.emotes : [] }
+    // what the "More…" page needs, copied: the row can go while it is open
+    function moreInfo() {
+        var body = model.body || ""
+        return {
+            roomId: roomId, roomName: roomName, eventId: msg.eventId, rowId: model.id || "",
+            sender: model.sender_name || model.sender || "", body: body,
+            // a picture's or file's caption or name: its menu has Save instead
+            copyText: (isMedia || isFile) && body.length > 0,
+            selectText: !inThread,
+            copyLink: canAct && msg.eventId.length > 0,
+            emotes: emoteList(),
+            report: canAct && !own,
+            remove: own && msgType !== "redacted"
+        }
+    }
     readonly property string eventId: model.event_id || ""
     readonly property bool failed: model.send_state === "failed"
     // a picture or file on its way: the share of it the server has (0..1)
@@ -787,10 +802,12 @@ ListItem {
                 visible: own && model.editable === true && (msgType === "text" || msgType === "emote" || msgType === "notice")
                 onClicked: msg.edit(model.event_id, model.body || "")
             }
+            // four at most, as Sailfish apps keep a menu; the rest on the
+            // "More…" page. The fourth: Copy text, or Save for a picture or file
             MenuItem {
                 //% "Copy text"
                 text: qsTrId("rustrx-me-copy")
-                visible: model.body && model.body.length > 0
+                visible: !isMedia && !isFile && model.body && model.body.length > 0
                 onClicked: {
                     Clipboard.text = model.body
                     //% "Text copied"
@@ -798,71 +815,15 @@ ListItem {
                 }
             }
             MenuItem {
-                //% "Select text"
-                text: qsTrId("rustrx-me-select-text")
-                // the transcript is the room's timeline, not a thread's
-                visible: !inThread
-                onClicked: {
-                    var id = model.id
-                    msg.closeMenu()
-                    msg.selectText(id)
-                }
-            }
-            // a custom emoji seen here, into the user's own pack (the first three)
-            Repeater {
-                model: msg.emoteList().slice(0, Tunables.emoteOfferMax)
-                MenuItem {
-                    //: %1 a custom emoji's shortcode
-                    //% "Add :%1: to my emoji"
-                    text: qsTrId("rustrx-me-add-emote").arg(modelData.shortcode || "emoji")
-                    onClicked: rustrx.command({ cmd: "add_user_emote", shortcode: modelData.shortcode || "emoji", mxc: modelData.mxc })
-                }
-            }
-            MenuItem {
-                //% "Copy link"
-                text: qsTrId("rustrx-me-copy-link")
-                visible: canAct && !failed && msg.eventId.length > 0
-                onClicked: {
-                    Clipboard.text = "https://matrix.to/#/" + encodeURIComponent(roomId) + "/" + encodeURIComponent(msg.eventId)
-                    Notices.show(qsTrId("rustrx-no-link-copied"), Notice.Short)
-                }
-            }
-            MenuItem {
                 text: qsTrId("rustrx-me-save-downloads")
-                visible: isMedia || isFile
+                visible: (isMedia || isFile) && !failed
                 onClicked: saveMedia()
             }
             MenuItem {
-                //% "View source"
-                text: qsTrId("rustrx-me-view-source")
-                visible: msg.eventId.length > 0
-                onClicked: {
-                    pageStack.push(Qt.resolvedUrl("../pages/SourcePage.qml"), { eventId: msg.eventId })
-                    rustrx.command({ cmd: "event_source", room_id: roomId, event_id: msg.eventId })
-                }
-            }
-            MenuItem {
-                //% "Report"
-                text: qsTrId("rustrx-me-report")
-                visible: canAct && !own
-                onClicked: {
-                    var id = model.event_id, room = roomId, core = rustrx
-                    //% "Reporting to the server admins"
-                    msg.remorseAction(qsTrId("rustrx-re-reporting"), function () {
-                        core.command({ cmd: "report", room_id: room, event_id: id })
-                    })
-                }
-            }
-            MenuItem {
-                text: qsTrId("rustrx-me-remove")
-                visible: own && msgType !== "redacted" && !failed
-                onClicked: {
-                    var id = model.event_id, room = roomId, core = rustrx
-                    //% "Removing"
-                    msg.remorseAction(qsTrId("rustrx-re-removing"), function () {
-                        core.command({ cmd: "redact", room_id: room, event_id: id })
-                    })
-                }
+                //% "More…"
+                text: qsTrId("rustrx-me-more")
+                visible: !failed && msg.eventId.length > 0
+                onClicked: pageStack.push(Qt.resolvedUrl("../pages/MessageActionsPage.qml"), { info: msg.moreInfo() })
             }
         }
     }

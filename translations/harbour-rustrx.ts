@@ -49,6 +49,10 @@
         <source>Copy text</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-me-more">
+        <source>More…</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-me-select-text">
         <source>Select text</source>
         <translation type="unfinished"></translation>

@@ -92,8 +92,6 @@ QtObject {
     readonly property int mentionSuggestions: 5
     // people offered in the invite dialog while typing
     readonly property int inviteContactsMax: 8
-    // custom emoji of one message offered to add to the own pack
-    readonly property int emoteOfferMax: 3
     // lines of a quoted message
     readonly property int quoteLines: 3
     // most lines of the room list preview (the Settings menu lists 1 to 3 by hand)
