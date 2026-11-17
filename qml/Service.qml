@@ -178,6 +178,11 @@ Item {
             n = notificationComponent.createObject(service, { roomId: roomId })
             roomNotifications[roomId] = n
         }
+        // the category's own feedback (chat_exists) is sound and light only;
+        // Messages vibrates through a preview of its own (chat). Both here,
+        // as the system's voicemail-waiting category does (also on lines
+        // taken over from an earlier process)
+        n.setHintValue("x-nemo-feedback", "chat,chat_exists")
         return n
     }
     // count: the room's own notification count, as the server and the SDK

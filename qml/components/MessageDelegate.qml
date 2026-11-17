@@ -408,20 +408,31 @@ ListItem {
                                 height: Math.min(width, Math.max(Theme.itemSizeLarge, width * (model.h && model.w ? model.h / model.w : Tunables.mediaFallbackAspect)))
 
                                 Image {
+                                    id: picture
+                                    // a thumbnail Qt cannot read (a format without its
+                                    // image plugin): the picture itself instead
+                                    property bool thumbFailed
                                     anchors.fill: parent
                                     asynchronous: true
                                     autoTransform: true
                                     fillMode: Image.PreserveAspectFit
                                     // a video's own file is no picture: only its thumbnail
-                                    source: model.thumb_path && model.thumb_path.length ? "file://" + model.thumb_path
+                                    source: !thumbFailed && model.thumb_path && model.thumb_path.length ? "file://" + model.thumb_path
                                           : msgType !== "video" && model.media_path && model.media_path.length
                                             ? "file://" + model.media_path : ""
+                                    onStatusChanged: {
+                                        if (status !== Image.Error || thumbFailed || msgType === "video") return
+                                        if (!(model.thumb_path && model.thumb_path.length)) return
+                                        thumbFailed = true
+                                        if (!(model.media_path && model.media_path.length)) rustrx.getMedia(roomId, eventId, false)
+                                    }
                                     // what the bubble's width comes to in portrait: decoded once
                                     sourceSize.width: Math.round(Screen.width * Tunables.mediaMaxWidth)
                                 }
                                 Label {
                                     anchors.centerIn: parent
-                                    visible: !(model.thumb_path && model.thumb_path.length) && !(model.media_path && model.media_path.length)
+                                    visible: picture.status === Image.Error
+                                             || !(model.thumb_path && model.thumb_path.length) && !(model.media_path && model.media_path.length)
                                     text: model.body || ""
                                     color: dimColor
                                     font.pixelSize: Theme.fontSizeSmall
