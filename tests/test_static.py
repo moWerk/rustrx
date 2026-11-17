@@ -487,3 +487,17 @@ def test_notification_actions_reach_a_method():
     scriptable = set(re.findall(r"Q_SCRIPTABLE\s+\w+\s+(\w+)\s*\(", read("src/Rustrx.h")))
     called = set(re.findall(r'\baction\(\s*[^,()]+,\s*"(\w+)"', code(ROOT / "qml/Service.qml")))
     assert called and not called - scriptable, called - scriptable
+
+
+QT56_MISSING = [
+    (r"\bRegularExpressionValidator\b", "RegularExpressionValidator (Qt 5.14): RegExpValidator"),
+    (r"\bQt\.labs\.", "Qt.labs modules the phone may not have"),
+]
+
+
+@pytest.mark.parametrize("pattern,what", QT56_MISSING)
+def test_qml_types_the_phone_has(pattern, what):
+    """The phone's Qt is 5.6; the host's qmllint knows newer types.
+    Planted-bug: a RegularExpressionValidator in a page."""
+    hits = [p.name for p in QML if re.search(pattern, code(p))]
+    assert not hits, what

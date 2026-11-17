@@ -184,6 +184,8 @@ public:
     // through the server's account service in the browser (OAuth); signup:
     // its page offers to make an account first
     Q_INVOKABLE void loginOauth(const QString &user, const QString &homeserver, bool signup);
+    // with a QR code a logged-in device scans (qrLogin carries the progress)
+    Q_INVOKABLE void loginQr(const QString &user, const QString &homeserver);
     Q_INVOKABLE void probeServer(const QString &user, const QString &homeserver);
     Q_INVOKABLE void openRoom(const QString &roomId);
     Q_INVOKABLE void closeRoom();
@@ -299,6 +301,9 @@ signals:
     void ignoredUsers(const QVariantList &users);
     // one person for their page (user_info)
     void userInfo(const QVariantMap &info);
+    // a QR login's progress: state qr (width, modules), scanned, waiting
+    // (user_code), syncing, done
+    void qrLogin(const QVariantMap &progress);
     void replyRequested(const QString &roomId, const QString &text);
     void reactRequested(const QString &roomId, const QString &eventId, const QString &key);
     // a room's notifications went to none (read here or in another client)

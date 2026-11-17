@@ -1951,5 +1951,33 @@
         <source>Lift the ban</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-he-qr-login">
+        <source>Log in with a QR code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-scan">
+        <source>On a device that is logged in, open Element and choose to link a new device, then scan this code.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-digits">
+        <source>Type the two digits the other device shows.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-confirm">
+        <source>Confirm the login on the other device.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-syncing">
+        <source>Logged in. Bringing over the keys…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-starting">
+        <source>Asking the server…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-code">
+        <source>The two digits</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

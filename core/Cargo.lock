@@ -3162,6 +3162,7 @@ dependencies = [
  "matrix-sdk-ui",
  "mime",
  "mime_guess",
+ "qrcode",
  "serde",
  "serde_json",
  "tokio",

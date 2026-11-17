@@ -21,7 +21,12 @@ pub(crate) enum Command {
     /// browser: open_url, then logged_in or login_error. `signup` offers to
     /// make an account first.
     LoginOauth { user: Option<String>, homeserver: Option<String>, signup: Option<bool> },
-    /// A browser login still waiting ends ("login_error").
+    /// With a QR code another, logged-in device scans: "qr_login" progress,
+    /// then logged_in or login_error.
+    LoginQr { user: Option<String>, homeserver: Option<String> },
+    /// The two digits the other device shows during a QR login.
+    QrCheckCode { code: u8 },
+    /// A browser or QR login still waiting ends ("login_error").
     LoginCancel,
     Logout,
 
@@ -249,7 +254,7 @@ mod tests {
     /// Every command the core accepts, in the enum's order. Adding a command
     /// is a reviewed act: update this list and docs/PROTOCOL.md.
     const COMMANDS: &[&str] = &[
-        "probe_server", "login_password", "login_sso", "login_oauth", "login_cancel", "logout",
+        "probe_server", "login_password", "login_sso", "login_oauth", "login_qr", "qr_check_code", "login_cancel", "logout",
         "open_room", "close_room", "paginate_back", "send_text", "send_sticker",
         "open_thread", "close_thread", "save_draft", "retry_send", "thread_list", "close_thread_list", "mark_thread_read",
         "push_set", "push_remove", "push_check", "push_handle", "send_file", "react", "redact", "edit",
@@ -271,7 +276,7 @@ mod tests {
 
     /// How many fields the commands require, all together. Like COMMANDS, a
     /// change here is a change of the contract.
-    const REQUIRED_FIELDS: usize = 109;
+    const REQUIRED_FIELDS: usize = 110;
 
 
     /// The names serde knows, from its own error for an unknown tag
@@ -283,7 +288,7 @@ mod tests {
     }
 
     /// The smallest object that parses as `name`: each field serde says is
-    /// missing gets the first of "", false, [] that it takes.
+    /// missing gets the first of "", false, [], 0 that it takes.
     fn minimal(name: &str) -> Value {
         let mut v = json!({"cmd": name});
         for _ in 0..16 {
@@ -296,7 +301,7 @@ mod tests {
                 .and_then(|(_, rest)| rest.split_once('`'))
                 .map(|(f, _)| f.to_owned())
                 .unwrap_or_else(|| panic!("{name}: {err}"));
-            let fill = [json!(""), json!(false), json!([])]
+            let fill = [json!(""), json!(false), json!([]), json!(0)]
                 .into_iter()
                 .find(|candidate| {
                     let mut t = v.clone();

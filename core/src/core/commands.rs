@@ -37,6 +37,8 @@ impl Core {
             LoginPassword { user, password, homeserver } => self.login_password(user, password, homeserver).await,
             LoginSso { user, homeserver, idp } => self.login_sso(user, homeserver, idp).await,
             LoginOauth { user, homeserver, signup } => self.login_oauth(user, homeserver, signup.unwrap_or(false)).await,
+            LoginQr { user, homeserver } => self.login_qr(user, homeserver).await,
+            QrCheckCode { code } => self.qr_check_code(code).await,
             LoginCancel => {
                 self.login_cancel();
                 Ok(())

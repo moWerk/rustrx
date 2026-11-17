@@ -167,6 +167,9 @@ pub(crate) struct Core {
     /// "login_cancel": ends a browser login (single sign-on or OAuth) still
     /// waiting for the browser
     sso_cancel: tokio::sync::Notify,
+    /// a QR login whose other device showed its check code: where the code
+    /// the user types goes ("qr_check_code")
+    qr_check: Mutex<Option<matrix_sdk::authentication::oauth::qrcode::CheckCodeSender>>,
     /// one pushed message at a time: each notification client runs its own
     /// encryption sync over the one crypto store, and their mutexes are
     /// their own, so two at once would not exclude each other
@@ -194,7 +197,7 @@ pub(crate) use spaces::join_rule_name;
 
 impl Core {
     pub(crate) fn new(rt: Runtime, data_dir: PathBuf, emitter: Emitter) -> Self {
-        Core { rt, data_dir, emitter, state: Mutex::new(State::default()), sso_cancel: tokio::sync::Notify::new(), push_lock: Mutex::new(()),
+        Core { rt, data_dir, emitter, state: Mutex::new(State::default()), sso_cancel: tokio::sync::Notify::new(), push_lock: Mutex::new(()), qr_check: Mutex::new(None),
                threads_read: tokio::sync::watch::channel(0).0 }
     }
 

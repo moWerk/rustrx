@@ -146,6 +146,21 @@ Page {
             }
 
             Button {
+                // a server with the QR rendezvous (MSC4108): another device
+                // logged in already lets this one in, keys and all
+                visible: page.oauth && server.qrLogin === true
+                anchors.horizontalCenter: parent.horizontalCenter
+                //% "Log in with a QR code"
+                text: qsTrId("rustrx-he-qr-login")
+                enabled: !rustrx.loggingIn
+                onClicked: {
+                    errorText = ""
+                    rustrx.loginQr(userField.text, serverField.text)
+                    pageStack.push(Qt.resolvedUrl("QrLoginPage.qml"))
+                }
+            }
+
+            Button {
                 visible: page.oauth && !page.passwordWanted && server.password
                 anchors.horizontalCenter: parent.horizontalCenter
                 //% "Use a password instead"
@@ -366,7 +381,7 @@ Page {
         onBrowserUrl: if (rustrx.loggingIn) page.ssoUrl = url
         onServerInfo: {
             server = { probed: true, name: info.server, password: info.password, sso: info.sso,
-                       accountService: info.account_service === true,
+                       accountService: info.account_service === true, qrLogin: info.qr_login === true,
                        idps: info.idps, sliding: info.sliding_sync, signup: info.signup_url || "" }
         }
         onErrorOccurred: if (cmd === "probe_server") errorText = message

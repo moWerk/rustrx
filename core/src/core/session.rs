@@ -414,6 +414,12 @@ impl Core {
         // an account service: logins belong in the browser (single sign-on);
         // tchncs.de refused a correct password over m.login.password
         let account_service = meta.is_ok();
+        // QR login needs the rendezvous of MSC4108 (tchncs.de has it,
+        // matrix.org not yet)
+        let qr = account_service
+            && client.unstable_features().await
+                .map(|f| f.iter().any(|x| x.as_str() == "org.matrix.msc4108"))
+                .unwrap_or(false);
         let signup = match meta {
             Ok(meta) if meta.prompt_values_supported.iter().any(|p| p.as_str() == "create") => {
                 meta.issuer.join("register").ok().map(|u| u.to_string())
@@ -428,6 +434,7 @@ impl Core {
             "password": password,
             "sso": sso,
             "account_service": account_service,
+            "qr_login": qr,
             "idps": idps,
             "sliding_sync": !matches!(client.sliding_sync_version(), Version::None),
         }));
@@ -549,6 +556,90 @@ impl Core {
         if done.is_err() {
             tracing::warn!("shutdown: not finished in time");
         }
+    }
+
+    /// Logging in with a QR code (MSC4108): this device shows a code, a
+    /// logged-in one (Element) scans it and shows two digits, which the
+    /// user types here ("qr_check_code"); the account service then signs
+    /// this device in and the other one hands over the keys, so it comes
+    /// in verified. Progress goes out as "qr_login" (state: qr, scanned,
+    /// waiting, syncing, done).
+    pub(crate) async fn login_qr(&'static self, user: Option<String>, homeserver: Option<String>) -> Result<()> {
+        use matrix_sdk::authentication::oauth::qrcode::{GeneratedQrProgress, LoginProgress};
+        use matrix_sdk::authentication::oauth::registration::{ApplicationType, ClientMetadata, Localized, OAuthGrantType};
+        use matrix_sdk::authentication::oauth::ClientRegistrationData;
+        use matrix_sdk::reqwest::Url;
+        use std::future::IntoFuture;
+        if self.state.lock().await.client.is_some() {
+            bail!("already logged in");
+        }
+        let cancelled = self.sso_cancel.notified();
+        tokio::pin!(cancelled);
+        let result: Result<Client> = async {
+            let server = Self::server_of(user.as_deref(), &homeserver)?;
+            let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
+            let mut meta = ClientMetadata::new(
+                ApplicationType::Native,
+                vec![OAuthGrantType::DeviceCode],
+                Localized::new(Url::parse(CLIENT_URI)?, []),
+            );
+            meta.client_name = Some(Localized::new(DEVICE_NAME.to_owned(), []));
+            let registration = ClientRegistrationData::new(matrix_sdk::ruma::serde::Raw::new(&meta)?);
+            let oauth = client.oauth();
+            let login = oauth.login_with_qr_code(Some(&registration)).generate();
+            let mut progress = login.subscribe_to_progress();
+            let done = login.into_future();
+            tokio::pin!(done);
+            let deadline = tokio::time::sleep(SSO_TIMEOUT);
+            tokio::pin!(deadline);
+            loop {
+                tokio::select! {
+                    r = &mut done => {
+                        r.map_err(|e| anyhow!("{e}"))?;
+                        break;
+                    }
+                    Some(p) = progress.next() => match p {
+                        LoginProgress::EstablishingSecureChannel(GeneratedQrProgress::QrReady(data)) => {
+                            let code = qrcode::QrCode::new(data.to_bytes())?;
+                            let modules: String = code.to_colors().iter()
+                                .map(|c| if *c == qrcode::Color::Dark { '1' } else { '0' }).collect();
+                            self.emit(json!({"ev": "qr_login", "state": "qr", "width": code.width(), "modules": modules}));
+                        }
+                        LoginProgress::EstablishingSecureChannel(GeneratedQrProgress::QrScanned(sender)) => {
+                            *self.qr_check.lock().await = Some(sender);
+                            self.emit(json!({"ev": "qr_login", "state": "scanned"}));
+                        }
+                        LoginProgress::WaitingForToken { user_code } => {
+                            self.emit(json!({"ev": "qr_login", "state": "waiting", "user_code": user_code}));
+                        }
+                        LoginProgress::SyncingSecrets => self.emit(json!({"ev": "qr_login", "state": "syncing"})),
+                        LoginProgress::Done => self.emit(json!({"ev": "qr_login", "state": "done"})),
+                        _ => {}
+                    },
+                    _ = &mut cancelled => bail!("login cancelled"),
+                    _ = &mut deadline => bail!("no login from the other device within {} minutes", SSO_TIMEOUT.as_secs() / 60),
+                }
+            }
+            std::fs::remove_file(self.data_dir.join(DEVICE_ID_FILE)).ok();
+            std::fs::remove_file(self.relogin_path()).ok();
+            Ok(client)
+        }
+        .await;
+        self.qr_check.lock().await.take();
+        match result {
+            Ok(client) => self.after_login(client).await,
+            Err(e) => {
+                self.emit(json!({"ev": "login_error", "message": format!("{e:#}")}));
+                Ok(())
+            }
+        }
+    }
+
+    /// The two digits the other device of a QR login shows.
+    pub(crate) async fn qr_check_code(&self, code: u8) -> Result<()> {
+        let sender = self.qr_check.lock().await.take().context("no QR login waits for a code")?;
+        sender.send(code).await.map_err(|e| anyhow!("{e}"))?;
+        Ok(())
     }
 
     /// Ends a single sign-on that waits for the browser ("login_error").

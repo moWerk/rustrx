@@ -28,6 +28,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `login_password` | `user`, `password`, `homeserver?` | `logged_in` or `login_error` |
 | `login_sso` | `user?`, `homeserver?`, `idp?` | `open_url`, then `logged_in` or `login_error` (after 10 minutes without the browser coming back, too) |
 | `login_oauth` | `user?`, `homeserver?`, `signup?` (make an account first) | `open_url` (the account service's page), then `logged_in` or `login_error` (also after 10 minutes) |
+| `login_qr` | `user?`, `homeserver?` | `qr_login` (`state`: `qr` with `width` and `modules` ("1" dark, row by row), `scanned`, `waiting` with `user_code`, `syncing`, `done`), then `logged_in` or `login_error` |
+| `qr_check_code` | `code` (the two digits the other device shows) | |
 | `login_cancel` | | `login_error` of the waiting `login_sso` or `login_oauth` |
 | `logout` | | `logged_out` |
 
@@ -137,7 +139,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `logged_in` | `proto`, `user_id`, `device_id`, `homeserver`, `sliding_sync` |
 | `logged_out` | `reason?` (`session_expired`), `soft_logout?` |
 | `login_error` | `message` |
-| `server_info` | `server`, `homeserver`, `password`, `sso`, `idps`, `sliding_sync`, `signup_url?` |
+| `server_info` | `server`, `homeserver`, `password`, `sso`, `idps`, `sliding_sync`, `signup_url?`, `account_service`, `qr_login` |
+| `qr_login` | `state` (`qr`: `width`, `modules`; `scanned`; `waiting`: `user_code`; `syncing`; `done`) |
 | `open_url` | `url` (SSO: to open in the browser) |
 | `sync_state` | `state` (`idle`, `running`, `offline`, `error`, `terminated`), `message?` |
 | `rooms` | `rooms`: room objects, invitations first, then by activity |

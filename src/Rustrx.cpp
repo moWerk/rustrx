@@ -366,7 +366,7 @@ QString Rustrx::dev(const QString &json)
     // never through a test hook, flag or not: what hands over keys or the
     // session, or ends it
     static const QStringList refused{ "export_keys", "import_keys", "logout", "delete_device",
-                                      "login_password", "login_sso", "login_oauth", "recovery_recover", "recovery_enable",
+                                      "login_password", "login_sso", "login_oauth", "login_qr", "qr_check_code", "recovery_recover", "recovery_enable",
                                       "recovery_reset", "identity_reset", "push_set", "push_remove" };
     if (refused.contains(req.value("cmd").toString())) {
         out["error"] = QStringLiteral("not a dev command");
@@ -436,6 +436,13 @@ void Rustrx::loginOauth(const QString &user, const QString &homeserver, bool sig
     m_loggingIn = true;
     emit stateChanged();
     command({{"cmd", "login_oauth"}, {"user", user}, {"homeserver", homeserver}, {"signup", signup}});
+}
+
+void Rustrx::loginQr(const QString &user, const QString &homeserver)
+{
+    m_loggingIn = true;
+    emit stateChanged();
+    command({{"cmd", "login_qr"}, {"user", user}, {"homeserver", homeserver}});
 }
 
 void Rustrx::probeServer(const QString &user, const QString &homeserver)
@@ -740,7 +747,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         const QString cmd = ev.value("cmd").toString();
         qWarning().noquote() << "core error:" << cmd << ev.value("message").toString();
         if (cmd == QLatin1String("login_password") || cmd == QLatin1String("login_sso")
-                || cmd == QLatin1String("login_oauth")) {
+                || cmd == QLatin1String("login_oauth") || cmd == QLatin1String("login_qr")) {
             m_loggingIn = false;
             emit stateChanged();
             emit loginError(ev.value("message").toString());
@@ -773,6 +780,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit dmReady(ev.value("room_id").toString(), ev.value("user_id").toString());
     } else if (type == QLatin1String("joined")) {
         emit joined(ev.value("room_id").toString());
+    } else if (type == QLatin1String("qr_login")) {
+        emit qrLogin(ev);
     } else if (type == QLatin1String("user_info")) {
         emit userInfo(ev);
     } else if (type == QLatin1String("ignored_users")) {
