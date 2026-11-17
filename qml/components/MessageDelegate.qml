@@ -93,6 +93,12 @@ ListItem {
     // a picture or file on its way: the share of it the server has (0..1)
     readonly property bool uploading: model.send_state === "sending" && model.upload_total > 0
     readonly property real uploadFraction: uploading ? Math.min(1, model.upload_done / model.upload_total) : 0
+    // a picture or file still going out (queued or uploading) can be
+    // stopped: the SDK aborts a running upload and drops the message
+    readonly property bool cancellable: (isMedia || isFile) && model.send_state === "sending" && !!model.txn_id
+    function cancelUpload() {
+        rustrx.command({ cmd: "redact", room_id: roomId, txn_id: model.txn_id })
+    }
     // captured here for the same reason as reactionList
     readonly property var pollAnswers: model.answers ? model.answers : []
     readonly property bool pollEnded: model.ended === true
@@ -524,20 +530,33 @@ ListItem {
                     }
 
                     // an upload on its way: how much of the file is at the server
+                    // with a cross beside it that stops the upload
                     Loader {
                         active: uploading
                         visible: active
                         sourceComponent: Component {
-                            Rectangle {
+                            Item {
                                 width: Math.min(innerMax, Math.min(msg.width, Screen.width) * Tunables.mediaMaxWidth)
-                                height: Theme.paddingSmall
-                                radius: height / 2
-                                color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
+                                height: cancelButton.height
                                 Rectangle {
-                                    width: parent.width * uploadFraction
-                                    height: parent.height
-                                    radius: parent.radius
-                                    color: Theme.highlightColor
+                                    anchors { left: parent.left; right: cancelButton.left; rightMargin: Theme.paddingSmall; verticalCenter: parent.verticalCenter }
+                                    height: Theme.paddingSmall
+                                    radius: height / 2
+                                    color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
+                                    Rectangle {
+                                        width: parent.width * uploadFraction
+                                        height: parent.height
+                                        radius: parent.radius
+                                        color: Theme.highlightColor
+                                    }
+                                }
+                                IconButton {
+                                    id: cancelButton
+                                    anchors.right: parent.right
+                                    width: Theme.iconSizeMedium
+                                    height: width
+                                    icon.source: "image://theme/icon-m-clear"
+                                    onClicked: msg.cancelUpload()
                                 }
                             }
                         }
@@ -728,7 +747,7 @@ ListItem {
             // the reactions first: the five most used at a tap, the menu
             // closes after one; "more" opens the emoji picker for this message
             Row {
-                visible: canAct && !failed
+                visible: canAct && !failed && !cancellable
                 anchors.horizontalCenter: parent.horizontalCenter
                 Repeater {
                     model: app.favouriteEmoji
@@ -766,6 +785,13 @@ ListItem {
                     }
                 }
             }
+            // a picture or file still going out: stop it
+            MenuItem {
+                visible: cancellable
+                //% "Cancel upload"
+                text: qsTrId("rustrx-me-cancel-upload")
+                onClicked: msg.cancelUpload()
+            }
             // a failed message, picture or file: send it again as it was, or
             // let it go
             MenuItem {
@@ -783,7 +809,7 @@ ListItem {
             MenuItem {
                 //% "Reply"
                 text: qsTrId("rustrx-me-reply")
-                visible: canAct && !failed
+                visible: canAct && !failed && !cancellable
                 onClicked: msg.reply(model.event_id, (model.sender_name || model.sender) + ": " + (model.body || ""))
             }
             MenuItem {

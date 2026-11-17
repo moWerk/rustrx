@@ -670,6 +670,10 @@
         <extracomment>authenticity cannot be checked (e.g. a key from backup)</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-me-cancel-upload">
+        <source>Cancel upload</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-me-send-again">
         <source>Send again</source>
         <translation type="unfinished"></translation>
