@@ -249,16 +249,6 @@ Page {
             //% "Appearance"
             SectionHeader { text: qsTrId("rustrx-se-appearance") }
 
-            TextSwitch {
-                //% "Highlight Favs channels with new messages"
-                text: qsTrId("rustrx-la-highlight-favs")
-                //% "A favourite with something unread glows calmly in the lists, its star with it."
-                description: qsTrId("rustrx-la-highlight-favs-hint")
-                checked: app.highlightFavs
-                automaticCheck: false
-                onClicked: app.highlightFavs = !app.highlightFavs
-            }
-
             // the avatars' corners, from square to a circle, with one's own
             // picture beside it as it will look
             Item {
@@ -309,6 +299,16 @@ Page {
                         layer.effect: RoundMask { radius: app.avatarRadius }
                     }
                 }
+            }
+
+            TextSwitch {
+                //% "Highlight Favs channels with new messages"
+                text: qsTrId("rustrx-la-highlight-favs")
+                //% "A favourite with something unread glows calmly in the lists, its star with it."
+                description: qsTrId("rustrx-la-highlight-favs-hint")
+                checked: app.highlightFavs
+                automaticCheck: false
+                onClicked: app.highlightFavs = !app.highlightFavs
             }
 
             TextSwitch {
