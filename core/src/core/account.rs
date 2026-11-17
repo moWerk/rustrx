@@ -156,12 +156,30 @@ impl Core {
     pub(crate) async fn ignore_user(&self, user_id: &str) -> Result<()> {
         let client = self.client().await?;
         client.account().ignore_user(&UserId::parse(user_id.trim())?).await?;
-        Ok(())
+        self.ignored_users().await
     }
 
     pub(crate) async fn unignore_user(&self, user_id: &str) -> Result<()> {
         let client = self.client().await?;
         client.account().unignore_user(&UserId::parse(user_id.trim())?).await?;
+        self.ignored_users().await
+    }
+
+    /// The users this account ignores, with the name their profile gives
+    /// where the server tells it: "ignored_users".
+    pub(crate) async fn ignored_users(&self) -> Result<()> {
+        let client = self.client().await?;
+        let ids = client.subscribe_to_ignore_user_list_changes().get();
+        let mut users = Vec::new();
+        for id in ids {
+            let name = match UserId::parse(&id) {
+                Ok(user) => client.account().fetch_user_profile_of(&user).await.ok()
+                    .and_then(|p| p.get("displayname").and_then(Value::as_str).map(str::to_owned)),
+                Err(_) => None,
+            };
+            users.push(json!({"user_id": id, "name": name}));
+        }
+        self.emit(json!({"ev": "ignored_users", "users": users}));
         Ok(())
     }
 

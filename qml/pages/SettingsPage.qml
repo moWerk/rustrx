@@ -390,6 +390,13 @@ Page {
 
             Button {
                 anchors.horizontalCenter: parent.horizontalCenter
+                //% "Ignored users"
+                text: qsTrId("rustrx-bt-ignored")
+                onClicked: pageStack.push(Qt.resolvedUrl("IgnoredPage.qml"))
+            }
+
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
                 //% "Log out"
                 text: qsTrId("rustrx-bt-log-out")
                 onClicked: {

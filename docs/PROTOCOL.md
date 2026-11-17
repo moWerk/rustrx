@@ -105,7 +105,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `profile` | | `profile` |
 | `set_display_name` | `name` | |
 | `set_own_avatar` | `path` (a prepared picture) | `profile` |
-| `ignore_user` / `unignore_user` | `user_id` | |
+| `ignore_user` / `unignore_user` | `user_id` | `ignored_users` |
+| `ignored_users` | | `ignored_users` |
 | `storage_info` | | `storage` |
 | `clear_media` | | `storage` |
 
@@ -159,6 +160,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `keys_exported` / `keys_imported` | `path` / `imported`, `total` |
 | `devices` | `devices`: `{device_id, name, last_seen_ts, last_seen_ip, current}` |
 | `device_deleted` | `device_id` |
+| `ignored_users` | `users`: `{user_id, name}` (name where the server gives a profile) |
 | `profile` | `display_name`, `user_id`, `avatar_path` (a cached file), `avatar_v` |
 | `storage` | `store`, `media_files` (bytes), `crypto?`, `state?`, `event_cache?`, `media_cache?` |
 | `error` | `cmd`, `message` |

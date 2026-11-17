@@ -70,7 +70,6 @@ def sent_commands():
 
 # accepted by the core but sent by nothing in the UI, each with its reason
 UNSENT_ALLOWED = {
-    "unignore_user": "the unignore page is queued for 0.4.7",
     "refresh_rooms": "for tests through tools/test/dev.sh (kept by the 0.4.6 audit)",
 }
 

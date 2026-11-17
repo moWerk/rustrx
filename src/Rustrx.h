@@ -293,6 +293,8 @@ signals:
     // count: the room's notifications now
     void newMessages(const QString &roomId, const QString &roomName, int count);
     void markReadRequested(const QString &roomId);
+    // the users this account ignores: {user_id, name}
+    void ignoredUsers(const QVariantList &users);
     void replyRequested(const QString &roomId, const QString &text);
     void reactRequested(const QString &roomId, const QString &eventId, const QString &key);
     // a room's notifications went to none (read here or in another client)

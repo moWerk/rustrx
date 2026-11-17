@@ -1869,5 +1869,29 @@
         <oldsource>The emoji buttons, up to three, with spaces between</oldsource>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-he-ignored">
+        <source>Ignored users</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-unignore">
+        <source>Stop ignoring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-re-unignoring">
+        <source>No longer ignoring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-ignored-none">
+        <source>Nobody is ignored</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-ignored-hint">
+        <source>Ignore someone from a room&apos;s member list.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-ignored">
+        <source>Ignored users</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

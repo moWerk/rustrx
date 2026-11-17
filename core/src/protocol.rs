@@ -160,6 +160,9 @@ pub(crate) enum Command {
     Search { term: String },
     RefreshRooms,
 
+    /// The users this account ignores: "ignored_users".
+    IgnoredUsers,
+
     // --- encryption ---
     VerificationRequestSelf,
     VerificationAccept { flow_id: String },
@@ -235,7 +238,7 @@ mod tests {
         "join_room", "leave_room", "join_by_id_or_alias", "room_preview", "knock", "room_link",
         "set_join_rule", "space_open", "space_close", "space_add_child", "space_remove_child",
         "space_leave", "create_dm", "create_room", "room_members", "set_room_name",
-        "set_room_avatar", "set_own_avatar", "set_room_topic", "invite", "search", "refresh_rooms",
+        "set_room_avatar", "set_own_avatar", "set_room_topic", "invite", "search", "refresh_rooms", "ignored_users",
         "verification_request_self", "verification_accept", "verification_start_sas",
         "verification_confirm", "verification_mismatch", "verification_cancel",
         "recovery_recover", "recovery_enable", "recovery_reset", "identity_reset",

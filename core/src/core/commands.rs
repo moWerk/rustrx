@@ -158,6 +158,7 @@ impl Core {
             SetDisplayName { name } => self.set_display_name(&name).await,
             IgnoreUser { user_id } => self.ignore_user(&user_id).await,
             UnignoreUser { user_id } => self.unignore_user(&user_id).await,
+            IgnoredUsers => self.ignored_users().await,
             StorageInfo => self.storage_info().await,
             ClearMedia => self.clear_media().await,
 
