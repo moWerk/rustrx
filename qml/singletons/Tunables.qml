@@ -84,6 +84,8 @@ QtObject {
     readonly property string favSparkleColor: "#fff4b8"
 
     // counts and limits
+    // people offered in the invite dialog while typing
+    readonly property int inviteContactsMax: 8
     // custom emoji of one message offered to add to the own pack
     readonly property int emoteOfferMax: 3
     // lines of a quoted message

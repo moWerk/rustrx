@@ -412,32 +412,111 @@ Page {
         VerticalScrollDecorator { }
     }
 
+    // invite: a Matrix ID, or someone found while typing: the people of
+    // the direct chats first (at once), then the server's user directory
     Component {
         id: inviteDialog
         Dialog {
+            id: dialog
+            property string term: userField.text.trim().replace(/^@/, "").toLowerCase()
+            property var found: []
+            property string asked
             canAccept: userField.text.trim().indexOf("@") === 0 && userField.text.indexOf(":") > 1
             onAccepted: rustrx.command({ cmd: "invite", room_id: roomId, user_id: userField.text.trim() })
-            Column {
-                width: parent.width
-                DialogHeader {
-                    //% "Invite"
-                    acceptText: qsTrId("rustrx-dh-invite")
+            function invite(userId) {
+                userField.text = userId
+                accept()
+            }
+            // the direct chats' people that match, then the directory's
+            function contacts() {
+                var out = [], seen = {}
+                if (term.length === 0) return out
+                for (var i = 0; i < rustrx.people.count && out.length < Tunables.inviteContactsMax; i++) {
+                    var r = rustrx.people.get(i)
+                    if (!r.dm_user || seen[r.dm_user]) continue
+                    if ((r.name || "").toLowerCase().indexOf(term) < 0 && r.dm_user.toLowerCase().indexOf(term) < 0) continue
+                    seen[r.dm_user] = true
+                    out.push({ user_id: r.dm_user, name: r.name || "" })
                 }
-                TextField {
-                    id: userField
+                for (var j = 0; j < found.length && out.length < Tunables.inviteContactsMax; j++) {
+                    if (seen[found[j].user_id]) continue
+                    seen[found[j].user_id] = true
+                    out.push({ user_id: found[j].user_id, name: found[j].name || "" })
+                }
+                return out
+            }
+            Timer {
+                id: searchLater
+                interval: Tunables.typingDebounceMs
+                onTriggered: {
+                    if (dialog.term.length < Tunables.minSearchChars) return
+                    dialog.asked = dialog.term
+                    rustrx.command({ cmd: "search", term: dialog.term })
+                }
+            }
+            Connections {
+                target: rustrx
+                onSearchResults: if (results.term === dialog.asked) dialog.found = results.users
+            }
+
+            SilicaFlickable {
+                anchors.fill: parent
+                contentHeight: column.height
+                Column {
+                    id: column
                     width: parent.width
-                    //% "Matrix ID, like @name:server"
-                    label: qsTrId("rustrx-la-invite-id")
-                    placeholderText: label
-                    inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
-                    // the @ is there already, see the login page
-                    text: "@"
-                    onTextChanged: if (text.indexOf("@@") === 0) text = text.slice(1)
-                    focus: true
-                    EnterKey.enabled: canAccept
-                    EnterKey.iconSource: "image://theme/icon-m-enter-accept"
-                    EnterKey.onClicked: accept()
+                    DialogHeader {
+                        //% "Invite"
+                        acceptText: qsTrId("rustrx-dh-invite")
+                    }
+                    TextField {
+                        id: userField
+                        width: parent.width
+                        //% "Name or Matrix ID, like @name:server"
+                        label: qsTrId("rustrx-la-invite-search")
+                        placeholderText: label
+                        inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+                        // the @ is there already, see the login page
+                        text: "@"
+                        onTextChanged: {
+                            if (text.indexOf("@@") === 0) text = text.slice(1)
+                            dialog.found = []
+                            searchLater.restart()
+                        }
+                        focus: true
+                        EnterKey.enabled: dialog.canAccept
+                        EnterKey.iconSource: "image://theme/icon-m-enter-accept"
+                        EnterKey.onClicked: dialog.accept()
+                    }
+                    Repeater {
+                        model: dialog.contacts()
+                        BackgroundItem {
+                            width: column.width
+                            height: Theme.itemSizeMedium
+                            onClicked: dialog.invite(modelData.user_id)
+                            Column {
+                                x: Theme.horizontalPageMargin
+                                width: parent.width - 2 * x
+                                anchors.verticalCenter: parent.verticalCenter
+                                Label {
+                                    width: parent.width
+                                    truncationMode: TruncationMode.Fade
+                                    color: highlighted ? Theme.highlightColor : Theme.primaryColor
+                                    text: modelData.name || modelData.user_id
+                                }
+                                Label {
+                                    visible: !!modelData.name
+                                    width: parent.width
+                                    truncationMode: TruncationMode.Fade
+                                    font.pixelSize: Theme.fontSizeExtraSmall
+                                    color: highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
+                                    text: modelData.user_id
+                                }
+                            }
+                        }
+                    }
                 }
+                VerticalScrollDecorator { }
             }
         }
     }

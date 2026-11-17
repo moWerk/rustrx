@@ -256,6 +256,12 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path, setting
         "topic": room.topic(),
         "alias": room.canonical_alias().map(|a| a.to_string()),
         "is_dm": is_dm,
+        // the person of a direct chat: the invite dialog's contacts
+        "dm_user": if is_dm {
+            room.direct_targets().iter().find_map(|t| t.as_user_id().map(|u| u.to_string()))
+        } else {
+            None
+        },
         // a call is running here (someone is in it, from the room's state)
         "in_call": room.has_active_room_call(),
         "is_fav": room.is_favourite(),

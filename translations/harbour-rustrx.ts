@@ -644,10 +644,6 @@
         <source>Invite</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-invite-id">
-        <source>Matrix ID, like @name:server</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-bt-save-topic">
         <source>Save topic</source>
         <translation type="unfinished"></translation>
@@ -1891,6 +1887,10 @@
     </message>
     <message id="rustrx-bt-ignored">
         <source>Ignored users</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-invite-search">
+        <source>Name or Matrix ID, like @name:server</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
