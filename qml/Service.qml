@@ -178,6 +178,9 @@ Item {
             n = notificationComponent.createObject(service, { roomId: roomId })
             roomNotifications[roomId] = n
         }
+        // a line taken over from an earlier process keeps the category it
+        // was posted with (before 0.4.8 x-nemo.messaging.im, no vibration)
+        n.category = "x-harbour-rustrx.message"
         return n
     }
     // count: the room's own notification count, as the server and the SDK
