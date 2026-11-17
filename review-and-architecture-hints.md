@@ -22,6 +22,7 @@ The app was written by an LLM (Claude), directed and tested by the author, who h
 - Login (`session.rs`), with no WebView and no Amber.Web.Authorization:
   - Where the server has an account service (MAS, matrix.org), OAuth 2.0 through the SDK (`login_oauth`). Rustrx registers itself as a native app, opens the service's page in the system browser and takes the code on a loopback port. The password never passes through Rustrx, and the session file keeps the client id.
   - Elsewhere, a password (`m.login.password`) or classic `m.login.sso` (`login_sso`): the sign-on page in the browser, and back with a login token.
+  - With a QR code (`login_qr`, MSC4108, where the server has the rendezvous): this device shows the code, a logged-in one scans it, and the user types its two digits (`qr_check_code`). The other device hands over the keys.
 - Calls: Element Call in a WebView with `qml/call-bridge.js` injected, and the SDK's widget driver behind it (`docs/CALLS.md`).
 
 ## Read these first
