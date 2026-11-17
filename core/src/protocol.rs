@@ -167,9 +167,18 @@ pub(crate) enum Command {
 
     /// The users this account ignores: "ignored_users".
     IgnoredUsers,
+    /// One person for their page (in a room: power, what we may do): "user_info".
+    UserInfo { user_id: String, room_id: Option<String> },
+    /// Removes someone from a room; they may come back.
+    Kick { room_id: String, user_id: String, reason: Option<String> },
+    /// Removes someone and keeps them out.
+    Ban { room_id: String, user_id: String, reason: Option<String> },
+    Unban { room_id: String, user_id: String, reason: Option<String> },
 
     // --- encryption ---
     VerificationRequestSelf,
+    /// Verifying someone else (in a direct chat): "verification", then as for oneself.
+    VerifyUser { user_id: String },
     VerificationAccept { flow_id: String },
     VerificationStartSas { flow_id: String },
     VerificationConfirm { flow_id: String },
@@ -250,8 +259,8 @@ mod tests {
         "join_room", "leave_room", "join_by_id_or_alias", "room_preview", "knock", "room_link",
         "set_join_rule", "space_open", "space_close", "space_add_child", "space_remove_child",
         "space_leave", "create_dm", "create_room", "room_members", "set_room_name",
-        "set_room_avatar", "set_own_avatar", "set_room_topic", "invite", "search", "refresh_rooms", "ignored_users",
-        "verification_request_self", "verification_accept", "verification_start_sas",
+        "set_room_avatar", "set_own_avatar", "set_room_topic", "invite", "search", "refresh_rooms", "ignored_users", "user_info", "kick", "ban", "unban",
+        "verification_request_self", "verify_user", "verification_accept", "verification_start_sas",
         "verification_confirm", "verification_mismatch", "verification_cancel",
         "recovery_recover", "recovery_enable", "recovery_reset", "identity_reset",
         "export_keys", "import_keys",
@@ -262,7 +271,7 @@ mod tests {
 
     /// How many fields the commands require, all together. Like COMMANDS, a
     /// change here is a change of the contract.
-    const REQUIRED_FIELDS: usize = 101;
+    const REQUIRED_FIELDS: usize = 109;
 
 
     /// The names serde knows, from its own error for an unknown tag

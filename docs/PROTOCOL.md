@@ -90,6 +90,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | cmd | fields | answered by |
 |---|---|---|
 | `verification_request_self` | | `verification` |
+| `verify_user` | `user_id` (someone else, in a direct chat) | `verification` |
 | `verification_accept`, `verification_start_sas`, `verification_cancel` | `flow_id` | `verification`, `sas` |
 | `verification_confirm`, `verification_mismatch` | `flow_id` | `sas`, `verification_state` |
 | `recovery_recover` | `recovery_key` | `recovery_done` |
@@ -107,6 +108,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `set_own_avatar` | `path` (a prepared picture) | `profile` |
 | `ignore_user` / `unignore_user` | `user_id` | `ignored_users` |
 | `ignored_users` | | `ignored_users` |
+| `user_info` | `user_id`, `room_id?` | `user_info` |
+| `kick` / `ban` / `unban` | `room_id`, `user_id`, `reason?` | `user_info` |
 | `storage_info` | | `storage` |
 | `clear_media` | | `storage` |
 
@@ -161,6 +164,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `devices` | `devices`: `{device_id, name, last_seen_ts, last_seen_ip, current}` |
 | `device_deleted` | `device_id` |
 | `ignored_users` | `users`: `{user_id, name}` (name where the server gives a profile) |
+| `user_info` | `user_id`, `name`, `has_identity`, `verified`, `ignored`, `is_self`; with a room: `room_id`, `membership`, `power`, `can_kick`, `can_ban` |
 | `profile` | `display_name`, `user_id`, `avatar_path` (a cached file), `avatar_v` |
 | `storage` | `store`, `media_files` (bytes), `crypto?`, `state?`, `event_cache?`, `media_cache?` |
 | `error` | `cmd`, `message` |

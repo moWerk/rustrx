@@ -140,6 +140,7 @@ impl Core {
 
             // --- encryption (verification.rs, account.rs) ---
             VerificationRequestSelf => self.verification_request_self().await,
+            VerifyUser { user_id } => self.verify_user(&user_id).await,
             VerificationAccept { flow_id } => self.verification_accept(&flow_id).await,
             VerificationStartSas { flow_id } => self.verification_start_sas(&flow_id).await,
             VerificationConfirm { flow_id } => self.verification_confirm(&flow_id).await,
@@ -160,6 +161,10 @@ impl Core {
             IgnoreUser { user_id } => self.ignore_user(&user_id).await,
             UnignoreUser { user_id } => self.unignore_user(&user_id).await,
             IgnoredUsers => self.ignored_users().await,
+            UserInfo { user_id, room_id } => self.user_info(&user_id, given(&room_id)).await,
+            Kick { room_id, user_id, reason } => self.moderate("kick", &room_id, &user_id, given(&reason)).await,
+            Ban { room_id, user_id, reason } => self.moderate("ban", &room_id, &user_id, given(&reason)).await,
+            Unban { room_id, user_id, reason } => self.moderate("unban", &room_id, &user_id, given(&reason)).await,
             StorageInfo => self.storage_info().await,
             ClearMedia => self.clear_media().await,
 

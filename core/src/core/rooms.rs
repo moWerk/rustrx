@@ -260,4 +260,63 @@ impl Core {
         self.emit(json!({"ev": "rooms", "rooms": sorted_rooms(rooms)}));
         Ok(())
     }
+
+    /// One person, for their page: the name, whether we verified them,
+    /// whether we ignore them, and in a room their power and what ours
+    /// lets us do to them: "user_info".
+    pub(crate) async fn user_info(&self, user_id: &str, room_id: Option<&str>) -> Result<()> {
+        let client = self.client().await?;
+        let user = UserId::parse(user_id.trim())?;
+        let identity = client.encryption().get_user_identity(&user).await.ok().flatten();
+        let ignored = client.subscribe_to_ignore_user_list_changes().get().iter().any(|u| u == user.as_str());
+        let mut info = json!({
+            "ev": "user_info", "user_id": user.as_str(),
+            "has_identity": identity.is_some(),
+            "verified": identity.as_ref().map(|i| i.is_verified()).unwrap_or(false),
+            "ignored": ignored,
+            "is_self": client.user_id() == Some(&*user),
+        });
+        let power = |p: UserPowerLevel| match p {
+            UserPowerLevel::Infinite => i64::MAX,
+            UserPowerLevel::Int(i) => i64::from(i),
+            _ => 0,
+        };
+        if let Some(room) = room_id.and_then(|r| RoomId::parse(r).ok()).and_then(|r| client.get_room(&r)) {
+            info["room_id"] = json!(room.room_id().as_str());
+            if let Ok(Some(member)) = room.get_member_no_sync(&user).await {
+                info["name"] = json!(member.name());
+                info["membership"] = json!(member.membership().to_string());
+                info["power"] = json!(power(member.power_level()));
+                if let Some(own) = client.user_id() {
+                    if let Ok(Some(me)) = room.get_member_no_sync(own).await {
+                        // the server also wants our power above theirs
+                        let above = power(me.power_level()) > power(member.power_level());
+                        info["can_kick"] = json!(me.can_kick() && above);
+                        info["can_ban"] = json!(me.can_ban() && above);
+                    }
+                }
+            }
+        }
+        if info.get("name").is_none() {
+            let name = client.account().fetch_user_profile_of(&user).await.ok()
+                .and_then(|p| p.get("displayname").and_then(Value::as_str).map(str::to_owned));
+            info["name"] = json!(name);
+        }
+        self.emit(info);
+        Ok(())
+    }
+
+    /// Out of the room (kick), out and kept out (ban), or let back (unban);
+    /// the room's member list and the person's page follow.
+    pub(crate) async fn moderate(&self, action: &str, room_id: &str, user_id: &str, reason: Option<&str>) -> Result<()> {
+        let room = self.room(room_id).await?;
+        let user = UserId::parse(user_id.trim())?;
+        match action {
+            "kick" => room.kick_user(&user, reason).await?,
+            "ban" => room.ban_user(&user, reason).await?,
+            "unban" => room.unban_user(&user, reason).await?,
+            other => bail!("no such action {other}"),
+        }
+        self.user_info(user_id, Some(room_id)).await
+    }
 }

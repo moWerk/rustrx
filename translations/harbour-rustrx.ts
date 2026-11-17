@@ -1911,5 +1911,45 @@
         <extracomment>the pill that goes back to the first unread message</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-user-verified">
+        <source>Verified: you compared emoji with them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-user-unverified">
+        <source>Not verified. Verify to be sure messages from them are theirs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-user-no-identity">
+        <source>They have not set up verification.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-verify-user">
+        <source>Verify</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-user-room">
+        <source>In this room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-kick">
+        <source>Remove from the room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-re-kicking">
+        <source>Removing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-ban">
+        <source>Ban from the room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-re-banning">
+        <source>Banning</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-unban">
+        <source>Lift the ban</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

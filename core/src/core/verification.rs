@@ -179,6 +179,21 @@ impl Core {
         Ok(())
     }
 
+    /// Verifying someone else: a request in a direct chat with them (the
+    /// SDK finds or makes it), the same emoji flow as for one's own devices.
+    pub(crate) async fn verify_user(&'static self, user_id: &str) -> Result<()> {
+        let client = self.client().await?;
+        let user = UserId::parse(user_id.trim())?;
+        let identity = client
+            .encryption()
+            .get_user_identity(&user)
+            .await?
+            .context("they have not set up verification (no cross-signing keys)")?;
+        let req = identity.request_verification().await?;
+        self.spawn_login_task(self.watch_request(req)).await;
+        Ok(())
+    }
+
     pub(crate) async fn verification_accept(&self, flow: &str) -> Result<()> {
         self.request(flow).await?.accept().await?;
         Ok(())

@@ -773,6 +773,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit dmReady(ev.value("room_id").toString(), ev.value("user_id").toString());
     } else if (type == QLatin1String("joined")) {
         emit joined(ev.value("room_id").toString());
+    } else if (type == QLatin1String("user_info")) {
+        emit userInfo(ev);
     } else if (type == QLatin1String("ignored_users")) {
         emit ignoredUsers(ev.value("users").toList());
     } else if (type == QLatin1String("draft")) {

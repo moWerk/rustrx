@@ -100,6 +100,8 @@ Page {
             // nothing to do with oneself here (direct chat, ignore): no menu
             menu: isSelf ? null : memberMenu
             readonly property bool isSelf: modelData.user_id === rustrx.userId
+            onClicked: pageStack.push(Qt.resolvedUrl("UserPage.qml"),
+                                      { userId: modelData.user_id, roomId: page.roomId, name: modelData.name || "" })
 
             Column {
                 x: Theme.horizontalPageMargin
