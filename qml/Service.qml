@@ -133,26 +133,27 @@ Item {
         cfg.emojiCounts = JSON.stringify(counts)
     }
 
-    // a room notification's buttons: open (a tap), Mark as read, Reply (a
-    // text field in the notification), the favourite emoji on the latest
-    // message; reply and emoji can be switched off in Settings. With push on
-    // they go to the push connector, so a closed Rustrx answers them
-    // without its window.
+    // a room notification's buttons, in this order: open (a tap), Reply (a
+    // text field in the notification), Mark as read, three emoji on the
+    // latest message; reply and emoji can be switched off in Settings.
+    // lipstick puts the buttons in one row while they fit and stacks every
+    // one of them otherwise: these fit a phone's row (Jolla Phone 2026: 871
+    // of 972 px). With push on they go to the push connector, so a closed
+    // Rustrx answers them without its window.
+    readonly property var notificationEmoji: ["👍", "😀", "👎"]
     function roomActions(roomId, eventId) {
         var viaPush = rustrx.push.enabled
-        var actions = [
-            action("default", "openRoomFromNotification", [ roomId ]),
-            //% "Mark as read"
-            action("mark_read", "markRoomRead", [ roomId ], qsTrId("rustrx-me-notification-read"), viaPush)
-        ]
+        var actions = [ action("default", "openRoomFromNotification", [ roomId ]) ]
         if (cfg.notifyReply) {
             //% "Reply"
             var reply = action("reply", "replyFromNotification", [ roomId ], qsTrId("rustrx-me-notification-reply"), viaPush)
             reply["type"] = "input"
             actions.push(reply)
         }
+        //% "Mark as read"
+        actions.push(action("mark_read", "markRoomRead", [ roomId ], qsTrId("rustrx-me-notification-read"), viaPush))
         if (cfg.notifyReactions && eventId && eventId.length) {
-            var emoji = favouriteEmoji()
+            var emoji = notificationEmoji
             for (var i = 0; i < emoji.length; i++)
                 actions.push(action("react" + i, "reactFromNotification", [ roomId, eventId, emoji[i] ], emoji[i], viaPush))
         }

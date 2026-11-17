@@ -1855,7 +1855,8 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-notify-reactions-hint">
-        <source>Your five most used emoji as buttons, to react to the latest message.</source>
+        <source>👍, 😀 and 👎 as buttons, to react to the latest message.</source>
+        <oldsource>Your five most used emoji as buttons, to react to the latest message.</oldsource>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-me-notification-reply">

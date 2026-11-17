@@ -126,7 +126,7 @@ Page {
             TextSwitch {
                 //% "Emoji in notifications"
                 text: qsTrId("rustrx-la-notify-reactions")
-                //% "Your five most used emoji as buttons, to react to the latest message."
+                //% "👍, 😀 and 👎 as buttons, to react to the latest message."
                 description: qsTrId("rustrx-la-notify-reactions-hint")
                 checked: service.notifyReactions
                 automaticCheck: false
