@@ -1906,5 +1906,10 @@
         <source>Everyone in the room</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-bt-first-unread">
+        <source>↑ Unread</source>
+        <extracomment>the pill that goes back to the first unread message</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

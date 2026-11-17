@@ -220,22 +220,61 @@ Page {
 
     // the first time the room fills, start at the read marker if it is there
     property bool positioned
+    // the read marker's row (-1: none), and whether it is above the view:
+    // then a pill at the top goes back to the first unread message
+    property int markerRow: -1
+    property bool markerAbove
+    function findMarker() {
+        for (var i = 0; i < rustrx.timeline.count; i++)
+            if (rustrx.timeline.get(i).kind === "readmarker") return i
+        return -1
+    }
+    function checkMarker() {
+        if (markerRow < 0) { markerAbove = false; return }
+        // newest first, laid out bottom to top: the row at the view's top
+        // edge is the oldest in view
+        var top = list.indexAt(list.width / 2, list.contentY + Theme.paddingSmall)
+        markerAbove = top >= 0 && markerRow > top
+    }
+    onMarkerRowChanged: checkMarker()
     Connections {
         target: rustrx.timeline
         onCountChanged: {
             if (trace.enabled) trace.log("count", "n=" + rustrx.timeline.count)
+            page.markerRow = page.findMarker()
             if (!page.positioned && rustrx.timeline.count > 0) {
                 page.positioned = true
-                for (var i = 0; i < rustrx.timeline.count; i++) {
-                    if (rustrx.timeline.get(i).kind === "readmarker") {
-                        page.viewAt("readmarker", i, ListView.Center)
-                        break
-                    }
-                }
+                if (page.markerRow >= 0) page.viewAt("readmarker", page.markerRow, ListView.Center)
             }
             if (anchor.atNewest()) markRead()
         }
     }
+    // the first unread message is above the view: a pill under the header
+    // goes back to it
+    BackgroundItem {
+        id: unreadPill
+        z: 2
+        visible: page.markerAbove
+        anchors { top: header.bottom; horizontalCenter: parent.horizontalCenter }
+        width: pillLabel.implicitWidth + 2 * Theme.paddingLarge
+        height: pillLabel.implicitHeight + Theme.paddingMedium
+        onClicked: if (page.markerRow >= 0) page.viewAt("unread pill", page.markerRow, ListView.Center)
+        Rectangle {
+            anchors.fill: parent
+            radius: height / 2
+            color: Theme.rgba(Theme.highlightBackgroundColor, Theme.opacityHigh)
+        }
+        Label {
+            id: pillLabel
+            anchors.centerIn: parent
+            font.pixelSize: Theme.fontSizeSmall
+            color: Theme.primaryColor
+            //: the pill that goes back to the first unread message
+            //% "↑ Unread"
+            text: qsTrId("rustrx-bt-first-unread")
+        }
+    }
+
     // the chat position trace, off by default (ChatTrace)
     ChatTrace {
         id: trace
@@ -263,7 +302,7 @@ Page {
         spacing: Theme.paddingSmall
         clip: true
 
-        onContentYChanged: trace.logY()
+        onContentYChanged: { trace.logY(); page.checkMarker() }
         onOriginYChanged: trace.log("oy")
         onContentHeightChanged: trace.logContentHeight()
         onHeightChanged: trace.log("h")
