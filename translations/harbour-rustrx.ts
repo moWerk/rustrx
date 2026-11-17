@@ -1855,12 +1855,16 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-notify-reactions-hint">
-        <source>👍, 😀 and 👎 as buttons, to react to the latest message.</source>
-        <oldsource>Your five most used emoji as buttons, to react to the latest message.</oldsource>
+        <source>Three emoji as buttons, to react to the latest message.</source>
+        <oldsource>👍, 😀 and 👎 as buttons, to react to the latest message.</oldsource>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-me-notification-reply">
         <source>Reply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-notify-emoji">
+        <source>The emoji buttons, up to three, with spaces between</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

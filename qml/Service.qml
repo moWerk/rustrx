@@ -38,6 +38,7 @@ Item {
     property alias notifyText: cfg.notifyText
     property alias notifyReply: cfg.notifyReply
     property alias notifyReactions: cfg.notifyReactions
+    property alias notifyEmoji: cfg.notifyEmoji
     // the stand-in's line in the events view, on unless switched off
     property alias showBackgroundLine: cfg.showBackgroundLine
 
@@ -140,7 +141,11 @@ Item {
     // one of them otherwise: these fit a phone's row (Jolla Phone 2026: 871
     // of 972 px). With push on they go to the push connector, so a closed
     // Rustrx answers them without its window.
-    readonly property var notificationEmoji: ["👍", "😀", "👎"]
+    // the user's three from Settings; the default when none are left
+    readonly property var notificationEmoji: {
+        var picked = String(cfg.notifyEmoji || "").split(/\s+/).filter(function (e) { return e.length > 0 }).slice(0, 3)
+        return picked.length ? picked : ["👍", "😀", "👎"]
+    }
     function roomActions(roomId, eventId) {
         var viaPush = rustrx.push.enabled
         var actions = [ action("default", "openRoomFromNotification", [ roomId ]) ]

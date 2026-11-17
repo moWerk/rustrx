@@ -126,11 +126,24 @@ Page {
             TextSwitch {
                 //% "Emoji in notifications"
                 text: qsTrId("rustrx-la-notify-reactions")
-                //% "👍, 😀 and 👎 as buttons, to react to the latest message."
+                //% "Three emoji as buttons, to react to the latest message."
                 description: qsTrId("rustrx-la-notify-reactions-hint")
                 checked: service.notifyReactions
                 automaticCheck: false
                 onClicked: service.notifyReactions = !service.notifyReactions
+            }
+
+            TextField {
+                visible: service.notifyReactions
+                width: parent.width
+                //% "The emoji buttons, up to three, with spaces between"
+                label: qsTrId("rustrx-la-notify-emoji")
+                placeholderText: label
+                text: service.notifyEmoji
+                inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+                EnterKey.iconSource: "image://theme/icon-m-enter-close"
+                EnterKey.onClicked: focus = false
+                onActiveFocusChanged: if (!activeFocus) service.notifyEmoji = text.trim()
             }
 
             TextSwitch {
