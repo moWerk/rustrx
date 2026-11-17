@@ -1,3 +1,20 @@
+* Tue Nov 17 2026 moWerk <mo@mowerk.net> - 0.4.8
+- Fixed: logged out after a push woke Rustrx with an expired token (the
+  rotated refresh token was not saved); a session counts as gone only
+  after three answers from the server.
+- Notifications: Reply, Mark as read (dodoradio) and three emoji on one
+  row, also with Rustrx closed; they vibrate (Fuzzillogic, dodoradio):
+  Rustrx brings its own lipstick categories; a ringing call notifies
+  again (broken since 0.4.4).
+- New: @mentions with pills, slash commands, tap a reply's quote to go to
+  the original, an "Unread" pill, bare domains as links.
+- New: select text across messages, from a message's menu.
+- New: a page per person (verify, direct chat, ignore, remove, ban), the
+  ignored users list, invite by part of a name, login with a QR code.
+- New: Settings > Privacy, mark messages as read only once shown (on by
+  default; off, opening the room is enough).
+- Fixed: a picture preview the phone cannot read loads the picture.
+
 * Mon Nov 16 2026 moWerk <mo@mowerk.net> - 0.4.7
 - New: on servers with an account service (MAS, matrix.org) the login
   happens on its own page in the browser (OAuth 2.0); the password never
