@@ -1193,6 +1193,14 @@
         <source>Link copied</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-no-address-copied">
+        <source>Address copied</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-room-id-copied">
+        <source>Room ID copied</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-me-view-source">
         <source>View source</source>
         <translation type="unfinished"></translation>

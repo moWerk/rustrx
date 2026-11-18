@@ -305,11 +305,23 @@ Page {
 
             Item { width: 1; height: Theme.paddingMedium }
 
-            DetailItem {
+            // the address, a tap copies it, for sharing the room
+            BackgroundItem {
                 visible: !!(info.alias && info.alias.length)
-                //% "Address"
-                label: qsTrId("rustrx-la-alias")
-                value: info.alias || ""
+                width: parent.width
+                height: aliasItem.height
+                onClicked: {
+                    Clipboard.text = info.alias
+                    //% "Address copied"
+                    Notices.show(qsTrId("rustrx-no-address-copied"), Notice.Short)
+                }
+                DetailItem {
+                    id: aliasItem
+                    width: parent.width
+                    //% "Address"
+                    label: qsTrId("rustrx-la-alias")
+                    value: info.alias || ""
+                }
             }
             // who may join: anyone, people who ask, members of its spaces,
             // or invited people only
@@ -349,14 +361,27 @@ Page {
                 //% "Off"
                                       : qsTrId("rustrx-la-off")
             }
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                text: roomId
-                wrapMode: Text.WrapAnywhere
-                horizontalAlignment: Text.AlignRight
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
+            // the room's ID, which every room has; a tap copies it too
+            BackgroundItem {
+                id: idRow
+                width: parent.width
+                height: idLabel.height + 2 * Theme.paddingSmall
+                onClicked: {
+                    Clipboard.text = roomId
+                    //% "Room ID copied"
+                    Notices.show(qsTrId("rustrx-no-room-id-copied"), Notice.Short)
+                }
+                Label {
+                    id: idLabel
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * x
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: roomId
+                    wrapMode: Text.WrapAnywhere
+                    horizontalAlignment: Text.AlignRight
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    color: idRow.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
+                }
             }
 
             ComboBox {
