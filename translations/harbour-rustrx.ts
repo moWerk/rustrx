@@ -476,8 +476,8 @@
         <source>Display name</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-bt-log-out">
-        <source>Log out</source>
+    <message id="rustrx-bt-log-out-now">
+        <source>Log out now</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-re-logging-out">

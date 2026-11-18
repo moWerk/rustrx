@@ -178,14 +178,6 @@ SilicaFlickable {
     }
     NumberAnimation { id: scroll; target: tab; property: "contentY"; duration: Tunables.sectionScrollMs; easing.type: Easing.InOutQuad }
 
-    PullDownMenu {
-        MenuItem {
-            //% "Log out"
-            text: qsTrId("rustrx-bt-log-out")
-            onClicked: settings.logOut()
-        }
-    }
-
     Column {
         id: column
         width: parent.width
@@ -233,6 +225,15 @@ SilicaFlickable {
             font.pixelSize: Theme.fontSizeSmall
             color: Theme.secondaryColor
             text: rustrx.userId + "\n" + rustrx.homeserver
+        }
+
+        // a button, not a pulley: a pulley nobody expects here was pulled
+        // by mistake (the author's find). The pulley waits for switching
+        // between accounts (0.5).
+        PageButton {
+            //% "Log out now"
+            text: qsTrId("rustrx-bt-log-out-now")
+            onClicked: settings.logOut()
         }
 
         Item { width: 1; height: Theme.paddingLarge }
