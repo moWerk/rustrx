@@ -36,6 +36,26 @@ Page {
     property bool loading
     property bool waiting
     property bool asked
+    // what went wrong, in words (the server's own text is in the debug log)
+    property string problem
+
+    function problemText(cmd, message) {
+        var m = message || ""
+        //: %1 the own homeserver, like tchncs.de
+        //% "The moderators of this room do not let people from your server (%1) in."
+        if (/server is banned/i.test(m)) return qsTrId("rustrx-la-join-server-banned").arg(ownServer)
+        if (/banned/i.test(m)) return qsTrId("rustrx-la-preview-banned")
+        //% "Only invited people can join. Ask someone inside for an invitation."
+        if (/not invited|invite only|invite-only/i.test(m)) return qsTrId("rustrx-la-preview-invite-only")
+        //% "No room or space has this address. Check it, or type part of its name to search."
+        if (/not found|unknown room|M_NOT_FOUND|no known servers|room alias/i.test(m)) return qsTrId("rustrx-la-join-not-found")
+        //% "That is no address yet. Type part of the name to search, or the full address, like #room:server."
+        if (/sigil|invalid|not a valid/i.test(m)) return qsTrId("rustrx-la-join-not-address")
+        //% "The server would not let you in: %1"
+        if (/forbidden/i.test(m)) return qsTrId("rustrx-la-join-forbidden").arg(m.replace(/^.*\]\s*/, ""))
+        //% "Could not join: %1"
+        return qsTrId("rustrx-la-join-failed").arg(m)
+    }
 
     // found by part of a name: [{room_id, name, alias, member_count, is_space, server}]
     property var found: []
@@ -74,13 +94,16 @@ Page {
         preview = ({})
         asked = false
         loading = true
+        problem = ""
         rustrx.command({ cmd: "room_preview", room_or_alias: id, via: via })
     }
     function join() {
+        problem = ""
         waiting = true
         rustrx.command({ cmd: "join_by_id_or_alias", room_or_alias: address, via: via })
     }
     function knock() {
+        problem = ""
         waiting = true
         rustrx.command({ cmd: "knock", room_or_alias: address, reason: reasonField.text.trim(), via: via })
     }
@@ -120,7 +143,12 @@ Page {
             page.found = all
         }
         onErrorOccurred: {
-            if (cmd === "join_by_id_or_alias" || cmd === "knock" || cmd === "room_preview") { page.waiting = false; page.loading = false }
+            if (cmd === "join_by_id_or_alias" || cmd === "knock" || cmd === "room_preview") {
+                page.waiting = false
+                page.loading = false
+                // a private room's preview comes as ok: false, not as an error
+                page.problem = page.problemText(cmd, message)
+            }
             if (cmd === "search_rooms") page.searching = Math.max(0, page.searching - 1)
         }
     }
@@ -350,6 +378,15 @@ Page {
                 color: Theme.secondaryHighlightColor
                 //% "Only invited people can join. Ask someone inside for an invitation."
                 text: qsTrId("rustrx-la-preview-invite-only")
+            }
+
+            Label {
+                visible: page.problem.length > 0
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                color: Theme.highlightColor
+                text: page.problem
             }
 
             BusyIndicator {

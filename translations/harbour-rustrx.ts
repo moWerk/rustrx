@@ -1381,6 +1381,26 @@
         <source>Nothing found in the public directories. A private room needs its full address, like #room:server.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-join-server-banned">
+        <source>The moderators of this room do not let people from your server (%1) in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-join-not-found">
+        <source>No room or space has this address. Check it, or type part of its name to search.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-join-not-address">
+        <source>That is no address yet. Type part of the name to search, or the full address, like #room:server.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-join-forbidden">
+        <source>The server would not let you in: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-join-failed">
+        <source>Could not join: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-la-kind-space">
         <source>Space</source>
         <translation type="unfinished"></translation>
