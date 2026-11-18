@@ -113,15 +113,15 @@ SilicaFlickable {
         //% "Photos"
         SectionHeader { text: qsTrId("rustrx-se-photos") }
 
-        // a photo's EXIF can say where it was taken (src/Exif.h)
+        // a photo's EXIF says where, when and with what it was taken (src/Exif.h)
         TextSwitch {
-            //% "Remove the location from photos"
-            text: qsTrId("rustrx-la-strip-location")
-            //% "Photos leave without the place they were taken. Off: they go as the camera saved them."
-            description: qsTrId("rustrx-la-strip-location-hint")
-            checked: rustrx.stripLocation
+            //% "Remove metadata from photos"
+            text: qsTrId("rustrx-la-strip-metadata")
+            //% "Photos leave without the place and time they were taken, the camera and anything else it noted, only which way up they are. Off: they go as the camera saved them."
+            description: qsTrId("rustrx-la-strip-metadata-hint")
+            checked: rustrx.stripMetadata
             automaticCheck: false
-            onClicked: rustrx.stripLocation = !rustrx.stripLocation
+            onClicked: rustrx.stripMetadata = !rustrx.stripMetadata
         }
 
         // what anyone holding or seeing the phone learns

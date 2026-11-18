@@ -70,11 +70,15 @@ ConfigurationGroup {
 
     // start in the chat that was open when the app was closed
     property bool reopenLast: false
+    // every page upright, whatever the phone's rotation (pictures and videos still turn)
+    property bool portraitOnly: false
     property string lastRoom: ""
 
     // the emoji used, as JSON {emoji: count}
     property string emojiCounts: "{}"
     property bool prototypeNoticeSeen: false
+    // the page about a phone without sailfish-secrets was agreed to
+    property bool secretsNoticeSeen: false
     // the one notice before the first call (CallNotice)
     property bool callNoticeSeen: false
 }

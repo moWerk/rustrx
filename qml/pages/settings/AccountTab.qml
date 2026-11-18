@@ -82,8 +82,8 @@ SilicaFlickable {
             store.go = ""
             //% "This phone has no working Sailfish Secrets, so Rustrx cannot encrypt what it stores here."
             store.text = qsTrId("rustrx-la-risk-no-secrets")
-            //% "Nothing Rustrx can do on this phone."
-            store.fix = qsTrId("rustrx-la-risk-no-secrets-fix")
+            //% "Install Sailfish Secrets (sailfishsecretsdaemon with its default plugins), then log out and log in again."
+            store.fix = qsTrId("rustrx-la-risk-no-secrets-fix2")
         }
         var verify = { status: verifySlice, weight: 1, go: "verify",
                        title: verifySlice === "risk"

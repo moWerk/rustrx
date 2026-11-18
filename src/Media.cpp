@@ -63,16 +63,16 @@ void Media::setDownscaleImages(bool on)
     emit settingsChanged();
 }
 
-bool Media::stripLocation() const
+bool Media::stripMetadata() const
 {
-    return m_settings->value(QLatin1String(Keys::kStripLocation), Keys::kStripLocationDefault).toBool();
+    return m_settings->value(QLatin1String(Keys::kStripMetadata), Keys::kStripMetadataDefault).toBool();
 }
 
-void Media::setStripLocation(bool on)
+void Media::setStripMetadata(bool on)
 {
-    if (on == stripLocation())
+    if (on == stripMetadata())
         return;
-    m_settings->setValue(QLatin1String(Keys::kStripLocation), on);
+    m_settings->setValue(QLatin1String(Keys::kStripMetadata), on);
     emit settingsChanged();
 }
 
@@ -163,19 +163,19 @@ void Media::sendFile(const QString &roomId, const QString &path, const QString &
             const bool shrink = downscaleImages()
                     && qMax(image.width(), image.height()) > Keys::kUploadMaxEdge;
             if (shrink) {
-                // re-encoded: no metadata at all, the place neither
+                // re-encoded: no metadata at all
                 image = image.scaled(Keys::kUploadMaxEdge, Keys::kUploadMaxEdge, Qt::KeepAspectRatio, Qt::SmoothTransformation);
                 const QString out = stem + ".jpg";
                 if (image.save(out, "JPEG", Keys::kUploadJpegQuality))
                     cmd.insert("path", out);
-            } else if (stripLocation() && format == "jpeg") {
-                // as it is, the place out of its EXIF; one that cannot be
-                // read is re-encoded, so no place slips through
+            } else if (stripMetadata() && format == "jpeg") {
+                // as it is, its metadata out but the orientation (Exif.h);
+                // one that cannot be read is re-encoded, so nothing slips through
                 QFile in(p);
                 QByteArray bytes = in.open(QIODevice::ReadOnly) ? in.readAll() : QByteArray();
                 const QString out = stem + ".jpg";
                 QFile file(out);
-                if (!bytes.isEmpty() && Exif::stripLocation(bytes) && file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size()) {
+                if (!bytes.isEmpty() && Exif::strip(bytes) && file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size()) {
                     file.close();
                     cmd.insert("path", out);
                 } else if (image.save(out, "JPEG", Keys::kReencodeJpegQuality)) {

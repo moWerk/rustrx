@@ -34,8 +34,9 @@ static const bool kDebugLogDefault = true;
 static const char kDownscaleImages[] = "downscaleImages";
 static const bool kDownscaleImagesDefault = true;
 // the place a photo was taken, out of it before it is sent (Exif.h)
-static const char kStripLocation[] = "stripLocation";
-static const bool kStripLocationDefault = true;
+// stored under its 0.4 name, when it removed only the place: a choice made then stays
+static const char kStripMetadata[] = "stripLocation";
+static const bool kStripMetadataDefault = true;
 // a JPEG re-encoded because its EXIF could not be read
 static const int kReencodeJpegQuality = 95;
 // the invitations a notification was shown for

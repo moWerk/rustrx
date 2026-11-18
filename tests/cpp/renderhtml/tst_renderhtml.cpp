@@ -30,7 +30,8 @@ QString twemoji(const QString &name, int h)
             .arg(kDir, name).arg(h);
 }
 
-QString spoiler() { return QStringLiteral("<i>") + qtTrId("rustrx-la-spoiler") + QStringLiteral("</i>"); }
+// a covered spoiler of n characters
+QString spoiler(int n) { return QStringLiteral("<a href=\"rustrx:spoiler\">") + QString(n, QChar(0x2588)) + QStringLiteral("</a>"); }
 
 // what may be in the output: the tags the renderer makes itself, nothing
 // else. Every "<" must start one of them.
@@ -39,7 +40,7 @@ bool onlyOwnTags(const QString &out, QString *bad)
     static const QRegularExpression own(QStringLiteral(
         "^(?:</?(?:b|strong|i|u|p|pre|ul|ol|li|h[1-6])>"
         "|<br>"
-        "|</a>|<a href=\"(?:https?|ftp|mailto|magnet|matrix):[^\"<>]*\">"
+        "|</a>|<a href=\"(?:https?|ftp|mailto|magnet|matrix):[^\"<>]*\">|<a href=\"rustrx:spoiler\">"
         "|</font>|<font color=\"#[0-9a-fA-F]{6}\">"
         "|<img src=\"file://[^\"<>]*\" width=\"\\d+\" height=\"\\d+\" align=\"middle\">)"),
         QRegularExpression::CaseInsensitiveOption);
@@ -245,23 +246,26 @@ private slots:
     }
 
     // Planted-bug: closing a spoiler does not count it out (no --hidden),
-    // so everything after the first spoiler is hidden.
+    // so everything after the first spoiler is hidden. Planted-bug: the
+    // blocks are emitted at every close, so a nested spoiler shows twice.
     void spoilers_data()
     {
         QTest::addColumn<QString>("in");
         QTest::addColumn<QString>("out");
-        QTest::newRow("span") << U("a<span data-mx-spoiler>secret</span>b") << U("a") + spoiler() + U("b");
-        QTest::newRow("with reason") << U("<span data-mx-spoiler=\"why\">s</span>b") << spoiler() + U("b");
-        QTest::newRow("font") << U("<font data-mx-spoiler>s</font>b") << spoiler() + U("b");
-        QTest::newRow("case") << U("<SPAN DATA-MX-SPOILER>s</SPAN>b") << spoiler() + U("b");
-        QTest::newRow("nested") << U("<span data-mx-spoiler>x<span data-mx-spoiler>y</span>z</span>w") << spoiler() + U("w");
+        QTest::newRow("span") << U("a<span data-mx-spoiler>secret</span>b") << U("a") + spoiler(6) + U("b");
+        QTest::newRow("with reason") << U("<span data-mx-spoiler=\"why\">s</span>b") << spoiler(1) + U("b");
+        QTest::newRow("font") << U("<font data-mx-spoiler>s</font>b") << spoiler(1) + U("b");
+        QTest::newRow("case") << U("<SPAN DATA-MX-SPOILER>s</SPAN>b") << spoiler(1) + U("b");
+        QTest::newRow("nested") << U("<span data-mx-spoiler>x<span data-mx-spoiler>y</span>z</span>w") << spoiler(3) + U("w");
         QTest::newRow("two") << U("<span data-mx-spoiler>x</span>-<span data-mx-spoiler>y</span>.")
-                             << spoiler() + U("-") + spoiler() + U(".");
+                             << spoiler(1) + U("-") + spoiler(1) + U(".");
         QTest::newRow("link, picture, emoji inside")
                 << U("<span data-mx-spoiler><a href=\"http://e\">l</a><img src=\"mxc://example.org/wide\">😀<br></span>")
-                << spoiler();
-        QTest::newRow("closed by its parent") << U("<b><span data-mx-spoiler>s</b>after") << U("<b>") + spoiler() + U("</b>after");
-        QTest::newRow("unclosed hides the rest") << U("<span data-mx-spoiler>s<b>t</b>") << spoiler();
+                << spoiler(3);
+        QTest::newRow("entities count once") << U("<span data-mx-spoiler>a&amp;b&#233;</span>") << spoiler(4);
+        QTest::newRow("empty") << U("<span data-mx-spoiler></span>x") << spoiler(1) + U("x");
+        QTest::newRow("closed by its parent") << U("<b><span data-mx-spoiler>s</b>after") << U("<b>") + spoiler(1) + U("</b>after");
+        QTest::newRow("unclosed hides the rest") << U("<span data-mx-spoiler>s<b>t</b>") << spoiler(2);
         QTest::newRow("only span and font") << U("<div data-mx-spoiler>s</div>") << U("s<br>");
     }
     void spoilers()
@@ -269,6 +273,15 @@ private slots:
         QFETCH(QString, in);
         QFETCH(QString, out);
         QCOMPARE(t.html(in), out);
+    }
+
+    // Planted-bug: spoilersShown renders like the html role (spoilers
+    // still covered), so a tap shows nothing new.
+    void spoilersShownOnTap()
+    {
+        QCOMPARE(t.html(U("a<span data-mx-spoiler>s<b>t</b></span>b")), U("a") + spoiler(2) + U("b"));
+        QCOMPARE(t.model.spoilersShown(0), U("as<b>t</b>b"));
+        QCOMPARE(t.model.spoilersShown(1), QString());
     }
 
     // Planted-bug: the reply expression loses DotMatchesEverything, so a
@@ -452,7 +465,7 @@ private slots:
         const int n = 100000;
         const QString nested = t.html(QStringLiteral("<b>").repeated(n) + QStringLiteral("x"));
         QCOMPARE(nested, QStringLiteral("<b>").repeated(n) + QStringLiteral("x") + QStringLiteral("</b>").repeated(n));
-        QCOMPARE(t.html(QStringLiteral("<span data-mx-spoiler>").repeated(n) + QStringLiteral("x")), spoiler());
+        QCOMPARE(t.html(QStringLiteral("<span data-mx-spoiler>").repeated(n) + QStringLiteral("x")), spoiler(1));
         QCOMPARE(t.html(QStringLiteral("</i>").repeated(n) + QStringLiteral("x")), QStringLiteral("x"));
         QVERIFY2(timer.elapsed() < 30000, qPrintable(QString::number(timer.elapsed())));
     }

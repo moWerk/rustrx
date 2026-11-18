@@ -69,6 +69,14 @@ ListItem {
     readonly property var reactionList: model.reactions ? model.reactions : []
     // read once here: each read of a role asks the model again
     readonly property string htmlText: model.html || ""
+    // the message with its spoilers shown, once the reader tapped one
+    property string spoilersShown
+    onHtmlTextChanged: spoilersShown = ""
+    // a tap on a link in the text: a covered spoiler shows, the rest opens
+    function linkTapped(link) {
+        if (link === "rustrx:spoiler") spoilersShown = msg.ListView.view.model.spoilersShown(index)
+        else app.openLink(link)
+    }
     readonly property var replyTo: model.reply_to ? model.reply_to : null
     // the custom emoji in the message and its reactions ({ url, shortcode });
     // only the menu asks, finding them is a scan of the message
@@ -399,7 +407,7 @@ ListItem {
                             color: msgType === "utd" || msgType === "redacted" ? dimColor : (mention ? Theme.highlightColor : mainColor)
                             font.italic: msgType === "emote" || msgType === "utd" || msgType === "redacted"
                             linkColor: Theme.secondaryHighlightColor
-                            onLinkActivated: app.openLink(link)
+                            onLinkActivated: linkTapped(link)
                             text: {
                                 //% "Waiting for the key to decrypt this message"
                                 if (msgType === "utd") return qsTrId("rustrx-la-utd")
@@ -423,7 +431,7 @@ ListItem {
                                 if (msgType === "verification") return qsTrId("rustrx-la-verification-request")
                                 // the model renders plain bodies (body_html) once
                                 if (msgType === "emote") return model.body_html
-                                if (htmlText.length) return htmlText
+                                if (htmlText.length) return spoilersShown.length ? spoilersShown : htmlText
                                 if (msgType === "text" || msgType === "notice") return model.body_html
                                 return model.body || ""
                             }

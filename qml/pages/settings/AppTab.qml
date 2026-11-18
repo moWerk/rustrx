@@ -269,6 +269,16 @@ SilicaFlickable {
         }
 
         TextSwitch {
+            //% "Lock to portrait"
+            text: qsTrId("rustrx-la-portrait-only")
+            //% "Rustrx stays upright when the phone turns. Pictures and videos still turn with it."
+            description: qsTrId("rustrx-la-portrait-only-hint")
+            checked: app.portraitOnly
+            automaticCheck: false
+            onClicked: app.portraitOnly = !app.portraitOnly
+        }
+
+        TextSwitch {
             //% "Send smaller pictures"
             text: qsTrId("rustrx-la-downscale")
             //% "Photos larger than 2048 pixels are scaled down before sending."

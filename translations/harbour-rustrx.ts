@@ -416,10 +416,6 @@
         <source>This phone has no working Sailfish Secrets, so Rustrx cannot encrypt what it stores here.</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-risk-no-secrets-fix">
-        <source>Nothing Rustrx can do on this phone.</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-la-risk-unverified">
         <source>This phone is not verified, so others cannot tell it is really you, and it may miss keys for older messages.</source>
         <translation type="unfinished"></translation>
@@ -1014,14 +1010,6 @@
     </message>
     <message id="rustrx-la-stranger-invites-hint">
         <source>A banner and the picture for invitations from people you share no room with. Off: they wait quietly in the list.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-la-strip-location">
-        <source>Remove the location from photos</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-la-strip-location-hint">
-        <source>Photos leave without the place they were taken. Off: they go as the camera saved them.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-se-new-account">
@@ -2063,11 +2051,6 @@
         <extracomment>%1 who asks, %2 the room</extracomment>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-spoiler">
-        <source>(spoiler)</source>
-        <extracomment>in place of a hidden part of a message</extracomment>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-he-start-chat">
         <source>Start chat</source>
         <translation type="unfinished"></translation>
@@ -2785,6 +2768,54 @@
     </message>
     <message id="rustrx-no-unread-further-back">
         <source>Older unread messages are further back</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-copy-command">
+        <source>Copy the command</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-no-secrets">
+        <source>Your messages are not encrypted on this phone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-no-secrets-choice">
+        <source>If you leave it like this on purpose, that is fine: Rustrx takes it that you know what you are doing and does not ask again. Settings keep showing it in the security ring.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-no-secrets-install">
+        <source>To change it, install Sailfish Secrets in the Terminal:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-no-secrets-then">
+        <source>Then turn on key backup in Settings, log out of Rustrx and log in again: the new store is encrypted, and the backup brings your encrypted history back.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-no-secrets-what">
+        <source>This phone has no working Sailfish Secrets, so Rustrx cannot encrypt what it keeps here: your messages, the people you talk to and the keys to your encrypted chats. They are protected only by the phone itself: whoever gets into its user space (an unlocked phone, a developer login, a copy of its files) can read them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-portrait-only">
+        <source>Lock to portrait</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-portrait-only-hint">
+        <source>Rustrx stays upright when the phone turns. Pictures and videos still turn with it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-risk-no-secrets-fix2">
+        <source>Install Sailfish Secrets (sailfishsecretsdaemon with its default plugins), then log out and log in again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-strip-metadata">
+        <source>Remove metadata from photos</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-strip-metadata-hint">
+        <source>Photos leave without the place and time they were taken, the camera and anything else it noted, only which way up they are. Off: they go as the camera saved them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-copied">
+        <source>Copied</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

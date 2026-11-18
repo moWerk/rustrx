@@ -65,6 +65,11 @@ public:
     // row's own, or the next older one (past dates, the unread line and
     // messages still being sent); empty when there is none
     Q_INVOKABLE QString seenEventId(int row) const;
+    // a row's message with its spoilers' text shown (they are covered in
+    // the html role), for when the reader taps one
+    Q_INVOKABLE QString spoilersShown(int row) const;
+    // the link a covered spoiler is
+    static constexpr const char *kSpoilerLink = "rustrx:spoiler";
     // the cached full file for an event, or an empty string
     Q_INVOKABLE QString mediaPath(const QString &eventId) const { return m_media.value(eventId); }
 
@@ -99,7 +104,7 @@ private:
     void forget(const QVariant &item);
     QVector<int> changedRoles(const QVariantMap &from, const QVariantMap &to) const;
     QVariantMap withMedia(QVariantMap item) const;
-    QString renderHtml(const QString &html, int emojiHeight = 0) const;
+    QString renderHtml(const QString &html, int emojiHeight = 0, bool spoilersShown = false) const;
     QVariantList renderReactions(const QVariantList &reactions) const;
     void askEmotes(const QVariantMap &item);
     bool usesEmote(const QVariantMap &item, const QString &mxc) const;

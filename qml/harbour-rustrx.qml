@@ -28,9 +28,10 @@ ApplicationWindow {
     initialPage: Component { StartPage { } }
     cover: Qt.resolvedUrl("cover/CoverPage.qml")
     // portrait and landscape: the room list and the chats suit both (the
-    // camera page keeps to portrait)
+    // camera page keeps to portrait); "Lock to portrait" keeps every page
+    // upright but the picture and video viewers, which allow both themselves
     allowedOrientations: Orientation.All
-    _defaultPageOrientations: Orientation.All
+    _defaultPageOrientations: cfg.portraitOnly ? Orientation.Portrait : Orientation.All
     // Labels show plain text unless they ask for StyledText: Silica's
     // default (AutoText) would turn a name like "Bob <img src=...>" into a
     // picture fetched from anywhere
@@ -81,6 +82,7 @@ ApplicationWindow {
     // start in the chat that was open when the app was closed
     property alias reopenLast: cfg.reopenLast
     property alias lastRoom: cfg.lastRoom
+    property alias portraitOnly: cfg.portraitOnly
 
     // the choice made real; unchosen, push where a distributor is installed,
     // else the background stand-in (asked again at every start, so installing
@@ -128,7 +130,7 @@ ApplicationWindow {
         if (pageStack.busy) { routeRetry.restart(); return }
         var current = pageStack.currentPage ? pageStack.currentPage.objectName : ""
         // the prototype notice is up: it is answered first, then this runs again
-        if (current === "prototypeNotice") return
+        if (current === "prototypeNotice" || current === "secretsNotice") return
         if (rustrx.loggedIn) {
             // read before the main page comes in: becoming active, it forgets the room
             var last = !reopenTried && reopenLast ? lastRoom : ""
@@ -153,6 +155,7 @@ ApplicationWindow {
             pageStack.replaceAbove(null, Qt.resolvedUrl("pages/LoginPage.qml"))
         }
         if (!cfg.prototypeNoticeSeen) prototypeNotice.restart()
+        if (rustrx.loggedIn && rustrx.storeState === "no_secrets" && !cfg.secretsNoticeSeen) secretsNotice.restart()
     }
 
     Timer { id: routeRetry; interval: Tunables.retryIntervalMs; onTriggered: route() }
@@ -191,6 +194,23 @@ ApplicationWindow {
                 cfg.prototypeNoticeSeen = true
                 app.prototypeNoticeUp = false
                 routeRetry.restart()
+            })
+        }
+    }
+    // logged in on a phone without sailfish-secrets: what that means, once,
+    // after the prototype notice; it goes only by Agree
+    property bool secretsNoticeUp
+    Timer {
+        id: secretsNotice
+        interval: Tunables.noticeDelayMs
+        onTriggered: {
+            if (cfg.secretsNoticeSeen || app.secretsNoticeUp || !rustrx.loggedIn) return
+            if (pageStack.busy || app.prototypeNoticeUp || !cfg.prototypeNoticeSeen) { restart(); return }
+            app.secretsNoticeUp = true
+            var d = pageStack.push(Qt.resolvedUrl("pages/SecretsNotice.qml"))
+            d.accepted.connect(function () {
+                cfg.secretsNoticeSeen = true
+                app.secretsNoticeUp = false
             })
         }
     }
@@ -413,6 +433,8 @@ ApplicationWindow {
 
     // a link tapped inside the app: Matrix links stay here, the rest goes out
     function openLink(link) {
+        // a covered spoiler in a quote: it shows only in its own message
+        if (link === "rustrx:spoiler") return
         if (!openMatrixUri(link)) openExternal(link)
     }
 

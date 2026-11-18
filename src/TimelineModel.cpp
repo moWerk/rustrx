@@ -269,13 +269,15 @@ QVariantMap TimelineModel::withMedia(QVariantMap item) const
 // know them either); the others become the nearest it can draw, or only
 // their text: em is italic, a quote italic in its own paragraph, a line a
 // row of dashes, table cells a " | " row, colours (data-mx-color, #rrggbb)
-// a font colour. A spoiler is not shown at all, only that there is one.
+// a font colour. A spoiler's text is covered: a row of full blocks as long
+// as it, a link to rustrx:spoiler that the room shows it on (shown: the
+// text as it is, when the reader tapped it).
 // Links keep only the spec's schemes (and matrix:). Custom emoji (an <img>
 // with an mxc:// address) become the cached picture at a little more than
 // the text's height, their name until it is there; every other picture
 // becomes its name, so a message cannot make the phone fetch from any
 // address. A reply's quoted fallback (<mx-reply>) goes.
-QString TimelineModel::renderHtml(const QString &html, int emojiHeight) const
+QString TimelineModel::renderHtml(const QString &html, int emojiHeight, bool spoilersShown) const
 {
     if (emojiHeight <= 0)
         emojiHeight = m_emoteSize;
@@ -288,6 +290,7 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight) const
     static const QRegularExpression colourRe(QStringLiteral("^#[0-9a-fA-F]{6}$"));
     static const QRegularExpression schemeRe(QStringLiteral("^(https?|ftp|mailto|magnet|matrix):"),
                                              QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression namedEntity(QStringLiteral("&[a-zA-Z]+;"));
     static const QRegularExpression entityRe(QStringLiteral("&#(x[0-9a-fA-F]+|[0-9]+);|&apos;"));
     static const QSet<QString> plain = {
         QStringLiteral("b"), QStringLiteral("strong"), QStringLiteral("i"), QStringLiteral("u"),
@@ -332,13 +335,23 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight) const
     struct Open { QString name; QString close; bool hides; };
     QVector<Open> stack;
     int hidden = 0;        // inside a spoiler: its text is not shown
+    int covered = 0;       // the characters it had, one block each
     QString out;
     auto emit_ = [&](const QString &s) { if (!hidden) out += s; };
     // text between tags, its emoji as Twemoji pictures
-    auto emitText = [&](const QString &s) { if (!hidden) out += Twemoji::inHtml(s, emojiHeight); };
+    auto emitText = [&](const QString &s) {
+        if (!hidden)
+            out += Twemoji::inHtml(s, emojiHeight);
+        else
+            covered += QString(s).replace(namedEntity, QStringLiteral("x")).toUcs4().size();
+    };
     auto closeTop = [&]() {
         const Open o = stack.takeLast();
-        if (o.hides) --hidden;
+        if (o.hides && --hidden == 0) {
+            out += QStringLiteral("<a href=\"%1\">%2</a>")
+                       .arg(QLatin1String(kSpoilerLink), QString(qMax(covered, 1), QChar(0x2588)));
+            covered = 0;
+        }
         emit_(o.close);
     };
 
@@ -367,6 +380,7 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight) const
         if (name == QLatin1String("br")) { emit_(QStringLiteral("<br>")); continue; }
         if (name == QLatin1String("hr")) { emit_(QStringLiteral("<br>―――――<br>")); continue; }
         if (name == QLatin1String("img")) {
+            if (hidden) { ++covered; continue; }   // a picture: one block
             const QString src = attribute(tag, QStringLiteral("src"));
             const auto e = m_emotes.constFind(src);
             if (src.startsWith(QLatin1String("mxc://")) && e != m_emotes.constEnd()) {
@@ -400,10 +414,7 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight) const
                 o.close = QStringLiteral("</a>");
             }
         } else if (name == QLatin1String("span") || name == QLatin1String("font")) {
-            if (tag.contains(QLatin1String("data-mx-spoiler"), Qt::CaseInsensitive)) {
-                //: in place of a hidden part of a message
-                //% "(spoiler)"
-                emit_(QStringLiteral("<i>") + qtTrId("rustrx-la-spoiler") + QStringLiteral("</i>"));
+            if (!spoilersShown && tag.contains(QLatin1String("data-mx-spoiler"), Qt::CaseInsensitive)) {
                 o.hides = true;
                 ++hidden;
             } else {
@@ -603,6 +614,13 @@ QString TimelineModel::seenEventId(int row) const
             return eventId;
     }
     return QString();
+}
+
+QString TimelineModel::spoilersShown(int row) const
+{
+    if (row < 0 || row >= m_items.size())
+        return QString();
+    return renderHtml(m_items.at(row).toMap().value(QStringLiteral("html")).toString(), 0, true);
 }
 
 QVariantMap TimelineModel::get(int row) const

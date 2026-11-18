@@ -276,14 +276,14 @@ void Rustrx::setDownscaleImages(bool on)
     m_media->setDownscaleImages(on);
 }
 
-bool Rustrx::stripLocation() const
+bool Rustrx::stripMetadata() const
 {
-    return m_media->stripLocation();
+    return m_media->stripMetadata();
 }
 
-void Rustrx::setStripLocation(bool on)
+void Rustrx::setStripMetadata(bool on)
 {
-    m_media->setStripLocation(on);
+    m_media->setStripMetadata(on);
 }
 
 bool Rustrx::debugLog() const

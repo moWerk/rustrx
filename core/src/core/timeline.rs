@@ -393,6 +393,9 @@ impl Core {
             packs::with_emotes(&mut content, emotes);
         }
         with_mentions(&mut content, body, mentions);
+        if markdown {
+            with_spoilers(&mut content, body);
+        }
         match reply_to {
             Some(reply) => {
                 let without: RoomMessageEventContentWithoutRelation = content.into();
@@ -822,6 +825,83 @@ fn with_mentions(content: &mut RoomMessageEventContent, body: &str, mentions: &[
     content.mentions = Some(m);
 }
 
+/// Text between two "||" in one paragraph becomes a spoiler in the HTML
+/// (not inside code); the plain body keeps the "||" as it was typed.
+fn with_spoilers(content: &mut RoomMessageEventContent, body: &str) {
+    use matrix_sdk::ruma::events::room::message::FormattedBody;
+    if !body.contains("||") {
+        return;
+    }
+    let escape = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
+    let mark = |formatted: &mut Option<FormattedBody>| {
+        let html = formatted.as_ref().map(|f| f.body.clone()).unwrap_or_else(|| escape(body).replace('\n', "<br>"));
+        if let Some(out) = spoilers_in_html(&html) {
+            *formatted = Some(FormattedBody::html(out));
+        }
+    };
+    match &mut content.msgtype {
+        MessageType::Text(t) => mark(&mut t.formatted),
+        MessageType::Emote(t) => mark(&mut t.formatted),
+        _ => {}
+    }
+}
+
+/// The HTML with each pair of "||" in the text made a spoiler span, or
+/// None when there is no pair. A pair must be in one paragraph (no block
+/// tag or line break between) and hold something; code is left alone.
+fn spoilers_in_html(html: &str) -> Option<String> {
+    const BLOCK: [&str; 13] = ["p", "br", "li", "ul", "ol", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "hr"];
+    // the "||" outside code, each with the paragraph it is in
+    let mut marks: Vec<(usize, usize)> = Vec::new();
+    let (mut para, mut code, mut i) = (0usize, 0usize, 0usize);
+    let b = html.as_bytes();
+    while i < b.len() {
+        if b[i] == b'<' {
+            let end = html[i..].find('>').map_or(b.len(), |e| i + e + 1);
+            let tag = html[i + 1..end.saturating_sub(1)].trim_start_matches('/');
+            let name: String = tag.chars().take_while(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_lowercase();
+            if name == "code" || name == "pre" {
+                if html[i + 1..].starts_with('/') { code = code.saturating_sub(1) } else { code += 1 }
+            }
+            if BLOCK.contains(&name.as_str()) || name == "pre" {
+                para += 1;
+            }
+            i = end;
+        } else if code == 0 && html[i..].starts_with("||") {
+            marks.push((i, para));
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    let mut pairs = Vec::new();
+    let mut k = 0;
+    while k + 1 < marks.len() {
+        let (a, pa) = marks[k];
+        let (z, pz) = marks[k + 1];
+        if pa == pz && z > a + 2 {
+            pairs.push((a, z));
+            k += 2;
+        } else {
+            k += 1;
+        }
+    }
+    if pairs.is_empty() {
+        return None;
+    }
+    let mut out = String::with_capacity(html.len() + pairs.len() * 32);
+    let mut at = 0;
+    for (a, z) in pairs {
+        out.push_str(&html[at..a]);
+        out.push_str("<span data-mx-spoiler>");
+        out.push_str(&html[a + 2..z]);
+        out.push_str("</span>");
+        at = z + 2;
+    }
+    out.push_str(&html[at..]);
+    Some(out)
+}
+
 /// The receipts for "read up to this message": the read receipt, private
 /// with "Send read receipts" off, and with `marker` the unread line too
 fn read_receipts(event_id: OwnedEventId, private: bool, marker: bool) -> Receipts {
@@ -864,6 +944,33 @@ mod tests {
         let m = c.mentions.expect("mentions");
         assert!(m.user_ids.contains(&UserId::parse("@ann:example.org").unwrap()));
         assert!(!m.room);
+    }
+
+    /// "||" pairs become spoilers, in plain text and around markdown, one
+    /// paragraph at a time, never in code; the body stays as typed.
+    /// Planted-bug: pair across paragraphs (the second test's span opens
+    /// in one <p> and closes in the next).
+    #[test]
+    fn spoilers() {
+        let sp = |s: &str| spoilers_in_html(s);
+        assert_eq!(sp("a ||b|| c").as_deref(), Some("a <span data-mx-spoiler>b</span> c"));
+        assert_eq!(sp("<p>||a</p>\n<p>b||</p>"), None);
+        assert_eq!(sp("||<strong>x</strong>|| and ||y||").as_deref(),
+                   Some("<span data-mx-spoiler><strong>x</strong></span> and <span data-mx-spoiler>y</span>"));
+        assert_eq!(sp("<code>||x||</code>"), None);
+        assert_eq!(sp("a |||| b"), None);
+        assert_eq!(sp("odd ||one|| ||"), Some("odd <span data-mx-spoiler>one</span> ||".to_string()));
+        assert_eq!(sp("no pair || here"), None);
+
+        let body = "look ||it was him||";
+        let mut c = RoomMessageEventContent::text_markdown(body);
+        with_spoilers(&mut c, body);
+        assert_eq!(html(&c), "look <span data-mx-spoiler>it was him</span>");
+        assert_eq!(c.body(), body);
+        let body = "**loud** ||quiet||";
+        let mut c = RoomMessageEventContent::text_markdown(body);
+        with_spoilers(&mut c, body);
+        assert!(html(&c).contains("<strong>loud</strong> <span data-mx-spoiler>quiet</span>"), "{}", html(&c));
     }
 
     /// Markdown keeps its formatting around the pill; new lines in a plain

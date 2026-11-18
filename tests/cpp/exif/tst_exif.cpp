@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// src/Exif.h: the place a photo was taken goes, the rest stays.
-// Planted-bug: skip zeroing the GPS values that live outside the entries
-// (the latitude's rationals): the test that looks for them fails.
+// src/Exif.h: what a photo says about itself goes, which way up it is stays.
+// Planted-bug: keep the old EXIF block (only the orientation should be
+// left): theCameraAndPlaceAreGone fails. Planted-bug: stop at the picture
+// without cutting what follows its end: nothingAfterThePicture fails.
 #include <QtTest>
 #include "Exif.h"
 
@@ -50,49 +51,82 @@ class TestExif : public QObject
     static QByteArray jpeg()
     {
         QByteArray j("\xFF\xD8", 2);
-        j += segment(0xE1, QByteArray("Exif\0\0", 6) + tiff());
+        j += segment(0xE0, QByteArray("JFIF\0\x01\x01\0\0\x01\0\x01\0\0", 14));
+        j += segment(0xE1, QByteArray("Exif\0\0", 6) + tiff() + "Canon EOS 5D");
         j += segment(0xE1, QByteArray("http://ns.adobe.com/xap/1.0/\0", 29) + "<x:xmpmeta exif:GPSLatitude=\"52,31N\"/>");
-        j += QByteArray("\xFF\xDA\x00\x02picture\xFF\xD9", 13);
+        j += segment(0xE2, QByteArray("ICC_PROFILE\0", 12) + "colours");
+        j += segment(0xE2, QByteArray("MPF\0", 4) + "index");
+        j += segment(0xED, QByteArray("Photoshop 3.0\0", 14) + "byline");
+        j += segment(0xFE, QByteArray("taken at home"));
+        j += picture();
         return j;
     }
 
+    // the scan: a stuffed 0xFF00 and a restart marker inside, then the end
+    static QByteArray picture() { return QByteArray("\xFF\xDA\x00\x02pic\xFF\x00ture\xFF\xD0more\xFF\xD9", 21); }
+
 private slots:
-    void theLatitudeIsGone()
+    void theCameraAndPlaceAreGone()
     {
         QByteArray j = jpeg();
-        QVERIFY(Exif::stripLocation(j));
+        QVERIFY(Exif::strip(j));
         QByteArray rationals;
         for (quint32 v : { 52u, 1u, 31u })
             put32(rationals, v);
         QVERIFY(!j.contains(rationals));
-        QVERIFY(!j.contains("GPSLatitude"));
+        for (const char *gone : { "GPSLatitude", "Canon", "MPF", "byline", "taken at home" })
+            QVERIFY2(!j.contains(gone), gone);
     }
 
-    void theRestStays()
+    void theOrientationAndColoursStay()
     {
         QByteArray j = jpeg();
-        QVERIFY(Exif::stripLocation(j));
-        // the orientation entry, unchanged
-        QByteArray orientation;
-        entry(orientation, 0x0112, 3, 1, 6);
-        QVERIFY(j.contains(orientation));
-        QVERIFY(j.endsWith(QByteArray("\xFF\xDA\x00\x02picture\xFF\xD9", 13)));
+        QVERIFY(Exif::strip(j));
+        QByteArray want("\xFF\xD8", 2);
+        want += segment(0xE0, QByteArray("JFIF\0\x01\x01\0\0\x01\0\x01\0\0", 14));
+        want += Exif::orientationOnly(6);
+        want += segment(0xE2, QByteArray("ICC_PROFILE\0", 12) + "colours");
+        want += picture();
+        QCOMPARE(j, want);
+        // the new block reads back
+        QCOMPARE(Exif::orientation(Exif::orientationOnly(6), 10, Exif::orientationOnly(6).size()), 6);
+    }
+
+    void noOrientationNoExif()
+    {
+        QByteArray t("II*\0", 4);
+        put32(t, 8);
+        put16(t, 1);
+        entry(t, 0x0110, 2, 4, 0x43414E);   // Model, inline
+        put32(t, 0);
+        QByteArray j("\xFF\xD8", 2);
+        j += segment(0xE1, QByteArray("Exif\0\0", 6) + t);
+        j += picture();
+        QVERIFY(Exif::strip(j));
+        QCOMPARE(j, QByteArray("\xFF\xD8", 2) + picture());
+    }
+
+    void nothingAfterThePicture()
+    {
+        QByteArray j = jpeg() + QByteArray("\xFF\xD8\xFF\xE1second image with its own EXIF", 34);
+        QVERIFY(Exif::strip(j));
+        QVERIFY(j.endsWith(picture()));
+        QVERIFY(!j.contains("second image"));
     }
 
     void notAJpegIsRefused()
     {
         QByteArray png("\x89PNG\r\n\x1a\n", 8);
-        QVERIFY(!Exif::stripLocation(png));
+        QVERIFY(!Exif::strip(png));
     }
 
-    void aBrokenExifIsRefused()
+    void aCutFileIsRefused()
     {
         QByteArray j = jpeg();
-        // the GPS pointer far outside the block
-        const int at = j.indexOf(QByteArray("\x25\x88\x04\x00", 4));
-        QVERIFY(at > 0);
-        j[at + 8] = char(0xFF); j[at + 9] = char(0xFF);
-        QVERIFY(!Exif::stripLocation(j));
+        j.chop(2);   // no end of the picture
+        QVERIFY(!Exif::strip(j));
+        QByteArray k = jpeg().left(30);   // a block longer than the file
+        QVERIFY(!Exif::strip(k));
     }
 };
 
