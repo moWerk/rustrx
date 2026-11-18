@@ -46,6 +46,8 @@ Page {
     Component.onCompleted: {
         rustrx.openRoom(roomId)
         rustrx.command({ cmd: "image_packs", room_id: roomId })
+        // what one may do here (a moderator's Remove, Pin) and the pins
+        rustrx.command({ cmd: "room_settings", room_id: roomId })
     }
 
     // custom emoji and stickers offered here (the user's pack, the enabled
@@ -302,6 +304,38 @@ Page {
             //: the pill that goes back to the first unread message
             //% "↑ Unread"
             text: qsTrId("rustrx-bt-first-unread")
+        }
+    }
+
+    // pinned messages: a pill at the right under the header; each tap goes
+    // to the next one, the newest first (the chat loads back to it)
+    readonly property var pinned: app.roomPinned(roomId)
+    property int pinStep
+    BackgroundItem {
+        id: pinPill
+        z: 2
+        visible: page.pinned.length > 0
+        anchors { top: header.bottom; right: parent.right; rightMargin: Theme.horizontalPageMargin }
+        width: pinLabel.implicitWidth + 2 * Theme.paddingLarge
+        height: pinLabel.implicitHeight + Theme.paddingMedium
+        onClicked: {
+            var n = page.pinned.length
+            page.jumpTo(page.pinned[n - 1 - (page.pinStep % n)])
+            page.pinStep++
+        }
+        Rectangle {
+            anchors.fill: parent
+            radius: height / 2
+            color: Theme.rgba(Theme.highlightBackgroundColor, Theme.opacityLow)
+        }
+        Label {
+            id: pinLabel
+            anchors.centerIn: parent
+            font.pixelSize: Theme.fontSizeSmall
+            color: Theme.primaryColor
+            //: the pill that goes to the room's pinned messages; %n how many
+            //% "Pinned (%n)"
+            text: qsTrId("rustrx-bt-pinned", page.pinned.length)
         }
     }
 

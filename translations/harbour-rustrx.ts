@@ -846,10 +846,6 @@
         <source>Report</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-re-reporting">
-        <source>Reporting to the server admins</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-he-new-room">
         <source>New room</source>
         <translation type="unfinished"></translation>
@@ -2223,16 +2219,8 @@
         <source>Remove from the room</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-re-kicking">
-        <source>Removing</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-bt-ban">
         <source>Ban from the room</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-re-banning">
-        <source>Banning</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-bt-unban">
@@ -2265,6 +2253,486 @@
     </message>
     <message id="rustrx-la-qr-code">
         <source>The two digits</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-acl-save">
+        <source>Save the list</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-addresses">
+        <source>Addresses</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-ban-short">
+        <source>Ban</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-encrypt-room">
+        <source>Turn on encryption</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-lift">
+        <source>Lift</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-members">
+        <source>Members (%n)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-permissions">
+        <source>Roles and permissions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-pinned">
+        <source>Pinned (%n)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-remove">
+        <source>Remove</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-report">
+        <source>Report</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-revoke">
+        <source>Revoke</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-revoke-invite">
+        <source>Revoke the invitation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-server-acl">
+        <source>Server access</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-upgrade">
+        <source>Upgrade the room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-upgrade-short">
+        <source>Upgrade</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-addresses">
+        <source>Addresses</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-ban">
+        <source>Ban %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-kick">
+        <source>Remove %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-permissions">
+        <source>Roles and permissions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-remove-message">
+        <source>Remove this message</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-report-message">
+        <source>Report this message</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-report-room">
+        <source>Report this room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-report-user">
+        <source>Report %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-server-acl">
+        <source>Server access</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-acl-allow">
+        <source>Allowed servers, one per line (* for all)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-acl-bot">
+        <source>A moderation bot (Draupnir, Mjolnir) may keep this list itself and put its own back. Then change it through the bot.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-acl-deny">
+        <source>Denied servers, one per line (*.example.org for its subdomains)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-acl-ip">
+        <source>Allow servers by IP address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-acl-ip-hint">
+        <source>Off keeps out servers without a name, a common source of spam.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-acl-none">
+        <source>No list yet: every server may take part.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-acl-on">
+        <source>People from denied servers cannot join or write here; those inside stay, but their messages are refused.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-acl-own-ok">
+        <source>Your server %1 stays allowed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-acl-own-out">
+        <source>This would shut out your own server %1, and you with it: allow it, and do not deny it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-alias-hint">
+        <source>A long press on an address makes it the main one, takes it out, or deletes it from its server.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-alias-main">
+        <source>main</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-ban-note">
+        <source>They are removed and cannot come back until the ban is lifted.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-banner-knocks">
+        <source>%n requests to join. Tap to answer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-directory">
+        <source>Listed in the room directory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-directory-hint">
+        <source>Your server's public list of rooms, where search finds it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-encrypt-room-hint">
+        <source>It cannot be turned off again. Bridges, bots and newcomers may not read what was said before.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-guests">
+        <source>Guests may join</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-guests-hint">
+        <source>People without an account, through servers that allow guests.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-history">
+        <source>Who can read the history</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-history-hint">
+        <source>Changes apply to what is said from now on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-kick-note">
+        <source>They can come back if the room lets them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-level-admins">
+        <source>Admins</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-level-members">
+        <source>Members</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-level-moderators">
+        <source>Moderators</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-muted">
+        <source>Muted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-muted-hint">
+        <source>They can read, but not write here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-n-files">
+        <source>%n files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-n-members">
+        <source>%n members</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-new-alias">
+        <source>Name, like the-room (on %1)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-no-alias">
+        <source>No address yet. Without one, the room is found only by invitation or by its ID.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-acl">
+        <source>Change server access</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-aliases">
+        <source>Change the addresses</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-avatar">
+        <source>Change the picture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-ban">
+        <source>Ban people</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-children">
+        <source>Manage the space's rooms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-default">
+        <source>Members start as</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-encryption">
+        <source>Turn on encryption</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-hint">
+        <source>Each is open to that role and every higher one. Only levels up to your own can be chosen.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-history">
+        <source>Change who can read the history</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-invite">
+        <source>Invite people</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-kick">
+        <source>Remove people</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-name">
+        <source>Change the name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-notify">
+        <source>Notify everyone (@room)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-pin">
+        <source>Pin messages</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-power">
+        <source>Change roles and permissions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-redact">
+        <source>Remove others' messages</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-send">
+        <source>Send messages</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-settings">
+        <source>Change other settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-topic">
+        <source>Change the topic</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-perm-upgrade">
+        <source>Upgrade the room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-power-owner">
+        <source>owner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-reason-optional">
+        <source>Reason (optional)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-remove-other-note">
+        <source>It is removed for everyone; the room sees that a moderator removed it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-report-goes-to-server">
+        <source>The admins of your own server get the report, not the room's moderators.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-risk-devices">
+        <source>%n of your other devices are not verified. Anyone holding one could read along.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-role">
+        <source>Role</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-role-admin">
+        <source>Admin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-role-creator">
+        <source>Owner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-role-level">
+        <source>Level %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-role-member">
+        <source>Member</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-role-moderator">
+        <source>Moderator</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-role-self-hint">
+        <source>You can lower your own role, but not raise it again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-room-version">
+        <source>Version %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-space-rooms">
+        <source>%n rooms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-staff-hint">
+        <source>A role is given on the person's page: tap a member in the member list.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-thread-replies">
+        <source>%n replies</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-upgrade-note">
+        <source>An upgrade makes a new room with the same name, settings and roles. This room ends and points to the new one: members are asked to follow, bridges and bots must be invited again. It cannot be undone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-version-default">
+        <source>%1 (the server's default)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-version-new">
+        <source>New version</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-version-now">
+        <source>Now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-alias-delete">
+        <source>Delete it from its server</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-alias-main">
+        <source>Make it the main address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-alias-unlist">
+        <source>Take it out of the room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-history-anyone">
+        <source>Anyone, without joining</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-history-invited">
+        <source>Members, since they were invited</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-history-joined">
+        <source>Members, since they joined</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-history-shared">
+        <source>Members, all of it</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-pin">
+        <source>Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-report-room">
+        <source>Report this room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-report-user">
+        <source>Report to your server</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-unpin">
+        <source>Unpin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-new-messages">
+        <source>%n new messages</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-reported">
+        <source>Reported to your server's admins</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-room-upgraded">
+        <source>Upgraded: the room's members are asked to follow to the new one</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-re-acl-save">
+        <source>Saving the server list</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-re-alias-delete">
+        <source>Deleting the address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-re-encrypt-room">
+        <source>Turning on encryption, for good</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-re-self-demote">
+        <source>Lowering your own role: no one below you can give it back</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-members">
+        <source>%n members</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-members-banned">
+        <source>Banned</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-members-invited">
+        <source>Invited</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-members-knock">
+        <source>Asking to join</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-moderation">
+        <source>Moderation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-new-alias">
+        <source>New address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-staff">
+        <source>Owners, admins and moderators</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-who-may">
+        <source>Who may</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

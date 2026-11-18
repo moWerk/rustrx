@@ -23,6 +23,21 @@ import Sailfish.Silica 1.0
 // list marks the requests as seen (no notification for them again).
 Page {
     id: page
+
+    // declining, with or without a ban, and an optional reason they see
+    function decline(request, ban) {
+        var room = request.room_id, user = request.user_id, core = rustrx
+        var d = pageStack.push(Qt.resolvedUrl("../components/ReasonDialog.qml"), {
+            title: ban ? qsTrId("rustrx-me-knock-ban") : qsTrId("rustrx-me-knock-decline"),
+            acceptText: ban ? qsTrId("rustrx-bt-ban-short") : qsTrId("rustrx-me-knock-decline")
+        })
+        d.accepted.connect(function () {
+            var c = { cmd: "knock_answer", room_id: room, user_id: user, accept: false }
+            if (ban) c.ban = true
+            if (d.reason.trim().length) c.reason = d.reason.trim()
+            core.command(c)
+        })
+    }
     objectName: "knocks"
 
     function markSeen() {
@@ -62,18 +77,12 @@ Page {
                 MenuItem {
                     //% "Decline"
                     text: qsTrId("rustrx-me-knock-decline")
-                    onClicked: item.remorseDelete(function () {
-                        rustrx.command({ cmd: "knock_answer", room_id: item.request.room_id,
-                                         user_id: item.request.user_id, accept: false })
-                    })
+                    onClicked: page.decline(item.request, false)
                 }
                 MenuItem {
                     //% "Decline and ban"
                     text: qsTrId("rustrx-me-knock-ban")
-                    onClicked: item.remorseDelete(function () {
-                        rustrx.command({ cmd: "knock_answer", room_id: item.request.room_id,
-                                         user_id: item.request.user_id, accept: false, ban: true })
-                    })
+                    onClicked: page.decline(item.request, true)
                 }
             }
             onClicked: openMenu()

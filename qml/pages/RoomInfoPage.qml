@@ -21,8 +21,12 @@ import Sailfish.Pickers 1.0
 import "../components"
 
 // The room behind the conversation, attached to the right of RoomPage:
-// name and topic (editable for moderators), alias, encryption, the
-// members, and in the pulley an invitation and the way out.
+// name and topic, alias, encryption, the members, and in the pulley an
+// invitation, a report and the way out. What can be changed here is what
+// the room's power levels allow (the core's room_settings, its `may`):
+// the same page for everyone, a control in place of a line where one may;
+// the rooms's roles, addresses, server access and upgrade on pages of
+// their own, for those who may.
 Page {
     id: page
 
@@ -30,9 +34,9 @@ Page {
     property var info: rustrx.roomInfo(roomId)
     property var memberList: []
     property bool membersLoaded
-    // own power level, from the member list; 50 is the moderator default
-    property int ownPower: 0
-    readonly property bool canEdit: ownPower >= Tunables.powerModerator
+    // the room's permissions and settings, from the core (room_settings)
+    property var settings: ({})
+    readonly property var may: settings.may || ({})
     // a space's settings: no chat things (notifications, calls, encryption)
     readonly property bool isSpace: info.is_space === true
     // who may join, as the core names it; the choices offered here (members
@@ -50,6 +54,7 @@ Page {
     Component.onCompleted: {
         rustrx.command({ cmd: "room_members", room_id: roomId })
         rustrx.command({ cmd: "get_notification_mode", room_id: roomId })
+        rustrx.command({ cmd: "room_settings", room_id: roomId })
     }
 
     Connections {
@@ -58,22 +63,31 @@ Page {
             if (roomId !== page.roomId) return
             memberList = members
             membersLoaded = true
-            for (var i = 0; i < members.length; i++) {
-                if (members[i].user_id === rustrx.userId) {
-                    var p = members[i].power
-                    ownPower = p === "infinite" ? Tunables.powerAdmin : (p || 0)
-                }
-            }
         }
-        onErrorOccurred: if (cmd === "set_room_name" || cmd === "set_room_topic") refresh()
+        onRoomSettings: if (settings.room_id === page.roomId) page.settings = settings
+        onErrorOccurred: {
+            if (cmd === "set_room_name" || cmd === "set_room_topic") refresh()
+            // a refused change: show the settings as they are
+            if (["set_history_visibility", "set_guest_access", "enable_encryption", "set_directory_visibility"].indexOf(cmd) >= 0)
+                rustrx.command({ cmd: "room_settings", room_id: page.roomId })
+        }
+        //% "Reported to your server's admins"
+        onReported: if (what.room_id === page.roomId) Notices.show(qsTrId("rustrx-no-reported"), Notice.Short)
+        onRoomUpgraded: {
+            if (roomId !== page.roomId) return
+            //% "Upgraded: the room's members are asked to follow to the new one"
+            Notices.show(qsTrId("rustrx-no-room-upgraded"), Notice.Long)
+        }
         onNotificationMode: if (roomId === page.roomId) page.notifyMode = mode
     }
 
     // the room list carries the name and topic; pick changes up
     Connections {
         target: rustrx.rooms
-        onDataChanged: refresh()
+        onDataChanged: { refresh(); settingsLater.restart() }
     }
+    // someone changed the room's settings or levels: read them again, once
+    Timer { id: settingsLater; interval: Tunables.typingDebounceMs; onTriggered: rustrx.command({ cmd: "room_settings", room_id: page.roomId }) }
     Connections { target: rustrx.spaces; onDataChanged: refresh() }
     Connections { target: rustrx.people; onDataChanged: refresh() }
 
@@ -94,12 +108,32 @@ Page {
                 onClicked: rustrx.command({ cmd: "call_start", room_id: roomId })
             }
             MenuItem {
-                visible: canEdit && !info.is_dm
+                visible: page.may.avatar === true && !info.is_dm
                 //% "Change the room's picture"
                 text: qsTrId("rustrx-me-room-picture")
                 onClicked: pageStack.push(roomPicturePicker)
             }
             MenuItem {
+                visible: !info.is_dm
+                //% "Report this room"
+                text: qsTrId("rustrx-me-report-room")
+                onClicked: {
+                    var d = pageStack.push(Qt.resolvedUrl("../components/ReasonDialog.qml"), {
+                        //% "Report this room"
+                        title: qsTrId("rustrx-he-report-room"),
+                        acceptText: qsTrId("rustrx-bt-report"),
+                        text: qsTrId("rustrx-la-report-goes-to-server")
+                    })
+                    d.accepted.connect(function () {
+                        var c = { cmd: "report_room", room_id: page.roomId }
+                        if (d.reason.trim().length) c.reason = d.reason.trim()
+                        rustrx.command(c)
+                    })
+                }
+            }
+            MenuItem {
+                // shown before the settings arrive too: the server decides then
+                visible: page.may.invite !== false
                 //% "Invite someone"
                 text: qsTrId("rustrx-me-invite")
                 onClicked: pageStack.push(inviteDialog)
@@ -170,7 +204,7 @@ Page {
                     { key: "threads", text: qsTrId("rustrx-bt-threads"), icon: "icon-m-menu", show: !page.isSpace },
                     //: %n the room's members
                     //% "Members (%n)"
-                    { key: "members", text: qsTrId("rustrx-bt-members", page.memberList.length), icon: "icon-m-people", show: true }
+                    { key: "members", text: qsTrId("rustrx-bt-members", page.memberList.filter(function (m) { return !m.membership || m.membership === "join" }).length), icon: "icon-m-people", show: true }
                 ]
                 BackgroundItem {
                     id: entry
@@ -216,7 +250,7 @@ Page {
             // Save button, which only appears once the text differs.
             TextField {
                 id: nameField
-                visible: canEdit && !info.is_dm
+                visible: page.may.name === true && !info.is_dm
                 width: parent.width
                 label: page.isSpace ? qsTrId("rustrx-la-space-name")
                                     : qsTrId("rustrx-la-room-name")
@@ -232,7 +266,7 @@ Page {
 
             TextArea {
                 id: topicField
-                visible: canEdit && !info.is_dm
+                visible: page.may.topic === true && !info.is_dm
                 width: parent.width
                 //% "Topic"
                 label: qsTrId("rustrx-la-topic")
@@ -241,7 +275,7 @@ Page {
             }
 
             BackgroundItem {
-                visible: canEdit && !info.is_dm && topicField.text !== (info.topic || "")
+                visible: page.may.topic === true && !info.is_dm && topicField.text !== (info.topic || "")
                 width: parent.width
                 height: Theme.itemSizeSmall
                 onClicked: {
@@ -257,7 +291,7 @@ Page {
             }
 
             Label {
-                visible: !canEdit && !!(info.topic && info.topic.length)
+                visible: page.may.topic !== true && !!(info.topic && info.topic.length)
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * x
                 text: info.topic || ""
@@ -273,7 +307,7 @@ Page {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: Theme.itemSizeHuge
                 height: width
-                enabled: canEdit
+                enabled: page.may.avatar === true
                 onClicked: pageStack.push(roomPicturePicker)
                 Rectangle {
                     anchors.fill: parent
@@ -352,6 +386,58 @@ Page {
                 onClicked: pageStack.push(Qt.resolvedUrl("KnockPage.qml"))
                 text: qsTrId("rustrx-la-banner-knocks", page.knocks)
             }
+            // who reads what was said before they came; a line for everyone,
+            // a choice for those who may
+            HoldComboBox {
+                id: historyBox
+                visible: !info.is_dm && page.settings.history_visibility !== undefined
+                enabled: page.may.history === true
+                width: parent.width
+                readonly property var values: ["shared", "invited", "joined", "world_readable"]
+                //% "Who can read the history"
+                label: qsTrId("rustrx-la-history")
+                description: page.may.history === true
+                             //% "Changes apply to what is said from now on."
+                             ? qsTrId("rustrx-la-history-hint") : qsTrId("rustrx-la-rule-admins-only")
+                currentIndex: Math.max(0, values.indexOf(page.settings.history_visibility || "shared"))
+                menu: ContextMenu {
+                    //% "Members, all of it"
+                    MenuItem { text: qsTrId("rustrx-me-history-shared") }
+                    //% "Members, since they were invited"
+                    MenuItem { text: qsTrId("rustrx-me-history-invited") }
+                    //% "Members, since they joined"
+                    MenuItem { text: qsTrId("rustrx-me-history-joined") }
+                    //% "Anyone, without joining"
+                    MenuItem { text: qsTrId("rustrx-me-history-anyone") }
+                }
+                onCurrentIndexChanged: {
+                    var v = values[currentIndex]
+                    if (page.may.history === true && page.settings.history_visibility && v !== page.settings.history_visibility)
+                        rustrx.command({ cmd: "set_history_visibility", room_id: roomId, value: v })
+                }
+            }
+            // guests: only where anyone may join anyway
+            TextSwitch {
+                visible: page.may.guest === true && info.join_rule === "public"
+                //% "Guests may join"
+                text: qsTrId("rustrx-la-guests")
+                //% "People without an account, through servers that allow guests."
+                description: qsTrId("rustrx-la-guests-hint")
+                checked: page.settings.guests === true
+                automaticCheck: false
+                onClicked: rustrx.command({ cmd: "set_guest_access", room_id: roomId, allowed: !checked })
+            }
+            // the server's public room list (where search finds it)
+            TextSwitch {
+                visible: page.may.aliases === true && page.settings.directory_public !== null && page.settings.directory_public !== undefined
+                //% "Listed in the room directory"
+                text: qsTrId("rustrx-la-directory")
+                //% "Your server's public list of rooms, where search finds it."
+                description: qsTrId("rustrx-la-directory-hint")
+                checked: page.settings.directory_public === true
+                automaticCheck: false
+                onClicked: rustrx.command({ cmd: "set_directory_visibility", room_id: roomId, listed: !checked })
+            }
             DetailItem {
                 visible: !page.isSpace
                 //% "Encryption"
@@ -361,6 +447,29 @@ Page {
                 //% "Off"
                                       : qsTrId("rustrx-la-off")
             }
+            // one way: a room cannot be unencrypted again
+            PageButton {
+                visible: !page.isSpace && !info.encrypted && page.may.encryption === true
+                //% "Turn on encryption"
+                text: qsTrId("rustrx-bt-encrypt-room")
+                onClicked: {
+                    //% "Turning on encryption, for good"
+                    encryptRemorse.execute(qsTrId("rustrx-re-encrypt-room"), function () {
+                        rustrx.command({ cmd: "enable_encryption", room_id: roomId })
+                    })
+                }
+            }
+            Label {
+                visible: !page.isSpace && !info.encrypted && page.may.encryption === true
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                //% "It cannot be turned off again. Bridges, bots and newcomers may not read what was said before."
+                text: qsTrId("rustrx-la-encrypt-room-hint")
+            }
+            RemorsePopup { id: encryptRemorse }
             // the room's ID, which every room has; a tap copies it too
             BackgroundItem {
                 id: idRow
@@ -425,6 +534,40 @@ Page {
                 checked: info.is_low === true
                 automaticCheck: false
                 onClicked: rustrx.command({ cmd: "set_low_priority", room_id: roomId, value: !checked })
+            }
+
+            // for those who may: pages of their own
+            SectionHeader {
+                visible: page.may.power_levels === true || page.may.aliases === true || page.may.server_acl === true || page.may.upgrade === true
+                //% "Moderation"
+                text: qsTrId("rustrx-se-moderation")
+            }
+            LinkRow {
+                visible: page.may.power_levels === true
+                //% "Roles and permissions"
+                text: qsTrId("rustrx-bt-permissions")
+                onClicked: pageStack.push(Qt.resolvedUrl("RoomPermissionsPage.qml"), { roomId: roomId, settings: page.settings, members: page.memberList })
+            }
+            LinkRow {
+                visible: page.may.aliases === true
+                //% "Addresses"
+                text: qsTrId("rustrx-bt-addresses")
+                onClicked: pageStack.push(Qt.resolvedUrl("AddressesPage.qml"), { roomId: roomId, settings: page.settings })
+            }
+            LinkRow {
+                visible: page.may.server_acl === true
+                //% "Server access"
+                text: qsTrId("rustrx-bt-server-acl")
+                onClicked: pageStack.push(Qt.resolvedUrl("ServerAclPage.qml"), { roomId: roomId, settings: page.settings })
+            }
+            LinkRow {
+                visible: page.may.upgrade === true && page.settings.versions !== undefined && page.settings.versions.length > 0
+                //% "Upgrade the room"
+                text: qsTrId("rustrx-bt-upgrade")
+                //: %1 the room's version
+                //% "Version %1"
+                description: qsTrId("rustrx-la-room-version").arg(page.settings.version || "?")
+                onClicked: pageStack.push(Qt.resolvedUrl("UpgradeRoomPage.qml"), { roomId: roomId, settings: page.settings })
             }
 
 

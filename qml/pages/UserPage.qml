@@ -19,8 +19,11 @@ import Sailfish.Silica 1.0
 import "../components"
 
 // One person: their name and Matrix ID, whether we verified them, and
-// what can be done: a direct chat, verifying, ignoring; in a room, with
-// the power for it, removing them or banning them (and lifting a ban).
+// what can be done: a direct chat, verifying, ignoring, reporting; in a
+// room their role, and with the power for it changing the role, muting,
+// removing, banning (and lifting a ban), revoking an invitation, each
+// with an optional reason. What we may comes from the room's power
+// levels (user_info's can_* from the core).
 Page {
     id: page
 
@@ -38,7 +41,9 @@ Page {
         target: rustrx
         onUserInfo: if (info.user_id === page.userId) { page.info = info; page.loaded = true }
         onErrorOccurred: if (cmd === "user_info" || cmd === "kick" || cmd === "ban" || cmd === "unban"
-                             || cmd === "verify_user") page.loaded = true
+                             || cmd === "verify_user" || cmd === "set_user_level") { page.loaded = true; page.load() }
+        //% "Reported to your server's admins"
+        onReported: if (what.user_id === page.userId) Notices.show(qsTrId("rustrx-no-reported"), Notice.Short)
         // a verification we started with them: its page (emoji to compare)
         onVerification: if (data.we_started && data.other_user === page.userId) app.showVerification(data)
         onDmReady: {
@@ -52,9 +57,62 @@ Page {
 
     RemorsePopup { id: remorse }
 
+    // a moderator's act with its optional reason (components/ReasonDialog)
+    function confirm(props, act) {
+        var d = pageStack.push(Qt.resolvedUrl("../components/ReasonDialog.qml"), props)
+        d.accepted.connect(function () { act(d.reason.trim()) })
+    }
+    // c: the command with its name written out ({ cmd: "kick", ... })
+    function moderate(c, reason) {
+        c.room_id = page.roomId
+        c.user_id = page.userId
+        if (reason.length) c.reason = reason
+        page.loaded = false
+        rustrx.command(c)
+    }
+    readonly property string who: page.info.name || page.name || page.userId
+    // the level a role stands for (the core's moderation.rs)
+    readonly property var roleLevels: [0, 50, 100]
+    function roleName(role, level) {
+        switch (role) {
+        //% "Owner"
+        case "creator": return qsTrId("rustrx-la-role-creator")
+        //% "Admin"
+        case "admin": return qsTrId("rustrx-la-role-admin")
+        //% "Moderator"
+        case "moderator": return qsTrId("rustrx-la-role-moderator")
+        //% "Member"
+        default: return qsTrId("rustrx-la-role-member")
+        }
+    }
+    function setLevel(level) {
+        page.loaded = false
+        rustrx.command({ cmd: "set_user_level", room_id: page.roomId, user_id: page.userId, level: level })
+    }
+
     SilicaFlickable {
         anchors.fill: parent
         contentHeight: column.height + Theme.paddingLarge
+
+        PullDownMenu {
+            visible: page.loaded && !page.info.is_self
+            MenuItem {
+                //% "Report to your server"
+                text: qsTrId("rustrx-me-report-user")
+                onClicked: page.confirm({
+                    //% "Report %1"
+                    title: qsTrId("rustrx-he-report-user").arg(page.who),
+                    //% "Report"
+                    acceptText: qsTrId("rustrx-bt-report"),
+                    //% "The admins of your own server get the report, not the room's moderators."
+                    text: qsTrId("rustrx-la-report-goes-to-server")
+                }, function (reason) {
+                    var c = { cmd: "report_user", user_id: page.userId }
+                    if (reason.length) c.reason = reason
+                    rustrx.command(c)
+                })
+            }
+        }
 
         Column {
             id: column
@@ -112,37 +170,114 @@ Page {
             }
 
             SectionHeader {
-                visible: page.roomId.length > 0 && (page.info.can_kick || page.info.can_ban)
+                visible: page.roomId.length > 0 && page.info.membership !== undefined
                 //% "In this room"
                 text: qsTrId("rustrx-se-user-room")
+            }
+
+            // the role: a line for everyone, a choice for those who may
+            DetailItem {
+                visible: page.roomId.length > 0 && page.info.membership !== undefined && !page.info.can_set_level
+                //% "Role"
+                label: qsTrId("rustrx-la-role")
+                value: page.roleName(page.info.role, page.info.power)
+            }
+            HoldComboBox {
+                id: roleBox
+                visible: !!page.info.can_set_level
+                width: parent.width
+                label: qsTrId("rustrx-la-role")
+                // a level that is no role's (say 75) shows as itself
+                readonly property bool custom: page.roleLevels.indexOf(page.info.power) < 0
+                // only roles up to our own level can be given
+                readonly property var offered: page.roleLevels.filter(function (l) { return l <= (page.info.own_level || 0) })
+                currentIndex: custom ? offered.length : Math.max(0, offered.indexOf(page.info.power))
+                menu: ContextMenu {
+                    Repeater {
+                        model: roleBox.offered
+                        MenuItem { text: page.roleName(modelData === 100 ? "admin" : modelData === 50 ? "moderator" : "member") }
+                    }
+                    MenuItem {
+                        visible: roleBox.custom
+                        //: a power level that is none of the named roles
+                        //% "Level %1"
+                        text: qsTrId("rustrx-la-role-level").arg(page.info.power)
+                    }
+                }
+                onCurrentIndexChanged: {
+                    if (!page.loaded || currentIndex >= offered.length) return
+                    var level = offered[currentIndex]
+                    if (level === page.info.power) return
+                    if (page.info.is_self && level < page.info.power) {
+                        //% "Lowering your own role: no one below you can give it back"
+                        remorse.execute(qsTrId("rustrx-re-self-demote"), function () { page.setLevel(level) })
+                    } else {
+                        page.setLevel(level)
+                    }
+                }
+                description: page.info.is_self
+                             //% "You can lower your own role, but not raise it again."
+                             ? qsTrId("rustrx-la-role-self-hint") : ""
+            }
+
+            // muted: a level below the one for sending messages
+            TextSwitch {
+                visible: !!page.info.can_mute && page.info.membership === "join"
+                readonly property int sendLevel: page.info.events_default || 0
+                //% "Muted"
+                text: qsTrId("rustrx-la-muted")
+                //% "They can read, but not write here."
+                description: qsTrId("rustrx-la-muted-hint")
+                checked: (page.info.power || 0) < sendLevel || (sendLevel === 0 && (page.info.power || 0) < 0)
+                automaticCheck: false
+                onClicked: page.setLevel(checked ? sendLevel : sendLevel - 1)
+            }
+
+            PageButton {
+                visible: !!page.info.can_kick && page.info.membership === "invite"
+                //% "Revoke the invitation"
+                text: qsTrId("rustrx-bt-revoke-invite")
+                onClicked: page.confirm({
+                    title: qsTrId("rustrx-bt-revoke-invite"),
+                    //% "Revoke"
+                    acceptText: qsTrId("rustrx-bt-revoke")
+                }, function (reason) { page.moderate({ cmd: "kick" }, reason) })
             }
             PageButton {
                 visible: !!page.info.can_kick && page.info.membership === "join"
                 //% "Remove from the room"
                 text: qsTrId("rustrx-bt-kick")
-                onClicked: {
-                    //% "Removing"
-                    remorse.execute(qsTrId("rustrx-re-kicking"), function () {
-                        rustrx.command({ cmd: "kick", room_id: page.roomId, user_id: page.userId })
-                    })
-                }
+                onClicked: page.confirm({
+                    //% "Remove %1"
+                    title: qsTrId("rustrx-he-kick").arg(page.who),
+                    //% "Remove"
+                    acceptText: qsTrId("rustrx-bt-remove"),
+                    //% "They can come back if the room lets them."
+                    text: qsTrId("rustrx-la-kick-note")
+                }, function (reason) { page.moderate({ cmd: "kick" }, reason) })
             }
             PageButton {
                 visible: !!page.info.can_ban && page.info.membership !== "ban"
                 //% "Ban from the room"
                 text: qsTrId("rustrx-bt-ban")
-                onClicked: {
-                    //% "Banning"
-                    remorse.execute(qsTrId("rustrx-re-banning"), function () {
-                        rustrx.command({ cmd: "ban", room_id: page.roomId, user_id: page.userId })
-                    })
-                }
+                onClicked: page.confirm({
+                    //% "Ban %1"
+                    title: qsTrId("rustrx-he-ban").arg(page.who),
+                    //% "Ban"
+                    acceptText: qsTrId("rustrx-bt-ban-short"),
+                    //% "They are removed and cannot come back until the ban is lifted."
+                    text: qsTrId("rustrx-la-ban-note")
+                }, function (reason) { page.moderate({ cmd: "ban" }, reason) })
             }
             PageButton {
                 visible: !!page.info.can_ban && page.info.membership === "ban"
                 //% "Lift the ban"
                 text: qsTrId("rustrx-bt-unban")
-                onClicked: rustrx.command({ cmd: "unban", room_id: page.roomId, user_id: page.userId })
+                onClicked: page.confirm({
+                    title: qsTrId("rustrx-bt-unban"),
+                    //% "Lift"
+                    acceptText: qsTrId("rustrx-bt-lift")
+                }, function (reason) { page.moderate({ cmd: "unban" }, reason) })
             }
         }
 

@@ -296,6 +296,11 @@ signals:
     void deviceDeleted(const QString &deviceId);
     void searchResults(const QVariantMap &results);
     void roomSearchResults(const QVariantMap &results);
+    // a room's permissions and settings (RoomInfoPage and the moderation pages)
+    void roomSettings(const QVariantMap &settings);
+    void roomUpgraded(const QString &roomId, const QString &replacement);
+    void reported(const QVariantMap &what);
+    void aliasAdded(const QString &roomId, const QString &alias);
     void profile(const QVariantMap &profile);
     void dmReady(const QString &roomId, const QString &userId);
     void joined(const QString &roomId);

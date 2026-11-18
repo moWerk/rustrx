@@ -223,7 +223,8 @@ Column {
     onRoomIdChanged: { members = []; membersAsked = false; picked = [] }
     Connections {
         target: rustrx
-        onMembers: if (roomId === composer.roomId) composer.members = members
+        // mentions offer only those in the room (the list has the invited and banned too)
+        onMembers: if (roomId === composer.roomId) composer.members = members.filter(function (m) { return !m.membership || m.membership === "join" })
     }
     function suggestions() {
         if (!mentioning) return []

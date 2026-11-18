@@ -85,7 +85,11 @@ ListItem {
             copyLink: canAct && msg.eventId.length > 0,
             emotes: emoteList(),
             report: canAct && !own,
-            remove: own && msgType !== "redacted"
+            // one's own, or as a moderator anyone's (the room's power levels)
+            remove: msgType !== "redacted" && isEvent && (own || app.roomMay(roomId).redact_other === true),
+            removeOther: !own,
+            pin: canAct && msg.eventId.length > 0 && app.roomMay(roomId).pin === true,
+            pinned: app.roomPinned(roomId).indexOf(msg.eventId) >= 0
         }
     }
     readonly property string eventId: model.event_id || ""

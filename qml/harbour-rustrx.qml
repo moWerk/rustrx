@@ -489,6 +489,27 @@ ApplicationWindow {
         return rule
     }
 
+    // each room's permissions and settings as the core last sent them
+    // (room_settings): the message rows ask what one may do in a room
+    property var roomSettingsById: ({})
+    Connections {
+        target: rustrx
+        onRoomSettings: {
+            var all = {}
+            for (var k in app.roomSettingsById) all[k] = app.roomSettingsById[k]
+            all[settings.room_id] = settings
+            app.roomSettingsById = all
+        }
+    }
+    function roomMay(roomId) {
+        var s = roomSettingsById[roomId]
+        return s && s.may ? s.may : ({})
+    }
+    function roomPinned(roomId) {
+        var s = roomSettingsById[roomId]
+        return s && s.pinned ? s.pinned : []
+    }
+
     // the open requests to join one room or space
     function knockCount(roomId) {
         var n = 0, all = rustrx.knockRequests
