@@ -1,0 +1,9 @@
+module Sailfish.Silica
+singleton Theme 1.0 Theme.qml
+Label 1.0 Label.qml
+BackgroundItem 1.0 BackgroundItem.qml
+SilicaFlickable 1.0 SilicaFlickable.qml
+SectionHeader 1.0 SectionHeader.qml
+TextSwitch 1.0 TextSwitch.qml
+Button 1.0 Button.qml
+ProgressCircleBase 1.0 ProgressCircleBase.qml
