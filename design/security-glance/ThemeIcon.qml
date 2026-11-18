@@ -8,7 +8,8 @@ import Sailfish.Silica 1.0
 // are drawn here, close enough to judge a layout: icon-m-right,
 // icon-m-device-lock, icon-m-warning, icon-s-filled-warning,
 // icon-m-acknowledge (a check in a circle), icon-m-clear (an x in a
-// filled circle).
+// filled circle); for the Horizon direction icon-m-device (a phone),
+// icon-m-backup (an arrow going round to a point in time), icon-m-computer.
 Canvas {
     id: icon
     property string name
@@ -37,6 +38,16 @@ Canvas {
             line([0.36, 0.42, 0.36, 0.48]); line([0.64, 0.42, 0.64, 0.48])
             g.beginPath(); g.rect(s * 0.3, s * 0.48, s * 0.4, s * 0.28); g.stroke()
             g.beginPath(); g.arc(s / 2, s * 0.6, s * 0.03, 0, 2 * Math.PI); g.fill()
+        } else if (name === "icon-m-device") {
+            g.beginPath(); g.rect(s * 0.32, s * 0.16, s * 0.36, s * 0.68); g.stroke()
+            line([0.45, 0.74, 0.55, 0.74])
+        } else if (name === "icon-m-backup") {
+            g.beginPath(); g.arc(s / 2, s / 2, s * 0.32, -0.75 * Math.PI, 0.9 * Math.PI); g.stroke()
+            line([0.16, 0.2, 0.27, 0.28, 0.38, 0.17])
+            line([0.5, 0.34, 0.5, 0.52, 0.62, 0.6])
+        } else if (name === "icon-m-computer") {
+            g.beginPath(); g.rect(s * 0.2, s * 0.24, s * 0.6, s * 0.4); g.stroke()
+            line([0.12, 0.76, 0.88, 0.76])
         } else if (name === "icon-m-warning" || name === "icon-s-filled-warning") {
             g.beginPath(); g.moveTo(s * 0.5, s * 0.16); g.lineTo(s * 0.86, s * 0.8); g.lineTo(s * 0.14, s * 0.8); g.closePath()
             if (name === "icon-s-filled-warning") { g.fill(); g.strokeStyle = Theme.backgroundColor } else g.stroke()

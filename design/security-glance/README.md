@@ -19,7 +19,11 @@ To render without a window:
 QT_QUICK_BACKEND=software QT_QPA_PLATFORM=offscreen qmlscene -I . main.qml --shot=good.png --state=good
 ```
 
-`--state` is `good`, `gaps`, `bad` or `checking`; `--light` for a light ambience.
+`--state` is `good`, `gaps`, `bad` or `checking`; `--light` for a light ambience; `--huge` for the large font scale; `--highlight=#87c7ff` for another highlight colour.
+
+## The directions
+
+Four redesigns sit next to the 0.4.9 look: `AccountGlanceRail.qml`, `AccountGlanceHalo.qml`, `AccountGlanceHorizon.qml` and `AccountGlanceOrbits.qml`, with their components (`SafeguardRow.qml`, `RailMark.qml`, `HaloRing.qml`, `HorizonLine.qml`, `OrbitRings.qml`). The "Direction" controls switch between them or show all side by side; `--design=rail|halo|horizon|orbits|0.4.9|all` does the same for a render. `DIRECTIONS.md` says what each is about.
 
 ## The files
 
