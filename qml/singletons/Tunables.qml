@@ -70,6 +70,8 @@ QtObject {
     readonly property int emojiMinColumns: 6
     // the security ring in Settings, of the page width
     readonly property real securityRingWidth: 0.4
+    // a copied recovery key leaves the clipboard after this, if still there
+    readonly property int clipboardKeyMs: 120000
     // its colour when every safeguard is in place (the theme has no green)
     readonly property color securityComplete: "#3ecf6e"
     // image viewer: largest pinch zoom, double tap zoom

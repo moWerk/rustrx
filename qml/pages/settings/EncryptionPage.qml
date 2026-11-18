@@ -231,8 +231,8 @@ Page {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
-                        Clipboard.text = settings.shownKey
-                        //% "Recovery key copied"
+                        app.copySecret(settings.shownKey)
+                        //% "Recovery key copied. It leaves the clipboard in two minutes."
                         Notices.show(qsTrId("rustrx-no-key-copied"))
                     }
                 }

@@ -356,6 +356,19 @@ SilicaFlickable {
             //% "A copy goes to Downloads, so you can also attach it to a mail or a forum post."
             text: qsTrId("rustrx-la-share-log-hint")
         }
+        Button {
+            anchors.horizontalCenter: parent.horizontalCenter
+            //% "Delete the debug log"
+            text: qsTrId("rustrx-bt-clear-log")
+            onClicked: {
+                //% "Deleting the debug log"
+                settings.remorse.execute(qsTrId("rustrx-re-clearing-log"), function () {
+                    rustrx.clearLog()
+                    //% "Debug log deleted, with its copies in Downloads"
+                    Notices.show(qsTrId("rustrx-no-log-cleared"), Notice.Short)
+                })
+            }
+        }
         ShareAction {
             id: logShare
             mimeType: "text/plain"

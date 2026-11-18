@@ -99,6 +99,28 @@ bool DebugLog::enabled()
     return s_enabled.load() != 0;
 }
 
+int DebugLog::clear(const QString &dir)
+{
+    QMutexLocker locker(&s_lock);
+    for (const QString &name : { QString::fromLatin1(Keys::kLogApp), QString::fromLatin1(Keys::kLogBackground),
+                                 QString::fromLatin1(Keys::kLogPush) }) {
+        const QString base = logDir() + QLatin1Char('/') + name;
+        QFile::remove(base + QStringLiteral(".log.1"));
+        // emptied, not removed: the file a process has open is in append
+        // mode and goes on at its new end
+        QFile::resize(base + QStringLiteral(".log"), 0);
+    }
+    // the copies in Downloads (and in its Rustrx folder, where 0.4.7 put them)
+    int removed = 0;
+    const QStringList pattern{ QStringLiteral("rustrx-log-*.txt") };
+    for (const QString &d : { dir, dir + QLatin1Char('/') + QLatin1String(Keys::kDownloadDir) }) {
+        QDir folder(d);
+        for (const QString &f : folder.entryList(pattern, QDir::Files))
+            if (folder.remove(f)) ++removed;
+    }
+    return removed;
+}
+
 QString DebugLog::collect(const QString &dir, const QString &header)
 {
     QDir().mkpath(dir);

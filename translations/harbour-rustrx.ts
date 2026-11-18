@@ -65,6 +65,10 @@
         <source>Removing</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-re-clearing-log">
+        <source>Deleting the debug log</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-la-invitation">
         <source>Invitation. Long press to accept or decline.</source>
         <translation type="unfinished"></translation>
@@ -135,6 +139,10 @@
     </message>
     <message id="rustrx-no-capture-failed">
         <source>Could not take the photo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-log-cleared">
+        <source>Debug log deleted, with its copies in Downloads</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-focusing">
@@ -469,7 +477,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-no-key-copied">
-        <source>Recovery key copied</source>
+        <source>Recovery key copied. It leaves the clipboard in two minutes.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-se-devices">
@@ -1748,6 +1756,10 @@
     </message>
     <message id="rustrx-bt-share-log">
         <source>Share the debug log</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-clear-log">
+        <source>Delete the debug log</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-share-log-hint">

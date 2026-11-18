@@ -315,6 +315,13 @@ QString Rustrx::shareableLog()
     return DebugLog::collect(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation), header);
 }
 
+int Rustrx::clearLog()
+{
+    const int copies = DebugLog::clear(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
+    qInfo() << "debug log: cleared," << copies << "shared copies removed";
+    return copies;
+}
+
 // the room lists' state, kept in RoomLists
 int Rustrx::unreadTotal() const { return m_lists->unreadTotal(); }
 int Rustrx::unreadChats() const { return m_lists->unreadChats(); }

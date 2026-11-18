@@ -30,4 +30,7 @@ bool enabled();
 // the app's and the stand-in's logs in one text file in `dir`, with a
 // header (versions, device); returns its path, empty on failure
 QString collect(const QString &dir, const QString &header);
+// the logs emptied (the open one keeps writing, from the start) and the
+// copies shared to `dir` before removed; returns how many copies went
+int clear(const QString &dir);
 }

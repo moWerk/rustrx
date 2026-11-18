@@ -156,6 +156,8 @@ public:
     void setDebugLog(bool on);
     // the logs in one text file in Downloads, for the share sheet; its path
     Q_INVOKABLE QString shareableLog();
+    // the debug log emptied and its shared copies removed
+    Q_INVOKABLE int clearLog();
     QString roomFilter() const;
     void setRoomFilter(const QString &text);
     bool background() const;

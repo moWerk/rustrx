@@ -157,6 +157,24 @@ ApplicationWindow {
 
     Timer { id: routeRetry; interval: Tunables.retryIntervalMs; onTriggered: route() }
 
+    // a copied secret (the recovery key) out of the clipboard after a
+    // while, unless something else was copied since; here, so it outlives
+    // the page it was copied on
+    function copySecret(text) {
+        Clipboard.text = text
+        clipboardSecret.text = text
+        clipboardSecret.restart()
+    }
+    Timer {
+        id: clipboardSecret
+        property string text
+        interval: Tunables.clipboardKeyMs
+        onTriggered: {
+            if (Clipboard.text === text) Clipboard.text = ""
+            text = ""
+        }
+    }
+
     // the first start: the prototype notice (and the debug log in it), once;
     // it goes only by Agree. Above whatever route() brought in, once the
     // stack is still.
