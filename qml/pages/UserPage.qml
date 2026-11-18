@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
 
 // One person: their name and Matrix ID, whether we verified them, and
 // what can be done: a direct chat, verifying, ignoring; in a room, with
@@ -81,8 +82,7 @@ Page {
                         : qsTrId("rustrx-la-user-no-identity")
             }
 
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 visible: !page.info.is_self
                 //% "Direct chat"
                 text: qsTrId("rustrx-me-direct-chat")
@@ -91,15 +91,13 @@ Page {
                     rustrx.command({ cmd: "create_dm", user_id: page.userId })
                 }
             }
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 visible: page.loaded && !page.info.is_self && page.info.has_identity && !page.info.verified
                 //% "Verify"
                 text: qsTrId("rustrx-bt-verify-user")
                 onClicked: rustrx.command({ cmd: "verify_user", user_id: page.userId })
             }
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 visible: page.loaded && !page.info.is_self
                 text: page.info.ignored
                       //% "Stop ignoring"
@@ -118,8 +116,7 @@ Page {
                 //% "In this room"
                 text: qsTrId("rustrx-se-user-room")
             }
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 visible: !!page.info.can_kick && page.info.membership === "join"
                 //% "Remove from the room"
                 text: qsTrId("rustrx-bt-kick")
@@ -130,8 +127,7 @@ Page {
                     })
                 }
             }
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 visible: !!page.info.can_ban && page.info.membership !== "ban"
                 //% "Ban from the room"
                 text: qsTrId("rustrx-bt-ban")
@@ -142,8 +138,7 @@ Page {
                     })
                 }
             }
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 visible: !!page.info.can_ban && page.info.membership === "ban"
                 //% "Lift the ban"
                 text: qsTrId("rustrx-bt-unban")

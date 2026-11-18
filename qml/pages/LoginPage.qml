@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Rustrx 1.0
 import Sailfish.Silica 1.0
+import "../components"
 
 // Everything on one page: the fields keep their content, errors appear
 // under the fields, and every way to log in sits on the same screen.
@@ -123,9 +124,8 @@ Page {
 
             Item { width: 1; height: Theme.paddingMedium; visible: page.oauth }
 
-            Button {
+            PageButton {
                 visible: page.oauth
-                anchors.horizontalCenter: parent.horizontalCenter
                 //: %1 the server name
                 //% "Log in at %1"
                 text: qsTrId("rustrx-bt-oauth").arg(server.name)
@@ -145,11 +145,10 @@ Page {
                 text: qsTrId("rustrx-la-oauth-note").arg(server.name)
             }
 
-            Button {
+            PageButton {
                 // a server with the QR rendezvous (MSC4108): another device
                 // logged in already lets this one in, keys and all
                 visible: page.oauth && server.qrLogin === true
-                anchors.horizontalCenter: parent.horizontalCenter
                 //% "Log in with a QR code"
                 text: qsTrId("rustrx-he-qr-login")
                 enabled: !rustrx.loggingIn
@@ -160,9 +159,8 @@ Page {
                 }
             }
 
-            Button {
+            PageButton {
                 visible: page.oauth && !page.passwordWanted && server.password
-                anchors.horizontalCenter: parent.horizontalCenter
                 //% "Use a password instead"
                 text: qsTrId("rustrx-bt-password-instead")
                 onClicked: page.passwordWanted = true
@@ -227,9 +225,8 @@ Page {
 
             Item { width: 1; height: Theme.paddingLarge }
 
-            Button {
+            PageButton {
                 visible: page.showPassword
-                anchors.horizontalCenter: parent.horizontalCenter
                 //% "Logging in…"
                 text: rustrx.loggingIn ? qsTrId("rustrx-bt-logging-in")
                 //% "Log in"
@@ -271,12 +268,14 @@ Page {
                 Row {
                     anchors.horizontalCenter: parent.horizontalCenter
                     spacing: Theme.paddingLarge
-                    Button {
+                    PageButton {
+                        inRow: true
                         //% "Open again"
                         text: qsTrId("rustrx-bt-sso-open-again")
                         onClicked: app.openExternal(page.ssoUrl)
                     }
-                    Button {
+                    PageButton {
+                        inRow: true
                         //% "Copy link"
                         text: qsTrId("rustrx-bt-sso-copy")
                         onClicked: {
@@ -287,8 +286,7 @@ Page {
                     }
                 }
                 // two buttons fit a row in portrait; the way back gets its own
-                Button {
-                    anchors.horizontalCenter: parent.horizontalCenter
+                PageButton {
                     //% "Cancel"
                     text: qsTrId("rustrx-bt-sso-cancel")
                     onClicked: rustrx.command({ cmd: "login_cancel" })
@@ -299,9 +297,8 @@ Page {
             //% "Other ways to log in"
             SectionHeader { visible: !page.oauth; text: qsTrId("rustrx-se-other-ways") }
 
-            Button {
+            PageButton {
                 visible: !page.oauth
-                anchors.horizontalCenter: parent.horizontalCenter
                 //% "Log in with single sign-on"
                 text: qsTrId("rustrx-bt-sso")
                 enabled: !rustrx.loggingIn && server.sso
@@ -329,8 +326,7 @@ Page {
             // accounts are made on the server's own sign-up page (matrix.org and
             // other servers with an account service no longer take sign-ups from
             // apps); the password login above works for them afterwards
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 //% "Create an account"
                 text: qsTrId("rustrx-bt-create-account")
                 enabled: !rustrx.loggingIn

@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Rustrx 1.0
 import Sailfish.Silica 1.0
+import "../components"
 import Sailfish.Pickers 1.0
 
 // Room keys as a passphrase-protected file, the format Element and nheko
@@ -76,8 +77,7 @@ Page {
                 placeholderText: label
             }
 
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 enabled: pass.text.length >= Tunables.minPassphrase && !page.working
                 //% "Export to Documents"
                 text: qsTrId("rustrx-bt-export-keys")
@@ -89,8 +89,7 @@ Page {
                 }
             }
 
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 enabled: pass.text.length > 0 && !page.working
                 //% "Import from a file"
                 text: qsTrId("rustrx-bt-import-keys")

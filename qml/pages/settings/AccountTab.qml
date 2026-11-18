@@ -335,8 +335,7 @@ SilicaFlickable {
             automaticCheck: false
             onClicked: rustrx.debugLog = !rustrx.debugLog
         }
-        Button {
-            anchors.horizontalCenter: parent.horizontalCenter
+        PageButton {
             //% "Share the debug log"
             text: qsTrId("rustrx-bt-share-log")
             onClicked: {
@@ -356,8 +355,7 @@ SilicaFlickable {
             //% "A copy goes to Downloads, so you can also attach it to a mail or a forum post."
             text: qsTrId("rustrx-la-share-log-hint")
         }
-        Button {
-            anchors.horizontalCenter: parent.horizontalCenter
+        PageButton {
             //% "Delete the debug log"
             text: qsTrId("rustrx-bt-clear-log")
             onClicked: {

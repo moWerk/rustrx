@@ -217,7 +217,8 @@ Page {
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: Theme.paddingLarge
-                Button {
+                PageButton {
+                    inRow: true
                     visible: page.address.length > 0 && !page.loading && !page.asked && page.state_ !== "banned"
                              && page.state_ !== "knocked" && page.rule !== "knock" && page.rule !== "invite"
                              && (page.known || page.preview.ok === false)
@@ -229,7 +230,8 @@ Page {
                           : qsTrId("rustrx-bt-join")
                     onClicked: page.join()
                 }
-                Button {
+                PageButton {
+                    inRow: true
                     visible: reasonField.show
                     enabled: !page.waiting
                     //% "Ask to join"

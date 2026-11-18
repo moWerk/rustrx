@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
 
 // One verification, incoming or started here: the request, then the seven
 // emoji, then done. Going back cancels it.
@@ -89,16 +90,14 @@ Page {
                 running: phase === "waiting" || phase === "created" || phase === "ready" || phase === "sas" || phase === "confirmed"
             }
 
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 visible: phase === "requested"
                 //% "Accept"
                 text: qsTrId("rustrx-bt-accept")
                 onClicked: rustrx.command({ cmd: "verification_accept", flow_id: flowId })
             }
 
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 visible: phase === "ready" && !info.we_started
                 //% "Start emoji comparison"
                 text: qsTrId("rustrx-bt-start-sas")
@@ -140,20 +139,21 @@ Page {
                 anchors.horizontalCenter: parent.horizontalCenter
                 visible: phase === "keys_exchanged"
                 spacing: Theme.paddingLarge
-                Button {
+                PageButton {
+                    inRow: true
                     //% "They match"
                     text: qsTrId("rustrx-bt-match")
                     onClicked: rustrx.command({ cmd: "verification_confirm", flow_id: flowId })
                 }
-                Button {
+                PageButton {
+                    inRow: true
                     //% "They differ"
                     text: qsTrId("rustrx-bt-mismatch")
                     onClicked: rustrx.command({ cmd: "verification_mismatch", flow_id: flowId })
                 }
             }
 
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 visible: finished
                 //% "Done"
                 text: qsTrId("rustrx-bt-done")

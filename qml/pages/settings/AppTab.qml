@@ -270,8 +270,7 @@ SilicaFlickable {
             value: settings.storage.media_files !== undefined
                    ? Format.formatFileSize(settings.storage.media_files + (settings.storage.media_cache || 0)) : "…"
         }
-        Button {
-            anchors.horizontalCenter: parent.horizontalCenter
+        PageButton {
             //% "Clear pictures and files"
             text: qsTrId("rustrx-bt-clear-media")
             onClicked: {

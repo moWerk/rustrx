@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
 
 // Logging in with a QR code: this phone shows the code, a device that is
 // logged in already (Element: "Link new device") scans it and shows two
@@ -128,8 +129,7 @@ Page {
                 text: page.userCode
             }
 
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 visible: !page.error.length && page.state_ !== "done"
                 //% "Cancel"
                 text: qsTrId("rustrx-bt-sso-cancel")

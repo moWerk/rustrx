@@ -160,12 +160,14 @@ Page {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Theme.paddingLarge
             visible: page.recorded && !page.active && !voice.recording && voice.path.length > 0
-            Button {
+            PageButton {
+                inRow: true
                 //% "Discard"
                 text: qsTrId("rustrx-bt-discard")
                 onClicked: { voice.discard(); page.elapsed = 0; page.recorded = false }
             }
-            Button {
+            PageButton {
+                inRow: true
                 text: qsTrId("rustrx-bt-send")
                 onClicked: {
                     rustrx.sendVoice(page.roomId, voice.path, page.elapsed, page.takeCaption ? page.takeCaption() : "")

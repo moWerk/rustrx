@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
 
 // A new room or space: a name, an optional topic, who may join (only
 // invited people, people who ask and are let in, the members of the space
@@ -146,8 +147,7 @@ Page {
                 description: qsTrId("rustrx-la-encrypted-hint")
             }
 
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 enabled: nameField.text.trim().length > 0 && !dialog.waiting
                 //% "Create"
                 text: qsTrId("rustrx-bt-create")
