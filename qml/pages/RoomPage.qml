@@ -25,6 +25,7 @@ import "../components"
 // appears when the newest message is in view.
 Page {
     id: page
+    objectName: "room"
 
     property string roomId
     property string roomName
@@ -36,6 +37,11 @@ Page {
     property bool infoAttached
     // the composer lives in the list header, a scope of its own; it registers here
     property Item composer
+    // the timeline is one for the app: this page's room is in it. Not so
+    // for a room page under another one (a share opened a second room
+    // above it), which neither pages back nor sends receipts until it is
+    // in front again and has opened its room anew
+    readonly property bool inTimeline: rustrx.openRoomId === roomId
 
     Component.onCompleted: {
         rustrx.openRoom(roomId)
@@ -75,6 +81,13 @@ Page {
         }
         if (status === PageStatus.Active) {
             app.lastRoom = roomId
+            // back from a room opened above this one: its own messages again
+            // (that page closes its room as it goes only while still the open one)
+            if (!inTimeline) {
+                atStart = false
+                paginating = false
+                rustrx.openRoom(roomId)
+            }
             // opened by Answer on an incoming call: join it
             if (rustrx.takePendingCall() === roomId)
                 rustrx.command({ cmd: "call_start", room_id: roomId })
@@ -125,7 +138,7 @@ Page {
         property bool shown
         interval: Tunables.markReadMs
         onTriggered: {
-            if (rustrx.timeline.count > 0 && Qt.application.state === Qt.ApplicationActive)
+            if (page.inTimeline && rustrx.timeline.count > 0 && Qt.application.state === Qt.ApplicationActive)
                 app.markRead(roomId, shown)
             shown = false
         }
@@ -331,7 +344,7 @@ Page {
 
         // the oldest end is at the top in this layout
         onAtYEndChanged: {
-            if (atYEnd && count > 0 && !paginating && !atStart) {
+            if (atYEnd && count > 0 && !paginating && !atStart && page.inTimeline) {
                 paginating = true
                 rustrx.command({ cmd: "paginate_back", room_id: roomId })
             }
@@ -572,7 +585,7 @@ Page {
             Notices.show(qsTrId("rustrx-no-jump-too-far"), Notice.Short)
             return
         }
-        if (!paginating) {
+        if (!paginating && page.inTimeline) {
             ++jumpPages
             paginating = true
             rustrx.command({ cmd: "paginate_back", room_id: roomId })

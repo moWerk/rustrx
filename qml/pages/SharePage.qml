@@ -31,7 +31,13 @@ Page {
             rustrx.sendFile(roomId, files[i], files.length === 1 ? text : "")
         if (text.length && files.length !== 1)
             rustrx.sendText(roomId, text, "")
-        pageStack.replace(Qt.resolvedUrl("RoomPage.qml"), { roomId: roomId, roomName: name })
+        // shared into the room it was opened from: back to that page, not a
+        // second one of the same room above it
+        var below = pageStack.previousPage(page)
+        if (below && below.objectName === "room" && below.roomId === roomId)
+            pageStack.pop()
+        else
+            pageStack.replace(Qt.resolvedUrl("RoomPage.qml"), { roomId: roomId, roomName: name })
     }
 
     SilicaListView {
