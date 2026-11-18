@@ -99,7 +99,7 @@ Page {
                 placeholderText: label
             }
 
-            ComboBox {
+            HoldComboBox {
                 id: accessBox
                 width: parent.width
                 //% "Who can join"

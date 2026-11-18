@@ -64,7 +64,7 @@ SilicaFlickable {
         // stand-in (kept running and syncing), or nothing. Until chosen:
         // push where a distributor is installed, else the stand-in
         // (app.applyClosedMode). Push is only offered with a distributor.
-        ComboBox {
+        HoldComboBox {
             id: closedBox
             width: parent.width
             readonly property var modes: rustrx.push.available ? ["push", "background", "off"] : ["background", "off"]
@@ -207,7 +207,7 @@ SilicaFlickable {
             onClicked: app.highlightFavs = !app.highlightFavs
         }
 
-        ComboBox {
+        HoldComboBox {
             width: parent.width
             //% "Message preview"
             label: qsTrId("rustrx-la-preview-lines")

@@ -325,7 +325,7 @@ Page {
             }
             // who may join: anyone, people who ask, members of its spaces,
             // or invited people only
-            ComboBox {
+            HoldComboBox {
                 visible: !info.is_dm
                 enabled: info.can_join_rules === true
                 width: parent.width
@@ -384,7 +384,7 @@ Page {
                 }
             }
 
-            ComboBox {
+            HoldComboBox {
                 visible: !page.isSpace
                 //% "Notifications"
                 label: qsTrId("rustrx-la-notifications")
