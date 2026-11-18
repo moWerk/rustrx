@@ -93,6 +93,22 @@ SilicaFlickable {
             text: qsTrId("rustrx-la-about-twemoji")
         }
 
+        // the bundled font's attribution (qml/fonts/, SIL OFL 1.1)
+        Label {
+            x: Theme.horizontalPageMargin
+            width: parent.width - 2 * x
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.Wrap
+            font.pixelSize: Theme.fontSizeSmall
+            color: Theme.secondaryColor
+            linkColor: Theme.highlightColor
+            textFormat: Text.StyledText
+            onLinkActivated: app.openExternal(link)
+            //: attribution of the bundled font; keep the links and names as they are
+            //% "Unread counts: <a href='https://github.com/adobe-fonts/source-sans'>Source Sans 3</a> Semibold by Adobe, <a href='https://openfontlicense.org'>SIL Open Font License 1.1</a>"
+            text: qsTrId("rustrx-la-about-font")
+        }
+
         // how it was made, graded by LLMGD (SPEC section 3: understood and
         // tested by the author, not read line by line, no outside review: A3;
         // the author directs and decides the design, the LLM writes: origin O1)

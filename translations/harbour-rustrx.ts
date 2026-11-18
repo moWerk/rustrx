@@ -1852,6 +1852,10 @@
         <extracomment>attribution of the emoji pictures; keep the links and names as they are</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-about-font">
+        <source>Unread counts: &lt;a href='https://github.com/adobe-fonts/source-sans'&gt;Source Sans 3&lt;/a&gt; Semibold by Adobe, &lt;a href='https://openfontlicense.org'&gt;SIL Open Font License 1.1&lt;/a&gt;</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-la-about-llmgd">
         <source>&lt;a href=&apos;https://github.com/moWerk/llmgd-specs&apos;&gt;LLMGD-3&lt;/a&gt; · origin O1: written by an LLM, directed, understood and tested on the phone by the author; not yet reviewed by others</source>
         <extracomment>the LLM disclosure grade; keep the link and the grade as they are</extracomment>
