@@ -35,15 +35,41 @@ Page {
     property string pendingDm
 
     function load() { rustrx.command({ cmd: "user_info", user_id: userId, room_id: roomId }) }
-    Component.onCompleted: load()
+    Component.onCompleted: {
+        load()
+        // what one may in the room (removing their messages): app.roomMay
+        if (roomId.length) rustrx.command({ cmd: "room_settings", room_id: roomId })
+    }
 
     Connections {
         target: rustrx
         onUserInfo: if (info.user_id === page.userId) { page.info = info; page.loaded = true }
-        onErrorOccurred: if (cmd === "user_info" || cmd === "kick" || cmd === "ban" || cmd === "unban"
-                             || cmd === "verify_user" || cmd === "set_user_level") { page.loaded = true; page.load() }
+        onErrorOccurred: {
+            if (cmd === "user_info" || cmd === "kick" || cmd === "ban" || cmd === "unban"
+                    || cmd === "verify_user" || cmd === "set_user_level") { page.loaded = true; page.load() }
+            if (cmd === "redact_recent") page.removing = false
+        }
         //% "Reported to your server's admins"
         onReported: if (what.user_id === page.userId) Notices.show(qsTrId("rustrx-no-reported"), Notice.Short)
+        onSpaceBanned: {
+            if (result.user_id !== page.userId) return
+            page.load()
+            //: %n rooms the person was banned from (the space counts as one)
+            //% "Banned in %n rooms"
+            Notices.show(qsTrId("rustrx-no-space-banned", result.rooms)
+                         //: %n rooms where one could not ban (no power there, or not joined)
+                         //% ", not in %n"
+                         + (result.skipped > 0 ? qsTrId("rustrx-no-space-banned-skipped", result.skipped) : ""), Notice.Long)
+        }
+        onRedactProgress: {
+            if (progress.user_id !== page.userId || progress.room_id !== page.roomId) return
+            page.removing = !progress.finished
+            page.removed = progress.done
+            page.toRemove = progress.total
+            //: %n messages removed
+            //% "Removed %n of their messages"
+            if (progress.finished) Notices.show(qsTrId("rustrx-no-redacted-recent", progress.done), Notice.Short)
+        }
         // a verification we started with them: its page (emoji to compare)
         onVerification: if (data.we_started && data.other_user === page.userId) app.showVerification(data)
         onDmReady: {
@@ -71,6 +97,12 @@ Page {
         rustrx.command(c)
     }
     readonly property string who: page.info.name || page.name || page.userId
+    // a space's member: a ban there reaches its rooms too
+    readonly property bool inSpace: page.roomId.length > 0 && rustrx.roomInfo(page.roomId).is_space === true
+    // removing their recent messages, while it runs
+    property bool removing
+    property int removed
+    property int toRemove
     // the level a role stands for (the core's moderation.rs)
     readonly property var roleLevels: [0, 50, 100]
     function roleName(role, level) {
@@ -268,6 +300,44 @@ Page {
                     //% "They are removed and cannot come back until the ban is lifted."
                     text: qsTrId("rustrx-la-ban-note")
                 }, function (reason) { page.moderate({ cmd: "ban" }, reason) })
+            }
+            PageButton {
+                visible: !!page.info.can_ban && page.inSpace
+                //% "Ban from the space and its rooms"
+                text: qsTrId("rustrx-bt-space-ban")
+                onClicked: page.confirm({
+                    title: qsTrId("rustrx-bt-space-ban"),
+                    acceptText: qsTrId("rustrx-bt-ban-short"),
+                    //% "They are banned in the space and in each of its rooms where you may ban."
+                    text: qsTrId("rustrx-la-space-ban-note")
+                }, function (reason) {
+                    var c = { cmd: "space_ban", space_id: page.roomId, user_id: page.userId }
+                    if (reason.length) c.reason = reason
+                    rustrx.command(c)
+                })
+            }
+            // their recent messages, for moderators who may remove others' messages
+            PageButton {
+                visible: !page.info.is_self && !page.inSpace && page.info.membership !== undefined
+                         && app.roomMay(page.roomId).redact_other === true
+                enabled: !page.removing
+                text: page.removing
+                      //: %1 done, %2 all
+                      //% "Removing their messages: %1 of %2"
+                      ? qsTrId("rustrx-bt-redact-recent-running").arg(page.removed).arg(page.toRemove)
+                      //% "Remove their recent messages"
+                      : qsTrId("rustrx-bt-redact-recent")
+                onClicked: page.confirm({
+                    title: qsTrId("rustrx-bt-redact-recent"),
+                    acceptText: qsTrId("rustrx-bt-remove"),
+                    //% "Up to 100 of their messages among the room's last 200 are removed for everyone, one after the other."
+                    text: qsTrId("rustrx-la-redact-recent-note")
+                }, function (reason) {
+                    var c = { cmd: "redact_recent", room_id: page.roomId, user_id: page.userId }
+                    if (reason.length) c.reason = reason
+                    page.removing = true
+                    rustrx.command(c)
+                })
             }
             PageButton {
                 visible: !!page.info.can_ban && page.info.membership === "ban"

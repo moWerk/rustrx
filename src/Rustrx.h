@@ -301,6 +301,8 @@ signals:
     void roomUpgraded(const QString &roomId, const QString &replacement);
     void reported(const QVariantMap &what);
     void aliasAdded(const QString &roomId, const QString &alias);
+    void spaceBanned(const QVariantMap &result);
+    void redactProgress(const QVariantMap &progress);
     void profile(const QVariantMap &profile);
     void dmReady(const QString &roomId, const QString &userId);
     void joined(const QString &roomId);

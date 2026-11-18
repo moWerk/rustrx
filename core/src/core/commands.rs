@@ -186,6 +186,10 @@ impl Core {
             Pin { room_id, event_id, pinned } => self.pin(&room_id, &event_id, pinned).await,
             ReportRoom { room_id, reason } => self.report_room(&room_id, given(&reason)).await,
             ReportUser { user_id, reason } => self.report_user(&user_id, given(&reason)).await,
+            SpaceChildSet { space_id, room_id, suggested, order } => self.space_child_set(&space_id, &room_id, suggested, order.as_deref()).await,
+            SpaceReorder { space_id, room_ids } => self.space_reorder(&space_id, &room_ids).await,
+            SpaceBan { space_id, user_id, reason } => self.space_ban(&space_id, &user_id, given(&reason)).await,
+            RedactRecent { room_id, user_id, reason } => self.redact_recent(&room_id, &user_id, given(&reason)).await,
             StorageInfo => self.storage_info().await,
             ClearMedia => self.clear_media().await,
 

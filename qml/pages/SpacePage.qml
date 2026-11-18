@@ -56,6 +56,15 @@ Page {
         }
     }
 
+    // a room one place up or down: the whole order is written (space_reorder)
+    function move(i, step) {
+        var ids = rooms.map(function (r) { return r.room_id })
+        var j = i + step
+        if (j < 0 || j >= ids.length) return
+        var t = ids[i]; ids[i] = ids[j]; ids[j] = t
+        rustrx.command({ cmd: "space_reorder", space_id: spaceId, room_ids: ids })
+    }
+
     function stateText(r) {
         //% "joined"
         if (r.state === "joined") return qsTrId("rustrx-la-state-joined")
@@ -198,6 +207,28 @@ Page {
             Component {
                 id: removeMenu
                 ContextMenu {
+                    // suggested rooms are offered first to people new to the space
+                    MenuItem {
+                        text: row.r.suggested
+                              //% "No longer suggested"
+                              ? qsTrId("rustrx-me-space-unsuggest")
+                              //% "Suggest to newcomers"
+                              : qsTrId("rustrx-me-space-suggest")
+                        onClicked: rustrx.command({ cmd: "space_child_set", space_id: page.spaceId, room_id: row.r.room_id, suggested: !row.r.suggested })
+                    }
+                    // the order everyone sees the rooms in
+                    MenuItem {
+                        visible: index > 0
+                        //% "Move up"
+                        text: qsTrId("rustrx-me-space-up")
+                        onClicked: page.move(index, -1)
+                    }
+                    MenuItem {
+                        visible: index < page.rooms.length - 1
+                        //% "Move down"
+                        text: qsTrId("rustrx-me-space-down")
+                        onClicked: page.move(index, 1)
+                    }
                     MenuItem {
                         //% "Remove from the space"
                         text: qsTrId("rustrx-me-space-remove")

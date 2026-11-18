@@ -2735,5 +2735,53 @@
         <source>Who may</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-bt-redact-recent">
+        <source>Remove their recent messages</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-redact-recent-running">
+        <source>Removing their messages: %1 of %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-space-ban">
+        <source>Ban from the space and its rooms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-redact-recent-note">
+        <source>Up to 100 of their messages among the room's last 200 are removed for everyone, one after the other.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-space-ban-note">
+        <source>They are banned in the space and in each of its rooms where you may ban.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-space-down">
+        <source>Move down</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-space-suggest">
+        <source>Suggest to newcomers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-space-unsuggest">
+        <source>No longer suggested</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-space-up">
+        <source>Move up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-redacted-recent">
+        <source>Removed %n of their messages</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-space-banned">
+        <source>Banned in %n rooms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-space-banned-skipped">
+        <source>, not in %n</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

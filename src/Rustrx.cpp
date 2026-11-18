@@ -823,6 +823,10 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit roomUpgraded(ev.value("room_id").toString(), ev.value("replacement").toString());
     } else if (type == QLatin1String("reported")) {
         emit reported(ev);
+    } else if (type == QLatin1String("space_banned")) {
+        emit spaceBanned(ev);
+    } else if (type == QLatin1String("redact_progress")) {
+        emit redactProgress(ev);
     } else if (type == QLatin1String("alias_added")) {
         emit aliasAdded(ev.value("room_id").toString(), ev.value("alias").toString());
     } else if (type == QLatin1String("typing")) {

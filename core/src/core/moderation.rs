@@ -15,7 +15,8 @@ use matrix_sdk::ruma::events::room::power_levels::{RoomPowerLevels, RoomPowerLev
 use matrix_sdk::ruma::events::room::server_acl::RoomServerAclEventContent;
 use matrix_sdk::ruma::events::{StateEventType, TimelineEventType};
 use matrix_sdk::ruma::api::client::room::Visibility;
-use matrix_sdk::ruma::{Int, OwnedRoomAliasId, RoomAliasId, RoomVersionId};
+use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
+use matrix_sdk::ruma::{Int, OwnedEventId, OwnedRoomAliasId, OwnedRoomId, RoomAliasId, RoomVersionId, SpaceChildOrder};
 
 /// The levels a role stands for: what the UI offers when changing one.
 pub(crate) const LEVEL_MODERATOR: i64 = 50;
@@ -330,6 +331,135 @@ impl Core {
     }
 }
 
+/// The `order` strings that keep a space's rooms in the given order: the
+/// spec compares them as plain strings, so zero-padded steps of ten.
+pub(crate) fn space_orders(count: usize) -> Vec<String> {
+    (0..count).map(|i| format!("{:05}", (i + 1) * 10)).collect()
+}
+
+impl Core {
+    /// A room of a space marked suggested, or moved (its `order`); the rest
+    /// of its m.space.child event (via) stays as it is.
+    pub(crate) async fn space_child_set(&self, space_id: &str, room_id: &str, suggested: Option<bool>, order: Option<&str>) -> Result<()> {
+        let space = self.room(space_id).await?;
+        let child = OwnedRoomId::try_from(room_id.trim())?;
+        let mut content = space
+            .get_state_event_static_for_key::<SpaceChildEventContent, _>(&child)
+            .await?
+            .and_then(|raw| raw.deserialize().ok())
+            .and_then(|ev| match ev {
+                matrix_sdk::deserialized_responses::SyncOrStrippedState::Sync(s) => s.as_original().map(|o| o.content.clone()),
+                _ => None,
+            })
+            .ok_or_else(|| anyhow!("the room is not in this space"))?;
+        if let Some(s) = suggested {
+            content.suggested = s;
+        }
+        if let Some(o) = order {
+            content.order = if o.is_empty() { None } else { Some(SpaceChildOrder::parse(o)?.to_owned()) };
+        }
+        space.send_state_event_for_key(&child, content).await?;
+        Ok(())
+    }
+
+    /// A space's rooms in this order: each gets an `order` (only those that
+    /// change are sent).
+    pub(crate) async fn space_reorder(&self, space_id: &str, room_ids: &[String]) -> Result<()> {
+        for (room_id, order) in room_ids.iter().zip(space_orders(room_ids.len())) {
+            self.space_child_set(space_id, room_id, None, Some(&order)).await?;
+        }
+        Ok(())
+    }
+
+    /// A person banned from a space and from each of its rooms where we may
+    /// ban them; "space_banned" says in how many, and how many were left
+    /// out (no power there, or not joined).
+    pub(crate) async fn space_ban(&self, space_id: &str, user_id: &str, reason: Option<&str>) -> Result<()> {
+        let client = self.client().await?;
+        let space = self.room(space_id).await?;
+        let user = UserId::parse(user_id.trim())?;
+        let mut rooms = vec![space.clone()];
+        for raw in space.get_state_events(StateEventType::SpaceChild).await.unwrap_or_default() {
+            if let matrix_sdk::deserialized_responses::RawAnySyncOrStrippedState::Sync(raw) = raw {
+                let v = crate::serialize::raw_value(&raw);
+                let live = v.get("content").and_then(Value::as_object).is_some_and(|c| !c.is_empty());
+                let id = v.get("state_key").and_then(Value::as_str).and_then(|k| RoomId::parse(k).ok());
+                if let (true, Some(id)) = (live, id) {
+                    if let Some(r) = client.get_room(&id) {
+                        rooms.push(r);
+                    }
+                }
+            }
+        }
+        let (mut banned, mut skipped) = (0, 0);
+        for room in rooms {
+            let may = room.state() == RoomState::Joined
+                && room.power_levels().await.is_ok_and(|l| l.user_can_ban_user(room.own_user_id(), &user));
+            if !may {
+                skipped += 1;
+                continue;
+            }
+            match room.ban_user(&user, reason).await {
+                Ok(()) => banned += 1,
+                Err(e) => {
+                    tracing::info!(room = %room.room_id(), "space ban: {e}");
+                    skipped += 1;
+                }
+            }
+        }
+        self.emit(json!({"ev": "space_banned", "space_id": space_id, "user_id": user.as_str(), "rooms": banned, "skipped": skipped}));
+        Ok(())
+    }
+
+    /// A person's recent messages in a room removed, newest first, paced
+    /// (the server limits the rate): from the last REDACT_RECENT_SCAN
+    /// events, at most REDACT_RECENT_MAX of theirs. "redact_progress" after
+    /// each, with `finished` at the end.
+    pub(crate) async fn redact_recent(&'static self, room_id: &str, user_id: &str, reason: Option<&str>) -> Result<()> {
+        let room = self.room(room_id).await?;
+        let user = UserId::parse(user_id.trim())?.to_owned();
+        let mut options = matrix_sdk::room::MessagesOptions::backward();
+        options.limit = REDACT_RECENT_SCAN.into();
+        options.filter.senders = Some(vec![user.clone()]);
+        let events: Vec<OwnedEventId> = room
+            .messages(options)
+            .await?
+            .chunk
+            .iter()
+            .filter_map(|ev| {
+                let v = ev.raw().deserialize_as::<Value>().ok()?;
+                // a message, not a state event or one removed already
+                if v.get("state_key").is_some() || v.get("content").and_then(Value::as_object).is_some_and(|c| c.is_empty()) {
+                    return None;
+                }
+                if v.get("sender").and_then(Value::as_str) != Some(user.as_str()) {
+                    return None;
+                }
+                v.get("event_id").and_then(Value::as_str).and_then(|e| EventId::parse(e).ok())
+            })
+            .take(REDACT_RECENT_MAX)
+            .collect();
+        let total = events.len();
+        let reason = reason.map(str::to_owned);
+        let (rid, uid) = (room.room_id().to_owned(), user.clone());
+        tokio::spawn(async move {
+            let mut done = 0;
+            for id in events {
+                if let Err(e) = room.redact(&id, reason.as_deref(), None).await {
+                    tracing::info!(room = %rid, "remove recent: {e}");
+                }
+                done += 1;
+                self.emit(json!({"ev": "redact_progress", "room_id": rid.as_str(), "user_id": uid.as_str(), "done": done, "total": total, "finished": done == total}));
+                tokio::time::sleep(std::time::Duration::from_millis(REDACT_RECENT_PACE_MS)).await;
+            }
+            if total == 0 {
+                self.emit(json!({"ev": "redact_progress", "room_id": rid.as_str(), "user_id": uid.as_str(), "done": 0, "total": 0, "finished": true}));
+            }
+        });
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -353,6 +483,16 @@ mod tests {
         assert!(!acl_allows(&s(&["*"]), &s(&["tchncs.de"]), "tchncs.de"));
         assert!(!acl_allows(&s(&["matrix.org"]), &s(&[]), "tchncs.de"));
         assert!(!acl_allows(&s(&[]), &s(&[]), "tchncs.de"));
+    }
+
+    /// Planted-bug: drop the zero padding: "100" sorts before "20".
+    #[test]
+    fn space_orders_sort_as_given() {
+        let o = space_orders(12);
+        let mut sorted = o.clone();
+        sorted.sort();
+        assert_eq!(o, sorted);
+        assert!(o.iter().all(|x| x.len() <= 50));
     }
 
     #[test]

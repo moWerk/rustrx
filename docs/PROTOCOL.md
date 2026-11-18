@@ -134,6 +134,10 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `pin` | `room_id`, `event_id`, `pinned` | `room_settings` |
 | `report_room` | `room_id`, `reason?` | `reported` |
 | `report_user` | `user_id`, `reason?` | `reported` |
+| `space_child_set` | `space_id`, `room_id`, `suggested?`, `order?` ("" removes it) | the space's rooms |
+| `space_reorder` | `space_id`, `room_ids` (in the new order) | the space's rooms |
+| `space_ban` | `space_id`, `user_id`, `reason?` | `space_banned` |
+| `redact_recent` | `room_id`, `user_id`, `reason?` (up to 100 of the last 200 events, paced) | `redact_progress` |
 | `storage_info` | | `storage` |
 | `clear_media` | | `storage` |
 
@@ -179,6 +183,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `room_upgraded` | `room_id`, `replacement` |
 | `reported` | `room_id` or `user_id` |
 | `alias_added` | `room_id`, `alias` |
+| `space_banned` | `space_id`, `user_id`, `rooms` (banned in), `skipped` (no power, or not joined) |
+| `redact_progress` | `room_id`, `user_id`, `done`, `total`, `finished` |
 | `notification_mode` | `room_id`, `mode` (`all`, `mentions`, `mute`, `default`) |
 | `joined` | `room_id` |
 | `dm_ready` | `room_id`, `user_id` |

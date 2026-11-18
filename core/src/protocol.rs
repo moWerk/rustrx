@@ -217,6 +217,14 @@ pub(crate) enum Command {
     /// To the own server's admins: "reported".
     ReportRoom { room_id: String, reason: Option<String> },
     ReportUser { user_id: String, reason: Option<String> },
+    /// A room of a space marked suggested, or given an `order`.
+    SpaceChildSet { space_id: String, room_id: String, suggested: Option<bool>, order: Option<String> },
+    /// A space's rooms in this order.
+    SpaceReorder { space_id: String, room_ids: Vec<String> },
+    /// Banned from a space and its rooms where we may: "space_banned".
+    SpaceBan { space_id: String, user_id: String, reason: Option<String> },
+    /// A person's recent messages in a room removed: "redact_progress".
+    RedactRecent { room_id: String, user_id: String, reason: Option<String> },
 
     // --- encryption ---
     VerificationRequestSelf,
@@ -306,6 +314,7 @@ mod tests {
         "room_settings", "set_user_level", "set_level", "set_history_visibility", "set_guest_access",
         "enable_encryption", "set_directory_visibility", "set_aliases", "add_alias", "remove_alias",
         "set_server_acl", "upgrade_room", "pin", "report_room", "report_user",
+        "space_child_set", "space_reorder", "space_ban", "redact_recent",
         "verification_request_self", "verify_user", "verification_accept", "verification_start_sas",
         "verification_confirm", "verification_mismatch", "verification_cancel",
         "recovery_recover", "recovery_enable", "recovery_reset", "identity_reset",
@@ -317,7 +326,7 @@ mod tests {
 
     /// How many fields the commands require, all together. Like COMMANDS, a
     /// change here is a change of the contract.
-    const REQUIRED_FIELDS: usize = 143;
+    const REQUIRED_FIELDS: usize = 151;
 
 
     /// The names serde knows, from its own error for an unknown tag

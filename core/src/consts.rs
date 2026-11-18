@@ -105,3 +105,9 @@ pub(crate) const EMOTE_DIR: &str = "emotes";
 pub(crate) const AVATAR_DIR: &str = "avatars";
 /// The own picture, inside AVATAR_DIR beside the rooms'.
 pub(crate) const OWN_AVATAR_FILE: &str = "_own.img";
+
+/// Removing a person's recent messages: how far back to look, how many of
+/// theirs at most, and the pause between two (the server limits the rate).
+pub(crate) const REDACT_RECENT_SCAN: u32 = 200;
+pub(crate) const REDACT_RECENT_MAX: usize = 100;
+pub(crate) const REDACT_RECENT_PACE_MS: u64 = 300;
