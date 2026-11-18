@@ -61,6 +61,22 @@ SilicaFlickable {
             text: qsTrId("rustrx-la-about-lines").arg(appVersion).arg(rustrx.coreVersion)
         }
 
+        // everyone whose report or idea went into Rustrx, as the changelog
+        // and the release notes credit them (README's Credits keeps the same list)
+        Label {
+            readonly property var names: ["doctorflynt", "dodoradio", "finceptum", "Fuzzillogic", "Luna-Terra-CG",
+                                          "MrHappy", "poetaster", "projectmoon", "Tealk"]
+            x: Theme.horizontalPageMargin
+            width: parent.width - 2 * x
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.Wrap
+            font.pixelSize: Theme.fontSizeSmall
+            color: Theme.secondaryHighlightColor
+            //: %1 the names of people who reported bugs or brought ideas, comma separated
+            //% "Thanks for reports and ideas to %1"
+            text: qsTrId("rustrx-la-about-thanks").arg(names.join(", "))
+        }
+
         // the emoji pictures' attribution (CC-BY 4.0 asks for it)
         Label {
             x: Theme.horizontalPageMargin

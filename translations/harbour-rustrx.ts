@@ -1843,6 +1843,10 @@
         <extracomment>%1 app version, %2 core version; lines separated by &lt;br&gt;, keep the link</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-about-thanks">
+        <source>Thanks for reports and ideas to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-la-about-twemoji">
         <source>Emoji: &lt;a href=&apos;https://github.com/jdecked/twemoji&apos;&gt;Twemoji&lt;/a&gt; by Twitter, Inc. and other contributors and Jason Sofonia &amp;amp; Justine De Caires, &lt;a href=&apos;https://creativecommons.org/licenses/by/4.0/&apos;&gt;CC-BY 4.0&lt;/a&gt;</source>
         <extracomment>attribution of the emoji pictures; keep the links and names as they are</extracomment>
