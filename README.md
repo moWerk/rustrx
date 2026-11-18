@@ -64,7 +64,7 @@ stickers. It also works well as the client for a second account next to another 
 - A line under the tabs reminds you while the device is unverified or has
   no recovery key.
 - Conversations with text in markdown, replies that quote what they answer,
-  reactions, images, videos, audio, files, stickers, polls, locations and
+  spoilers (covered until tapped; `||text||` sends one), reactions, images, videos, audio, files, stickers, polls, locations and
   state events. A long press shows reactions and the four usual actions,
   the rest on a "More…" page: your own messages can be edited or removed;
   messages can be reported, copied as a link, shown as source, or sent
@@ -120,14 +120,15 @@ stickers. It also works well as the client for a second account next to another 
   turns green once the store is encrypted, the device verified, a recovery
   key set and the other devices verified, with each gap named; the
   logged-in devices, storage and the debug log. Privacy: read receipts,
-  typing, showing as online (off by default), the location removed from
-  photos (on by default), message text and chat names outside Rustrx,
+  typing, showing as online (off by default), photos sent without their
+  metadata, only which way up they are (on by default), message text and chat names outside Rustrx,
   invitations from strangers, ignored users. App: appearance (avatar
   corners from square to round, preview lines, the tabs), notifications.
-  About. Portrait and landscape.
+  About. Portrait and landscape, or locked to portrait.
 - The local store (messages and keys) is encrypted with a key kept in
-  sailfish-secrets where that works; elsewhere, such as on community ports
-  without it, as before. If a server ends the session, the store and the
+  sailfish-secrets where that works. On community ports without it Rustrx
+  still runs, unencrypted, and says so once after login, with the command
+  that installs Secrets. If a server ends the session, the store and the
   device are kept, so logging in again brings back keys and history.
 - A debug log, on until 1.0 and off with a switch: if something goes wrong,
   Settings > Debug log shares it, so nobody has to make it happen again. It
