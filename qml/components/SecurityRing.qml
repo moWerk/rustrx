@@ -61,7 +61,8 @@ Item {
         model: ring.slices
         ProgressCircleBase {
             anchors.fill: parent
-            borderWidth: Theme.paddingMedium
+            // thin, as Silica's own circles are
+            borderWidth: Theme.paddingSmall
             rotation: 360 * (ring.startOf(index) + ring.gap / 2)
             value: modelData.weight / ring.total - ring.gap
             backgroundColor: "transparent"
