@@ -230,17 +230,32 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path, setting
         0
     };
     let parents = state_keys(room.get_state_events(StateEventType::SpaceParent).await.unwrap_or_default());
-    // who sent an invitation: their name, else their id
-    let inviter = if room.state() == RoomState::Invited {
-        room.invite_details().await.ok().map(|i| match i.inviter {
-            Some(m) => m.name().to_owned(),
-            None => i.inviter_id.to_string(),
-        })
+    // who sent an invitation: their name, else their id; and whether we
+    // share a room with them (a stranger's invitation can stay quiet)
+    let (inviter, inviter_known) = if room.state() == RoomState::Invited {
+        match room.invite_details().await.ok() {
+            Some(i) => {
+                let mut known = false;
+                for r in room.client().joined_rooms() {
+                    if matches!(r.get_member_no_sync(&i.inviter_id).await, Ok(Some(m)) if *m.membership() == matrix_sdk::ruma::events::room::member::MembershipState::Join) {
+                        known = true;
+                        break;
+                    }
+                }
+                let name = match i.inviter {
+                    Some(m) => m.name().to_owned(),
+                    None => i.inviter_id.to_string(),
+                };
+                (Some(name), known)
+            }
+            None => (None, false),
+        }
     } else {
-        None
+        (None, false)
     };
     json!({
         "inviter": inviter,
+        "inviter_known": inviter_known,
         "muted": muted,
         "own_read": own_read,
         "replaced_by": replaced_by,

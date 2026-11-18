@@ -330,7 +330,8 @@ void RoomLists::distributeRooms(const QVariantList &rooms)
             const QString id = r.value("room_id").toString();
             open << id;
             if (!notified.contains(id))
-                emit invited(id, r.value("name").toString(), r.value("inviter").toString(), r.value("is_dm").toBool());
+                emit invited(id, r.value("name").toString(), r.value("inviter").toString(), r.value("is_dm").toBool(),
+                             r.value("inviter_known").toBool());
         }
         // an invitation answered some other way (another client, a join
         // outside the list): its banner goes

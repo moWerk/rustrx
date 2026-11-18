@@ -122,6 +122,16 @@ SilicaFlickable {
             onClicked: service.chatDetails = !service.chatDetails
         }
 
+        TextSwitch {
+            //% "Invitations from strangers"
+            text: qsTrId("rustrx-la-stranger-invites")
+            //% "A notification and the chat's picture for invitations from people you share no room with. Off: they wait quietly in the list, without a picture."
+            description: qsTrId("rustrx-la-stranger-invites-hint")
+            checked: app.strangerInvites
+            automaticCheck: false
+            onClicked: app.strangerInvites = !app.strangerInvites
+        }
+
         // a photo's EXIF can say where it was taken (src/Exif.h)
         TextSwitch {
             //% "Remove the location from photos"

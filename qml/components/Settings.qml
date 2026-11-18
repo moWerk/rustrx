@@ -58,6 +58,9 @@ ConfigurationGroup {
     property bool showOnline: false
     // chat names and senders in notifications and on the cover
     property bool chatDetails: true
+    // invitations from people we share no room with: a banner and their
+    // picture; off: quiet in the list, no picture
+    property bool strangerInvites: true
 
     // when Rustrx is closed: "push", "background" or "off"; "" until chosen
     property string closedMode: ""
@@ -72,4 +75,6 @@ ConfigurationGroup {
     // the emoji used, as JSON {emoji: count}
     property string emojiCounts: "{}"
     property bool prototypeNoticeSeen: false
+    // the one notice before the first call (CallNotice)
+    property bool callNoticeSeen: false
 }

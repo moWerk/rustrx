@@ -74,6 +74,8 @@ ApplicationWindow {
     property alias typingHint: cfg.typingHint
     property alias showOnline: cfg.showOnline
     property alias chatDetails: cfg.chatDetails
+    property alias strangerInvites: cfg.strangerInvites
+    property alias callNoticeSeen: cfg.callNoticeSeen
     // when Rustrx is closed: "push", "background" or "off"; "" until chosen
     property alias closedMode: cfg.closedMode
     // start in the chat that was open when the app was closed
@@ -415,7 +417,10 @@ ApplicationWindow {
     // command); and the dev commands meant for the UI (Rustrx::dev)
     Connections {
         target: rustrx
-        onCallUrl: pageStack.push(app.callPage(), { roomId: roomId, url: url })
+        // the first call: where calls go, once (CallNotice), then the call
+        onCallUrl: cfg.callNoticeSeen
+                   ? pageStack.push(app.callPage(), { roomId: roomId, url: url })
+                   : pageStack.push(Qt.resolvedUrl("pages/CallNotice.qml"), { roomId: roomId, url: url, callPage: app.callPage() })
         onDevUi: {
             if (request.ui === "activate") {
                 app.activate()

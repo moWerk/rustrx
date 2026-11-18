@@ -115,7 +115,9 @@ ListItem {
             sourceSize.width: avatarSize
             sourceSize.height: avatarSize
             // the version makes a changed picture load past Qt's image cache
-            source: model.avatar_path ? "file://" + model.avatar_path + "?v=" + (model.avatar_v || 0) : ""
+            // a stranger's invitation without its picture, if so set
+            source: model.avatar_path && !(invited && model.inviter_known !== true && !app.strangerInvites)
+                    ? "file://" + model.avatar_path + "?v=" + (model.avatar_v || 0) : ""
             // clip: true would cut a square; the rounding is a mask
             layer.enabled: app.avatarRadius > 0
             layer.effect: RoundMask { radius: app.avatarRadius }

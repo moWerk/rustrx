@@ -80,7 +80,8 @@ Item {
             service.flushPending()
             if (cfg.showOnline) rustrx.command({ cmd: "set_presence", online: true })
         }
-        onInvited: service.notifyInvite(roomId, roomName, inviter, direct)
+        // from someone we share no room with: no banner, if so set
+        onInvited: if (known || cfg.strangerInvites) service.notifyInvite(roomId, roomName, inviter, direct)
         onInviteGone: service.closeInvite(roomId)
         onCallRing: service.ringCall(roomId, roomName, senderName, ring, eventId, expiresMs)
         onNewKnock: service.notifyKnock(roomName, isSpace, name, reason)

@@ -948,6 +948,14 @@
         <source>Notifications and the cover show which chat and who wrote. Off: they say Rustrx, and the cover shows only the counts.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-stranger-invites">
+        <source>Invitations from strangers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-stranger-invites-hint">
+        <source>A notification and the chat's picture for invitations from people you share no room with. Off: they wait quietly in the list, without a picture.</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-la-strip-location">
         <source>Remove the location from photos</source>
         <translation type="unfinished"></translation>
@@ -1561,6 +1569,14 @@
     </message>
     <message id="rustrx-la-call-join">
         <source>Call in progress, tap to join</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-call-go">
+        <source>Call</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-call-notice">
+        <source>Calls in Rustrx are Element Call: a web page that Rustrx loads from call.element.io for each call. The sound and picture go through a media server, your homeserver's or Element's. Rustrx says this once.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-typing-to">

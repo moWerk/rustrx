@@ -315,7 +315,7 @@ signals:
     // a room's notifications went to none (read here or in another client)
     void roomRead(const QString &roomId);
     // an invitation not notified before (also one that came while closed)
-    void invited(const QString &roomId, const QString &roomName, const QString &inviter, bool direct);
+    void invited(const QString &roomId, const QString &roomName, const QString &inviter, bool direct, bool known);
     // an invitation that is no longer one (joined, declined, elsewhere)
     void inviteGone(const QString &roomId);
     // who is typing in the open room, the own user left out

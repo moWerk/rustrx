@@ -85,7 +85,8 @@ signals:
                   const QString &name, const QString &reason);
     void newMessages(const QString &roomId, const QString &roomName, int count);
     void roomRead(const QString &roomId);
-    void invited(const QString &roomId, const QString &roomName, const QString &inviter, bool direct);
+    // known: the inviter shares a room with us
+    void invited(const QString &roomId, const QString &roomName, const QString &inviter, bool direct, bool known);
     void inviteGone(const QString &roomId);
 
 private:
