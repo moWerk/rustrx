@@ -43,6 +43,8 @@ public:
 
     bool downscaleImages() const;
     void setDownscaleImages(bool on);
+    bool stripLocation() const;
+    void setStripLocation(bool on);
 
     // a custom emoji's cached picture (file://), or "" while it is fetched
     // (emoteReady follows)

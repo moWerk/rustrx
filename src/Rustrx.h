@@ -78,6 +78,7 @@ class Rustrx : public QObject
     Q_PROPERTY(QVariantList knockRequests READ knockRequests NOTIFY knockRequestsChanged)
     Q_PROPERTY(QString coreVersion READ coreVersion CONSTANT)
     Q_PROPERTY(bool downscaleImages READ downscaleImages WRITE setDownscaleImages NOTIFY settingsChanged)
+    Q_PROPERTY(bool stripLocation READ stripLocation WRITE setStripLocation NOTIFY settingsChanged)
     // the order of the room lists: "activity", "unread" (unread first) or "name"
     // the tab the filter menu works on: its order and switches are its own
     Q_PROPERTY(QString currentTab READ currentTab WRITE setCurrentTab NOTIFY settingsChanged)
@@ -139,6 +140,8 @@ public:
     QString coreVersion() const;
     bool downscaleImages() const;
     void setDownscaleImages(bool on);
+    bool stripLocation() const;
+    void setStripLocation(bool on);
     QString currentTab() const;
     void setCurrentTab(const QString &kind);
     QString sortOrder() const;

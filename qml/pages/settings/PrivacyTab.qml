@@ -99,6 +99,17 @@ SilicaFlickable {
             onClicked: service.notifyText = !service.notifyText
         }
 
+        // a photo's EXIF can say where it was taken (src/Exif.h)
+        TextSwitch {
+            //% "Remove the location from photos"
+            text: qsTrId("rustrx-la-strip-location")
+            //% "Photos leave without the place they were taken, which cameras write into them. Everything else stays as it was. Off: they go as the camera saved them."
+            description: qsTrId("rustrx-la-strip-location-hint")
+            checked: rustrx.stripLocation
+            automaticCheck: false
+            onClicked: rustrx.stripLocation = !rustrx.stripLocation
+        }
+
         BackgroundItem {
             id: ignoredRow
             width: parent.width

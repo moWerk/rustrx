@@ -940,6 +940,14 @@
         <source>When off, a notification only says how many messages arrived.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-strip-location">
+        <source>Remove the location from photos</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-strip-location-hint">
+        <source>Photos leave without the place they were taken, which cameras write into them. Everything else stays as it was. Off: they go as the camera saved them.</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-se-new-account">
         <source>New to Matrix</source>
         <translation type="unfinished"></translation>

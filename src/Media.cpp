@@ -15,10 +15,12 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Media.h"
+#include "Exif.h"
 #include "Keys.h"
 
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QImage>
 #include <QImageReader>
 #include <QMimeDatabase>
@@ -55,6 +57,19 @@ void Media::setDownscaleImages(bool on)
     if (on == downscaleImages())
         return;
     m_settings->setValue(QLatin1String(Keys::kDownscaleImages), on);
+    emit settingsChanged();
+}
+
+bool Media::stripLocation() const
+{
+    return m_settings->value(QLatin1String(Keys::kStripLocation), Keys::kStripLocationDefault).toBool();
+}
+
+void Media::setStripLocation(bool on)
+{
+    if (on == stripLocation())
+        return;
+    m_settings->setValue(QLatin1String(Keys::kStripLocation), on);
     emit settingsChanged();
 }
 
@@ -145,10 +160,24 @@ void Media::sendFile(const QString &roomId, const QString &path, const QString &
             const bool shrink = downscaleImages()
                     && qMax(image.width(), image.height()) > Keys::kUploadMaxEdge;
             if (shrink) {
+                // re-encoded: no metadata at all, the place neither
                 image = image.scaled(Keys::kUploadMaxEdge, Keys::kUploadMaxEdge, Qt::KeepAspectRatio, Qt::SmoothTransformation);
                 const QString out = stem + ".jpg";
                 if (image.save(out, "JPEG", Keys::kUploadJpegQuality))
                     cmd.insert("path", out);
+            } else if (stripLocation() && format == "jpeg") {
+                // as it is, the place out of its EXIF; one that cannot be
+                // read is re-encoded, so no place slips through
+                QFile in(p);
+                QByteArray bytes = in.open(QIODevice::ReadOnly) ? in.readAll() : QByteArray();
+                const QString out = stem + ".jpg";
+                QFile file(out);
+                if (!bytes.isEmpty() && Exif::stripLocation(bytes) && file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size()) {
+                    file.close();
+                    cmd.insert("path", out);
+                } else if (image.save(out, "JPEG", Keys::kReencodeJpegQuality)) {
+                    cmd.insert("path", out);
+                }
             }
             cmd.insert("w", image.width());
             cmd.insert("h", image.height());

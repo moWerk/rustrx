@@ -276,6 +276,16 @@ void Rustrx::setDownscaleImages(bool on)
     m_media->setDownscaleImages(on);
 }
 
+bool Rustrx::stripLocation() const
+{
+    return m_media->stripLocation();
+}
+
+void Rustrx::setStripLocation(bool on)
+{
+    m_media->setStripLocation(on);
+}
+
 bool Rustrx::debugLog() const
 {
     return m_settings.value(QLatin1String(Keys::kDebugLog), Keys::kDebugLogDefault).toBool();

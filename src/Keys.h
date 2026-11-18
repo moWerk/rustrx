@@ -33,6 +33,11 @@ static const char kDebugLog[] = "debugLog";
 static const bool kDebugLogDefault = true;
 static const char kDownscaleImages[] = "downscaleImages";
 static const bool kDownscaleImagesDefault = true;
+// the place a photo was taken, out of it before it is sent (Exif.h)
+static const char kStripLocation[] = "stripLocation";
+static const bool kStripLocationDefault = true;
+// a JPEG re-encoded because its EXIF could not be read
+static const int kReencodeJpegQuality = 95;
 // the invitations a notification was shown for
 static const char kInvitesNotified[] = "invitesNotified";
 // groups from before 0.4.7, removed at login: drafts/<room id> (moved into
