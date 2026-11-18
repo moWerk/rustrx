@@ -183,6 +183,7 @@ mod account;
 mod call;
 mod commands;
 mod knock;
+mod moderation;
 mod packs;
 mod push;
 mod rooms;

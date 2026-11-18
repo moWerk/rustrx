@@ -160,7 +160,7 @@ impl Core {
     pub(crate) async fn room_members(&self, room_id: &str) -> Result<()> {
         let room = self.room(room_id).await?;
         let members: Vec<Value> = room
-            .members(RoomMemberships::ACTIVE)
+            .members(RoomMemberships::ACTIVE | RoomMemberships::BAN)
             .await?
             .iter()
             .map(|m| {
@@ -169,7 +169,10 @@ impl Core {
                     UserPowerLevel::Int(i) => Value::from(i64::from(i)),
                     _ => Value::Null,
                 };
-                json!({"user_id": m.user_id().as_str(), "name": m.name(), "power": power})
+                // join, invite, knock or ban: the page sorts them in sections
+                json!({"user_id": m.user_id().as_str(), "name": m.name(), "power": power,
+                       "role": super::moderation::role_of(m.power_level()),
+                       "membership": m.membership().to_string()})
             })
             .collect();
         self.emit(json!({"ev": "members", "room_id": room.room_id().as_str(), "members": members}));
@@ -329,12 +332,22 @@ impl Core {
                 info["name"] = json!(member.name());
                 info["membership"] = json!(member.membership().to_string());
                 info["power"] = json!(power(member.power_level()));
+                info["role"] = json!(super::moderation::role_of(member.power_level()));
                 if let Some(own) = client.user_id() {
                     if let Ok(Some(me)) = room.get_member_no_sync(own).await {
                         // the server also wants our power above theirs
                         let above = power(me.power_level()) > power(member.power_level());
                         info["can_kick"] = json!(me.can_kick() && above);
                         info["can_ban"] = json!(me.can_ban() && above);
+                        // their role from ours: only below our own level, and
+                        // ourselves only downwards (it cannot be undone)
+                        let levels = room.power_levels().await.ok();
+                        info["can_set_level"] = json!(levels.as_ref().is_some_and(|l| l.user_can_send_state(own, matrix_sdk::ruma::events::StateEventType::RoomPowerLevels))
+                            && (above || client.user_id() == Some(&*user))
+                            && !matches!(member.power_level(), UserPowerLevel::Infinite));
+                        info["own_level"] = json!(power(me.power_level()));
+                        info["can_mute"] = json!(levels.as_ref().is_some_and(|l| l.user_can_send_state(own, matrix_sdk::ruma::events::StateEventType::RoomPowerLevels)) && above);
+                        info["events_default"] = json!(levels.as_ref().map(|l| i64::from(l.events_default)));
                     }
                 }
             }

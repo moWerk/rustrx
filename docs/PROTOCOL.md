@@ -114,6 +114,26 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `ignored_users` | | `ignored_users` |
 | `user_info` | `user_id`, `room_id?` | `user_info` |
 | `kick` / `ban` / `unban` | `room_id`, `user_id`, `reason?` | `user_info` |
+
+### Moderation
+
+| Command | Fields | Answer |
+|---|---|---|
+| `room_settings` | `room_id` | `room_settings` |
+| `set_user_level` | `room_id`, `user_id`, `level` (0 member, 50 moderator, 100 admin) | `user_info`, `room_settings` |
+| `set_level` | `room_id`, `key` (`users_default`, `events_default`, `state_default`, `invite`, `kick`, `ban`, `redact`, `notify_room`, or an event type like `m.room.name`), `level` | `room_settings` |
+| `set_history_visibility` | `room_id`, `value` (`world_readable`, `shared`, `invited`, `joined`) | `room_settings` |
+| `set_guest_access` | `room_id`, `allowed` | `room_settings` |
+| `enable_encryption` | `room_id` (one way) | `room_settings` |
+| `set_directory_visibility` | `room_id`, `public` | `room_settings` |
+| `set_aliases` | `room_id`, `canonical?`, `alt` | `room_settings` |
+| `add_alias` | `room_id`, `alias` | `alias_added`, `room_settings` |
+| `remove_alias` | `room_id`, `alias` | `room_settings` |
+| `set_server_acl` | `room_id`, `allow`, `deny`, `allow_ip_literals` (refused when the own server would be shut out) | `room_settings` |
+| `upgrade_room` | `room_id`, `version` | `room_upgraded` |
+| `pin` | `room_id`, `event_id`, `pinned` | `room_settings` |
+| `report_room` | `room_id`, `reason?` | `reported` |
+| `report_user` | `user_id`, `reason?` | `reported` |
 | `storage_info` | | `storage` |
 | `clear_media` | | `storage` |
 
@@ -154,7 +174,11 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `emote` | `mxc`, `path` |
 | `image_packs` | `room_id`, `packs` (`id`, `name`, `source` user/global/room, `avatar_mxc`, `images`: `shortcode`, `mxc`, `body`, `info`, `emoticon`, `sticker`) |
 | `emote_added` | `shortcode` (as stored, a number added when taken), `mxc` |
-| `members` | `room_id`, `members`: `{user_id, name, power}` |
+| `members` | `room_id`, `members`: `{user_id, name, power, role, membership}` (joined, invited, knocking and banned) |
+| `room_settings` | `room_id`, `own_level`, `role` (`creator`, `admin`, `moderator`, `member`), `version`, `may` (`name`, `topic`, `avatar`, `join_rules`, `history`, `guest`, `encryption`, `server_acl`, `upgrade`, `aliases`, `pin`, `power_levels`, `space_child`, `invite`, `kick`, `ban`, `redact_other`, `notify_room`), `levels` (the fields of `set_level`, `events`: by type), `history_visibility`, `guests`, `encrypted`, `directory_public`, `canonical_alias`, `alt_aliases`, `server_acl` (`allow`, `deny`, `allow_ip_literals`, or null), `own_server`, `pinned`, `creators` |
+| `room_upgraded` | `room_id`, `replacement` |
+| `reported` | `room_id` or `user_id` |
+| `alias_added` | `room_id`, `alias` |
 | `notification_mode` | `room_id`, `mode` (`all`, `mentions`, `mute`, `default`) |
 | `joined` | `room_id` |
 | `dm_ready` | `room_id`, `user_id` |
@@ -170,7 +194,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `devices` | `devices`: `{device_id, name, last_seen_ts, last_seen_ip, current, keys, verified}` (`keys`: it has encryption keys; `verified`: cross-signed by us) |
 | `device_deleted` | `device_id` |
 | `ignored_users` | `users`: `{user_id, name}` (name where the server gives a profile) |
-| `user_info` | `user_id`, `name`, `has_identity`, `verified`, `ignored`, `is_self`; with a room: `room_id`, `membership`, `power`, `can_kick`, `can_ban` |
+| `user_info` | `user_id`, `name`, `has_identity`, `verified`, `ignored`, `is_self`; with a room: `room_id`, `membership`, `power`, `role`, `can_kick`, `can_ban`, `can_set_level`, `can_mute`, `own_level`, `events_default` |
 | `profile` | `display_name`, `user_id`, `avatar_path` (a cached file), `avatar_v` |
 | `storage` | `store`, `media_files` (bytes), `crypto?`, `state?`, `event_cache?`, `media_cache?` |
 | `error` | `cmd`, `message` |

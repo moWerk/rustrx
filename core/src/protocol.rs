@@ -189,6 +189,35 @@ pub(crate) enum Command {
     Ban { room_id: String, user_id: String, reason: Option<String> },
     Unban { room_id: String, user_id: String, reason: Option<String> },
 
+    /// What we may change in a room and how it is set: "room_settings".
+    RoomSettings { room_id: String },
+    /// A person's level (role): 0 member, 50 moderator, 100 admin, or any.
+    SetUserLevel { room_id: String, user_id: String, level: i64 },
+    /// One permission's level: a power-levels field (users_default,
+    /// events_default, state_default, invite, kick, ban, redact,
+    /// notify_room) or an event type (m.room.name, ...).
+    SetLevel { room_id: String, key: String, level: i64 },
+    /// world_readable, shared, invited or joined.
+    SetHistoryVisibility { room_id: String, value: String },
+    SetGuestAccess { room_id: String, allowed: bool },
+    /// One way: a room cannot be unencrypted again.
+    EnableEncryption { room_id: String },
+    /// Listed in the server's public room directory.
+    SetDirectoryVisibility { room_id: String, public: bool },
+    /// The main address and the other addresses.
+    SetAliases { room_id: String, canonical: Option<String>, alt: Vec<String> },
+    /// A new address on its server, pointing to the room.
+    AddAlias { room_id: String, alias: String },
+    RemoveAlias { room_id: String, alias: String },
+    /// The servers that may take part; refused if it shuts out our own.
+    SetServerAcl { room_id: String, allow: Vec<String>, deny: Vec<String>, allow_ip_literals: bool },
+    /// To a newer room version: "room_upgraded" with the new room.
+    UpgradeRoom { room_id: String, version: String },
+    Pin { room_id: String, event_id: String, pinned: bool },
+    /// To the own server's admins: "reported".
+    ReportRoom { room_id: String, reason: Option<String> },
+    ReportUser { user_id: String, reason: Option<String> },
+
     // --- encryption ---
     VerificationRequestSelf,
     /// Verifying someone else (in a direct chat): "verification", then as for oneself.
@@ -274,6 +303,9 @@ mod tests {
         "set_join_rule", "space_open", "space_close", "space_add_child", "space_remove_child",
         "space_leave", "create_dm", "create_room", "room_members", "set_room_name",
         "set_room_avatar", "set_own_avatar", "set_room_topic", "invite", "search", "search_rooms", "refresh_rooms", "ignored_users", "user_info", "kick", "ban", "unban",
+        "room_settings", "set_user_level", "set_level", "set_history_visibility", "set_guest_access",
+        "enable_encryption", "set_directory_visibility", "set_aliases", "add_alias", "remove_alias",
+        "set_server_acl", "upgrade_room", "pin", "report_room", "report_user",
         "verification_request_self", "verify_user", "verification_accept", "verification_start_sas",
         "verification_confirm", "verification_mismatch", "verification_cancel",
         "recovery_recover", "recovery_enable", "recovery_reset", "identity_reset",
@@ -285,7 +317,7 @@ mod tests {
 
     /// How many fields the commands require, all together. Like COMMANDS, a
     /// change here is a change of the contract.
-    const REQUIRED_FIELDS: usize = 112;
+    const REQUIRED_FIELDS: usize = 143;
 
 
     /// The names serde knows, from its own error for an unknown tag
@@ -389,7 +421,9 @@ mod tests {
                 without.as_object_mut().unwrap().remove(&field);
                 let err = parse(without).expect_err(&format!("{name} without {field}"));
                 assert!(err.contains(&format!("missing field `{field}`")), "{name}: {err}");
-                for wrong in [Value::Null, json!(12345)] {
+                // a number field takes 12345, so a string is its wrong value
+                let other = if full[&field].is_number() { json!("x") } else { json!(12345) };
+                for wrong in [Value::Null, other] {
                     let mut t = full.clone();
                     t[&field] = wrong.clone();
                     assert!(parse(t).is_err(), "{name}.{field} = {wrong}");
