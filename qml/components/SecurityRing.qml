@@ -48,6 +48,12 @@ Item {
         for (var i = 0; i < slices.length; i++) if (slices[i].state === state) n++
         return n
     }
+    function arcColor(state) {
+        return complete ? Tunables.securityComplete
+             : state === "ok" ? Theme.highlightColor
+             : state === "risk" ? Theme.errorColor
+             : Theme.highlightDimmerColor
+    }
     function startOf(i) {
         var s = 0
         for (var k = 0; k < i; k++) s += slices[k].weight
@@ -66,10 +72,22 @@ Item {
             rotation: 360 * (ring.startOf(index) + ring.gap / 2)
             value: modelData.weight / ring.total - ring.gap
             backgroundColor: "transparent"
-            progressColor: ring.complete ? Tunables.securityComplete
-                         : modelData.state === "ok" ? Theme.highlightColor
-                         : modelData.state === "risk" ? Theme.errorColor
-                         : Theme.highlightDimmerColor
+            progressColor: ring.arcColor(modelData.state)
+        }
+    }
+
+    // each arc's number, inside the ring at its middle: the legend under
+    // the ring (Settings, Account) names them in the same order
+    Repeater {
+        model: ring.slices
+        Label {
+            readonly property real angle: 2 * Math.PI * (ring.startOf(index) + modelData.weight / ring.total / 2)
+            readonly property real reach: ring.width / 2 - Theme.paddingSmall - Theme.paddingLarge
+            x: ring.width / 2 + reach * Math.sin(angle) - width / 2
+            y: ring.height / 2 - reach * Math.cos(angle) - height / 2
+            font.pixelSize: Theme.fontSizeExtraSmall
+            color: ring.arcColor(modelData.state)
+            text: index + 1
         }
     }
 

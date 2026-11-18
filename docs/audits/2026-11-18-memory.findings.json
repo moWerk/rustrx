@@ -24,7 +24,7 @@
    "id": "M3",
    "severity": "high",
    "area": "crashes (dodoradio, 11-17)",
-   "status": "OPEN: kernel log asked for",
+   "status": "OPEN: not the low-memory killer (the kernel log shows no kill); a native crash remains, not reached",
    "summary": "Three ends without a log line; low-memory killer or native crash not told apart.",
    "test": "journalctl -k around 21:24, 22:56, 23:08 on the reporter's phone"
   },

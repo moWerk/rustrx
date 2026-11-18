@@ -237,7 +237,8 @@ SilicaFlickable {
                 Label {
                     anchors.horizontalCenter: parent.horizontalCenter
                     font.pixelSize: Theme.fontSizeSmall
-                    text: modelData.slice === "risk" ? modelData.risk : modelData.ok
+                    // numbered, so each line finds its arc
+                    text: (index + 1) + ". " + (modelData.slice === "risk" ? modelData.risk : modelData.ok)
                     color: modelData.slice === "ok" ? Tunables.securityComplete
                          : modelData.slice === "risk" ? Theme.errorColor
                          : Theme.highlightDimmerColor

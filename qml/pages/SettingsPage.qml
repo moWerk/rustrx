@@ -100,6 +100,9 @@ Page {
         anchors.fill: parent
         model: tabModel
         currentIndex: 0
+        // no wrap from Account round to About: at the first tab a swipe
+        // back leaves Settings, as on any page (the author's find)
+        wrapMode: PagedView.NoWrap
 
         header: TabBar {
             model: tabModel
