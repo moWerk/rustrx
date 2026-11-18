@@ -16,9 +16,11 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import Rustrx 1.0
 
 // The account's security as a ring (Settings, Account): one arc per
-// safeguard, clockwise from 12 o'clock, lit when in use, red when missing,
+// safeguard, clockwise from 12 o'clock, all green when every one is in
+// place; else lit in the ambience's colour when in use, red when missing,
 // dim while not known yet. A lock in the middle, a warning sign instead
 // when what is stored on the phone is not encrypted.
 Item {
@@ -36,6 +38,8 @@ Item {
     }
     readonly property int risks: count("risk")
     readonly property int unknowns: count("unknown")
+    // every safeguard known and in place: the ring and the lock go green
+    readonly property bool complete: slices.length > 0 && risks === 0 && unknowns === 0
     // the gap between two arcs, as a fraction of the circle
     readonly property real gap: 0.012
 
@@ -61,7 +65,8 @@ Item {
             rotation: 360 * (ring.startOf(index) + ring.gap / 2)
             value: modelData.weight / ring.total - ring.gap
             backgroundColor: "transparent"
-            progressColor: modelData.state === "ok" ? Theme.highlightColor
+            progressColor: ring.complete ? Tunables.securityComplete
+                         : modelData.state === "ok" ? Theme.highlightColor
                          : modelData.state === "risk" ? Theme.errorColor
                          : Theme.highlightDimmerColor
         }
@@ -74,7 +79,8 @@ Item {
         sourceSize.height: Theme.iconSizeLarge
         source: ring.storeAtRisk
                 ? "image://theme/icon-m-warning?" + Theme.errorColor
-                : "image://theme/icon-m-device-lock?" + (ring.risks > 0 ? Theme.secondaryHighlightColor
+                : "image://theme/icon-m-device-lock?" + (ring.complete ? Tunables.securityComplete
+                                                       : ring.risks > 0 ? Theme.secondaryHighlightColor
                                                        : ring.unknowns === ring.slices.length ? Theme.highlightDimmerColor
                                                        : Theme.highlightColor)
     }

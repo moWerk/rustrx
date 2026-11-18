@@ -194,6 +194,7 @@ SilicaFlickable {
         Item { width: 1; height: Theme.paddingLarge }
 
         SecurityRing {
+            id: securityRing
             anchors.horizontalCenter: parent.horizontalCenter
             width: Math.min(Theme.itemSizeHuge * 1.5, tab.width * Tunables.securityRingWidth)
             height: width
@@ -215,7 +216,8 @@ SilicaFlickable {
             width: parent.width - 2 * x
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
-            color: Theme.highlightColor
+            // green with the ring when all is in place
+            color: securityRing.complete ? Tunables.securityComplete : Theme.highlightColor
             text: tab.storeSlice === "unknown" || tab.verifySlice === "unknown"
                   || tab.recoverySlice === "unknown" || tab.devicesSlice === "unknown"
                   //% "Checking…"
