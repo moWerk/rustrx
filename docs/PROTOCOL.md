@@ -45,7 +45,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `open_thread` | `room_id`, `thread_root` | `thread_timeline` (live until `close_thread`) |
 | `close_thread` | | |
 | `retry_send` | `room_id`, `txn_id` (a message the server did not take) | `timeline` |
-| `send_file` | `room_id`, `path`, `mime?`, `caption?`, `w?`, `h?`, `thumb_path?`, `thumb_w?`, `thumb_h?`, `voice?`, `duration_ms?`, `thread_root?` | `timeline` |
+| `send_file` | `room_id`, `path`, `mime?`, `caption?`, `w?`, `h?`, `thumb_path?`, `thumb_w?`, `thumb_h?`, `voice?`, `duration_ms?` (a voice message's or a video's length), `thread_root?` | `timeline` |
 | `react` | `room_id`, `event_id`, `key` (toggles) | `timeline` |
 | `redact` | `room_id`, `event_id?` or `txn_id?` (discards a local echo), `reason?` | `timeline` |
 | `edit` | `room_id`, `event_id?` or `txn_id?`, `body` | `timeline` |
