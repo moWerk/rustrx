@@ -57,7 +57,11 @@ Page {
         return qsTrId("rustrx-he-settings-about")
     }
 
-    function showTab(kind) {
+    // toEnd: that tab scrolls to its end, where its storage is (a note on
+    // Account leads there); the tab takes it once it is loaded
+    property string scrollToEnd
+    function showTab(kind, toEnd) {
+        if (toEnd) scrollToEnd = kind
         for (var i = 0; i < tabModel.count; i++)
             if (tabModel.get(i).kind === kind) tabs.currentIndex = i
     }

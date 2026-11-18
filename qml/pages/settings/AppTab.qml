@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 import "../../components"
 
@@ -26,6 +27,25 @@ SilicaFlickable {
     property Item settings
 
     contentHeight: column.height
+
+    // asked from Account's note on kept pictures: down to the storage, once
+    // the tab has laid out
+    function takeScroll() {
+        if (!settings || settings.scrollToEnd !== "app") return
+        settings.scrollToEnd = ""
+        settle.restart()
+    }
+    Component.onCompleted: takeScroll()
+    Connections { target: settings; onScrollToEndChanged: tab.takeScroll() }
+    Timer {
+        id: settle
+        interval: Tunables.tabSettleMs
+        onTriggered: {
+            toEnd.to = Math.max(tab.originY, tab.contentHeight - tab.height + tab.originY)
+            toEnd.restart()
+        }
+    }
+    NumberAnimation { id: toEnd; target: tab; property: "contentY"; duration: Tunables.sectionScrollMs; easing.type: Easing.InOutQuad }
 
     Column {
         id: column

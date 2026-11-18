@@ -44,6 +44,10 @@ BackgroundItem {
     default property alias mark: markBox.data
 
     readonly property bool missing: status === "risk"
+    // as wide as it needs on one line: the list of safeguards is as wide
+    // as its widest, centred under the ring
+    readonly property real naturalWidth: 2 * Theme.horizontalPageMargin + markWidth + Theme.paddingMedium
+                                         + name.implicitWidth + (enabled ? arrow.width - Theme.paddingMedium : 0)
     // the middle of the name's first line, for marks that draw on it
     readonly property real firstLineCenter: texts.y + firstLine.height / 2
 

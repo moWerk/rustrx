@@ -155,7 +155,7 @@ SilicaFlickable {
             n.push({ go: "app", text: qsTrId("rustrx-la-note-push").arg(rustrx.push.gatewayHost) })
         if (settings && settings.storage.media_files > 0)
             //% "Pictures and files you opened are kept unencrypted. Clear them in the App tab."
-            n.push({ go: "app", text: qsTrId("rustrx-la-note-media") })
+            n.push({ go: "storage", text: qsTrId("rustrx-la-note-media") })
         return n
     }
 
@@ -166,7 +166,8 @@ SilicaFlickable {
         else if (go === "verify") {
             rustrx.command({ cmd: "verification_request_self" })
             pageStack.push(Qt.resolvedUrl("../VerificationPage.qml"), { waiting: true })
-        } else if (go.length) settings.showTab(go)
+        } else if (go === "storage") settings.showTab("app", true)
+        else if (go.length) settings.showTab(go)
     }
 
     // down to a section of this tab, its header just under the tab bar
@@ -253,6 +254,8 @@ SilicaFlickable {
                   : qsTrId("rustrx-la-security-gaps")
         }
 
+        // the ring with twice the column's room above and below
+        Item { width: 1; height: 0 }
         HaloRing {
             anchors.horizontalCenter: parent.horizontalCenter
             width: Math.min(Theme.itemSizeHuge * 1.6, tab.width * 0.5, tab.height * 0.5)
@@ -261,14 +264,31 @@ SilicaFlickable {
             complete: tab.complete
             touched: tab.touched
         }
+        Item { width: 1; height: 0 }
 
         // the safeguards, one line each, led by a small copy of the ring
-        // with its own arc; a missing one is the link to its fix
+        // with its own arc; a missing one is the link to its fix. As wide
+        // as the widest line, centred, so they belong to the ring
         Column {
-            width: parent.width
+            id: guards
+            property real widest
+            function measure() {
+                var w = 0
+                for (var i = 0; i < guardLines.count; i++) {
+                    var line = guardLines.itemAt(i)
+                    if (line) w = Math.max(w, line.naturalWidth)
+                }
+                widest = w
+            }
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(parent.width, widest > 0 ? widest : parent.width)
             Repeater {
+                id: guardLines
                 model: tab.safeguards
+                onItemAdded: guards.measure()
+                onItemRemoved: guards.measure()
                 SafeguardRow {
+                    onNaturalWidthChanged: guards.measure()
                     status: modelData.status
                     complete: tab.complete
                     title: modelData.title

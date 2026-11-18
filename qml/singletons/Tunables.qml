@@ -70,6 +70,8 @@ QtObject {
     readonly property int emojiMinColumns: 6
     // a link on the Account tab scrolls down to its section this fast
     readonly property int sectionScrollMs: 400
+    // a tab just switched to lays out this long before it scrolls
+    readonly property int tabSettleMs: 300
     // a copied recovery key leaves the clipboard after this, if still there
     readonly property int clipboardKeyMs: 120000
     // its colour when every safeguard is in place (the theme has no green)
