@@ -161,6 +161,10 @@
         <source>%1 (this device)</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-device-not-verified">
+        <source>Not verified</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-he-remove-device">
         <source>Remove device</source>
         <translation type="unfinished"></translation>
@@ -328,12 +332,96 @@
         <source>Backup state not known yet.</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-he-settings">
-        <source>Settings</source>
+    <message id="rustrx-la-security-ok">
+        <source>Everything that protects your messages is on.</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-se-account">
+    <message id="rustrx-la-security-checking">
+        <source>Checking…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-risk-no-backup">
+        <source>There is no key backup. If you lose this phone, your encrypted messages are gone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-risk-no-backup-fix">
+        <source>Tap to turn on key backup.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-risk-key-missing">
+        <source>A key backup exists, but this phone does not have its recovery key.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-risk-key-missing-fix">
+        <source>Tap to enter the recovery key.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-risk-store-unencrypted">
+        <source>Your messages on this phone are stored without encryption, because this store was made before Rustrx used Sailfish Secrets.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-risk-store-unencrypted-fix">
+        <source>Turn on key backup first, then log out and log in again: the new store is encrypted.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-risk-no-secrets">
+        <source>This phone has no working Sailfish Secrets, so Rustrx cannot encrypt what it stores here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-risk-no-secrets-fix">
+        <source>Nothing Rustrx can do on this phone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-risk-unverified">
+        <source>This phone is not verified, so others cannot tell it is really you, and it may miss keys for older messages.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-risk-unverified-fix">
+        <source>Tap to verify it with another device of yours.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-risk-devices" numerus="yes">
+        <source>%n of your other devices are not verified. Anyone holding one could read along.</source>
+        <extracomment>%n other devices of the user without verification</extracomment>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message id="rustrx-la-risk-devices-fix">
+        <source>Tap to see them: verify each from that device, or remove it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-note-debug-log">
+        <source>The debug log is on. It holds room and user IDs, never message texts or passwords.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-note-receipts">
+        <source>Others see how far you have read.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-note-push">
+        <source>%1 sees when a message comes and for which room, never what it says.</source>
+        <extracomment>%1 the push gateway&apos;s host</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-note-media">
+        <source>Pictures and files you opened are kept unencrypted. Clear them in the App tab.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-settings-account">
         <source>Account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-settings-privacy">
+        <source>Privacy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-settings-app">
+        <source>App</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-settings-about">
+        <source>About</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-display-name">
@@ -386,10 +474,6 @@
     </message>
     <message id="rustrx-se-devices">
         <source>Devices</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-se-about">
-        <source>About</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-restored">
@@ -812,10 +896,6 @@
         <source>Create a new room</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-se-privacy">
-        <source>Privacy</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-la-send-receipts">
         <source>Send read receipts</source>
         <translation type="unfinished"></translation>
@@ -894,8 +974,8 @@
         <source>The poll has ended</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-se-storage">
-        <source>Storage</source>
+    <message id="rustrx-se-general">
+        <source>General</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-storage-store">

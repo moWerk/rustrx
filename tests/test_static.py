@@ -281,7 +281,7 @@ def test_no_default_property_list():
     assert not hits
 
 
-SILICA_PRIVATE_ALLOWED = {"MainPage.qml"}  # TabView paging; see the hints file
+SILICA_PRIVATE_ALLOWED = {"MainPage.qml", "SettingsPage.qml"}  # TabView paging; see the hints file
 
 
 def test_silica_private_only_where_allowed():

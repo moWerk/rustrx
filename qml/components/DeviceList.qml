@@ -51,10 +51,12 @@ Column {
         ListItem {
             id: item
             width: devicesColumn.width
-            contentHeight: Theme.itemSizeMedium
+            // a third line for an unverified device
+            contentHeight: Math.max(Theme.itemSizeMedium, info.height + 2 * Theme.paddingSmall)
             menu: model.current ? null : removeMenu
 
             Column {
+                id: info
                 anchors {
                     left: parent.left
                     right: parent.right
@@ -75,6 +77,15 @@ Column {
                     font.pixelSize: Theme.fontSizeSmall
                     color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
                     text: model.device_id + (model.last_seen_ts ? "  " + app.dayLabel(model.last_seen_ts) + " " + rustrx.formatTime(model.last_seen_ts) : "")
+                }
+                Label {
+                    visible: model.unverified
+                    width: parent.width
+                    truncationMode: TruncationMode.Fade
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    color: Theme.errorColor
+                    //% "Not verified"
+                    text: qsTrId("rustrx-la-device-not-verified")
                 }
             }
 
@@ -135,7 +146,12 @@ Column {
         onDevices: {
             devicesColumn.loading = false
             deviceModel.clear()
-            for (var i = 0; i < devices.length; i++) deviceModel.append(devices[i])
+            for (var i = 0; i < devices.length; i++) {
+                // only a device with encryption keys can be verified
+                var d = devices[i]
+                d.unverified = d.keys === true && d.verified === false
+                deviceModel.append(d)
+            }
         }
         onDeviceDeleted: rustrx.command({ cmd: "devices" })
         onErrorOccurred: if (cmd === "devices") { devicesColumn.loading = false; devicesColumn.loadError = message }

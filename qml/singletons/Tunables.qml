@@ -68,6 +68,8 @@ QtObject {
     readonly property real emojiPanelLandscape: 0.5
     // the fewest columns in the emoji grid
     readonly property int emojiMinColumns: 6
+    // the security ring in Settings, of the page width
+    readonly property real securityRingWidth: 0.4
     // image viewer: largest pinch zoom, double tap zoom
     readonly property real imageMaxZoom: 6
     readonly property real imageTapZoom: 2.5

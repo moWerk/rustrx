@@ -15,779 +15,115 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
+import Sailfish.Silica.private 1.0
 import Sailfish.Pickers 1.0
-import Sailfish.Share 1.0
-import "../components"
 
-// Account, encryption (verification, recovery), devices, about.
+// Settings in four tabs, in the tab view Jolla uses for its own Settings:
+// Account, Privacy, App, About (pages/settings/). Each tab gets this page as
+// `settings`: what more than one place shows, and what the core answers,
+// lives here.
 Page {
     id: page
 
     property string displayName
+    property string ownAvatar
+    property real ownAvatarVersion
+    property var storage: ({})
+    // the Encryption page's results, kept here: the new recovery key is
+    // shown only once and must outlive that page
     property string recoveryResult
     property string shownKey
+    property string resetApprovalUrl
+
+    readonly property real tabBarHeight: tabs.tabBarHeight
+    // the log out and the clearing; the Encryption page has its own
+    property alias remorse: remorsePopup
 
     Component.onCompleted: {
         rustrx.command({ cmd: "profile" })
         rustrx.command({ cmd: "storage_info" })
     }
 
-    function verificationText() {
-        switch (rustrx.verificationState) {
-        //% "This device is verified."
-        case "verified": return qsTrId("rustrx-la-device-verified")
-        //% "This device is not verified yet. Verify it from another device you are logged in on, or start the verification here."
-        case "unverified": return qsTrId("rustrx-la-device-unverified")
-        //% "Verification state not known yet."
-        default: return qsTrId("rustrx-la-device-unknown")
-        }
+    function tabTitle(kind) {
+        //% "Account"
+        if (kind === "account") return qsTrId("rustrx-he-settings-account")
+        //% "Privacy"
+        if (kind === "privacy") return qsTrId("rustrx-he-settings-privacy")
+        //% "App"
+        if (kind === "app") return qsTrId("rustrx-he-settings-app")
+        //% "About"
+        return qsTrId("rustrx-he-settings-about")
     }
 
-    function recoveryText() {
-        switch (rustrx.recoveryState) {
-        //% "Key backup is on and this device holds the recovery secrets. Older encrypted messages are restored from the backup."
-        case "enabled": return qsTrId("rustrx-la-recovery-enabled")
-        //% "Key backup exists, but this device lacks the recovery key. Enter it below to read older encrypted messages."
-        case "incomplete": return qsTrId("rustrx-la-recovery-incomplete")
-        //% "Key backup is off. Turn it on to keep encrypted messages readable after a new login."
-        case "disabled": return qsTrId("rustrx-la-recovery-disabled")
-        //% "Backup state not known yet."
-        default: return qsTrId("rustrx-la-recovery-unknown")
-        }
+    function showTab(kind) {
+        for (var i = 0; i < tabModel.count; i++)
+            if (tabModel.get(i).kind === kind) tabs.currentIndex = i
+    }
+
+    function openEncryption() {
+        pageStack.push(Qt.resolvedUrl("settings/EncryptionPage.qml"), { settings: page })
+    }
+
+    function pickPicture() { pageStack.push(ownPicturePicker) }
+
+    function logOut() {
+        //% "Logging out"
+        remorsePopup.execute(qsTrId("rustrx-re-logging-out"), function () {
+            rustrx.command({ cmd: "logout" })
+        })
     }
 
     // opened from the main page's line about verification or the recovery
-    // key: the encryption section at the top of the screen
+    // key: Settings opens on Account, where the risks and their fixes are;
+    // a missing recovery key goes on to the Encryption page, its only fix
     property bool showEncryption
     onStatusChanged: if (status === PageStatus.Active && showEncryption) {
         showEncryption = false
-        settingsFlick.contentY = Math.max(0, Math.min(encryptionHeader.y,
-                                                       settingsFlick.contentHeight - settingsFlick.height))
+        if (rustrx.recoveryState === "incomplete") encryptionLater.start()
+    }
+    Timer {
+        id: encryptionLater
+        interval: 0
+        onTriggered: pageStack.busy ? restart() : page.openEncryption()
     }
 
-    SilicaFlickable {
-        id: settingsFlick
+    TabView {
+        id: tabs
         anchors.fill: parent
-        contentHeight: column.height
+        model: tabModel
+        currentIndex: 0
 
-        Column {
-            id: column
-            width: parent.width
-            // room between the buttons and the texts around them
-            spacing: Theme.paddingMedium
-
-            //% "Settings"
-            PageHeader { title: qsTrId("rustrx-he-settings") }
-
-            //% "Privacy"
-            SectionHeader { text: qsTrId("rustrx-se-privacy") }
-
-            TextSwitch {
-                //% "Send read receipts"
-                text: qsTrId("rustrx-la-send-receipts")
-                //% "Others see how far you have read. When off, only your own devices know."
-                description: qsTrId("rustrx-la-send-receipts-hint")
-                checked: app.sendReceipts
-                automaticCheck: false
-                onClicked: app.sendReceipts = !app.sendReceipts
+        header: TabBar {
+            model: tabModel
+            delegate: TabButton {
+                title: page.tabTitle(model.kind)
+                // four tabs: a size smaller, as on the main page
+                titleFontSize: tabModel.count >= Tunables.crowdedTabCount ? Math.round(Theme.fontSizeMedium * Tunables.crowdedTabScale) : Theme.fontSizeLarge
             }
-
-            TextSwitch {
-                //% "Mark messages as read only when they have been shown"
-                text: qsTrId("rustrx-la-read-when-shown")
-                //% "A room counts as read once you scrolled to its newest message. When off, opening the room is enough; the unread line still waits until you saw the messages."
-                description: qsTrId("rustrx-la-read-when-shown-hint")
-                checked: app.readWhenShown
-                automaticCheck: false
-                onClicked: app.readWhenShown = !app.readWhenShown
-            }
-
-            TextSwitch {
-                //% "Show who has read a message"
-                text: qsTrId("rustrx-la-show-read-by")
-                //% "Names appear under the last message each person has read."
-                description: qsTrId("rustrx-la-show-read-by-hint")
-                checked: app.showReadBy
-                automaticCheck: false
-                onClicked: app.showReadBy = !app.showReadBy
-            }
-
-            TextSwitch {
-                //% "Message text in notifications"
-                text: qsTrId("rustrx-la-notify-text")
-                //% "When off, a notification only says how many messages arrived."
-                description: qsTrId("rustrx-la-notify-text-hint")
-                checked: service.notifyText
-                automaticCheck: false
-                onClicked: service.notifyText = !service.notifyText
-            }
-
-            TextSwitch {
-                //% "Show others that I am typing"
-                text: qsTrId("rustrx-la-send-typing")
-                checked: app.sendTyping
-                automaticCheck: false
-                onClicked: app.sendTyping = !app.sendTyping
-            }
-
-            TextSwitch {
-                //% "Say so under the message field"
-                text: qsTrId("rustrx-la-typing-hint")
-                //% "A line under the field reminds you that the room sees you typing."
-                description: qsTrId("rustrx-la-typing-hint-hint")
-                enabled: app.sendTyping
-                checked: app.typingHint
-                automaticCheck: false
-                onClicked: app.typingHint = !app.typingHint
-            }
-
-            //% "Notifications"
-            SectionHeader { text: qsTrId("rustrx-se-notifications") }
-
-            // When Rustrx is closed, one of three: push through a UnifiedPush
-            // distributor (Foghorn; nothing kept running), the background
-            // stand-in (kept running and syncing), or nothing. Until chosen:
-            // push where a distributor is installed, else the stand-in
-            // (app.applyClosedMode). Push is only offered with a distributor.
-            ComboBox {
-                id: closedBox
-                width: parent.width
-                readonly property var modes: rustrx.push.available ? ["push", "background", "off"] : ["background", "off"]
-                readonly property string mode: rustrx.push.available && rustrx.push.enabled ? "push"
-                                               : rustrx.background ? "background" : "off"
-                //% "When Rustrx is closed"
-                label: qsTrId("rustrx-la-closed-mode")
-                currentIndex: Math.max(0, modes.indexOf(mode))
-                menu: ContextMenu {
-                    Repeater {
-                        model: closedBox.modes
-                        MenuItem {
-                            text: modelData === "push"
-                                  //% "Push notifications"
-                                  ? qsTrId("rustrx-la-push")
-                                  : modelData === "background"
-                                  //% "Keep running in the background"
-                                  ? qsTrId("rustrx-la-background")
-                                  //% "No notifications"
-                                  : qsTrId("rustrx-la-closed-off")
-                        }
-                    }
-                }
-                onCurrentIndexChanged: {
-                    var m = modes[currentIndex]
-                    if (m === mode) return
-                    app.closedMode = m
-                    app.applyClosedMode()
-                }
-                description: mode === "push"
-                             ? (rustrx.push.active
-                                //: %1 the push gateway's host
-                                //% "Through Foghorn and %1: nothing of Rustrx keeps running. The gateway and the push server see when a message comes and for which room, never what it says."
-                                ? qsTrId("rustrx-la-push-active").arg(rustrx.push.gatewayHost)
-                                //: %1 what push is doing (registering, waiting for an address, an error)
-                                //% "Setting up: %1"
-                                : qsTrId("rustrx-la-push-setting-up").arg(rustrx.push.status || "…"))
-                             : mode === "background"
-                             //% "Rustrx starts with the phone and stays connected without a window, shown by a line in the events view: tap it to open Rustrx, or quit it there. While the phone sleeps it checks for messages every five minutes."
-                             ? qsTrId("rustrx-la-background-hint") + (rustrx.push.available ? ""
-                             //% " Push needs no running Rustrx: install a UnifiedPush distributor such as Foghorn (OpenRepos)."
-                                                                                            : qsTrId("rustrx-la-push-none-short"))
-                             //% "Notifications only while Rustrx is open."
-                             : qsTrId("rustrx-la-closed-off-hint")
-            }
-
-            TextSwitch {
-                //% "Reply in notifications"
-                text: qsTrId("rustrx-la-notify-reply")
-                //% "A Reply button that opens a text field in the notification."
-                description: qsTrId("rustrx-la-notify-reply-hint")
-                checked: service.notifyReply
-                automaticCheck: false
-                onClicked: service.notifyReply = !service.notifyReply
-            }
-
-            TextSwitch {
-                //% "Emoji replies in notifications"
-                text: qsTrId("rustrx-la-notify-reactions")
-                //% "Three emoji as buttons, to react to the latest message."
-                description: qsTrId("rustrx-la-notify-reactions-hint")
-                checked: service.notifyReactions
-                automaticCheck: false
-                onClicked: service.notifyReactions = !service.notifyReactions
-            }
-
-            TextField {
-                visible: service.notifyReactions
-                width: parent.width
-                // in line with the switches' texts above (Silica TextSwitch:
-                // its toggle, then the label)
-                textLeftMargin: Theme.horizontalPageMargin - Theme.paddingLarge + Theme.itemSizeExtraSmall
-                                + (palette.colorScheme === Theme.DarkOnLight ? Theme.paddingMedium : 0)
-                //% "Up to three emoji, with spaces between"
-                label: qsTrId("rustrx-la-notify-emoji")
-                placeholderText: label
-                text: service.notifyEmoji
-                inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
-                EnterKey.iconSource: "image://theme/icon-m-enter-close"
-                EnterKey.onClicked: focus = false
-                onActiveFocusChanged: if (!activeFocus) service.notifyEmoji = text.trim()
-            }
-
-            // only with the background stand-in, the line's subject
-            TextSwitch {
-                visible: rustrx.background
-                //% "Show the background line"
-                text: qsTrId("rustrx-la-background-line")
-                //% "The line in the events view while Rustrx runs in the background. Without it, Rustrx runs unseen: open it from its icon, and switch background mode off to end it."
-                description: qsTrId("rustrx-la-background-line-hint")
-                checked: service.showBackgroundLine
-                automaticCheck: false
-                onClicked: service.showBackgroundLine = !service.showBackgroundLine
-            }
-
-            //% "Appearance"
-            SectionHeader { text: qsTrId("rustrx-se-appearance") }
-
-            // the avatars' corners, from square to a circle, with one's own
-            // picture beside it as it will look
-            Item {
-                width: parent.width
-                height: Math.max(cornerSlider.height, cornerPreview.height)
-                Slider {
-                    id: cornerSlider
-                    anchors { left: parent.left; right: cornerPreview.left; verticalCenter: parent.verticalCenter }
-                    //% "Avatar corners"
-                    label: qsTrId("rustrx-la-avatar-corners")
-                    minimumValue: 0
-                    maximumValue: 50
-                    stepSize: 5
-                    valueText: value >= maximumValue
-                               //% "Round"
-                               ? qsTrId("rustrx-la-avatar-round")
-                               : value <= minimumValue
-                                 //% "Square"
-                                 ? qsTrId("rustrx-la-avatar-square")
-                                 : Math.round(value * 2) + " %"
-                    Component.onCompleted: value = app.avatarCorners
-                    onValueChanged: if (Math.round(value) !== app.avatarCorners) app.avatarCorners = Math.round(value)
-                }
-                Rectangle {
-                    id: cornerPreview
-                    anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
-                    width: Theme.iconSizeLarge
-                    height: width
-                    radius: width * app.avatarRadius
-                    color: previewPicture.visible ? "transparent" : Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
-                    Label {
-                        anchors.centerIn: parent
-                        visible: !previewPicture.visible
-                        text: (displayName || rustrx.userId.slice(1) || "?").charAt(0).toUpperCase()
-                        font.pixelSize: Theme.fontSizeLarge
-                        color: Theme.primaryColor
-                    }
-                    Image {
-                        id: previewPicture
-                        anchors.fill: parent
-                        visible: status === Image.Ready
-                        asynchronous: true
-                        fillMode: Image.PreserveAspectCrop
-                        sourceSize.width: width
-                        sourceSize.height: height
-                        source: ownAvatar.length ? "file://" + ownAvatar + "?v=" + ownAvatarVersion : ""
-                        layer.enabled: app.avatarRadius > 0
-                        layer.effect: RoundMask { radius: app.avatarRadius }
-                    }
-                }
-            }
-
-            TextSwitch {
-                //% "Highlight Favs channels with new messages"
-                text: qsTrId("rustrx-la-highlight-favs")
-                //% "A favourite with something unread glows calmly in the lists, its star with it."
-                description: qsTrId("rustrx-la-highlight-favs-hint")
-                checked: app.highlightFavs
-                automaticCheck: false
-                onClicked: app.highlightFavs = !app.highlightFavs
-            }
-
-            TextSwitch {
-                //% "Separate People tab"
-                text: qsTrId("rustrx-la-separate-lists")
-                //% "Rooms and people as two tabs. When off, they share one list; the filter menu sorts and searches it."
-                description: qsTrId("rustrx-la-separate-lists-hint")
-                checked: app.separateLists
-                automaticCheck: false
-                onClicked: app.separateLists = !app.separateLists
-            }
-
-            TextSwitch {
-                //% "Favourites tab"
-                text: qsTrId("rustrx-la-separate-favs")
-                //% "The favourites as a tab of their own. When off, “Favourites on top” in the filter menu keeps them at hand."
-                description: qsTrId("rustrx-la-separate-favs-hint")
-                checked: app.separateFavs
-                automaticCheck: false
-                onClicked: app.separateFavs = !app.separateFavs
-            }
-
-            TextSwitch {
-                //% "Spaces tab"
-                text: qsTrId("rustrx-la-separate-spaces")
-                //% "The spaces you are in (groups of rooms) as a tab: their rooms, joining them, asking to join, and requests to join them."
-                description: qsTrId("rustrx-la-separate-spaces-hint")
-                checked: app.separateSpaces
-                automaticCheck: false
-                onClicked: app.separateSpaces = !app.separateSpaces
-            }
-
-            ComboBox {
-                width: parent.width
-                //% "Message preview"
-                label: qsTrId("rustrx-la-preview-lines")
-                //% "Lines of the last message under a room's name."
-                description: qsTrId("rustrx-la-preview-lines-hint")
-                currentIndex: Math.max(0, Math.min(2, app.previewLines - 1))
-                menu: ContextMenu {
-                    //% "1 line"
-                    MenuItem { text: qsTrId("rustrx-me-lines-1") }
-                    //% "2 lines"
-                    MenuItem { text: qsTrId("rustrx-me-lines-2") }
-                    //% "3 lines"
-                    MenuItem { text: qsTrId("rustrx-me-lines-3") }
-                }
-                onCurrentIndexChanged: app.previewLines = currentIndex + 1
-            }
-
-            TextSwitch {
-                //% "Reopen the last chat"
-                text: qsTrId("rustrx-la-reopen-last")
-                //% "Rustrx starts in the room or chat that was open when it was closed."
-                description: qsTrId("rustrx-la-reopen-last-hint")
-                checked: app.reopenLast
-                automaticCheck: false
-                onClicked: app.reopenLast = !app.reopenLast
-            }
-
-            TextSwitch {
-                //% "Send smaller pictures"
-                text: qsTrId("rustrx-la-downscale")
-                //% "Photos larger than 2048 pixels are scaled down before sending."
-                description: qsTrId("rustrx-la-downscale-hint")
-                checked: rustrx.downscaleImages
-                automaticCheck: false
-                onClicked: rustrx.downscaleImages = !rustrx.downscaleImages
-            }
-
-            //% "Account"
-            SectionHeader { text: qsTrId("rustrx-se-account") }
-
-            DetailItem {
-                label: qsTrId("rustrx-la-matrix-id")
-                value: rustrx.userId
-            }
-            DetailItem {
-                label: qsTrId("rustrx-la-homeserver")
-                value: rustrx.homeserver
-            }
-
-            // one's own picture; a tap picks a new one
-            BackgroundItem {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: Theme.itemSizeHuge
-                height: width
-                onClicked: pageStack.push(ownPicturePicker)
-                Rectangle {
-                    anchors.fill: parent
-                    radius: width * app.avatarRadius
-                    visible: !ownPicture.visible
-                    color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
-                    Label {
-                        anchors.centerIn: parent
-                        text: (displayName || rustrx.userId.slice(1) || "?").charAt(0).toUpperCase()
-                        font.pixelSize: Theme.fontSizeHuge
-                        color: Theme.primaryColor
-                    }
-                }
-                Image {
-                    id: ownPicture
-                    anchors.fill: parent
-                    visible: status === Image.Ready
-                    asynchronous: true
-                    fillMode: Image.PreserveAspectCrop
-                    sourceSize.width: width
-                    sourceSize.height: height
-                    // the version makes a changed picture load past Qt's image cache
-                    source: ownAvatar.length ? "file://" + ownAvatar + "?v=" + ownAvatarVersion : ""
-                    layer.enabled: app.avatarRadius > 0
-                    layer.effect: RoundMask { radius: app.avatarRadius }
-                }
-            }
-
-            TextField {
-                id: nameField
-                width: parent.width
-                text: displayName
-                //% "Display name"
-                label: qsTrId("rustrx-la-display-name")
-                placeholderText: label
-                EnterKey.enabled: text.trim().length > 0 && text !== displayName
-                EnterKey.iconSource: "image://theme/icon-m-enter-accept"
-                EnterKey.onClicked: {
-                    rustrx.command({ cmd: "set_display_name", name: text.trim() })
-                    displayName = text.trim()
-                    focus = false
-                }
-            }
-
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
-                //% "Ignored users"
-                text: qsTrId("rustrx-bt-ignored")
-                onClicked: pageStack.push(Qt.resolvedUrl("IgnoredPage.qml"))
-            }
-
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
-                //% "Log out"
-                text: qsTrId("rustrx-bt-log-out")
-                onClicked: {
-                    //% "Logging out"
-                    remorse.execute(qsTrId("rustrx-re-logging-out"), function () {
-                        rustrx.command({ cmd: "logout" })
-                    })
-                }
-            }
-
-            SectionHeader {
-                id: encryptionHeader
-                //% "Encryption"
-                text: qsTrId("rustrx-se-encryption")
-            }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: Theme.highlightColor
-                font.pixelSize: Theme.fontSizeSmall
-                text: verificationText()
-            }
-
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: rustrx.verificationState !== "verified"
-                //% "Verify this device"
-                text: qsTrId("rustrx-bt-verify-device")
-                onClicked: {
-                    rustrx.command({ cmd: "verification_request_self" })
-                    pageStack.push(Qt.resolvedUrl("VerificationPage.qml"), { waiting: true })
-                }
-            }
-
-            Item { width: 1; height: Theme.paddingLarge }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: Theme.highlightColor
-                font.pixelSize: Theme.fontSizeSmall
-                text: recoveryText()
-            }
-
-            TextField {
-                id: keyField
-                width: parent.width
-                visible: rustrx.recoveryState !== "enabled"
-                //% "Recovery key"
-                label: qsTrId("rustrx-la-recovery-key")
-                //% "Recovery key, like EsTc ... (or your passphrase)"
-                placeholderText: qsTrId("rustrx-ph-recovery-key")
-                inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhSensitiveData
-                EnterKey.enabled: text.trim().length > 0
-                EnterKey.iconSource: "image://theme/icon-m-enter-accept"
-                EnterKey.onClicked: {
-                    //% "Restoring…"
-                    recoveryResult = qsTrId("rustrx-la-restoring")
-                    rustrx.command({ cmd: "recovery_recover", key: text })
-                    focus = false
-                }
-            }
-
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: rustrx.recoveryState !== "enabled"
-                enabled: keyField.text.trim().length > 0
-                //% "Restore encrypted messages"
-                text: qsTrId("rustrx-bt-restore")
-                onClicked: {
-                    recoveryResult = qsTrId("rustrx-la-restoring")
-                    rustrx.command({ cmd: "recovery_recover", key: keyField.text })
-                }
-            }
-
-            // no other device and no recovery key: start over
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: rustrx.recoveryState === "incomplete" && rustrx.verificationState !== "verified"
-                //% "Reset encryption"
-                text: qsTrId("rustrx-bt-reset-identity")
-                onClicked: {
-                    var core = rustrx
-                    //% "Resetting the encryption"
-                    remorse.execute(qsTrId("rustrx-re-reset-identity"), function () {
-                        //% "Resetting… the server may ask you to approve it in the browser."
-                        recoveryResult = qsTrId("rustrx-la-resetting")
-                        core.command({ cmd: "identity_reset" })
-                    })
-                }
-            }
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                visible: rustrx.recoveryState === "incomplete" && rustrx.verificationState !== "verified"
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
-                //% "No other device and no recovery key? A reset makes new encryption keys and a new backup with a new recovery key. Older encrypted messages stay unreadable, and your other devices have to be verified again."
-                text: qsTrId("rustrx-la-reset-identity-hint")
-            }
-            // the approval page, if the browser did not open by itself
-            Row {
-                visible: resetApprovalUrl.length > 0
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: Theme.paddingLarge
-                Button {
-                    //% "Open approval"
-                    text: qsTrId("rustrx-bt-open-approval")
-                    onClicked: app.openExternal(resetApprovalUrl)
-                }
-                Button {
-                    text: qsTrId("rustrx-bt-sso-copy")
-                    onClicked: {
-                        Clipboard.text = resetApprovalUrl
-                        Notices.show(qsTrId("rustrx-no-link-copied"), Notice.Short)
-                    }
-                }
-            }
-
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: rustrx.recoveryState === "disabled"
-                //% "Turn on key backup"
-                text: qsTrId("rustrx-bt-enable-backup")
-                onClicked: {
-                    //% "Setting up the backup…"
-                    recoveryResult = qsTrId("rustrx-la-enabling-backup")
-                    rustrx.command({ cmd: "recovery_enable" })
-                }
-            }
-
-            // the old key cannot be shown again; a new one can be made
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: rustrx.recoveryState === "enabled"
-                //% "New recovery key"
-                text: qsTrId("rustrx-bt-new-recovery-key")
-                onClicked: {
-                    var core = rustrx
-                    //% "Making a new recovery key"
-                    remorse.execute(qsTrId("rustrx-re-new-recovery-key"), function () {
-                        //% "Making a new recovery key…"
-                        recoveryResult = qsTrId("rustrx-la-new-recovery-key")
-                        core.command({ cmd: "recovery_reset" })
-                    })
-                }
-            }
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                visible: rustrx.recoveryState === "enabled"
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
-                //% "Lost the recovery key? A new one replaces it. The backup and your messages stay, only the old key stops working."
-                text: qsTrId("rustrx-la-new-recovery-key-hint")
-            }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                visible: recoveryResult.length > 0
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.secondaryHighlightColor
-                text: recoveryResult
-            }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                visible: shownKey.length > 0
-                wrapMode: Text.WrapAnywhere
-                font.family: "monospace"
-                color: Theme.primaryColor
-                text: shownKey
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        Clipboard.text = shownKey
-                        //% "Recovery key copied"
-                        Notices.show(qsTrId("rustrx-no-key-copied"))
-                    }
-                }
-            }
-
-            // room keys to and from a file, for another client or a backup of one's own
-            BackgroundItem {
-                width: parent.width
-                onClicked: pageStack.push(Qt.resolvedUrl("KeysPage.qml"))
-                Label {
-                    x: Theme.horizontalPageMargin
-                    anchors.verticalCenter: parent.verticalCenter
-                    //% "Export or import room keys"
-                    text: qsTrId("rustrx-la-keys-file")
-                    color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
-                }
-            }
-
-            //% "Storage"
-            SectionHeader { text: qsTrId("rustrx-se-storage") }
-
-            DetailItem {
-                //% "Messages and keys"
-                label: qsTrId("rustrx-la-storage-store")
-                value: storage.store !== undefined ? Format.formatFileSize(storage.store) : "…"
-            }
-            DetailItem {
-                //% "Pictures and files"
-                label: qsTrId("rustrx-la-storage-media")
-                value: storage.media_files !== undefined
-                       ? Format.formatFileSize(storage.media_files + (storage.media_cache || 0)) : "…"
-            }
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
-                //% "Clear pictures and files"
-                text: qsTrId("rustrx-bt-clear-media")
-                onClicked: {
-                    var core = rustrx
-                    //% "Clearing the cached pictures and files"
-                    remorse.execute(qsTrId("rustrx-re-clear-media"), function () { core.command({ cmd: "clear_media" }) })
-                }
-            }
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
-                //% "They are fetched again when a room shows them."
-                text: qsTrId("rustrx-la-clear-media-hint")
-            }
-
-            //% "Devices"
-            SectionHeader { text: qsTrId("rustrx-se-devices") }
-
-            DeviceList { width: parent.width }
-
-            //% "Debug log"
-            SectionHeader { text: qsTrId("rustrx-se-debug-log") }
-
-            TextSwitch {
-                //% "Keep a debug log"
-                text: qsTrId("rustrx-la-debug-log")
-                //% "Rustrx notes what it does in a small file on the phone. If something goes wrong, share it with the developer, so nobody has to make it happen again. It holds room and user IDs, never message texts or passwords."
-                description: qsTrId("rustrx-la-debug-log-hint")
-                checked: rustrx.debugLog
-                automaticCheck: false
-                onClicked: rustrx.debugLog = !rustrx.debugLog
-            }
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
-                //% "Share the debug log"
-                text: qsTrId("rustrx-bt-share-log")
-                onClicked: {
-                    var path = rustrx.shareableLog()
-                    if (path === "")
-                        return
-                    logShare.resources = ["file://" + path]
-                    logShare.trigger()
-                }
-            }
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
-                //% "A copy goes to Downloads, so you can also attach it to a mail or a forum post."
-                text: qsTrId("rustrx-la-share-log-hint")
-            }
-            ShareAction {
-                id: logShare
-                mimeType: "text/plain"
-                //% "Rustrx debug log"
-                title: qsTrId("rustrx-he-share-log")
-            }
-
-            //% "About"
-            SectionHeader { text: qsTrId("rustrx-se-about") }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.secondaryColor
-                linkColor: Theme.highlightColor
-                textFormat: Text.StyledText
-                onLinkActivated: app.openExternal(link)
-                //: %1 app version, %2 core version; lines separated by <br>, keep the link
-                //% "Rustrx %1, core %2<br>A Matrix client built on <a href='https://github.com/matrix-org/matrix-rust-sdk'>matrix-rust-sdk</a><br>GPLv3+, from moWerk with love<br><a href='https://github.com/moWerk/rustrx'>github.com/moWerk/rustrx</a>"
-                text: qsTrId("rustrx-la-about-lines").arg(appVersion).arg(rustrx.coreVersion)
-            }
-
-            // the emoji pictures' attribution (CC-BY 4.0 asks for it)
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
-                linkColor: Theme.highlightColor
-                textFormat: Text.StyledText
-                onLinkActivated: app.openExternal(link)
-                //: attribution of the emoji pictures; keep the links and names as they are
-                //% "Emoji: <a href='https://github.com/jdecked/twemoji'>Twemoji</a> by Twitter, Inc. and other contributors and Jason Sofonia &amp; Justine De Caires, <a href='https://creativecommons.org/licenses/by/4.0/'>CC-BY 4.0</a>"
-                text: qsTrId("rustrx-la-about-twemoji")
-            }
-
-            // how it was made, graded by LLMGD (SPEC section 3: understood and
-            // tested by the author, not read line by line, no outside review: A3;
-            // the author directs and decides the design, the LLM writes: origin O1)
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
-                linkColor: Theme.highlightColor
-                textFormat: Text.StyledText
-                onLinkActivated: app.openExternal(link)
-                //: the LLM disclosure grade; keep the link and the grade as they are
-                //% "<a href='https://github.com/moWerk/llmgd-specs'>LLMGD-3</a> · origin O1: written by an LLM, directed, understood and tested on the phone by the author; not yet reviewed by others"
-                text: qsTrId("rustrx-la-about-llmgd")
-            }
-
-            Item { width: 1; height: Theme.paddingLarge }
         }
 
-        VerticalScrollDecorator { }
+        delegate: TabItem {
+            flickable: loader.item
+            Loader {
+                id: loader
+                anchors.fill: parent
+                // with `settings` set before the tab's bindings first run
+                Component.onCompleted: setSource(Qt.resolvedUrl("settings/" + model.file), { settings: page })
+            }
+        }
     }
 
-    property string ownAvatar
-    property real ownAvatarVersion
+    // after the TabView: children go in the order they were made, and the
+    // TabView must go before its model (MainPage.qml says why)
+    ListModel {
+        id: tabModel
+        ListElement { kind: "account"; file: "AccountTab.qml" }
+        ListElement { kind: "privacy"; file: "PrivacyTab.qml" }
+        ListElement { kind: "app"; file: "AppTab.qml" }
+        ListElement { kind: "about"; file: "AboutTab.qml" }
+    }
 
     Component {
         id: ownPicturePicker
@@ -803,11 +139,7 @@ Page {
         }
     }
 
-    // the log out, the reset and the clearing
-    RemorsePopup { id: remorse }
-    property string resetApprovalUrl
-
-    property var storage: ({})
+    RemorsePopup { id: remorsePopup }
 
     Connections {
         target: rustrx
@@ -818,7 +150,7 @@ Page {
             ownAvatarVersion = profile.avatar_v || 0
         }
         //% "Encrypted messages restored. Rooms fill in as keys arrive."
-        onRecoveryDone: { recoveryResult = qsTrId("rustrx-la-restored"); keyField.text = "" }
+        onRecoveryDone: recoveryResult = qsTrId("rustrx-la-restored")
         onIdentityResetApproval: {
             resetApprovalUrl = url
             //% "Approve the reset on your server's page in the browser (within two minutes). If it did not open, use the buttons above."

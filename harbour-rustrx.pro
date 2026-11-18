@@ -68,6 +68,7 @@ DISTFILES += qml/harbour-rustrx.qml \
     qml/Service.qml \
     qml/call-bridge.js \
     qml/pages/*.qml \
+    qml/pages/settings/*.qml \
     qml/components/*.qml \
     qml/cover/*.qml \
     qml/singletons/*.qml \
