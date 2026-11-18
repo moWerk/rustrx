@@ -36,6 +36,8 @@ Item {
     Settings { id: cfg }
     // whether a notification shows the message itself or only a count
     property alias notifyText: cfg.notifyText
+    // who and which chat, outside the app (notifications; the cover reads it too)
+    property alias chatDetails: cfg.chatDetails
     property alias notifyReply: cfg.notifyReply
     property alias notifyReactions: cfg.notifyReactions
     property alias notifyEmoji: cfg.notifyEmoji
@@ -73,7 +75,11 @@ Item {
             service.whenLoggedIn({ cmd: "react", room_id: roomId, event_id: eventId, key: key })
             service.markRead(roomId)
         }
-        onStateChanged: if (rustrx.loggedIn) service.flushPending()
+        // the core sets offline at every login; online only when asked
+        onStateChanged: if (rustrx.loggedIn) {
+            service.flushPending()
+            if (cfg.showOnline) rustrx.command({ cmd: "set_presence", online: true })
+        }
         onInvited: service.notifyInvite(roomId, roomName, inviter, direct)
         onInviteGone: service.closeInvite(roomId)
         onCallRing: service.ringCall(roomId, roomName, senderName, ring, eventId, expiresMs)
@@ -193,12 +199,12 @@ Item {
         console.log("notify:", count)
         var n = roomNote(roomId)
         var info = rustrx.roomInfo(roomId)
-        var last = (info.preview_sender ? info.preview_sender + ": " : "") + (info.preview || "")
+        var last = (info.preview_sender && chatDetails ? info.preview_sender + ": " : "") + (info.preview || "")
         var pending = count
         roomPending[roomId] = pending
         n.remoteActions = roomActions(roomId, info.latest_event_id || "")
-        n.summary = roomName
-        n.previewSummary = roomName
+        n.summary = chatDetails ? roomName : "Rustrx"
+        n.previewSummary = n.summary
         //: notification body, %n new messages
         //% "%n new messages"
         n.body = last.length && notifyText ? last : qsTrId("rustrx-no-new-messages", pending)
@@ -216,7 +222,10 @@ Item {
         //% "Invitation"
         n.summary = qsTrId("rustrx-no-invitation")
         n.previewSummary = n.summary
-        n.body = direct
+        n.body = !chatDetails
+                //% "Someone invites you to a chat"
+                ? qsTrId("rustrx-no-invite-hidden")
+                : direct
                 //: %1 who invites
                 //% "%1 wants to chat with you"
                 ? qsTrId("rustrx-no-invite-dm").arg(who)
@@ -321,10 +330,10 @@ Item {
         var n = roomNote(roomId)
         var pending = (roomPending[roomId] || 0) + 1
         roomPending[roomId] = pending
-        var who = senderName && !isDm ? senderName + ": " : ""
+        var who = senderName && !isDm && chatDetails ? senderName + ": " : ""
         n.remoteActions = roomActions(roomId, eventId)
-        n.summary = roomName
-        n.previewSummary = roomName
+        n.summary = chatDetails ? roomName : "Rustrx"
+        n.previewSummary = n.summary
         n.body = body && notifyText ? who + body : qsTrId("rustrx-no-new-messages", pending)
         n.previewBody = n.body
         n.itemCount = pending
@@ -338,7 +347,10 @@ Item {
         //% "Request to join"
         knockNote.summary = qsTrId("rustrx-no-knock")
         knockNote.previewSummary = knockNote.summary
-        knockNote.body = isSpace
+        knockNote.body = !chatDetails
+                //% "Someone asks to join"
+                ? qsTrId("rustrx-no-knock-hidden")
+                : isSpace
                 //: %1 who asks, %2 the space
                 //% "%1 asks to join the space %2"
                 ? qsTrId("rustrx-no-knock-space").arg(name).arg(roomName)

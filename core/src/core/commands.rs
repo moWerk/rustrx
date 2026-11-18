@@ -92,6 +92,7 @@ impl Core {
                 self.mark_read(&room_id, private.unwrap_or(false), marker.unwrap_or(true)).await
             }
             Typing { room_id, typing } => self.typing(&room_id, typing.unwrap_or(false)).await,
+            SetPresence { online } => self.set_presence(online).await,
             GetMedia { room_id, event_id, thumb, dest_dir } => {
                 self.get_media(&room_id, &event_id, thumb.unwrap_or(false), dest_dir).await
             }

@@ -53,6 +53,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `report` | `room_id`, `event_id`, `reason?` | |
 | `mark_read` | `room_id`, `private?` (a private receipt), `marker?` (default true; false leaves the fully-read marker) | `rooms` |
 | `typing` | `room_id`, `typing?` | |
+| `set_presence` | `online` (offline is set at every login, before the first sync) | |
 | `get_media` | `room_id`, `event_id`, `thumb?`, `dest_dir?` (a copy for other apps) | `media` |
 | `fetch_emote` | `mxc` (a custom emoji's address) | `emote` |
 | `image_packs` | `room_id` | `image_packs` |

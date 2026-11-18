@@ -940,6 +940,14 @@
         <source>When off, a notification only says how many messages arrived.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-chat-details">
+        <source>Chat names outside Rustrx</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-chat-details-hint">
+        <source>Notifications and the cover show which chat and who wrote. Off: they say Rustrx, and the cover shows only the counts.</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-la-strip-location">
         <source>Remove the location from photos</source>
         <translation type="unfinished"></translation>
@@ -1568,6 +1576,14 @@
         <source>A line under the field reminds you that the room sees you typing.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-show-online">
+        <source>Show me as online</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-show-online-hint">
+        <source>Others see when you are online and when you were last active, on servers that show it (matrix.org does not). Off: you always appear offline.</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-la-closed-mode">
         <source>When Rustrx is closed</source>
         <translation type="unfinished"></translation>
@@ -1868,6 +1884,10 @@
         <extracomment>%1 who invites</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-no-invite-hidden">
+        <source>Someone invites you to a chat</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-no-invite-room">
         <source>%1 invites you to %2</source>
         <extracomment>%1 who invites, %2 the room</extracomment>
@@ -1899,6 +1919,10 @@
     <message id="rustrx-no-knock">
         <source>Request to join</source>
         <extracomment>notification title for a request to join</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-knock-hidden">
+        <source>Someone asks to join</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-no-knock-space">

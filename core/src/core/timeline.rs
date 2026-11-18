@@ -582,6 +582,17 @@ impl Core {
         Ok(())
     }
 
+    /// Online or offline for others; also the state every later sync
+    /// request carries (the SDK's default was online, around the clock
+    /// with the stand-in syncing every five minutes)
+    pub(crate) async fn set_presence(&self, online: bool) -> Result<()> {
+        use matrix_sdk::ruma::presence::PresenceState;
+        let client = self.client().await?;
+        let state = if online { PresenceState::Online } else { PresenceState::Offline };
+        client.set_presence(state, None, true).await?;
+        Ok(())
+    }
+
     pub(crate) async fn typing(&self, room_id: &str, typing: bool) -> Result<()> {
         let room = self.room(room_id).await?;
         room.typing_notice(typing).await?;

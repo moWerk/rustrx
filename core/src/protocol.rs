@@ -106,6 +106,9 @@ pub(crate) enum Command {
     /// marker (the unread line) until the messages were shown
     MarkRead { room_id: String, private: Option<bool>, marker: Option<bool> },
     Typing { room_id: String, typing: Option<bool> },
+    /// Shown as online to others (servers with presence on); offline is
+    /// set at every login, before the first sync
+    SetPresence { online: bool },
     /// The picture (or its thumbnail) of an event, into the media cache;
     /// with dest_dir a copy for other apps. Answered by "media".
     GetMedia { room_id: String, event_id: String, thumb: Option<bool>, dest_dir: Option<String> },
@@ -261,7 +264,7 @@ mod tests {
         "open_room", "close_room", "paginate_back", "send_text", "send_sticker",
         "open_thread", "close_thread", "save_draft", "retry_send", "thread_list", "close_thread_list", "mark_thread_read",
         "push_set", "push_remove", "push_check", "push_handle", "send_file", "react", "redact", "edit",
-        "poll_vote", "report", "event_source", "mark_read", "typing", "get_media",
+        "poll_vote", "report", "event_source", "mark_read", "typing", "set_presence", "get_media",
         "fetch_emote", "image_packs", "add_user_emote",
         "get_notification_mode", "set_notification_mode", "set_favourite", "set_low_priority",
         "join_room", "leave_room", "join_by_id_or_alias", "room_preview", "knock", "room_link",
@@ -279,7 +282,7 @@ mod tests {
 
     /// How many fields the commands require, all together. Like COMMANDS, a
     /// change here is a change of the contract.
-    const REQUIRED_FIELDS: usize = 110;
+    const REQUIRED_FIELDS: usize = 111;
 
 
     /// The names serde knows, from its own error for an unknown tag

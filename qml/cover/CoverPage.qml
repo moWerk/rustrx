@@ -26,7 +26,8 @@ import Sailfish.Silica 1.0
 CoverBackground {
     id: cover
 
-    readonly property bool inChat: rustrx.loggedIn && rustrx.openRoomId.length > 0
+    // the open chat on the cover, unless names stay inside Rustrx (Privacy)
+    readonly property bool inChat: app.chatDetails && rustrx.loggedIn && rustrx.openRoomId.length > 0
     property var chat: ({})
     function refreshChat() { chat = inChat ? (rustrx.roomInfo(rustrx.openRoomId) || {}) : {} }
     onInChatChanged: refreshChat()

@@ -72,6 +72,8 @@ ApplicationWindow {
     property alias sendTyping: cfg.sendTyping
     // the line under the message field that says the room sees you typing
     property alias typingHint: cfg.typingHint
+    property alias showOnline: cfg.showOnline
+    property alias chatDetails: cfg.chatDetails
     // when Rustrx is closed: "push", "background" or "off"; "" until chosen
     property alias closedMode: cfg.closedMode
     // start in the chat that was open when the app was closed

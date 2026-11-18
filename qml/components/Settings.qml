@@ -54,6 +54,10 @@ ConfigurationGroup {
     property string notifyEmoji: "👍 😀 👎"
     property bool sendTyping: true
     property bool typingHint: true
+    // shown as online to others (presence); off: offline, always
+    property bool showOnline: false
+    // chat names and senders in notifications and on the cover
+    property bool chatDetails: true
 
     // when Rustrx is closed: "push", "background" or "off"; "" until chosen
     property string closedMode: ""

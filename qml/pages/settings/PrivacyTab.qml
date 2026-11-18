@@ -88,6 +88,19 @@ SilicaFlickable {
             onClicked: app.typingHint = !app.typingHint
         }
 
+        TextSwitch {
+            //% "Show me as online"
+            text: qsTrId("rustrx-la-show-online")
+            //% "Others see when you are online and when you were last active, on servers that show it (matrix.org does not). Off: you always appear offline."
+            description: qsTrId("rustrx-la-show-online-hint")
+            checked: app.showOnline
+            automaticCheck: false
+            onClicked: {
+                app.showOnline = !app.showOnline
+                service.whenLoggedIn({ cmd: "set_presence", online: app.showOnline })
+            }
+        }
+
         // what strangers see on the phone's screen
         TextSwitch {
             //% "Message text in notifications"
@@ -97,6 +110,16 @@ SilicaFlickable {
             checked: service.notifyText
             automaticCheck: false
             onClicked: service.notifyText = !service.notifyText
+        }
+
+        TextSwitch {
+            //% "Chat names outside Rustrx"
+            text: qsTrId("rustrx-la-chat-details")
+            //% "Notifications and the cover show which chat and who wrote. Off: they say Rustrx, and the cover shows only the counts."
+            description: qsTrId("rustrx-la-chat-details-hint")
+            checked: service.chatDetails
+            automaticCheck: false
+            onClicked: service.chatDetails = !service.chatDetails
         }
 
         // a photo's EXIF can say where it was taken (src/Exif.h)
