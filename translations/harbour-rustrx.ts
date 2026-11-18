@@ -1369,8 +1369,16 @@
         <source>Join a space or room</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-join-address">
-        <source>Address, like #room:server</source>
+    <message id="rustrx-la-join-name-or-address">
+        <source>Name or address, like #room:server</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-found-joined">
+        <source>joined</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-found-none">
+        <source>Nothing found in the public directories. A private room needs its full address, like #room:server.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-kind-space">
@@ -1841,6 +1849,10 @@
     <message id="rustrx-la-about-lines">
         <source>Rustrx %1, core %2&lt;br&gt;A Matrix client built on &lt;a href=&apos;https://github.com/matrix-org/matrix-rust-sdk&apos;&gt;matrix-rust-sdk&lt;/a&gt;&lt;br&gt;GPLv3+, from moWerk with love&lt;br&gt;&lt;a href=&apos;https://github.com/moWerk/rustrx&apos;&gt;github.com/moWerk/rustrx&lt;/a&gt;</source>
         <extracomment>%1 app version, %2 core version; lines separated by &lt;br&gt;, keep the link</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-about-forum">
+        <source>Missing something, or found a bug? Tell us in &lt;a href='https://forum.sailfishos.org/t/rustrx-native-matrix-client-based-on-rust-matrix-sdk/36447'&gt;Rustrx's thread on the Sailfish OS forum&lt;/a&gt;. Every wish is read.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-about-thanks">

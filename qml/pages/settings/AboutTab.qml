@@ -61,6 +61,21 @@ SilicaFlickable {
             text: qsTrId("rustrx-la-about-lines").arg(appVersion).arg(rustrx.coreVersion)
         }
 
+        // where wishes and bug reports go: the forum thread
+        Label {
+            x: Theme.horizontalPageMargin
+            width: parent.width - 2 * x
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.Wrap
+            color: Theme.highlightColor
+            linkColor: Theme.primaryColor
+            textFormat: Text.StyledText
+            onLinkActivated: app.openExternal(link)
+            //: keep the link as it is
+            //% "Missing something, or found a bug? Tell us in <a href='https://forum.sailfishos.org/t/rustrx-native-matrix-client-based-on-rust-matrix-sdk/36447'>Rustrx's thread on the Sailfish OS forum</a>. Every wish is read."
+            text: qsTrId("rustrx-la-about-forum")
+        }
+
         // everyone whose report or idea went into Rustrx, as the changelog
         // and the release notes credit them (README's Credits keeps the same list)
         Label {
