@@ -17,8 +17,11 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 
-// Settings, Privacy: what others learn from Rustrx (receipts, typing, the
-// text on the lock screen) and whom one has blocked. One subject, no headers.
+// Settings, Privacy: what others learn from Rustrx and who may reach one,
+// in short groups under plain headers as Jolla's own settings pages have
+// them (reports/settings-review-2026-11-18/privacy-layout-B.md): what goes
+// out to the people in one's rooms, then what one's own screen shows, then
+// who gets through.
 SilicaFlickable {
     id: tab
 
@@ -34,6 +37,9 @@ SilicaFlickable {
         // the tab bar is drawn over a tab with a pulley menu; content starts below it
         Item { width: 1; height: (tab.pullDownMenu ? settings.tabBarHeight : 0) + Theme.paddingMedium }
 
+        //% "Read receipts"
+        SectionHeader { text: qsTrId("rustrx-se-receipts") }
+
         TextSwitch {
             //% "Send read receipts"
             text: qsTrId("rustrx-la-send-receipts")
@@ -47,14 +53,14 @@ SilicaFlickable {
         TextSwitch {
             //% "Mark messages as read only when they have been shown"
             text: qsTrId("rustrx-la-read-when-shown")
-            //% "A room counts as read once you scrolled to its newest message. When off, opening the room is enough; the unread line still waits until you saw the messages."
+            //% "A room counts as read once you scrolled to its newest message. Off: opening it is enough."
             description: qsTrId("rustrx-la-read-when-shown-hint")
             checked: app.readWhenShown
             automaticCheck: false
             onClicked: app.readWhenShown = !app.readWhenShown
         }
 
-        // sends nothing, but completes the receipts above
+        // sends nothing, but belongs with the receipts
         TextSwitch {
             //% "Show who has read a message"
             text: qsTrId("rustrx-la-show-read-by")
@@ -64,6 +70,9 @@ SilicaFlickable {
             automaticCheck: false
             onClicked: app.showReadBy = !app.showReadBy
         }
+
+        //% "Activity"
+        SectionHeader { text: qsTrId("rustrx-se-activity") }
 
         TextSwitch {
             //% "Show others that I am typing"
@@ -91,7 +100,7 @@ SilicaFlickable {
         TextSwitch {
             //% "Show me as online"
             text: qsTrId("rustrx-la-show-online")
-            //% "Others see when you are online and when you were last active, on servers that show it (matrix.org does not). Off: you always appear offline."
+            //% "Others see when you are online and last active, where the server shows it (matrix.org does not)."
             description: qsTrId("rustrx-la-show-online-hint")
             checked: app.showOnline
             automaticCheck: false
@@ -101,7 +110,24 @@ SilicaFlickable {
             }
         }
 
-        // what strangers see on the phone's screen
+        //% "Photos"
+        SectionHeader { text: qsTrId("rustrx-se-photos") }
+
+        // a photo's EXIF can say where it was taken (src/Exif.h)
+        TextSwitch {
+            //% "Remove the location from photos"
+            text: qsTrId("rustrx-la-strip-location")
+            //% "Photos leave without the place they were taken. Off: they go as the camera saved them."
+            description: qsTrId("rustrx-la-strip-location-hint")
+            checked: rustrx.stripLocation
+            automaticCheck: false
+            onClicked: rustrx.stripLocation = !rustrx.stripLocation
+        }
+
+        // what anyone holding or seeing the phone learns
+        //% "Screen"
+        SectionHeader { text: qsTrId("rustrx-se-screen") }
+
         TextSwitch {
             //% "Message text in notifications"
             text: qsTrId("rustrx-la-notify-text")
@@ -115,32 +141,24 @@ SilicaFlickable {
         TextSwitch {
             //% "Chat names outside Rustrx"
             text: qsTrId("rustrx-la-chat-details")
-            //% "Notifications and the cover show which chat and who wrote. Off: they say Rustrx, and the cover shows only the counts."
+            //% "Notifications and the cover name the chat and who wrote. Off: only Rustrx and the counts."
             description: qsTrId("rustrx-la-chat-details-hint")
             checked: service.chatDetails
             automaticCheck: false
             onClicked: service.chatDetails = !service.chatDetails
         }
 
+        //% "People"
+        SectionHeader { text: qsTrId("rustrx-se-people") }
+
         TextSwitch {
             //% "Invitations from strangers"
             text: qsTrId("rustrx-la-stranger-invites")
-            //% "A notification and the chat's picture for invitations from people you share no room with. Off: they wait quietly in the list, without a picture."
+            //% "A banner and the picture for invitations from people you share no room with. Off: they wait quietly in the list."
             description: qsTrId("rustrx-la-stranger-invites-hint")
             checked: app.strangerInvites
             automaticCheck: false
             onClicked: app.strangerInvites = !app.strangerInvites
-        }
-
-        // a photo's EXIF can say where it was taken (src/Exif.h)
-        TextSwitch {
-            //% "Remove the location from photos"
-            text: qsTrId("rustrx-la-strip-location")
-            //% "Photos leave without the place they were taken, which cameras write into them. Everything else stays as it was. Off: they go as the camera saved them."
-            description: qsTrId("rustrx-la-strip-location-hint")
-            checked: rustrx.stripLocation
-            automaticCheck: false
-            onClicked: rustrx.stripLocation = !rustrx.stripLocation
         }
 
         BackgroundItem {

@@ -448,6 +448,26 @@
         <source>Encryption</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-se-receipts">
+        <source>Read receipts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-activity">
+        <source>Activity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-photos">
+        <source>Photos</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-screen">
+        <source>Screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-people">
+        <source>People</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-bt-verify-device">
         <source>Verify this device</source>
         <translation type="unfinished"></translation>
@@ -917,7 +937,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-read-when-shown-hint">
-        <source>A room counts as read once you scrolled to its newest message. When off, opening the room is enough; the unread line still waits until you saw the messages.</source>
+        <source>A room counts as read once you scrolled to its newest message. Off: opening it is enough.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-select-text-hint">
@@ -953,7 +973,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-chat-details-hint">
-        <source>Notifications and the cover show which chat and who wrote. Off: they say Rustrx, and the cover shows only the counts.</source>
+        <source>Notifications and the cover name the chat and who wrote. Off: only Rustrx and the counts.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-stranger-invites">
@@ -961,7 +981,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-stranger-invites-hint">
-        <source>A notification and the chat's picture for invitations from people you share no room with. Off: they wait quietly in the list, without a picture.</source>
+        <source>A banner and the picture for invitations from people you share no room with. Off: they wait quietly in the list.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-strip-location">
@@ -969,7 +989,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-strip-location-hint">
-        <source>Photos leave without the place they were taken, which cameras write into them. Everything else stays as it was. Off: they go as the camera saved them.</source>
+        <source>Photos leave without the place they were taken. Off: they go as the camera saved them.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-se-new-account">
@@ -1605,7 +1625,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-show-online-hint">
-        <source>Others see when you are online and when you were last active, on servers that show it (matrix.org does not). Off: you always appear offline.</source>
+        <source>Others see when you are online and last active, where the server shows it (matrix.org does not).</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-closed-mode">
