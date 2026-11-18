@@ -4,9 +4,9 @@ import QtQuick 2.6
 // What the Account tab reads from Rustrx's core (rustrx.*, app.*,
 // settings.*), as plain properties the mockup's controls set.
 QtObject {
-    property string userId: "@mosen:tchncs.de"
-    property string homeserver: "https://tchncs.de"
-    property string displayName: "mosen"
+    property string userId: "@sam:example.org"
+    property string homeserver: "https://example.org"
+    property string displayName: "Sam"
     // "encrypted", "unencrypted", "no_secrets" or "" (not known yet)
     property string storeState: "encrypted"
     // "verified", "unverified" or ""
