@@ -61,6 +61,8 @@ Page {
     }
     Component.onDestruction: {
         if (composer) composer.saveDraft()
+        // the room is left: the unread line goes to where reading stopped
+        moveLine()
         if (rustrx.openRoomId === roomId) rustrx.closeRoom()
     }
 
@@ -76,11 +78,9 @@ Page {
     onStatusChanged: {
         trace.logStatus()
         anchor.pageStatus(status)
-        // a receipt still waiting goes out as the page leaves
-        if (status === PageStatus.Deactivating && markReadTimer.running) {
-            markReadTimer.stop()
-            markReadTimer.triggered()
-        }
+        // a page comes over the chat: the receipt still waiting goes out
+        // (the unread line stays until the room is left)
+        if (status === PageStatus.Deactivating) sendReceipt()
         if (status === PageStatus.Active) {
             app.lastRoom = roomId
             // back from a room opened above this one: its own messages again
@@ -93,8 +93,6 @@ Page {
             // opened by Answer on an incoming call: join it
             if (rustrx.takePendingCall() === roomId)
                 rustrx.command({ cmd: "call_start", room_id: roomId })
-            // read only at the newest end: marking moves the read marker's
-            // row, which shifted what someone scrolled up was reading
             readOnArrival()
             // the room's page, one swipe to the right; attached once the
             // transition is over (inside it the stack reports a binding loop)
@@ -115,34 +113,119 @@ Page {
     // a few seconds of patience before an empty room says so
     Timer { id: openGrace; interval: Tunables.roomOpenGraceMs; running: true }
 
+    // Reading. The read receipt follows the newest message whose end was
+    // on screen, never back: the unread count is what comes after it. The
+    // unread line stays put while the room is open, so nothing shifts
+    // under the reader, and moves there when the room is left or the app
+    // goes to the cover. Nothing is read before the room has opened at its
+    // unread line (positioned): marking at the newest end on the first
+    // messages marked a room with 30 unread read on opening.
+    // ("Mark messages as read only when they have been shown" off: opening
+    // the room is enough, the receipt goes to its newest message at once.)
+
+    // the newest message read in this visit (an event id), "" none yet
+    property string readUpTo
+    // a jump went past unread messages: no receipts until they are in view
+    property bool readHeld
+
+    function readingNow() {
+        return positioned && !readHeld && status === PageStatus.Active && inTimeline
+                && Qt.application.active && rustrx.timeline.count > 0
+    }
+    // the last read message's row: this visit's receipt, else the unread
+    // line's; -1 when neither is known
+    function frontierRow() {
+        return readUpTo.length ? rustrx.timeline.rowOfEvent(readUpTo) : markerRow
+    }
+    function frontierInView() {
+        var f = frontierRow()
+        if (f < 0) return true
+        var b = anchor.rowAt(list.contentY + list.height - 1)
+        var top = list.indexAt(list.width / 2, list.contentY + Theme.paddingSmall)
+        return !!b && f >= b.index && (top < 0 || f <= top)
+    }
+
+    // the room opened, its messages changed, back from the cover
+    function readOnArrival() {
+        if (!positioned) return
+        if (!app.readWhenShown && inTimeline && status === PageStatus.Active)
+            queueReceipt("", false)
+        readSoon()
+    }
+    // what is on screen is looked at a moment after the chat moved
+    function readSoon() { if (!readScan.running) readScan.start() }
+    Timer { id: readScan; interval: Tunables.readScanMs; onTriggered: page.scanRead() }
+    function scanRead() {
+        if (readHeld && frontierInView()) readHeld = false
+        if (!readingNow()) return
+        var bottom = list.contentY + list.height
+        var r = anchor.rowAt(bottom - 1)
+        if (!r) return
+        // its end is below the view: the next older message is the last read
+        var row = r.index
+        if (r.item && r.item.y + r.item.height > bottom + 1) row++
+        var newest = rustrx.timeline.seenEventId(0)
+        // the newest message shown: the whole room (own and hidden events too)
+        if (row === 0) {
+            if (!newest.length || newest !== readUpTo) readTo("")
+            return
+        }
+        var id = rustrx.timeline.seenEventId(row)
+        if (!id.length) return
+        var f = frontierRow()
+        if (f >= 0 && rustrx.timeline.rowOfEvent(id) >= f) return
+        readTo(id)
+    }
+    // id "": the whole room. The unread line goes along only while it is
+    // not shown: new messages in a room read to its end bring up no line
+    function readTo(id) {
+        readUpTo = id.length ? id : rustrx.timeline.seenEventId(0)
+        queueReceipt(id, !id.length && markerRow < 0)
+    }
+
     // at most one receipt per moment: at the newest end the list's
     // signals can fire every frame (seen: one a frame for five seconds)
-    // shown: false for a receipt on opening alone (readWhenShown off), which
-    // leaves the unread line; a shown one in the same moment wins
-    function markRead(shown) {
-        markReadTimer.shown = markReadTimer.shown || shown !== false
+    // A whole room's receipt waiting wins over one message's.
+    function queueReceipt(id, marker) {
+        var waiting = markReadTimer.queued
+        if (!waiting || !id.length || markReadTimer.eventId.length) markReadTimer.eventId = id
+        markReadTimer.marker = (waiting && markReadTimer.marker) || marker
+        markReadTimer.queued = true
         if (!markReadTimer.running) markReadTimer.start()
-    }
-    // the room opened or its messages changed: read when the newest is in
-    // view, or at once when the setting says opening is enough
-    function readOnArrival() {
-        if (anchor.atNewest()) markRead()
-        else if (!app.readWhenShown) markRead(false)
-    }
-    // back from the cover with this room in front: what is shown now is
-    // read (its notification goes with the receipt)
-    Connections {
-        target: Qt.application
-        onActiveChanged: if (Qt.application.active && page.status === PageStatus.Active) page.readOnArrival()
     }
     Timer {
         id: markReadTimer
-        property bool shown
+        property string eventId
+        property bool marker
+        property bool queued
         interval: Tunables.markReadMs
-        onTriggered: {
-            if (page.inTimeline && rustrx.timeline.count > 0 && Qt.application.state === Qt.ApplicationActive)
-                app.markRead(roomId, shown)
-            shown = false
+        onTriggered: page.sendReceipt()
+    }
+    // the waiting receipt goes out now; it was queued while the room was
+    // in front, so it goes out from the cover too
+    function sendReceipt() {
+        markReadTimer.stop()
+        if (!markReadTimer.queued) return
+        markReadTimer.queued = false
+        app.markRead(roomId, markReadTimer.marker, markReadTimer.eventId)
+    }
+    // the unread line to where reading stopped (nothing read in this visit:
+    // it stays)
+    function moveLine() {
+        sendReceipt()
+        if (!readUpTo.length) return
+        var whole = inTimeline && readUpTo === rustrx.timeline.seenEventId(0)
+        app.markRead(roomId, true, whole ? "" : readUpTo)
+    }
+    // back from the cover with this room in front: what is shown now is
+    // read (its notification goes with the receipt); off to the cover:
+    // the line moves
+    Connections {
+        target: Qt.application
+        onActiveChanged: {
+            if (page.status !== PageStatus.Active) return
+            if (Qt.application.active) page.readOnArrival()
+            else page.moveLine()
         }
     }
 
@@ -185,9 +268,14 @@ Page {
             page.atStart = atStart
             // the older page is in the model once the timeline came
             if (page.jumpTarget.length) jumpRetry.restart()
+            if (!page.positioned) seekRetry.restart()
         }
         // a failed page (no network while scrolling up): the next scroll tries again
-        onErrorOccurred: if (cmd === "paginate_back") paginating = false
+        onErrorOccurred: if (cmd === "paginate_back") {
+            paginating = false
+            // no network while looking for the unread line: open where it is
+            if (!page.positioned) { page.seekPages = Tunables.readSeekPages; page.position() }
+        }
         onTyping: if (roomId === page.roomId) page.typingNames = names
         onImagePacks: if (roomId === page.roomId) page.packs = packs
         onEmoteAdded: {
@@ -250,35 +338,63 @@ Page {
         MouseArea { anchors.fill: parent; onClicked: pageStack.navigateForward() }
     }
 
-    // the first time the room fills, start at the read marker if it is there
+    // The first time the room fills it opens at the unread line. The first
+    // messages are the newest few: when the line is further back, older
+    // pages come in until it is (a few at most), and nothing is read meanwhile.
     property bool positioned
-    // the read marker's row (-1: none), and whether it is above the view:
-    // then a pill at the top goes back to the first unread message
+    property int seekPages
+    // the room's unread count as it opened (-1: not taken yet)
+    property int openUnread: -1
+    readonly property bool seeking: !positioned && list.count > 0
+    function position() {
+        if (positioned || rustrx.timeline.count === 0) return
+        if (openUnread < 0) openUnread = roomInfo ? (roomInfo.unread || 0) : 0
+        if (markerRow < 0 && openUnread > 0 && !atStart && seekPages < Tunables.readSeekPages) {
+            if (!paginating && inTimeline) {
+                ++seekPages
+                paginating = true
+                rustrx.command({ cmd: "paginate_back", room_id: roomId })
+            }
+            return
+        }
+        positioned = true
+        if (markerRow >= 0) {
+            viewAt("readmarker", markerRow, ListView.Center)
+        } else if (seekPages > 0) {
+            //% "Older unread messages are further back"
+            Notices.show(qsTrId("rustrx-no-unread-further-back"), Notice.Short)
+        }
+        readOnArrival()
+    }
+    // the read marker's row (-1: none), and the first unread message's row
+    // when it is above the view (-1: not): then a pill at the top goes back
+    // to it
     property int markerRow: -1
-    property bool markerAbove
+    property int unreadAbove: -1
     function findMarker() {
         for (var i = 0; i < rustrx.timeline.count; i++)
             if (rustrx.timeline.get(i).kind === "readmarker") return i
         return -1
     }
     function checkMarker() {
-        if (markerRow < 0) { markerAbove = false; return }
+        // read as shown: what comes after the last read message; read on
+        // opening: the line
+        var f = app.readWhenShown ? frontierRow() : markerRow
+        if (f <= 0) { unreadAbove = -1; return }
         // newest first, laid out bottom to top: the row at the view's top
         // edge is the oldest in view
         var top = list.indexAt(list.width / 2, list.contentY + Theme.paddingSmall)
-        markerAbove = top >= 0 && markerRow > top
+        unreadAbove = top >= 0 && f > top ? f : -1
     }
     onMarkerRowChanged: checkMarker()
+    onReadUpToChanged: checkMarker()
     Connections {
         target: rustrx.timeline
         onCountChanged: {
             if (trace.enabled) trace.log("count", "n=" + rustrx.timeline.count)
             page.markerRow = page.findMarker()
-            if (!page.positioned && rustrx.timeline.count > 0) {
-                page.positioned = true
-                if (page.markerRow >= 0) page.viewAt("readmarker", page.markerRow, ListView.Center)
-            }
-            readOnArrival()
+            page.position()
+            page.readOnArrival()
         }
     }
     // the first unread message is above the view: a pill under the header
@@ -286,11 +402,11 @@ Page {
     BackgroundItem {
         id: unreadPill
         z: 2
-        visible: page.markerAbove
+        visible: page.unreadAbove >= 0
         anchors { top: header.bottom; horizontalCenter: parent.horizontalCenter }
         width: pillLabel.implicitWidth + 2 * Theme.paddingLarge
         height: pillLabel.implicitHeight + Theme.paddingMedium
-        onClicked: if (page.markerRow >= 0) page.viewAt("unread pill", page.markerRow, ListView.Center)
+        onClicked: if (page.unreadAbove >= 0) page.viewAt("unread pill", page.unreadAbove, ListView.Center)
         Rectangle {
             anchors.fill: parent
             radius: height / 2
@@ -355,10 +471,6 @@ Page {
         anchors.bottomMargin: emojiDock.aboveKeyboard
         verticalLayoutDirection: ListView.BottomToTop
         model: rustrx.timeline
-        // read once the newest end is reached (scrolled to, or arrived at):
-        // the room opens at the read marker, and marking on every return
-        // moved the marker under someone scrolled up
-        onAtYBeginningChanged: if (atYBeginning && page.status === PageStatus.Active) page.markRead()
         // no current item: a message arriving at the newest end moved it, and
         // the view gave it the focus, away from the composer in the header,
         // so the keyboard closed on every message sent or received
@@ -366,14 +478,13 @@ Page {
         spacing: Theme.paddingSmall
         clip: true
 
-        onContentYChanged: { trace.logY(); page.checkMarker() }
+        onContentYChanged: { trace.logY(); page.checkMarker(); page.readSoon() }
         onOriginYChanged: trace.log("oy")
         onContentHeightChanged: trace.logContentHeight()
         onHeightChanged: trace.log("h")
         onMovementEnded: {
             trace.log("moved")
-            // scrolled to the newest message: the room is read
-            if (page.status === PageStatus.Active && anchor.atNewest()) page.markRead()
+            page.readSoon()
         }
 
         // the oldest end is at the top in this layout
@@ -544,7 +655,8 @@ Page {
         BusyIndicator {
             anchors.centerIn: parent
             size: BusyIndicatorSize.Large
-            running: list.count === 0 && openGrace.running
+            // also while the room looks for its unread line
+            running: (list.count === 0 && openGrace.running) || page.seeking
         }
 
         VerticalScrollDecorator { }
@@ -607,6 +719,10 @@ Page {
         if (!jumpTarget.length) return
         var row = rustrx.timeline.rowOfEvent(jumpTarget)
         if (row >= 0) {
+            // past unread messages (a newer pinned one): they are not read
+            // until they were in view
+            var f = frontierRow()
+            if (f >= 0 && row < f) readHeld = true
             viewAt("jump", row, ListView.Center)
             flashEventId = jumpTarget
             flashOff.restart()
@@ -626,6 +742,7 @@ Page {
         }
     }
     Timer { id: jumpRetry; interval: Tunables.menuCloseMs; onTriggered: page.tryJump() }
+    Timer { id: seekRetry; interval: Tunables.menuCloseMs; onTriggered: page.position() }
     Timer { id: flashOff; interval: Tunables.jumpFlashMs * 3; onTriggered: page.flashEventId = "" }
 
     // positioning, with a trace line before and after

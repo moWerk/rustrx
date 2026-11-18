@@ -593,6 +593,18 @@ int TimelineModel::rowOfEvent(const QString &eventId) const
     return -1;
 }
 
+QString TimelineModel::seenEventId(int row) const
+{
+    // newest first: older rows have higher indexes
+    for (int i = qMax(row, 0); i < m_items.size(); ++i) {
+        const QVariantMap m = m_items.at(i).toMap();
+        const QString eventId = m.value(QStringLiteral("event_id")).toString();
+        if (m.value(QStringLiteral("kind")).toString() == QLatin1String("event") && !eventId.isEmpty())
+            return eventId;
+    }
+    return QString();
+}
+
 QVariantMap TimelineModel::get(int row) const
 {
     return row >= 0 && row < m_items.size() ? withMedia(m_items.at(row).toMap()) : QVariantMap();

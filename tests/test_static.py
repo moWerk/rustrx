@@ -501,3 +501,33 @@ def test_qml_types_the_phone_has(pattern, what):
     Planted-bug: a RegularExpressionValidator in a page."""
     hits = [p.name for p in QML if re.search(pattern, code(p))]
     assert not hits, what
+
+
+def _qml_function(text, name):
+    """The body of a QML JavaScript function, up to its closing brace at
+    the function's own indent."""
+    m = re.search(r"^( *)function " + name + r"\(.*?\{\n(.*?)^\1\}", text, re.S | re.M)
+    assert m, name
+    return m.group(2)
+
+
+def test_room_reads_only_what_was_shown():
+    """The room page marks read only what was on screen: the scan is gated
+    (opened at the unread line, in front, the app active, the room in the
+    timeline), receipts leave only through one place, and that place does
+    not check the app state, so a receipt waiting as the app goes to the
+    cover still goes out. Opening at the newest end before the unread line
+    had come marked a room with 30 unread read.
+    Planted-bugs: drop `positioned` from readingNow; send from scanRead
+    before the gate; check Qt.application in sendReceipt."""
+    page = read("qml/pages/RoomPage.qml")
+    gate = _qml_function(page, "readingNow")
+    for need in ("positioned", "!readHeld", "PageStatus.Active", "inTimeline", "Qt.application.active"):
+        assert need in gate, need
+    scan = _qml_function(page, "scanRead")
+    assert scan.index("if (!readingNow()) return") < scan.index("readTo(")
+    send = _qml_function(page, "sendReceipt")
+    assert "Qt.application" not in send
+    senders = [m.start() for m in re.finditer(r"app\.markRead\(", page)]
+    allowed = [page.index(_qml_function(page, f)) for f in ("sendReceipt", "moveLine")]
+    assert len(senders) == 2 and all(any(a <= s < a + 600 for a in allowed) for s in senders)

@@ -53,8 +53,8 @@ SilicaFlickable {
         TextSwitch {
             //% "Mark messages as read only when they have been shown"
             text: qsTrId("rustrx-la-read-when-shown")
-            //% "A room counts as read once you scrolled to its newest message. Off: opening it is enough."
-            description: qsTrId("rustrx-la-read-when-shown-hint")
+            //% "Messages count as read as they come into view, and the unread count goes down with them. Off: opening a room is enough."
+            description: qsTrId("rustrx-la-read-as-shown-hint")
             checked: app.readWhenShown
             automaticCheck: false
             onClicked: app.readWhenShown = !app.readWhenShown

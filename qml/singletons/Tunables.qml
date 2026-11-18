@@ -94,6 +94,8 @@ QtObject {
     // counts and limits
     // a reply's quote tapped: older pages loaded at most to find the original
     readonly property int jumpMaxPages: 10
+    // a room opening: older pages loaded at most to find its unread line
+    readonly property int readSeekPages: 10
     // the original's highlight fades in this long (and stays three times it)
     readonly property int jumpFlashMs: 400
     // members offered while typing an @mention
@@ -143,7 +145,9 @@ QtObject {
     // a message menu closes before the composer gets the focus back
     readonly property int menuCloseMs: 350
     // read receipts from the open room, one per this long at most
-    readonly property int markReadMs: 500
+    readonly property int markReadMs: 1500
+    // the chat moved: what is on screen is looked at this much later
+    readonly property int readScanMs: 400
     // the emoji panel slides in and out
     readonly property int panelSlideMs: 250
     // the chat's place is put back once the keyboard is still: the first

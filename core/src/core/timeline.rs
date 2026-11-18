@@ -3,6 +3,7 @@
 //! (part of `impl Core`, split out of core.rs; the items it uses live there)
 
 use super::*;
+use matrix_sdk::room::Receipts;
 use matrix_sdk::send_queue::LocalEchoContent;
 
 impl Core {
@@ -559,8 +560,25 @@ impl Core {
         Ok(())
     }
 
-    pub(crate) async fn mark_read(&self, room_id: &str, private: bool, marker: bool) -> Result<()> {
+    pub(crate) async fn mark_read(&self, room_id: &str, private: bool, marker: bool, event_id: Option<&str>) -> Result<()> {
         let room = self.room(room_id).await?;
+        // read up to one message, the one the reader saw last
+        if let Some(event_id) = event_id {
+            let receipts = read_receipts(EventId::parse(event_id)?, private, marker);
+            // the open room's timeline refuses a receipt older than ours;
+            // a flush can arrive after the room was closed (commands run
+            // side by side): then straight to the room, never the whole
+            // room's newest, which would mark unseen messages read
+            let tl = {
+                let st = self.state.lock().await;
+                st.open.as_ref().filter(|o| o.room_id == room.room_id()).map(|o| o.timeline.clone())
+            };
+            match tl {
+                Some(tl) => tl.send_multiple_receipts(receipts).await?,
+                None => room.send_multiple_receipts(receipts).await?,
+            }
+            return Ok(());
+        }
         // the open room's timeline knows its newest item; any other room
         // gets the receipt on its latest event (a throwaway timeline is
         // empty and marked nothing, so "Mark as read" in the list did nothing)
@@ -795,6 +813,18 @@ fn with_mentions(content: &mut RoomMessageEventContent, body: &str, mentions: &[
     content.mentions = Some(m);
 }
 
+/// The receipts for "read up to this message": the read receipt, private
+/// with "Send read receipts" off, and with `marker` the unread line too
+fn read_receipts(event_id: OwnedEventId, private: bool, marker: bool) -> Receipts {
+    let read = Some(event_id.clone());
+    let receipts = if private {
+        Receipts::new().private_read_receipt(read)
+    } else {
+        Receipts::new().public_read_receipt(read)
+    };
+    receipts.fully_read_marker(marker.then_some(event_id))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -879,5 +909,19 @@ mod tests {
         let mut c = RoomMessageEventContent::emote_plain(body);
         with_mentions(&mut c, body, &[mention("@ann:a.org", "Ann")]);
         assert!(html(&c).contains("matrix.to/#/@ann:a.org"));
+    }
+
+    /// One receipt, of the kind asked for; the unread line only with
+    /// `marker`. Planted-bug: send the public receipt with receipts off.
+    #[test]
+    fn read_receipts_kinds() {
+        let id = OwnedEventId::try_from("$a:x.org").unwrap();
+        let r = read_receipts(id.clone(), true, false);
+        assert_eq!(r.private_read_receipt.as_ref(), Some(&id));
+        assert!(r.public_read_receipt.is_none() && r.fully_read.is_none());
+        let r = read_receipts(id.clone(), false, true);
+        assert_eq!(r.public_read_receipt.as_ref(), Some(&id));
+        assert!(r.private_read_receipt.is_none());
+        assert_eq!(r.fully_read.as_ref(), Some(&id));
     }
 }

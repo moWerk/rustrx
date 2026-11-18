@@ -51,7 +51,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `edit` | `room_id`, `event_id?` or `txn_id?`, `body` | `timeline` |
 | `poll_vote` | `room_id`, `event_id`, `answers` (answer ids) | `timeline` |
 | `report` | `room_id`, `event_id`, `reason?` | |
-| `mark_read` | `room_id`, `private?` (a private receipt), `marker?` (default true; false leaves the fully-read marker) | `rooms` |
+| `mark_read` | `room_id`, `private?` (a private receipt), `marker?` (default true; false leaves the fully-read marker), `event_id?` (read up to this message, never backwards; without it the whole room) | `rooms` |
 | `typing` | `room_id`, `typing?` | |
 | `set_presence` | `online` (offline is set at every login, before the first sync) | |
 | `get_media` | `room_id`, `event_id`, `thumb?`, `dest_dir?` (a copy for other apps) | `media` |

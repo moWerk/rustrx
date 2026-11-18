@@ -88,8 +88,8 @@ impl Core {
             PollVote { room_id, event_id, answers } => self.poll_vote(&room_id, &event_id, answers).await,
             Report { room_id, event_id, reason } => self.report(&room_id, &event_id, given(&reason)).await,
             EventSource { room_id, event_id } => self.event_source(&room_id, &event_id).await,
-            MarkRead { room_id, private, marker } => {
-                self.mark_read(&room_id, private.unwrap_or(false), marker.unwrap_or(true)).await
+            MarkRead { room_id, private, marker, event_id } => {
+                self.mark_read(&room_id, private.unwrap_or(false), marker.unwrap_or(true), given(&event_id)).await
             }
             Typing { room_id, typing } => self.typing(&room_id, typing.unwrap_or(false)).await,
             SetPresence { online } => self.set_presence(online).await,

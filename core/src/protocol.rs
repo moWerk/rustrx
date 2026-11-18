@@ -103,8 +103,9 @@ pub(crate) enum Command {
     /// The event's JSON as received (and its latest edit): "event_source".
     EventSource { room_id: String, event_id: String },
     /// marker: false sends the receipt only and leaves the fully-read
-    /// marker (the unread line) until the messages were shown
-    MarkRead { room_id: String, private: Option<bool>, marker: Option<bool> },
+    /// marker (the unread line) until the messages were shown; event_id:
+    /// read up to this message only (never backwards), else the whole room
+    MarkRead { room_id: String, private: Option<bool>, marker: Option<bool>, event_id: Option<String> },
     Typing { room_id: String, typing: Option<bool> },
     /// Shown as online to others (servers with presence on); offline is
     /// set at every login, before the first sync
@@ -510,6 +511,7 @@ mod tests {
             json!({"cmd": "send_text", "room_id": "!a:b", "body": "nul \u{0} and \"quotes\" and \\ and \u{1F600}"}),
             json!({"cmd": "paginate_back", "room_id": "!a:b", "count": 65535}),
             json!({"cmd": "create_room"}),
+            json!({"cmd": "mark_read", "room_id": "!a:b", "event_id": null}),
         ];
         for case in cases {
             assert!(parse(case.clone()).is_ok(), "refused: {}", &case.to_string()[..case.to_string().len().min(120)]);
@@ -518,6 +520,11 @@ mod tests {
         let raw = r#"{"cmd":"send_text","room_id":"!a:b","body":"a\u0000b\n\"c\""}"#;
         match serde_json::from_str::<Command>(raw).unwrap() {
             Command::SendText { body, .. } => assert_eq!(body, "a\0b\n\"c\""),
+            other => panic!("{other:?}"),
+        }
+        // read up to one message: the event arrives with the command
+        match parse(json!({"cmd": "mark_read", "room_id": "!a:b", "event_id": "$e:b"})).unwrap() {
+            Command::MarkRead { event_id, .. } => assert_eq!(event_id.as_deref(), Some("$e:b")),
             other => panic!("{other:?}"),
         }
     }

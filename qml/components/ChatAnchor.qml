@@ -97,6 +97,10 @@ Item {
         rowIndex = -1
         var bottom = list.contentY + list.height
         var r = rowAt(bottom - 1)
+        // not the unread line: it moves while a page is above (the room's
+        // receipts), and a row that is gone cannot be put back
+        for (var k = 0; k < 5 && r && r.item && model.get(r.index).kind === "readmarker"; k++)
+            r = rowAt(r.item.y - 1)
         if (!r || !r.item) return
         rowId = model.get(r.index).id || ""
         rowIndex = r.index

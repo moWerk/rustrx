@@ -61,6 +61,10 @@ public:
     Q_INVOKABLE QVariantMap get(int row) const;
     // the row of an event, or -1 while it is not loaded (a reply's original)
     Q_INVOKABLE int rowOfEvent(const QString &eventId) const;
+    // the message a reader has read up to when the row was on screen: the
+    // row's own, or the next older one (past dates, the unread line and
+    // messages still being sent); empty when there is none
+    Q_INVOKABLE QString seenEventId(int row) const;
     // the cached full file for an event, or an empty string
     Q_INVOKABLE QString mediaPath(const QString &eventId) const { return m_media.value(eventId); }
 

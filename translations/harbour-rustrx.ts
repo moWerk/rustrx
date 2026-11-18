@@ -972,10 +972,6 @@
         <source>Mark messages as read only when they have been shown</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-read-when-shown-hint">
-        <source>A room counts as read once you scrolled to its newest message. Off: opening it is enough.</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-la-select-text-hint">
         <source>Drag the handles to select more; the selection is copied when you let go. Hold a word to start a new selection.</source>
         <translation type="unfinished"></translation>
@@ -2781,6 +2777,14 @@
     </message>
     <message id="rustrx-no-space-banned-skipped">
         <source>, not in %n</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-read-as-shown-hint">
+        <source>Messages count as read as they come into view, and the unread count goes down with them. Off: opening a room is enough.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-unread-further-back">
+        <source>Older unread messages are further back</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

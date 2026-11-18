@@ -2,4 +2,4 @@
 # The C++ unit tests, built against the host's Qt 5 (run.sh builds and
 # runs them). The app's own sources are compiled in unchanged.
 TEMPLATE = subdirs
-SUBDIRS = twemoji renderhtml golden roomsort exif mp4
+SUBDIRS = twemoji renderhtml golden roomsort exif mp4 readpoint

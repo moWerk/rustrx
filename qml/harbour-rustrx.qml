@@ -115,8 +115,8 @@ ApplicationWindow {
     property bool reopenTried
 
     // the receipt as the privacy switch has it (Service.qml, one place)
-    function markRead(roomId, shown) {
-        service.markRead(roomId, shown)
+    function markRead(roomId, shown, eventId) {
+        service.markRead(roomId, shown, eventId)
     }
 
     // flow ids of verifications that already have a page
