@@ -64,8 +64,9 @@ pub(crate) enum Command {
     /// The room's threads, live; answered by "thread_list".
     ThreadList { room_id: String },
     CloseThreadList,
-    /// The open thread read to its end.
-    MarkThreadRead,
+    /// The open thread read to its end; `private`: a private receipt, as
+    /// mark_read has it ("Send read receipts" off)
+    MarkThreadRead { private: Option<bool> },
     /// The homeserver pushes this endpoint through this gateway (UnifiedPush);
     /// `old`, a previous endpoint, is removed. Answered by "pusher_set".
     PushSet { endpoint: String, gateway: String, old: Option<String>, lang: Option<String> },

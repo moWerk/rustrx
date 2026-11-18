@@ -69,7 +69,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `event_source` | `room_id`, `event_id` | `event_source` |
 | `thread_list` | `room_id` | `thread_list` (live until `close_thread_list`) |
 | `close_thread_list` | | |
-| `mark_thread_read` | (the open thread) | |
+| `mark_thread_read` | `private?` (a private receipt; the open thread) | |
 
 ### Rooms
 | cmd | fields | answered by |

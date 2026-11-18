@@ -46,7 +46,7 @@ Page {
         for (var i = 0; i < rustrx.thread.count; i++)
             if (rustrx.thread.get(i).kind === "event") events++
         if (events === 0) return
-        rustrx.command({ cmd: "mark_thread_read" })
+        rustrx.command({ cmd: "mark_thread_read", "private": !app.sendReceipts })
     }
     onStatusChanged: if (status === PageStatus.Active) markSeen()
     Connections { target: rustrx.thread; onCountChanged: page.markSeen() }

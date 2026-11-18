@@ -177,7 +177,7 @@ impl Core {
 
     /// The open thread read up to its newest message (a threaded receipt,
     /// so other clients know too).
-    pub(crate) async fn mark_thread_read(&self) -> Result<()> {
+    pub(crate) async fn mark_thread_read(&self, private: bool) -> Result<()> {
         let tl = self.state.lock().await.thread.as_ref().map(|t| t.timeline.clone());
         let Some(tl) = tl else { return Ok(()) };
         // only the root yet: the server takes no threaded receipt on it
@@ -186,7 +186,10 @@ impl Core {
             return Ok(());
         }
         // a receipt is a courtesy to the other clients: refused, it is only logged
-        if let Err(e) = tl.mark_as_read(ReceiptType::Read).await {
+        // with "Send read receipts" off a private one, as in the room (it
+        // was always public here, found by the privacy review)
+        let kind = if private { ReceiptType::ReadPrivate } else { ReceiptType::Read };
+        if let Err(e) = tl.mark_as_read(kind).await {
             tracing::info!("thread: read receipt: {e}");
         }
         // the room's timeline and the thread list show it read

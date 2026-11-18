@@ -72,7 +72,7 @@ impl Core {
                 self.close_thread_list().await;
                 Ok(())
             }
-            MarkThreadRead => self.mark_thread_read().await,
+            MarkThreadRead { private } => self.mark_thread_read(private.unwrap_or(false)).await,
             PushSet { endpoint, gateway, old, lang } => self.push_set(&endpoint, &gateway, given(&old), given(&lang)).await,
             PushRemove { endpoint } => self.push_remove(&endpoint).await,
             PushCheck { endpoint } => self.push_check(&endpoint).await,
