@@ -1,0 +1,56 @@
+{
+ "audit": "2026-11-18 memory (0.4.9 work)",
+ "date": "2026-11-18",
+ "baseline": "0.4.8-7 (1dfaa3d) on the Jolla Phone 2026",
+ "method": "One scripted scenario per build on the phone (start, idle, 25 rooms opened, 40 pages back, idle), RSS by mapping from /proc/<pid>/smaps every 5 s, glibc malloc_stats() through gdb at the end. See 2026-11-18-memory.md.",
+ "findings": [
+  {
+   "id": "M1",
+   "severity": "high",
+   "area": "process (main.cpp)",
+   "status": "FIXED 4e2e4cc (mallopt M_ARENA_MAX 2 at start)",
+   "summary": "glibc arenas pile up with tokio's blocking threads: 55 arenas held 242 MB for 83 MB in use.",
+   "test": "measured: end of scenario 398 MB before, 259 MB with the low-memory store and two arenas"
+  },
+  {
+   "id": "M2",
+   "severity": "medium",
+   "area": "store (session.rs)",
+   "status": "FIXED 75fec28 (SqliteStoreConfig::with_low_memory_config)",
+   "summary": "matrix-sdk-sqlite defaults: four connections per physical core per store, 2 MB page cache each.",
+   "test": "measured: 398 MB to 359 MB, 55 to 25 arenas"
+  },
+  {
+   "id": "M3",
+   "severity": "high",
+   "area": "crashes (dodoradio, 11-17)",
+   "status": "OPEN: kernel log asked for",
+   "summary": "Three ends without a log line; low-memory killer or native crash not told apart.",
+   "test": "journalctl -k around 21:24, 22:56, 23:08 on the reporter's phone"
+  },
+  {
+   "id": "M4",
+   "severity": "low",
+   "area": "rooms",
+   "status": "OPEN: not followed",
+   "summary": "25 rooms opened and closed leave 17 MB (100 MB before the fixes).",
+   "test": "same scenario, more rooms"
+  },
+  {
+   "id": "M5",
+   "severity": "low",
+   "area": "timeline",
+   "status": "OPEN: no growth measured",
+   "summary": "Scrolling back through the dev hook did not grow memory; it loads no pictures as real scrolling does.",
+   "test": "scroll a picture-heavy room by hand while sampling"
+  },
+  {
+   "id": "M6",
+   "severity": "medium",
+   "area": "stand-in (main.cpp)",
+   "status": "FIXED 9c22a9d (exit 0 when the app is in front); its first start after a handover not found",
+   "summary": "A stand-in started every 71 s while the app ran, 98 times in two hours (dodoradio's log).",
+   "test": "background mode without push: open the app from a notification, watch the stand-in unit for a minute"
+  }
+ ]
+}
