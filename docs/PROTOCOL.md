@@ -121,11 +121,11 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 |---|---|---|
 | `room_settings` | `room_id` | `room_settings` |
 | `set_user_level` | `room_id`, `user_id`, `level` (0 member, 50 moderator, 100 admin) | `user_info`, `room_settings` |
-| `set_level` | `room_id`, `key` (`users_default`, `events_default`, `state_default`, `invite`, `kick`, `ban`, `redact`, `notify_room`, or an event type like `m.room.name`), `level` | `room_settings` |
+| `set_level` | `room_id`, `permission` (`users_default`, `events_default`, `state_default`, `invite`, `kick`, `ban`, `redact`, `notify_room`, or an event type like `m.room.name`), `level` | `room_settings` |
 | `set_history_visibility` | `room_id`, `value` (`world_readable`, `shared`, `invited`, `joined`) | `room_settings` |
 | `set_guest_access` | `room_id`, `allowed` | `room_settings` |
 | `enable_encryption` | `room_id` (one way) | `room_settings` |
-| `set_directory_visibility` | `room_id`, `public` | `room_settings` |
+| `set_directory_visibility` | `room_id`, `listed` | `room_settings` |
 | `set_aliases` | `room_id`, `canonical?`, `alt` | `room_settings` |
 | `add_alias` | `room_id`, `alias` | `alias_added`, `room_settings` |
 | `remove_alias` | `room_id`, `alias` | `room_settings` |
@@ -175,7 +175,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `image_packs` | `room_id`, `packs` (`id`, `name`, `source` user/global/room, `avatar_mxc`, `images`: `shortcode`, `mxc`, `body`, `info`, `emoticon`, `sticker`) |
 | `emote_added` | `shortcode` (as stored, a number added when taken), `mxc` |
 | `members` | `room_id`, `members`: `{user_id, name, power, role, membership}` (joined, invited, knocking and banned) |
-| `room_settings` | `room_id`, `own_level`, `role` (`creator`, `admin`, `moderator`, `member`), `version`, `may` (`name`, `topic`, `avatar`, `join_rules`, `history`, `guest`, `encryption`, `server_acl`, `upgrade`, `aliases`, `pin`, `power_levels`, `space_child`, `invite`, `kick`, `ban`, `redact_other`, `notify_room`), `levels` (the fields of `set_level`, `events`: by type), `history_visibility`, `guests`, `encrypted`, `directory_public`, `canonical_alias`, `alt_aliases`, `server_acl` (`allow`, `deny`, `allow_ip_literals`, or null), `own_server`, `pinned`, `creators` |
+| `room_settings` | `room_id`, `own_level`, `role` (`creator`, `admin`, `moderator`, `member`), `version`, `version_default`, `versions` (stable ones, for those who may upgrade), `may` (`name`, `topic`, `avatar`, `join_rules`, `history`, `guest`, `encryption`, `server_acl`, `upgrade`, `aliases`, `pin`, `power_levels`, `space_child`, `invite`, `kick`, `ban`, `redact_other`, `notify_room`), `levels` (the fields of `set_level`, `events`: by type), `history_visibility`, `guests`, `encrypted`, `directory_public`, `canonical_alias`, `alt_aliases`, `server_acl` (`allow`, `deny`, `allow_ip_literals`, or null), `own_server`, `pinned`, `creators` |
 | `room_upgraded` | `room_id`, `replacement` |
 | `reported` | `room_id` or `user_id` |
 | `alias_added` | `room_id`, `alias` |

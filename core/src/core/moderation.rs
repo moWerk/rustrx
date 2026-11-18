@@ -128,6 +128,24 @@ impl Core {
                 _ => None,
             })
             .map(|c| json!({"allow": c.allow, "deny": c.deny, "allow_ip_literals": c.allow_ip_literals}));
+        // the versions a room can be upgraded to: the server's default, and
+        // the stable ones it offers (only for those who may upgrade)
+        let (version_default, versions) = if may["upgrade"].as_bool() == Some(true) {
+            match room.client().homeserver_capabilities().room_versions().await {
+                Ok(c) => (
+                    Some(c.default.to_string()),
+                    c.available.iter()
+                        .filter(|(_, s)| matches!(s, matrix_sdk::ruma::api::client::discovery::get_capabilities::v3::RoomVersionStability::Stable))
+                        .map(|(v, _)| v.to_string()).collect::<Vec<_>>(),
+                ),
+                Err(e) => {
+                    tracing::info!("room versions: {e}");
+                    (None, Vec::new())
+                }
+            }
+        } else {
+            (None, Vec::new())
+        };
         // the directory lives on the server, not in the room's state
         let public = room.privacy_settings().get_room_visibility().await.ok().map(|v| v == Visibility::Public);
         let history = match room.history_visibility_or_default() {
@@ -142,6 +160,8 @@ impl Core {
             "own_level": level_json(own),
             "role": role_of(own),
             "version": room.version().map(|v| v.to_string()),
+            "version_default": version_default,
+            "versions": versions,
             "may": may,
             "levels": level_map,
             "history_visibility": history,
@@ -220,9 +240,9 @@ impl Core {
     }
 
     /// Listed in the server's public room directory, or not.
-    pub(crate) async fn set_directory_visibility(&self, room_id: &str, public: bool) -> Result<()> {
+    pub(crate) async fn set_directory_visibility(&self, room_id: &str, listed: bool) -> Result<()> {
         let room = self.room(room_id).await?;
-        let v = if public { Visibility::Public } else { Visibility::Private };
+        let v = if listed { Visibility::Public } else { Visibility::Private };
         room.privacy_settings().update_room_visibility(v).await?;
         self.room_settings(room_id).await
     }

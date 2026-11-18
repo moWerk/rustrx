@@ -196,14 +196,14 @@ pub(crate) enum Command {
     /// One permission's level: a power-levels field (users_default,
     /// events_default, state_default, invite, kick, ban, redact,
     /// notify_room) or an event type (m.room.name, ...).
-    SetLevel { room_id: String, key: String, level: i64 },
+    SetLevel { room_id: String, permission: String, level: i64 },
     /// world_readable, shared, invited or joined.
     SetHistoryVisibility { room_id: String, value: String },
     SetGuestAccess { room_id: String, allowed: bool },
     /// One way: a room cannot be unencrypted again.
     EnableEncryption { room_id: String },
     /// Listed in the server's public room directory.
-    SetDirectoryVisibility { room_id: String, public: bool },
+    SetDirectoryVisibility { room_id: String, listed: bool },
     /// The main address and the other addresses.
     SetAliases { room_id: String, canonical: Option<String>, alt: Vec<String> },
     /// A new address on its server, pointing to the room.
