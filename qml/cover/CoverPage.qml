@@ -34,6 +34,14 @@ CoverBackground {
     Connections { target: rustrx; onOpenRoomChanged: cover.refreshChat() }
     Connections { target: rustrx.rooms; onDataChanged: if (cover.inChat) cover.refreshChat() }
     Connections { target: rustrx.people; onDataChanged: if (cover.inChat) cover.refreshChat() }
+    // the strip lipstick draws the cover actions in, as Silica reports it
+    // for either cover size (Silica's CoverPlaceholder keeps clear of it
+    // the same way); a fixed itemSizeSmall let the bottom line slip under
+    // the search icon in the small cover, with more than four on the home
+    // screen (the author's find)
+    readonly property real actionStrip: coverActionArea ? coverActionArea.height : Theme.itemSizeSmall
+    onActionStripChanged: console.log("cover: action strip " + actionStrip + " at size " + size)
+
     // the same number as the room's badge in the list
     readonly property int chatUnread: chat.notifications > 0 ? chat.notifications : (chat.unread || 0)
 
@@ -56,7 +64,7 @@ CoverBackground {
             // strip itemSizeSmall tall at the bottom. The size alone moves
             // the top; the bottom stays here.
             bottom: parent.bottom
-            bottomMargin: (Theme.itemSizeSmall - Theme.iconSizeSmall) / 2
+            bottomMargin: (cover.actionStrip - Theme.iconSizeSmall) / 2
         }
         // 1.368 times the tile's width, cropped at its sides: measured on the
         // Jolla Phone 2026 so the first (red) fibre lies behind "in N chats"
@@ -132,7 +140,7 @@ CoverBackground {
             fill: parent
             margins: Theme.paddingLarge
             // above the cover actions' strip
-            bottomMargin: Theme.itemSizeSmall
+            bottomMargin: cover.actionStrip
         }
 
         Label {
@@ -205,7 +213,7 @@ CoverBackground {
             bottom: parent.bottom
             margins: Theme.paddingLarge
             // above the cover actions' strip
-            bottomMargin: Theme.itemSizeSmall
+            bottomMargin: cover.actionStrip
         }
         truncationMode: TruncationMode.Fade
         font.pixelSize: Theme.fontSizeExtraSmall
