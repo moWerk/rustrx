@@ -39,8 +39,22 @@ CoverBackground {
     // the same way); a fixed itemSizeSmall let the bottom line slip under
     // the search icon in the small cover, with more than four on the home
     // screen (the author's find)
-    readonly property real actionStrip: coverActionArea ? coverActionArea.height : Theme.itemSizeSmall
-    onActionStripChanged: console.log("cover: action strip " + actionStrip + " at size " + size)
+    // In the small grid (more than four covers) lipstick shows the large
+    // cover shrunk but draws the action icons at their own size on top,
+    // so the strip takes a bigger share of the shrunk cover: the room
+    // kept for it grows by the same ratio there.
+    readonly property real smallRatio: Theme.coverSizeSmall.height > 0 ? Theme.coverSizeLarge.height / Theme.coverSizeSmall.height : 1
+    readonly property real actionStrip: (coverActionArea ? coverActionArea.height : Theme.itemSizeSmall)
+                                        * (size === Cover.Small ? smallRatio : 1)
+    // what lipstick reports, to check both sizes in the debug log
+    function logStrip() {
+        console.log("cover: size " + size + " " + width + "x" + height + ", strip " + (coverActionArea ? coverActionArea.height : -1)
+                    + ", large " + Theme.coverSizeLarge.width + "x" + Theme.coverSizeLarge.height
+                    + ", small " + Theme.coverSizeSmall.width + "x" + Theme.coverSizeSmall.height)
+    }
+    onSizeChanged: logStrip()
+    onActionStripChanged: logStrip()
+    Component.onCompleted: logStrip()
 
     // the same number as the room's badge in the list
     readonly property int chatUnread: chat.notifications > 0 ? chat.notifications : (chat.unread || 0)
