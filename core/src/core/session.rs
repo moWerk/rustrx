@@ -106,6 +106,24 @@ impl Core {
         Ok(Some(key.to_owned()))
     }
 
+    /// How the local store is kept, for the account's security status:
+    /// "encrypted" (key from sailfish-secrets), "unencrypted" (made before
+    /// sailfish-secrets was used; a new login encrypts it) or "no_secrets"
+    /// (no key to be had on this phone). Checked before the key: an old
+    /// plain store on a phone without a key is "no_secrets", not fixable.
+    pub(crate) fn store_state(&self) -> &'static str {
+        if crate::store_key().is_none() {
+            return "no_secrets";
+        }
+        let dir = self.data_dir.join(STORE_DIR);
+        let existing = std::fs::read_dir(&dir).map(|mut d| d.next().is_some()).unwrap_or(false);
+        if existing && !dir.join(ENCRYPTED_MARKER).exists() {
+            "unencrypted"
+        } else {
+            "encrypted"
+        }
+    }
+
     pub(crate) async fn build_client_with(&self, server: &str, with_store: bool, known: Option<bool>) -> Result<Client> {
         tracing::info!(%server, with_store, ?known, "client: building");
         let passphrase = if with_store { self.store_passphrase()? } else { None };
@@ -125,7 +143,13 @@ impl Core {
                 .cross_process_store_config(matrix_sdk::cross_process_lock::CrossProcessLockConfig::SingleProcess)
                 .user_agent(USER_AGENT);
             if with_store {
-                b = b.sqlite_store(self.data_dir.join(STORE_DIR), passphrase.as_deref());
+                // the SDK's low-memory settings: a connection pool of one per
+                // physical core (the default is four per core, per store, 32
+                // on an 8-core phone) and 500 KB of page cache each (2 MB).
+                // The passphrase as before, so the store opens as it was.
+                let config = matrix_sdk::SqliteStoreConfig::with_low_memory_config(self.data_dir.join(STORE_DIR))
+                    .passphrase(passphrase.as_deref());
+                b = b.sqlite_store_with_config_and_cache_path(config, None::<&std::path::Path>);
             }
             if server.starts_with("http://") || server.starts_with("https://") {
                 b.homeserver_url(server)
@@ -201,6 +225,7 @@ impl Core {
             "device_id": device_id,
             "homeserver": client.homeserver().to_string(),
             "sliding_sync": !matches!(client.sliding_sync_version(), Version::None),
+            "store": self.store_state(),
         }));
         self.install_handlers(&client);
         self.install_call_handlers(&client);

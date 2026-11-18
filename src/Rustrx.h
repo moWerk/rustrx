@@ -53,6 +53,8 @@ class Rustrx : public QObject
     Q_PROPERTY(QString syncState READ syncState NOTIFY syncStateChanged)
     Q_PROPERTY(QString verificationState READ verificationState NOTIFY encryptionChanged)
     Q_PROPERTY(QString recoveryState READ recoveryState NOTIFY encryptionChanged)
+    // how the local store is kept: encrypted, unencrypted, no_secrets; "" before login
+    Q_PROPERTY(QString storeState READ storeState NOTIFY encryptionChanged)
     Q_PROPERTY(QString openRoomId READ openRoomId NOTIFY openRoomChanged)
     Q_PROPERTY(int unreadTotal READ unreadTotal NOTIFY unreadChanged)
     Q_PROPERTY(int unreadChats READ unreadChats NOTIFY unreadChanged)
@@ -118,6 +120,7 @@ public:
     QString keptUser() const { return m_keptUser; }
     QString verificationState() const { return m_verificationState; }
     QString recoveryState() const { return m_recoveryState; }
+    QString storeState() const { return m_storeState; }
     QString openRoomId() const { return m_openRoomId; }
     int unreadTotal() const;
     int unreadChats() const;
@@ -395,6 +398,7 @@ private:
     QString m_keptUser;
     QString m_verificationState = QStringLiteral("unknown");
     QString m_recoveryState = QStringLiteral("unknown");
+    QString m_storeState;
     QString m_openRoomId;
     // before m_lists and m_media, which use it
     QSettings m_settings;

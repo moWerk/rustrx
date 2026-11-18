@@ -294,21 +294,26 @@ impl Core {
         let enc = client.encryption();
         let mut verification = enc.verification_state();
         let mut recovery = enc.recovery().state_stream();
+        // the stream says changes only: the state now, once, as recovery's
+        // (the security status would wait for a change after a cold start)
+        self.emit_verification(verification.get());
         self.emit_recovery(enc.recovery().state());
         loop {
             tokio::select! {
-                Some(v) = verification.next() => {
-                    let name = match v {
-                        VerificationState::Verified => "verified",
-                        VerificationState::Unverified => "unverified",
-                        VerificationState::Unknown => "unknown",
-                    };
-                    self.emit(json!({"ev": "verification_state", "state": name}));
-                }
+                Some(v) = verification.next() => self.emit_verification(v),
                 Some(r) = recovery.next() => self.emit_recovery(r),
                 else => break,
             }
         }
+    }
+
+    fn emit_verification(&self, state: VerificationState) {
+        let name = match state {
+            VerificationState::Verified => "verified",
+            VerificationState::Unverified => "unverified",
+            VerificationState::Unknown => "unknown",
+        };
+        self.emit(json!({"ev": "verification_state", "state": name}));
     }
 
     pub(crate) fn emit_recovery(&self, state: RecoveryState) {

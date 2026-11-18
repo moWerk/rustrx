@@ -75,21 +75,22 @@ impl Core {
     pub(crate) async fn devices(&self) -> Result<()> {
         let client = self.client().await?;
         let own = client.device_id().map(|d| d.to_string());
-        let devices: Vec<Value> = client
-            .devices()
-            .await?
-            .devices
-            .iter()
-            .map(|d| {
-                json!({
-                    "device_id": d.device_id.as_str(),
-                    "name": d.display_name,
-                    "last_seen_ts": d.last_seen_ts.map(|t| u64::from(t.0)),
-                    "last_seen_ip": d.last_seen_ip,
-                    "current": Some(d.device_id.to_string()) == own,
-                })
-            })
-            .collect();
+        let user = client.user_id().context("not logged in")?.to_owned();
+        let mut devices: Vec<Value> = Vec::new();
+        for d in client.devices().await?.devices.iter() {
+            // verified: cross-signed by us; keys: it has encryption keys at
+            // all (a device without them is no risk to the account's keys)
+            let crypto = client.encryption().get_device(&user, &d.device_id).await.ok().flatten();
+            devices.push(json!({
+                "device_id": d.device_id.as_str(),
+                "name": d.display_name,
+                "last_seen_ts": d.last_seen_ts.map(|t| u64::from(t.0)),
+                "last_seen_ip": d.last_seen_ip,
+                "current": Some(d.device_id.to_string()) == own,
+                "keys": crypto.is_some(),
+                "verified": crypto.map(|c| c.is_verified()).unwrap_or(false),
+            }));
+        }
         self.emit(json!({"ev": "devices", "devices": devices}));
         Ok(())
     }

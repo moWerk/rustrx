@@ -136,7 +136,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | ev | fields |
 |---|---|
 | `ready` | `logged_in`, `proto`, `kept_user?` (a store kept from an ended session), `restore_failed?` (a saved session could not be opened: no session, or restoring it failed) |
-| `logged_in` | `proto`, `user_id`, `device_id`, `homeserver`, `sliding_sync` |
+| `logged_in` | `proto`, `user_id`, `device_id`, `homeserver`, `sliding_sync`, `store` (`encrypted`, `unencrypted`: made before sailfish-secrets, or `no_secrets`: no key on this phone) |
 | `logged_out` | `reason?` (`session_expired`), `soft_logout?` |
 | `login_error` | `message` |
 | `server_info` | `server`, `homeserver`, `password`, `sso`, `idps`, `sliding_sync`, `signup_url?`, `account_service`, `qr_login` |
@@ -164,7 +164,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `recovery_key` | `recovery_key` (shown once) |
 | `recovery_done` | |
 | `keys_exported` / `keys_imported` | `path` / `imported`, `total` |
-| `devices` | `devices`: `{device_id, name, last_seen_ts, last_seen_ip, current}` |
+| `devices` | `devices`: `{device_id, name, last_seen_ts, last_seen_ip, current, keys, verified}` (`keys`: it has encryption keys; `verified`: cross-signed by us) |
 | `device_deleted` | `device_id` |
 | `ignored_users` | `users`: `{user_id, name}` (name where the server gives a profile) |
 | `user_info` | `user_id`, `name`, `has_identity`, `verified`, `ignored`, `is_self`; with a room: `room_id`, `membership`, `power`, `can_kick`, `can_ban` |

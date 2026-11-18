@@ -625,7 +625,9 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_loggingIn = false;
         m_userId = ev.value("user_id").toString();
         m_homeserver = ev.value("homeserver").toString();
+        m_storeState = ev.value("store").toString();
         emit stateChanged();
+        emit encryptionChanged();
         m_push->loggedIn();
         // not for one push: the woken process is gone in seconds
         if (!m_handover.pushWake())
@@ -666,6 +668,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_syncState = QStringLiteral("idle");
         m_verificationState = QStringLiteral("unknown");
         m_recoveryState = QStringLiteral("unknown");
+        m_storeState.clear();
         m_firstRooms = true;
         emit roomsLoadedChanged();
         // after roomsLoadedChanged, as before the move
