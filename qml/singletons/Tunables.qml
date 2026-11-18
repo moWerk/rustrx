@@ -68,8 +68,6 @@ QtObject {
     readonly property real emojiPanelLandscape: 0.5
     // the fewest columns in the emoji grid
     readonly property int emojiMinColumns: 6
-    // the security ring in Settings, of the page width
-    readonly property real securityRingWidth: 0.4
     // a link on the Account tab scrolls down to its section this fast
     readonly property int sectionScrollMs: 400
     // a copied recovery key leaves the clipboard after this, if still there

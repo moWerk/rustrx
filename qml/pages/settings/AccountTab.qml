@@ -61,49 +61,83 @@ SilicaFlickable {
                                           : rustrx.recoveryState === "disabled" || rustrx.recoveryState === "incomplete" ? "risk" : "unknown"
     readonly property string devicesSlice: unverifiedDevices < 0 ? "unknown" : unverifiedDevices > 0 ? "risk" : "ok"
 
-    // what is missing, in the order to fix it: the backup before a new
-    // login (logging out wipes the store), then verifying
-    readonly property var risks: {
-        var r = []
-        if (rustrx.recoveryState === "disabled")
-            r.push({ go: "encryption",
-                     //% "There is no key backup. If you lose this phone, your encrypted messages are gone."
-                     text: qsTrId("rustrx-la-risk-no-backup"),
-                     //% "Tap to turn on key backup."
-                     fix: qsTrId("rustrx-la-risk-no-backup-fix") })
-        if (rustrx.recoveryState === "incomplete")
-            r.push({ go: "encryption",
-                     //% "A key backup exists, but this phone does not have its recovery key."
-                     text: qsTrId("rustrx-la-risk-key-missing"),
-                     //% "Tap to enter the recovery key."
-                     fix: qsTrId("rustrx-la-risk-key-missing-fix") })
-        if (storeState === "unencrypted")
-            r.push({ go: "encryption",
-                     //% "Your messages on this phone are stored without encryption, because this store was made before Rustrx used Sailfish Secrets."
-                     text: qsTrId("rustrx-la-risk-store-unencrypted"),
-                     //% "Turn on key backup first, then log out and log in again: the new store is encrypted."
-                     fix: qsTrId("rustrx-la-risk-store-unencrypted-fix") })
-        if (storeState === "no_secrets")
-            r.push({ go: "",
-                     //% "This phone has no working Sailfish Secrets, so Rustrx cannot encrypt what it stores here."
-                     text: qsTrId("rustrx-la-risk-no-secrets"),
-                     //% "Nothing Rustrx can do on this phone."
-                     fix: qsTrId("rustrx-la-risk-no-secrets-fix") })
-        if (rustrx.verificationState === "unverified")
-            r.push({ go: "verify",
-                     //% "This phone is not verified, so others cannot tell it is really you, and it may miss keys for older messages."
-                     text: qsTrId("rustrx-la-risk-unverified"),
-                     //% "Tap to verify it with another device of yours."
-                     fix: qsTrId("rustrx-la-risk-unverified-fix") })
-        if (unverifiedDevices > 0)
-            r.push({ go: "devices",
-                     //: %n other devices of the user without verification
-                     //% "%n of your other devices are not verified. Anyone holding one could read along."
-                     text: qsTrId("rustrx-la-risk-devices", unverifiedDevices),
-                     //% "Tap to see them: verify each from that device, or remove it."
-                     fix: qsTrId("rustrx-la-risk-devices-fix") })
-        return r
+    // the safeguards in their fixed order, the phone's store first (it
+    // weighs two: the only data at rest). Each: its state, its name in that
+    // state, and when missing what that means, how to close the gap and
+    // where a tap leads (go; "" where nothing can be done). The glance is
+    // the Halo of design/security-glance/ (DIRECTIONS.md).
+    readonly property var safeguards: {
+        var store = { status: storeSlice, weight: 2, go: "encryption",
+                      title: storeSlice === "risk"
+                             //% "Not encrypted on the phone"
+                             ? qsTrId("rustrx-la-arc-store-risk")
+                             //% "Encrypted on the phone"
+                             : qsTrId("rustrx-la-arc-store-ok") }
+        if (storeState === "unencrypted") {
+            //% "Your messages on this phone are stored without encryption, because this store was made before Rustrx used Sailfish Secrets."
+            store.text = qsTrId("rustrx-la-risk-store-unencrypted")
+            //% "Turn on key backup first, then log out and log in again: the new store is encrypted."
+            store.fix = qsTrId("rustrx-la-risk-store-unencrypted-fix")
+        } else if (storeState === "no_secrets") {
+            store.go = ""
+            //% "This phone has no working Sailfish Secrets, so Rustrx cannot encrypt what it stores here."
+            store.text = qsTrId("rustrx-la-risk-no-secrets")
+            //% "Nothing Rustrx can do on this phone."
+            store.fix = qsTrId("rustrx-la-risk-no-secrets-fix")
+        }
+        var verify = { status: verifySlice, weight: 1, go: "verify",
+                       title: verifySlice === "risk"
+                              //% "The phone is not verified"
+                              ? qsTrId("rustrx-la-arc-verified-risk")
+                              //% "The phone is verified"
+                              : qsTrId("rustrx-la-arc-verified-ok"),
+                       //% "This phone is not verified, so others cannot tell it is really you, and it may miss keys for older messages."
+                       text: qsTrId("rustrx-la-risk-unverified"),
+                       //% "Tap to verify it with another device of yours."
+                       fix: qsTrId("rustrx-la-risk-unverified-fix") }
+        var recovery = { status: recoverySlice, weight: 1, go: "encryption",
+                         title: recoverySlice !== "risk"
+                                //% "Key backup exists"
+                                ? qsTrId("rustrx-la-arc-backup-ok")
+                                : rustrx.recoveryState === "incomplete"
+                                //% "Recovery key is missing"
+                                ? qsTrId("rustrx-la-arc-backup-key-missing")
+                                //% "Key backup is missing"
+                                : qsTrId("rustrx-la-arc-backup-risk") }
+        if (rustrx.recoveryState === "incomplete") {
+            //% "A key backup exists, but this phone does not have its recovery key."
+            recovery.text = qsTrId("rustrx-la-risk-key-missing")
+            //% "Tap to enter the recovery key."
+            recovery.fix = qsTrId("rustrx-la-risk-key-missing-fix")
+        } else {
+            //% "There is no key backup. If you lose this phone, your encrypted messages are gone."
+            recovery.text = qsTrId("rustrx-la-risk-no-backup")
+            //% "Tap to turn on key backup."
+            recovery.fix = qsTrId("rustrx-la-risk-no-backup-fix")
+        }
+        var devices = { status: devicesSlice, weight: 1, go: "devices",
+                        title: devicesSlice === "risk"
+                               //% "Other devices unverified"
+                               ? qsTrId("rustrx-la-arc-devices-risk")
+                               //% "Other devices verified"
+                               : qsTrId("rustrx-la-arc-devices-ok"),
+                        //: %n other devices of the user without verification
+                        //% "%n of your other devices are not verified. Anyone holding one could read along."
+                        text: qsTrId("rustrx-la-risk-devices", Math.max(unverifiedDevices, 0)),
+                        //% "Tap to see them: verify each from that device, or remove it."
+                        fix: qsTrId("rustrx-la-risk-devices-fix") }
+        return [store, verify, recovery, devices]
     }
+    function count(status) {
+        var n = 0
+        for (var i = 0; i < safeguards.length; i++) if (safeguards[i].status === status) n++
+        return n
+    }
+    // every safeguard known and in place: the one moment for green
+    readonly property bool complete: count("ok") === safeguards.length
+    readonly property bool checking: count("risk") === 0 && !complete
+    // the safeguard whose line is being pressed, or -1: its arc lights up
+    property int touched: -1
 
     // facts worth knowing that are no risk: each comes from a default the
     // author chose, and has its switch
@@ -202,94 +236,59 @@ SilicaFlickable {
 
         Item { width: 1; height: Theme.paddingLarge }
 
-        // the verdict first: the ring and its legend detail it
+        // the verdict first: what follows details it
         Label {
             x: Theme.horizontalPageMargin
             width: parent.width - 2 * x
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
-            // green with the ring when all is in place
-            color: securityRing.complete ? Tunables.securityComplete : Theme.highlightColor
-            text: tab.risks.length > 0
-                  //% "Not everything that protects your messages is active."
-                  ? qsTrId("rustrx-la-security-gaps")
-                  : tab.storeSlice === "unknown" || tab.verifySlice === "unknown"
-                    || tab.recoverySlice === "unknown" || tab.devicesSlice === "unknown"
+            color: tab.complete ? Tunables.securityComplete : Theme.highlightColor
+            text: tab.complete
+                  //% "Everything that protects your messages is active."
+                  ? qsTrId("rustrx-la-security-ok")
+                  : tab.checking
                   //% "Checking…"
                   ? qsTrId("rustrx-la-security-checking")
-                  //% "Everything that protects your messages is active."
-                  : qsTrId("rustrx-la-security-ok")
+                  //% "Not everything that protects your messages is active."
+                  : qsTrId("rustrx-la-security-gaps")
         }
 
-        SecurityRing {
-            id: securityRing
+        HaloRing {
             anchors.horizontalCenter: parent.horizontalCenter
-            width: Math.min(Theme.itemSizeHuge * 1.5, tab.width * Tunables.securityRingWidth)
+            width: Math.min(Theme.itemSizeHuge * 1.6, tab.width * 0.5, tab.height * 0.5)
             height: width
-            storeAtRisk: tab.storeSlice === "risk"
-            // the store weighs two: it is the only data at rest on the phone
-            slices: [
-                { state: tab.storeSlice, weight: 2 },
-                { state: tab.verifySlice, weight: 1 },
-                { state: tab.recoverySlice, weight: 1 },
-                { state: tab.devicesSlice, weight: 1 }
-            ]
+            slices: tab.safeguards
+            complete: tab.complete
+            touched: tab.touched
         }
 
-        // the ring's arcs in words, in the ring's order (clockwise from 12
-        // o'clock, so top down here): green in place, red missing
+        // the safeguards, one line each, led by a small copy of the ring
+        // with its own arc; a missing one is the link to its fix
         Column {
-            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width
             Repeater {
-                model: [
-                    //% "Encrypted on the phone"
-                    { slice: tab.storeSlice, ok: qsTrId("rustrx-la-arc-store-ok"),
-                      //% "Not encrypted on the phone"
-                      risk: qsTrId("rustrx-la-arc-store-risk") },
-                    //% "The phone is verified"
-                    { slice: tab.verifySlice, ok: qsTrId("rustrx-la-arc-verified-ok"),
-                      //% "The phone is not verified"
-                      risk: qsTrId("rustrx-la-arc-verified-risk") },
-                    //% "Key backup exists"
-                    { slice: tab.recoverySlice, ok: qsTrId("rustrx-la-arc-backup-ok"),
-                      risk: rustrx.recoveryState === "incomplete"
-                            //% "Recovery key is missing"
-                            ? qsTrId("rustrx-la-arc-backup-key-missing")
-                            //% "Key backup is missing"
-                            : qsTrId("rustrx-la-arc-backup-risk") },
-                    //% "Other devices verified"
-                    { slice: tab.devicesSlice, ok: qsTrId("rustrx-la-arc-devices-ok"),
-                      //% "Other devices unverified"
-                      risk: qsTrId("rustrx-la-arc-devices-risk") }
-                ]
-                // left in a centred block: the numbers stand in a column
-                Label {
-                    font.pixelSize: Theme.fontSizeSmall
-                    // numbered, so each line finds its arc
-                    text: (index + 1) + ". " + (modelData.slice === "risk" ? modelData.risk : modelData.ok)
-                    color: modelData.slice === "ok" ? Tunables.securityComplete
-                         : modelData.slice === "risk" ? Theme.errorColor
-                         : Theme.highlightDimmerColor
+                model: tab.safeguards
+                SafeguardRow {
+                    status: modelData.status
+                    complete: tab.complete
+                    title: modelData.title
+                    detail: modelData.text + " " + modelData.fix
+                    fixable: modelData.go.length > 0
+                    onClicked: tab.follow(modelData.go)
+                    onHighlightedChanged: tab.touched = highlighted ? index : tab.touched === index ? -1 : tab.touched
+                    HaloRing {
+                        anchors.fill: parent
+                        slices: tab.safeguards
+                        complete: tab.complete
+                        only: index
+                    }
                 }
             }
         }
 
         Item { width: 1; height: Theme.paddingSmall }
 
-        // every missing safeguard, a tap leads to its fix; then the notes:
-        // all of them lines with an arrow, as Encryption and Devices below
-        Repeater {
-            model: tab.risks
-            LinkRow {
-                enabled: modelData.go.length > 0
-                onClicked: tab.follow(modelData.go)
-                icon: "image://theme/icon-s-filled-warning"
-                iconColor: Theme.errorColor
-                text: modelData.text
-                description: modelData.fix
-            }
-        }
-
+        // the notes: worth knowing, no risk
         Repeater {
             model: tab.notes
             LinkRow {
