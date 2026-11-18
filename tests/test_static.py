@@ -530,4 +530,4 @@ def test_room_reads_only_what_was_shown():
     assert "Qt.application" not in send
     senders = [m.start() for m in re.finditer(r"app\.markRead\(", page)]
     allowed = [page.index(_qml_function(page, f)) for f in ("sendReceipt", "moveLine")]
-    assert len(senders) == 2 and all(any(a <= s < a + 600 for a in allowed) for s in senders)
+    assert len(senders) == 3 and all(any(a <= s < a + 900 for a in allowed) for s in senders)

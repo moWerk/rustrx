@@ -21,10 +21,11 @@ X-Share-Methods=room;
 # files from the pickers; MediaIndexing for the gallery picker (it reads the
 # Tracker index); Camera for the photos taken in the app (a sandboxed app
 # cannot start the stock camera); Audio to play voice messages and videos;
-# Microphone to record voice messages.
+# Microphone to record voice messages; RemovableMedia for files on a memory
+# card (the pickers list them, and without it the app could not read them).
 OrganizationName=net.mowerk
 ApplicationName=harbour-rustrx
-Permissions=Internet;Pictures;Videos;Music;Documents;Downloads;MediaIndexing;Camera;Audio;Microphone;AppLaunch;Secrets;WebView;UnifiedPush
+Permissions=Internet;Pictures;Videos;Music;Documents;Downloads;RemovableMedia;MediaIndexing;Camera;Audio;Microphone;AppLaunch;Secrets;WebView;UnifiedPush
 
 [X-Share Method room]
 Description=Send to a room

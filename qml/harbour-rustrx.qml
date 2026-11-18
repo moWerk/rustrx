@@ -240,6 +240,9 @@ ApplicationWindow {
             if (["recovery_recover", "recovery_enable", "recovery_reset", "identity_reset",
                  "export_keys", "import_keys", "event_source", "devices", "probe_server",
                  "join_by_id_or_alias", "knock", "room_preview", "search_rooms"].indexOf(cmd) >= 0) return
+            // receipts go out while reading and are tried again in the core:
+            // a weak network is no news to the reader
+            if (cmd === "mark_read") return
             var what = actionLabel(cmd)
             Notices.show(what.length
                          //: transient error line, %1 what was tried, %2 the server's or the network's message

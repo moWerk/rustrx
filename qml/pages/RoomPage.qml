@@ -210,9 +210,16 @@ Page {
         app.markRead(roomId, markReadTimer.marker, markReadTimer.eventId)
     }
     // the unread line to where reading stopped (nothing read in this visit:
-    // it stays)
+    // it stays). One request with the receipt still waiting: two at once
+    // for the same message, the second failed with the first.
     function moveLine() {
-        sendReceipt()
+        markReadTimer.stop()
+        var waiting = markReadTimer.queued
+        markReadTimer.queued = false
+        if (waiting && !markReadTimer.eventId.length) {
+            app.markRead(roomId, readUpTo.length > 0 || markReadTimer.marker, "")
+            return
+        }
         if (!readUpTo.length) return
         var whole = inTimeline && readUpTo === rustrx.timeline.seenEventId(0)
         app.markRead(roomId, true, whole ? "" : readUpTo)

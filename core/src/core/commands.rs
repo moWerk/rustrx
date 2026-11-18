@@ -89,7 +89,16 @@ impl Core {
             Report { room_id, event_id, reason } => self.report(&room_id, &event_id, given(&reason)).await,
             EventSource { room_id, event_id } => self.event_source(&room_id, &event_id).await,
             MarkRead { room_id, private, marker, event_id } => {
-                self.mark_read(&room_id, private.unwrap_or(false), marker.unwrap_or(true), given(&event_id)).await
+                // a receipt lost on a weak network left the count standing
+                let (private, marker, event_id) = (private.unwrap_or(false), marker.unwrap_or(true), given(&event_id));
+                let mut result = self.mark_read(&room_id, private, marker, event_id).await;
+                for delay in MARK_READ_RETRIES {
+                    let Err(e) = &result else { break };
+                    tracing::info!(room = %room_id, "mark_read failed, again in {delay:?}: {e:#}");
+                    tokio::time::sleep(delay).await;
+                    result = self.mark_read(&room_id, private, marker, event_id).await;
+                }
+                result
             }
             Typing { room_id, typing } => self.typing(&room_id, typing.unwrap_or(false)).await,
             SetPresence { online } => self.set_presence(online).await,

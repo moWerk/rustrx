@@ -435,7 +435,16 @@ impl Core {
         let tl = self.timeline_target(&room, thread_root).await?;
         let dim = |n: Option<u64>| n.and_then(|n| UInt::try_from(n).ok());
         let mut config = AttachmentConfig::default();
-        let size = std::fs::metadata(&path).ok().and_then(|m| UInt::try_from(m.len()).ok());
+        // a file the app may not read (a memory card outside its sandbox)
+        // or an empty one goes out as nothing anyone can open: said here
+        let len = std::fs::File::open(&path)
+            .and_then(|f| f.metadata())
+            .with_context(|| format!("cannot read {}", path.display()))?
+            .len();
+        if len == 0 {
+            bail!("{} is empty", path.display());
+        }
+        let size = UInt::try_from(len).ok();
         if mime.type_() == mime::VIDEO {
             // other clients size the player and show the length before loading
             config.info = Some(AttachmentInfo::Video(BaseVideoInfo {

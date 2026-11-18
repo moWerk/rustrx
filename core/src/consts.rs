@@ -30,6 +30,9 @@ pub(crate) const ROOM_LIST_BATCH: Duration = Duration::from_millis(150);
 pub(crate) const ROOM_LIST_FULL_REBUILD: Duration = Duration::from_secs(60);
 /// Wait before syncing again after a sync error.
 pub(crate) const SYNC_RETRY_DELAY: Duration = Duration::from_secs(5);
+/// a read receipt that failed (a weak network) is tried again after these
+pub(crate) const MARK_READ_RETRIES: [Duration; 3] =
+    [Duration::from_secs(2), Duration::from_secs(5), Duration::from_secs(15)];
 /// A single sign-on waits this long for the browser to come back.
 pub(crate) const SSO_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// A token refresh the server refused is asked again after these waits
