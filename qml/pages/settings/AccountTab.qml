@@ -111,7 +111,7 @@ SilicaFlickable {
         var n = []
         if (rustrx.debugLog)
             //% "The debug log is on. It holds room and user IDs, never message texts or passwords."
-            n.push({ go: "", text: qsTrId("rustrx-la-note-debug-log") })
+            n.push({ go: "debuglog", text: qsTrId("rustrx-la-note-debug-log") })
         if (app.sendReceipts)
             //% "Others see how far you have read."
             n.push({ go: "privacy", text: qsTrId("rustrx-la-note-receipts") })
@@ -126,13 +126,22 @@ SilicaFlickable {
     }
 
     function follow(go) {
-        if (go === "encryption") settings.openEncryption()
+        if (go === "debuglog") scrollTo(debugHeader)
+        else if (go === "encryption") settings.openEncryption()
         else if (go === "devices") pageStack.push(Qt.resolvedUrl("DevicesPage.qml"))
         else if (go === "verify") {
             rustrx.command({ cmd: "verification_request_self" })
             pageStack.push(Qt.resolvedUrl("../VerificationPage.qml"), { waiting: true })
         } else if (go.length) settings.showTab(go)
     }
+
+    // down to a section of this tab, its header just under the tab bar
+    function scrollTo(item) {
+        var y = item.mapToItem(column, 0, 0).y - (pullDownMenu ? settings.tabBarHeight : 0)
+        scroll.to = Math.max(originY, Math.min(y, contentHeight - height + originY))
+        scroll.restart()
+    }
+    NumberAnimation { id: scroll; target: tab; property: "contentY"; duration: Tunables.sectionScrollMs; easing.type: Easing.InOutQuad }
 
     PullDownMenu {
         MenuItem {
@@ -193,6 +202,25 @@ SilicaFlickable {
 
         Item { width: 1; height: Theme.paddingLarge }
 
+        // the verdict first: the ring and its legend detail it
+        Label {
+            x: Theme.horizontalPageMargin
+            width: parent.width - 2 * x
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.Wrap
+            // green with the ring when all is in place
+            color: securityRing.complete ? Tunables.securityComplete : Theme.highlightColor
+            text: tab.risks.length > 0
+                  //% "Not everything that protects your messages is active."
+                  ? qsTrId("rustrx-la-security-gaps")
+                  : tab.storeSlice === "unknown" || tab.verifySlice === "unknown"
+                    || tab.recoverySlice === "unknown" || tab.devicesSlice === "unknown"
+                  //% "Checking…"
+                  ? qsTrId("rustrx-la-security-checking")
+                  //% "Everything that protects your messages is active."
+                  : qsTrId("rustrx-la-security-ok")
+        }
+
         SecurityRing {
             id: securityRing
             anchors.horizontalCenter: parent.horizontalCenter
@@ -216,26 +244,26 @@ SilicaFlickable {
                 model: [
                     //% "Encrypted on the phone"
                     { slice: tab.storeSlice, ok: qsTrId("rustrx-la-arc-store-ok"),
-                      //% "Stored unencrypted"
+                      //% "Not encrypted on the phone"
                       risk: qsTrId("rustrx-la-arc-store-risk") },
-                    //% "This phone verified"
+                    //% "The phone is verified"
                     { slice: tab.verifySlice, ok: qsTrId("rustrx-la-arc-verified-ok"),
-                      //% "This phone not verified"
+                      //% "The phone is not verified"
                       risk: qsTrId("rustrx-la-arc-verified-risk") },
-                    //% "Key backup"
+                    //% "Key backup exists"
                     { slice: tab.recoverySlice, ok: qsTrId("rustrx-la-arc-backup-ok"),
                       risk: rustrx.recoveryState === "incomplete"
-                            //% "Recovery key missing"
+                            //% "Recovery key is missing"
                             ? qsTrId("rustrx-la-arc-backup-key-missing")
-                            //% "No key backup"
+                            //% "Key backup is missing"
                             : qsTrId("rustrx-la-arc-backup-risk") },
                     //% "Other devices verified"
                     { slice: tab.devicesSlice, ok: qsTrId("rustrx-la-arc-devices-ok"),
-                      //% "Unverified devices"
+                      //% "Other devices unverified"
                       risk: qsTrId("rustrx-la-arc-devices-risk") }
                 ]
+                // left in a centred block: the numbers stand in a column
                 Label {
-                    anchors.horizontalCenter: parent.horizontalCenter
                     font.pixelSize: Theme.fontSizeSmall
                     // numbered, so each line finds its arc
                     text: (index + 1) + ". " + (modelData.slice === "risk" ? modelData.risk : modelData.ok)
@@ -248,140 +276,49 @@ SilicaFlickable {
 
         Item { width: 1; height: Theme.paddingSmall }
 
-        Label {
-            visible: tab.risks.length === 0
-            x: Theme.horizontalPageMargin
-            width: parent.width - 2 * x
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.Wrap
-            // green with the ring when all is in place
-            color: securityRing.complete ? Tunables.securityComplete : Theme.highlightColor
-            text: tab.storeSlice === "unknown" || tab.verifySlice === "unknown"
-                  || tab.recoverySlice === "unknown" || tab.devicesSlice === "unknown"
-                  //% "Checking…"
-                  ? qsTrId("rustrx-la-security-checking")
-                  //% "Everything that protects your messages is on."
-                  : qsTrId("rustrx-la-security-ok")
-        }
-
-        // every missing safeguard, a tap leads to its fix: in a box with an
-        // arrow, as a button is, so it reads as something to tap
+        // every missing safeguard, a tap leads to its fix; then the notes:
+        // all of them lines with an arrow, as Encryption and Devices below
         Repeater {
             model: tab.risks
-            BackgroundItem {
-                id: riskRow
-                x: Theme.horizontalPageMargin
-                width: column.width - 2 * x
-                height: riskText.height + 2 * Theme.paddingMedium
+            LinkRow {
                 enabled: modelData.go.length > 0
                 onClicked: tab.follow(modelData.go)
-                // the box drawn here; BackgroundItem's own square highlight off
-                highlightedColor: "transparent"
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Theme.paddingMedium
-                    visible: riskRow.enabled
-                    color: riskRow.highlighted ? Theme.rgba(Theme.highlightBackgroundColor, Theme.highlightBackgroundOpacity)
-                                               : Theme.rgba(Theme.primaryColor, Theme.opacityFaint / 2)
-                    border.color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
-                    border.width: Math.max(1, Math.round(Theme.paddingSmall / 4))
-                }
-                Image {
-                    id: riskArrow
-                    visible: riskRow.enabled
-                    anchors { right: parent.right; rightMargin: Theme.paddingSmall; verticalCenter: parent.verticalCenter }
-                    source: "image://theme/icon-m-right?" + (riskRow.highlighted ? Theme.highlightColor : Theme.primaryColor)
-                }
-                Image {
-                    id: riskIcon
-                    x: Theme.paddingMedium
-                    y: Theme.paddingMedium
-                    sourceSize.width: Theme.iconSizeSmall
-                    sourceSize.height: Theme.iconSizeSmall
-                    source: "image://theme/icon-s-filled-warning?" + Theme.errorColor
-                }
-                Column {
-                    id: riskText
-                    anchors { left: riskIcon.right; leftMargin: Theme.paddingMedium; right: riskArrow.left; rightMargin: Theme.paddingSmall }
-                    y: Theme.paddingMedium
-                    Label {
-                        width: parent.width
-                        wrapMode: Text.Wrap
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: riskRow.highlighted ? Theme.highlightColor : Theme.primaryColor
-                        text: modelData.text
-                    }
-                    Label {
-                        width: parent.width
-                        wrapMode: Text.Wrap
-                        font.pixelSize: Theme.fontSizeExtraSmall
-                        color: riskRow.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
-                        text: modelData.fix
-                    }
-                }
+                icon: "image://theme/icon-s-filled-warning"
+                iconColor: Theme.errorColor
+                text: modelData.text
+                description: modelData.fix
+                secondary: false
             }
         }
 
         Repeater {
             model: tab.notes
-            BackgroundItem {
-                id: noteRow
-                width: column.width
-                height: noteText.height + Theme.paddingMedium
+            LinkRow {
                 enabled: modelData.go.length > 0
                 onClicked: tab.follow(modelData.go)
-                Label {
-                    id: noteText
-                    anchors { left: parent.left; right: parent.right; leftMargin: Theme.horizontalPageMargin + Theme.iconSizeSmall + Theme.paddingMedium; rightMargin: Theme.horizontalPageMargin }
-                    y: Theme.paddingSmall
-                    wrapMode: Text.Wrap
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    color: noteRow.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
-                    text: modelData.text
-                }
+                text: modelData.text
+                secondary: true
             }
         }
 
         Item { width: 1; height: Theme.paddingMedium }
 
         // the recovery key, its backup, a reset and the room keys file
-        BackgroundItem {
-            id: encryptionRow
-            width: parent.width
+        LinkRow {
+            //% "Encryption"
+            text: qsTrId("rustrx-se-encryption")
             onClicked: settings.openEncryption()
-            Label {
-                x: Theme.horizontalPageMargin
-                anchors.verticalCenter: parent.verticalCenter
-                //% "Encryption"
-                text: qsTrId("rustrx-se-encryption")
-                color: encryptionRow.highlighted ? Theme.highlightColor : Theme.primaryColor
-            }
-            Image {
-                anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin - Theme.paddingMedium; verticalCenter: parent.verticalCenter }
-                source: "image://theme/icon-m-right?" + (encryptionRow.highlighted ? Theme.highlightColor : Theme.primaryColor)
-            }
         }
 
         // the sessions, loaded only when asked
-        BackgroundItem {
-            id: devicesRow
-            width: parent.width
+        LinkRow {
+            //% "Devices"
+            text: qsTrId("rustrx-se-devices")
             onClicked: pageStack.push(Qt.resolvedUrl("DevicesPage.qml"))
-            Label {
-                x: Theme.horizontalPageMargin
-                anchors.verticalCenter: parent.verticalCenter
-                //% "Devices"
-                text: qsTrId("rustrx-se-devices")
-                color: devicesRow.highlighted ? Theme.highlightColor : Theme.primaryColor
-            }
-            Image {
-                anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin - Theme.paddingMedium; verticalCenter: parent.verticalCenter }
-                source: "image://theme/icon-m-right?" + (devicesRow.highlighted ? Theme.highlightColor : Theme.primaryColor)
-            }
         }
 
         //% "Debug log"
-        SectionHeader { text: qsTrId("rustrx-se-debug-log") }
+        SectionHeader { id: debugHeader; text: qsTrId("rustrx-se-debug-log") }
 
         TextSwitch {
             //% "Keep a debug log"

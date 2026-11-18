@@ -341,7 +341,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-security-ok">
-        <source>Everything that protects your messages is on.</source>
+        <source>Everything that protects your messages is active.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-security-gaps">
+        <source>Not everything that protects your messages is active.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-security-checking">
@@ -353,27 +357,27 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-arc-store-risk">
-        <source>Stored unencrypted</source>
+        <source>Not encrypted on the phone</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-arc-verified-ok">
-        <source>This phone verified</source>
+        <source>The phone is verified</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-arc-verified-risk">
-        <source>This phone not verified</source>
+        <source>The phone is not verified</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-arc-backup-ok">
-        <source>Key backup</source>
+        <source>Key backup exists</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-arc-backup-key-missing">
-        <source>Recovery key missing</source>
+        <source>Recovery key is missing</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-arc-backup-risk">
-        <source>No key backup</source>
+        <source>Key backup is missing</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-arc-devices-ok">
@@ -381,7 +385,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-arc-devices-risk">
-        <source>Unverified devices</source>
+        <source>Other devices unverified</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-risk-no-backup">
