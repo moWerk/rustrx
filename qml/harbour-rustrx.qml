@@ -420,6 +420,11 @@ ApplicationWindow {
             } else if (request.ui === "open_room") {
                 app.activate()
                 app.showRoom(request.room_id)
+            } else if (request.ui === "settings") {
+                // Settings, on a tab by its kind ("account", "privacy", "app", "about")
+                app.activate()
+                var s = pageStack.push(Qt.resolvedUrl("pages/SettingsPage.qml"))
+                if (request.tab) s.showTab(request.tab)
             } else if (request.ui === "back") {
                 if (pageStack.depth > 1) pageStack.pop()
             }
