@@ -59,7 +59,9 @@ BackgroundItem {
             id: title
             width: parent.width
             wrapMode: Text.Wrap
-            font.pixelSize: row.secondary ? Theme.fontSizeSmall : Theme.fontSizeMedium
+            // a heading alone (Encryption) in the list size; a line with a
+            // second one (a gap and its fix) or a note smaller
+            font.pixelSize: row.secondary || detail.text.length > 0 ? Theme.fontSizeSmall : Theme.fontSizeMedium
             color: row.highlighted ? Theme.highlightColor : row.secondary ? Theme.secondaryColor : Theme.primaryColor
         }
         Label {

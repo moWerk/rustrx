@@ -287,7 +287,6 @@ SilicaFlickable {
                 iconColor: Theme.errorColor
                 text: modelData.text
                 description: modelData.fix
-                secondary: false
             }
         }
 
