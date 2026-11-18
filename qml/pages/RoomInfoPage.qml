@@ -52,17 +52,12 @@ Page {
         rustrx.command({ cmd: "get_notification_mode", room_id: roomId })
     }
 
-    // the header lays out after creation (the topic wraps, the fields size),
-    // which moves the list's origin and leaves the view scrolled: re-anchor
-    Timer { id: settle; interval: Tunables.listSettleMs; running: true; onTriggered: list.positionViewAtBeginning() }
-
     Connections {
         target: rustrx
         onMembers: {
             if (roomId !== page.roomId) return
             memberList = members
             membersLoaded = true
-            settle.restart()
             for (var i = 0; i < members.length; i++) {
                 if (members[i].user_id === rustrx.userId) {
                     var p = members[i].power
@@ -82,13 +77,13 @@ Page {
     Connections { target: rustrx.spaces; onDataChanged: refresh() }
     Connections { target: rustrx.people; onDataChanged: refresh() }
 
-    SilicaListView {
-        id: list
+    // a flickable, not a list: a list without rows scrolls back to its top
+    // whenever its header changes size, as when a combo box opens
+    // (Luna-Terra-CG's report)
+    SilicaFlickable {
+        id: flick
         anchors.fill: parent
-        // the settings only; the members have a page of their own
-        model: []
-
-        currentIndex: -1   // or the view re-anchors to the first member when the list arrives
+        contentHeight: column.height
 
         PullDownMenu {
             MenuItem {
@@ -153,8 +148,9 @@ Page {
 
         RemorsePopup { id: leaveRemorse }
 
-        header: Column {
-            width: list.width
+        Column {
+            id: column
+            width: flick.width
 
             PageHeader {
                 title: info.name || ""

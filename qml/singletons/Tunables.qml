@@ -141,8 +141,6 @@ QtObject {
     readonly property int markReadMs: 500
     // the emoji panel slides in and out
     readonly property int panelSlideMs: 250
-    // room info re-anchors its list after the header laid out
-    readonly property int listSettleMs: 250
     // the chat's place is put back once the keyboard is still: the first
     // wait, then the wait after each of its steps
     readonly property int anchorFirstMs: 300
