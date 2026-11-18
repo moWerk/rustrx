@@ -1,3 +1,38 @@
+* Thu Nov 19 2026 moWerk <mo@mowerk.net> - 0.5.0
+- New: moderation. What owners, admins and moderators may do comes from
+  the room's power levels; controls show only where allowed. A person's
+  page: role, mute, remove, ban and lift a ban with reasons, revoke an
+  invitation, remove their recent messages, report them. Members list
+  with requests to join, invited and banned. Room info: history
+  visibility, guest access, the room directory, turning on encryption,
+  reporting the room. Pages for roles and permissions, addresses,
+  server access (refusing a list that shuts out your own server) and
+  upgrading the room. Removing others' messages with a reason, pinning,
+  a "Pinned (n)" pill. Spaces: suggested rooms, their order, a ban
+  across a space's rooms.
+- New: reading message by message. The read receipt follows the newest
+  message whose end was on screen, never back; a room opens at its
+  unread line, loading older pages to find it; the line stays put during
+  a visit and moves on leaving; jumps past unread messages leave them
+  unread. Fixes rooms with many unread messages being marked read at
+  once (Amazfish, 30).
+- New: a picture or video sent on its own has no bubble, only rounded
+  corners; portrait pictures are as wide as they are.
+- New: spoilers are covered by bars, one per line, and shown on a tap;
+  "||text||" sends one.
+- New: Lock to portrait (Settings > App, off by default); it gives way
+  while a slide-out keyboard is open.
+- Privacy: all metadata is removed from photos, not only the place
+  (orientation and colour profile kept, not re-encoded).
+- On phones without Sailfish Secrets, a page after login says the store
+  is not encrypted and how to install Secrets; the security ring gives
+  the same fix.
+- Joining by part of a name (your server's and matrix.org's directory);
+  join errors in words; About invites to the forum thread.
+- Fixed: files on a memory card went out broken (the sandbox had no
+  access); unreadable or empty files now fail with a message. Receipts
+  are retried quietly on a weak network instead of showing errors.
+
 * Wed Nov 18 2026 moWerk <mo@mowerk.net> - 0.4.9
 - New: Settings in four tabs, Account, Privacy, App, About; Account opens
   with how well messages are protected, each gap named with its fix.
