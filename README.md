@@ -32,7 +32,7 @@ without sailfish-secrets. Since 0.4.4 it also has calls (unencrypted rooms for
 now), threads, spaces with requests to join, and Twemoji with custom emoji and
 stickers. It also works well as the client for a second account next to another one.
 
-![Rustrx 0.4.5 on a Jolla Phone 2026: the member search of a 708-member room, Settings with push notifications through Foghorn and the favourites highlight, a message menu with Twemoji reactions and Reply in thread above the emoji picker, and a text reaction being typed](screenshots/rustrx-0.4.5.jpg)
+![Rustrx 0.4.9 on the Pro¹-X: Settings as four tabs, Account with its security ring all green and "Log out now", Privacy in short groups (online status, location removed from photos, chat names outside Rustrx, invitations from strangers), App with the avatar corners slider and a choice box opened by press and drag, About with the thanks to everyone who reported or suggested](screenshots/rustrx-0.4.9.jpg)
 
 ## What it does
 
@@ -65,9 +65,11 @@ stickers. It also works well as the client for a second account next to another 
   no recovery key.
 - Conversations with text in markdown, replies that quote what they answer,
   reactions, images, videos, audio, files, stickers, polls, locations and
-  state events. Your own messages can be edited or removed; messages can be
-  reported, copied as a link, shown as source, or sent again when they
-  failed. A double tap replies. Messages sit in bubbles, without avatars:
+  state events. A long press shows reactions and the four usual actions,
+  the rest on a "More…" page: your own messages can be edited or removed;
+  messages can be reported, copied as a link, shown as source, or sent
+  again when they failed, and a running upload can be cancelled. A double
+  tap replies. Messages sit in bubbles, without avatars:
   the sender's name is inside. The header shows the room's picture and who
   is typing, "read by ..." shows read receipts. Drafts are kept per room.
 - Threads: replies in a thread are marked in the room and open their
@@ -101,7 +103,8 @@ stickers. It also works well as the client for a second account next to another 
   topic, address, encryption, favourite, low priority, members, invite,
   leave, and its own notification level.
 - Notifications per room, updated in place, opening the room on a tap, and
-  one for each new invitation.
+  one for each new invitation; also while Rustrx is open, except for the
+  room in front.
 - Notifications with Rustrx closed, one choice in Settings > Notifications:
   push through UnifiedPush (Foghorn from OpenRepos as the distributor; the
   homeserver pushes through a Matrix gateway, D-Bus activation wakes Rustrx
@@ -113,10 +116,15 @@ stickers. It also works well as the client for a second account next to another 
 - Device verification by emoji comparison, incoming or started from
   Settings (tested with nheko); restoring encrypted history with the
   recovery key; key backup; room key export and import.
-- Settings for privacy (read receipts, who has read, typing, message text
-  in notifications), appearance (avatars, preview lines, the tabs), one's
-  own picture, storage (sizes, clearing pictures and files) and the
-  logged-in devices. Portrait and landscape.
+- Settings in four tabs. Account: one's own picture, a security ring that
+  turns green once the store is encrypted, the device verified, a recovery
+  key set and the other devices verified, with each gap named; the
+  logged-in devices, storage and the debug log. Privacy: read receipts,
+  typing, showing as online (off by default), the location removed from
+  photos (on by default), message text and chat names outside Rustrx,
+  invitations from strangers, ignored users. App: appearance (avatar
+  corners from square to round, preview lines, the tabs), notifications.
+  About. Portrait and landscape.
 - The local store (messages and keys) is encrypted with a key kept in
   sailfish-secrets where that works; elsewhere, such as on community ports
   without it, as before. If a server ends the session, the store and the
@@ -154,12 +162,12 @@ when a process exits after hiding or recreating its window.
 
 ## Status
 
-0.4.8. From "let's build a client" to 0.2.0 in one evening, used daily on
+0.4.9. From "let's build a client" to 0.2.0 in one evening, used daily on
 the Jolla Phone 2026 since, and developed and maintained for the long run.
 Tested with two accounts, on matrix.org and on tchncs.de (single sign-on
 through its account service); since 0.4.7 servers with an account service
-are logged into through it (OAuth 2.0). Not yet there: QR login, encrypted
-calls, pinned messages, forwarding, mention completion, QR verification. Push through UnifiedPush
+are logged into through it (OAuth 2.0), since 0.4.8 also with a QR code. Not
+yet there: encrypted calls, pinned messages, forwarding, QR verification. Push through UnifiedPush
 works with [Foghorn](https://openrepos.net/content/projectmoon/foghorn) as the
 distributor; the stand-in remains the fallback without one.
 
@@ -179,6 +187,13 @@ its background stand-in; secrets is where the store key is kept.
 
 [Harpoon](https://github.com/JuhaniLehtimaeki/Harpoon) can install Rustrx
 from this repository and keep it updated.
+
+## Credits
+
+Thanks for bug reports and ideas to doctorflynt, dodoradio, finceptum,
+Fuzzillogic, Luna-Terra-CG, MrHappy, poetaster, projectmoon and Tealk;
+dodoradio also for testing nearly every build and designing much of
+Rustrx with the author. The same list is on Settings > About.
 
 ## Authorship
 

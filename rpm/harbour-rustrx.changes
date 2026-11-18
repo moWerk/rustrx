@@ -1,3 +1,40 @@
+* Wed Nov 18 2026 moWerk <mo@mowerk.net> - 0.4.9
+- New: Settings in four tabs, Account, Privacy, App, About; Account opens
+  with how well messages are protected, each gap named with its fix.
+- Privacy: the location is removed from photos before sending (on, with a
+  switch); not shown as online unless asked; chat names can stay out of
+  notifications and the cover; invitations from strangers can stay quiet;
+  a word about Element Call before the first call; the debug log can be
+  deleted; the recovery key leaves the clipboard after two minutes; a
+  thread's read receipt follows "Send read receipts".
+- Notifications also while Rustrx is open, except for the room in front
+  (dodoradio).
+- The security glance as a ring of glass and light, one line per
+  safeguard leading to its fix; the Encryption page and the devices list
+  with a green check or a red cross per state; buttons among texts get a
+  paragraph's room around them.
+- Room info: a tap on the address or the room ID copies it.
+- Choice boxes take Silica's press, drag and let go, as menus do.
+- Account: "Log out now" is a button, no pulley; About thanks everyone
+  who reported or suggested, and credits the bundled font.
+- Fixed: on the small cover (more than four on the home screen) the
+  bottom line sat under the search icon.
+- New: avatar corners from square to round, nothing behind a picture with
+  transparency.
+- Message menu: reactions, four actions and "More…", as Sailfish apps do
+  (dodoradio); a space's three Add items are one page.
+- New: uploads can be cancelled.
+- Videos go out with a preview frame, their size and length, as other
+  clients send them.
+- Fixed: on a room's info page that scrolls, opening a choice box threw
+  the page back to its top (Luna-Terra-CG).
+- Fixed: back in a room after a share had opened another room above it,
+  the chat was empty; the room below no longer sends read receipts for
+  messages it does not show.
+- Memory: about a third less (two malloc arenas, a smaller store cache).
+- Fixed: the background stand-in restarted every 71 s while the app was
+  open (dodoradio's log).
+
 * Tue Nov 17 2026 moWerk <mo@mowerk.net> - 0.4.8
 - Fixed: logged out after a push woke Rustrx with an expired token (the
   rotated refresh token was not saved); a session counts as gone only
