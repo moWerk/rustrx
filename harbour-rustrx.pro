@@ -22,7 +22,8 @@ SOURCES += src/main.cpp \
     src/UnifiedPush.cpp \
     src/VoiceRecorder.cpp \
     src/DebugLog.cpp \
-    src/FrameStats.cpp
+    src/FrameStats.cpp \
+    src/KeyboardSlide.cpp
 
 HEADERS += src/Rustrx.h \
     src/Handover.h \
@@ -37,6 +38,7 @@ HEADERS += src/Rustrx.h \
     src/VoiceRecorder.h \
     src/DebugLog.h \
     src/FrameStats.h \
+    src/KeyboardSlide.h \
     src/LocalOnly.h \
     src/Exif.h \
     src/Mp4.h \

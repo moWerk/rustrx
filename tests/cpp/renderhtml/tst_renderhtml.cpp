@@ -248,6 +248,8 @@ private slots:
     // Planted-bug: closing a spoiler does not count it out (no --hidden),
     // so everything after the first spoiler is hidden. Planted-bug: the
     // blocks are emitted at every close, so a nested spoiler shows twice.
+    // Planted-bug: a break inside does not end the line's blocks ("lines"
+    // becomes one bar).
     void spoilers_data()
     {
         QTest::addColumn<QString>("in");
@@ -261,9 +263,13 @@ private slots:
                              << spoiler(1) + U("-") + spoiler(1) + U(".");
         QTest::newRow("link, picture, emoji inside")
                 << U("<span data-mx-spoiler><a href=\"http://e\">l</a><img src=\"mxc://example.org/wide\">😀<br></span>")
-                << spoiler(3);
+                << spoiler(3) + U("<br>");
         QTest::newRow("entities count once") << U("<span data-mx-spoiler>a&amp;b&#233;</span>") << spoiler(4);
         QTest::newRow("empty") << U("<span data-mx-spoiler></span>x") << spoiler(1) + U("x");
+        QTest::newRow("lines") << U("<span data-mx-spoiler>My first<br>Multiline<br />Spoiler</span>")
+                               << spoiler(8) + U("<br>") + spoiler(9) + U("<br>") + spoiler(7);
+        QTest::newRow("empty line") << U("<span data-mx-spoiler>ab<br><br>c</span>") << spoiler(2) + U("<br><br>") + spoiler(1);
+        QTest::newRow("ends in a break") << U("<span data-mx-spoiler>ab<br></span>x") << spoiler(2) + U("<br>x");
         QTest::newRow("closed by its parent") << U("<b><span data-mx-spoiler>s</b>after") << U("<b>") + spoiler(1) + U("</b>after");
         QTest::newRow("unclosed hides the rest") << U("<span data-mx-spoiler>s<b>t</b>") << spoiler(2);
         QTest::newRow("only span and font") << U("<div data-mx-spoiler>s</div>") << U("s<br>");

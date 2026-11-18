@@ -29,9 +29,10 @@ ApplicationWindow {
     cover: Qt.resolvedUrl("cover/CoverPage.qml")
     // portrait and landscape: the room list and the chats suit both (the
     // camera page keeps to portrait); "Lock to portrait" keeps every page
-    // upright but the picture and video viewers, which allow both themselves
+    // upright but the picture and video viewers, which allow both themselves,
+    // and gives way while a slide-out keyboard is open
     allowedOrientations: Orientation.All
-    _defaultPageOrientations: cfg.portraitOnly ? Orientation.Portrait : Orientation.All
+    _defaultPageOrientations: cfg.portraitOnly && !keyboardSlide.open ? Orientation.Portrait : Orientation.All
     // Labels show plain text unless they ask for StyledText: Silica's
     // default (AutoText) would turn a name like "Bob <img src=...>" into a
     // picture fetched from anywhere

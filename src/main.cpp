@@ -39,6 +39,7 @@
 #include "UnifiedPush.h"
 #include "DebugLog.h"
 #include "FrameStats.h"
+#include "KeyboardSlide.h"
 #include "Twemoji.h"
 #include <QSettings>
 #include "RoomModel.h"
@@ -205,6 +206,8 @@ int main(int argc, char *argv[])
     view->engine()->setNetworkAccessManagerFactory(&localOnly);
     view->rootContext()->setContextProperty(QStringLiteral("rustrx"), &rustrx);
     view->rootContext()->setContextProperty(QStringLiteral("voice"), &voice);
+    KeyboardSlide keyboardSlide;
+    view->rootContext()->setContextProperty(QStringLiteral("keyboardSlide"), &keyboardSlide);
     view->rootContext()->setContextProperty(QStringLiteral("service"), service.data());
     view->rootContext()->setContextProperty(QStringLiteral("appVersion"), QStringLiteral(APP_VERSION));
     view->setSource(SailfishApp::pathToMainQml());

@@ -271,8 +271,8 @@ SilicaFlickable {
         TextSwitch {
             //% "Lock to portrait"
             text: qsTrId("rustrx-la-portrait-only")
-            //% "Rustrx stays upright when the phone turns. Pictures and videos still turn with it."
-            description: qsTrId("rustrx-la-portrait-only-hint")
+            //% "Rustrx stays upright when the phone turns. Pictures and videos still turn with it, and so does everything while a slide-out keyboard is open."
+            description: qsTrId("rustrx-la-portrait-only-hint2")
             checked: app.portraitOnly
             automaticCheck: false
             onClicked: app.portraitOnly = !app.portraitOnly

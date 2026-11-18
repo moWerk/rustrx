@@ -270,7 +270,7 @@ QVariantMap TimelineModel::withMedia(QVariantMap item) const
 // their text: em is italic, a quote italic in its own paragraph, a line a
 // row of dashes, table cells a " | " row, colours (data-mx-color, #rrggbb)
 // a font colour. A spoiler's text is covered: a row of full blocks as long
-// as it, a link to rustrx:spoiler that the room shows it on (shown: the
+// as each of its lines, each a link to rustrx:spoiler that the room shows it on (shown: the
 // text as it is, when the reader tapped it).
 // Links keep only the spec's schemes (and matrix:). Custom emoji (an <img>
 // with an mxc:// address) become the cached picture at a little more than
@@ -335,7 +335,8 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight, bool spo
     struct Open { QString name; QString close; bool hides; };
     QVector<Open> stack;
     int hidden = 0;        // inside a spoiler: its text is not shown
-    int covered = 0;       // the characters it had, one block each
+    int covered = 0;       // the characters of its line so far, one block each
+    bool coveredLine = false;   // a line of it has been covered already
     QString out;
     auto emit_ = [&](const QString &s) { if (!hidden) out += s; };
     // text between tags, its emoji as Twemoji pictures
@@ -345,12 +346,19 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight, bool spo
         else
             covered += QString(s).replace(namedEntity, QStringLiteral("x")).toUcs4().size();
     };
+    // the blocks for a spoiler's line so far
+    auto cover = [&]() {
+        out += QStringLiteral("<a href=\"%1\">%2</a>").arg(QLatin1String(kSpoilerLink), QString(covered, QChar(0x2588)));
+        covered = 0;
+        coveredLine = true;
+    };
     auto closeTop = [&]() {
         const Open o = stack.takeLast();
         if (o.hides && --hidden == 0) {
-            out += QStringLiteral("<a href=\"%1\">%2</a>")
-                       .arg(QLatin1String(kSpoilerLink), QString(qMax(covered, 1), QChar(0x2588)));
-            covered = 0;
+            // an empty spoiler still shows that there is one
+            if (covered > 0 || !coveredLine)
+                covered = qMax(covered, 1), cover();
+            coveredLine = false;
         }
         emit_(o.close);
     };
@@ -377,7 +385,13 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight, bool spo
         }
 
         // the ones without content
-        if (name == QLatin1String("br")) { emit_(QStringLiteral("<br>")); continue; }
+        if (name == QLatin1String("br")) {
+            // inside a spoiler: its line so far as blocks, then the break
+            if (hidden && covered > 0)
+                cover();
+            out += QStringLiteral("<br>");
+            continue;
+        }
         if (name == QLatin1String("hr")) { emit_(QStringLiteral("<br>―――――<br>")); continue; }
         if (name == QLatin1String("img")) {
             if (hidden) { ++covered; continue; }   // a picture: one block

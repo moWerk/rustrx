@@ -2798,10 +2798,6 @@
         <source>Lock to portrait</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-portrait-only-hint">
-        <source>Rustrx stays upright when the phone turns. Pictures and videos still turn with it.</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-la-risk-no-secrets-fix2">
         <source>Install Sailfish Secrets (sailfishsecretsdaemon with its default plugins), then log out and log in again.</source>
         <translation type="unfinished"></translation>
@@ -2816,6 +2812,10 @@
     </message>
     <message id="rustrx-no-copied">
         <source>Copied</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-portrait-only-hint2">
+        <source>Rustrx stays upright when the phone turns. Pictures and videos still turn with it, and so does everything while a slide-out keyboard is open.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

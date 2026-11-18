@@ -825,7 +825,7 @@ fn with_mentions(content: &mut RoomMessageEventContent, body: &str, mentions: &[
     content.mentions = Some(m);
 }
 
-/// Text between two "||" in one paragraph becomes a spoiler in the HTML
+/// Text between two "||" in one paragraph (line breaks allowed) becomes a spoiler in the HTML
 /// (not inside code); the plain body keeps the "||" as it was typed.
 fn with_spoilers(content: &mut RoomMessageEventContent, body: &str) {
     use matrix_sdk::ruma::events::room::message::FormattedBody;
@@ -848,9 +848,9 @@ fn with_spoilers(content: &mut RoomMessageEventContent, body: &str) {
 
 /// The HTML with each pair of "||" in the text made a spoiler span, or
 /// None when there is no pair. A pair must be in one paragraph (no block
-/// tag or line break between) and hold something; code is left alone.
+/// tag between; line breaks are fine) and hold something; code is left alone.
 fn spoilers_in_html(html: &str) -> Option<String> {
-    const BLOCK: [&str; 13] = ["p", "br", "li", "ul", "ol", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "hr"];
+    const BLOCK: [&str; 12] = ["p", "li", "ul", "ol", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "hr"];
     // the "||" outside code, each with the paragraph it is in
     let mut marks: Vec<(usize, usize)> = Vec::new();
     let (mut para, mut code, mut i) = (0usize, 0usize, 0usize);
@@ -961,6 +961,8 @@ mod tests {
         assert_eq!(sp("a |||| b"), None);
         assert_eq!(sp("odd ||one|| ||"), Some("odd <span data-mx-spoiler>one</span> ||".to_string()));
         assert_eq!(sp("no pair || here"), None);
+        assert_eq!(sp("||My first<br>Multiline<br />Spoiler||").as_deref(),
+                   Some("<span data-mx-spoiler>My first<br>Multiline<br />Spoiler</span>"));
 
         let body = "look ||it was him||";
         let mut c = RoomMessageEventContent::text_markdown(body);
@@ -971,6 +973,11 @@ mod tests {
         let mut c = RoomMessageEventContent::text_markdown(body);
         with_spoilers(&mut c, body);
         assert!(html(&c).contains("<strong>loud</strong> <span data-mx-spoiler>quiet</span>"), "{}", html(&c));
+        // as typed in the screenshot: three lines, one spoiler
+        let body = "||My first\nMultilone\nSpoiler||";
+        let mut c = RoomMessageEventContent::text_markdown(body);
+        with_spoilers(&mut c, body);
+        assert_eq!(html(&c), "<span data-mx-spoiler>My first<br>Multilone<br>Spoiler</span>");
     }
 
     /// Markdown keeps its formatting around the pill; new lines in a plain
