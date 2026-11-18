@@ -35,26 +35,18 @@ CoverBackground {
     Connections { target: rustrx.rooms; onDataChanged: if (cover.inChat) cover.refreshChat() }
     Connections { target: rustrx.people; onDataChanged: if (cover.inChat) cover.refreshChat() }
     // the strip lipstick draws the cover actions in, as Silica reports it
-    // for either cover size (Silica's CoverPlaceholder keeps clear of it
-    // the same way); a fixed itemSizeSmall let the bottom line slip under
-    // the search icon in the small cover, with more than four on the home
-    // screen (the author's find)
-    // In the small grid (more than four covers) lipstick shows the large
-    // cover shrunk but draws the action icons at their own size on top,
-    // so the strip takes a bigger share of the shrunk cover: the room
-    // kept for it grows by the same ratio there.
+    readonly property real actionStrip: coverActionArea ? coverActionArea.height : Theme.itemSizeSmall
+    // Where text has to end above the actions. With more than four covers
+    // lipstick shows this large cover shrunk to coverSizeSmall, still
+    // reporting Cover.Large (seen on the Jolla Phone 2026: size 1, 446x714
+    // in a 284x454 tile), and draws the action icons at their own size on
+    // top. So the icons' top, the strip's middle plus half an icon, lies
+    // higher on the shrunk cover by large/small; text ends there, with a
+    // gap, in both views (the large one gets a little more air). The fixed
+    // strip height let "Rustrx" slip under the search icon (the author's find).
     readonly property real smallRatio: Theme.coverSizeSmall.height > 0 ? Theme.coverSizeLarge.height / Theme.coverSizeSmall.height : 1
-    readonly property real actionStrip: (coverActionArea ? coverActionArea.height : Theme.itemSizeSmall)
-                                        * (size === Cover.Small ? smallRatio : 1)
-    // what lipstick reports, to check both sizes in the debug log
-    function logStrip() {
-        console.log("cover: size " + size + " " + width + "x" + height + ", strip " + (coverActionArea ? coverActionArea.height : -1)
-                    + ", large " + Theme.coverSizeLarge.width + "x" + Theme.coverSizeLarge.height
-                    + ", small " + Theme.coverSizeSmall.width + "x" + Theme.coverSizeSmall.height)
-    }
-    onSizeChanged: logStrip()
-    onActionStripChanged: logStrip()
-    Component.onCompleted: logStrip()
+    readonly property real textClearance: Math.max(actionStrip,
+                                                   (actionStrip + Theme.iconSizeSmall) / 2 * smallRatio + Theme.paddingMedium)
 
     // the same number as the room's badge in the list
     readonly property int chatUnread: chat.notifications > 0 ? chat.notifications : (chat.unread || 0)
@@ -153,8 +145,8 @@ CoverBackground {
         anchors {
             fill: parent
             margins: Theme.paddingLarge
-            // above the cover actions' strip
-            bottomMargin: cover.actionStrip
+            // above the cover actions, in both views
+            bottomMargin: cover.textClearance
         }
 
         Label {
@@ -226,8 +218,8 @@ CoverBackground {
             right: parent.right
             bottom: parent.bottom
             margins: Theme.paddingLarge
-            // above the cover actions' strip
-            bottomMargin: cover.actionStrip
+            // above the cover actions, in both views
+            bottomMargin: cover.textClearance
         }
         truncationMode: TruncationMode.Fade
         font.pixelSize: Theme.fontSizeExtraSmall
