@@ -17,6 +17,7 @@
 #include "Media.h"
 #include "Exif.h"
 #include "Keys.h"
+#include "Mp4.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -24,8 +25,10 @@
 #include <QImage>
 #include <QImageReader>
 #include <QMimeDatabase>
+#include <QProcess>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QTimer>
 #include <QUrl>
 
 // pictures prepared for sending (scaled, thumbnails, avatars)
@@ -193,7 +196,67 @@ void Media::sendFile(const QString &roomId, const QString &path, const QString &
     // the type from the content too: a shared file's name may have no
     // extension the core knows, and a picture then went out as a file
     cmd.insert("mime", QMimeDatabase().mimeTypeForFile(cmd.value("path").toString()).name());
-    emit command(cmd);
+    m_outgoing.append({ cmd, nullptr });
+    if (cmd.value("mime").toString().startsWith(QLatin1String("video/")))
+        prepareVideo(m_outgoing.last().cmd, outgoingDir() + "/" + QString::number(QDateTime::currentMSecsSinceEpoch()));
+    sendInOrder();
+}
+
+// videos go out the way other clients send them: with their size, their
+// length and a frame as thumbnail, so the other side shows a preview
+void Media::prepareVideo(QVariantMap &cmd, const QString &stem)
+{
+    const QString path = cmd.value("path").toString();
+    QFile file(path);
+    if (file.open(QIODevice::ReadOnly)) {
+        const Mp4::Info info = Mp4::read(file);
+        if (info.width > 0 && info.height > 0) {
+            cmd.insert("w", info.width);
+            cmd.insert("h", info.height);
+        }
+        if (info.durationMs >= 0)
+            cmd.insert("duration_ms", info.durationMs);
+    }
+
+    const QString thumbPath = stem + "-thumb.jpg";
+    auto *frame = new QProcess(this);
+    m_outgoing.last().frame = frame;
+    auto done = [this, frame, thumbPath](bool ok) {
+        for (Outgoing &o : m_outgoing) {
+            if (o.frame != frame)
+                continue;
+            o.frame = nullptr;
+            const QImage thumb(thumbPath);
+            if (ok && !thumb.isNull()) {
+                o.cmd.insert("thumb_path", thumbPath);
+                o.cmd.insert("thumb_w", thumb.width());
+                o.cmd.insert("thumb_h", thumb.height());
+            } else {
+                QFile::remove(thumbPath);
+            }
+            break;
+        }
+        frame->deleteLater();
+        sendInOrder();
+    };
+    connect(frame, static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(&QProcess::finished), this,
+            [done](int code, QProcess::ExitStatus status) { done(status == QProcess::NormalExit && code == 0); });
+    // a crash or a kill ends in finished too; a helper that never started does not
+    connect(frame, &QProcess::errorOccurred, this, [done](QProcess::ProcessError e) {
+        if (e == QProcess::FailedToStart)
+            done(false);
+    });
+    // upright (the helper reads the rotation), within the picture thumbnail's box
+    frame->start(QLatin1String(Keys::kVideoFrameTool),
+                 { "-w", QString::number(Keys::kThumbEdge), "-h", QString::number(Keys::kThumbEdge),
+                   "-o", thumbPath, path });
+    QTimer::singleShot(Keys::kVideoFrameMs, frame, [frame]() { frame->kill(); });
+}
+
+void Media::sendInOrder()
+{
+    while (!m_outgoing.isEmpty() && !m_outgoing.first().frame)
+        emit command(m_outgoing.takeFirst().cmd);
 }
 
 void Media::sendVoice(const QString &roomId, const QString &path, qint64 durationMs, const QString &caption)
@@ -201,7 +264,8 @@ void Media::sendVoice(const QString &roomId, const QString &path, qint64 duratio
     QVariantMap cmd{{"cmd", "send_file"}, {"room_id", roomId}, {"path", path}, {"voice", true}, {"duration_ms", durationMs}};
     if (!caption.isEmpty())
         cmd.insert("caption", caption);
-    emit command(cmd);
+    m_outgoing.append({ cmd, nullptr });
+    sendInOrder();
 }
 
 void Media::getMedia(const QString &roomId, const QString &eventId, bool thumb)

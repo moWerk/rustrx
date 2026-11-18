@@ -405,7 +405,8 @@ impl Core {
     }
 
     /// A file; a picture carries its size and a thumbnail made by the UI,
-    /// a voice message its duration.
+    /// a video its size, duration and a frame as thumbnail, a voice message
+    /// its duration.
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn send_file(
         &self,
@@ -433,8 +434,17 @@ impl Core {
         let tl = self.timeline_target(&room, thread_root).await?;
         let dim = |n: Option<u64>| n.and_then(|n| UInt::try_from(n).ok());
         let mut config = AttachmentConfig::default();
-        if let (Some(w), Some(h)) = (dim(w), dim(h)) {
-            let size = std::fs::metadata(&path).ok().and_then(|m| UInt::try_from(m.len()).ok());
+        let size = std::fs::metadata(&path).ok().and_then(|m| UInt::try_from(m.len()).ok());
+        if mime.type_() == mime::VIDEO {
+            // other clients size the player and show the length before loading
+            config.info = Some(AttachmentInfo::Video(BaseVideoInfo {
+                width: dim(w),
+                height: dim(h),
+                duration: duration_ms.map(Duration::from_millis),
+                size,
+                ..Default::default()
+            }));
+        } else if let (Some(w), Some(h)) = (dim(w), dim(h)) {
             config.info = Some(AttachmentInfo::Image(BaseImageInfo {
                 width: Some(w),
                 height: Some(h),
@@ -461,7 +471,6 @@ impl Core {
         // a voice message: other clients show it as one (a player, not a file)
         if voice {
             let duration = duration_ms.map(Duration::from_millis);
-            let size = std::fs::metadata(&path).ok().and_then(|m| UInt::try_from(m.len()).ok());
             config.info = Some(AttachmentInfo::Voice(BaseAudioInfo { duration, size, ..Default::default() }));
         }
         // through the send queue: the message shows at once as a local

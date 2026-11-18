@@ -12,7 +12,7 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{FutureExt, StreamExt};
 use matrix_sdk::authentication::matrix::MatrixSession;
-use matrix_sdk::attachment::{AttachmentInfo, BaseAudioInfo, BaseImageInfo, Thumbnail};
+use matrix_sdk::attachment::{AttachmentInfo, BaseAudioInfo, BaseImageInfo, BaseVideoInfo, Thumbnail};
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::encryption::recovery::RecoveryState;
 use matrix_sdk::encryption::verification::{

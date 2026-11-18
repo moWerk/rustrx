@@ -149,6 +149,11 @@ static const int kUploadJpegQuality = 88;
 // the thumbnail sent with a picture
 static const int kThumbEdge = 800;
 static const int kThumbJpegQuality = 80;
+// a video's first frame for its thumbnail: Sailfish's own helper (the
+// Videos permission lets the sandbox run it), given this long before the
+// video goes without
+static const char kVideoFrameTool[] = "/usr/bin/thumbnaild-video";
+static const int kVideoFrameMs = 5000;
 // a custom emoji's size until QML binds emoteSize (core: height="32" in sent HTML)
 static const int kDefaultEmoteSize = 32;
 // the longest reaction key shown before it is cut with an ellipsis

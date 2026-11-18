@@ -18,12 +18,14 @@
 #define MEDIA_H
 
 #include <QHash>
+#include <QList>
 #include <QObject>
 #include <QSet>
 #include <QSize>
 #include <QString>
 #include <QVariantMap>
 
+class QProcess;
 class QSettings;
 
 // Files in and out: pictures and recordings to send (prepared in the
@@ -72,6 +74,17 @@ signals:
 private:
     // an avatar picture upright, at most 512 px, in the cache; its path and size
     QString prepareAvatar(const QString &path, const QString &cmd, QSize *size);
+    // a video's size and length into cmd, and its frame taken: the command
+    // waits in the queue until the frame is there (or not)
+    void prepareVideo(QVariantMap &cmd, const QString &stem);
+    // files go to the core in the order they were sent; one waiting for its
+    // video frame holds back those after it
+    struct Outgoing {
+        QVariantMap cmd;
+        QProcess *frame = nullptr;
+    };
+    void sendInOrder();
+    QList<Outgoing> m_outgoing;
 
     QSettings *m_settings;
     QHash<QString, QString> m_emotePaths;
