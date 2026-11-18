@@ -208,6 +208,43 @@ SilicaFlickable {
             ]
         }
 
+        // the ring's arcs in words, in the ring's order (clockwise from 12
+        // o'clock, so top down here): green in place, red missing
+        Column {
+            anchors.horizontalCenter: parent.horizontalCenter
+            Repeater {
+                model: [
+                    //% "Encrypted on the phone"
+                    { slice: tab.storeSlice, ok: qsTrId("rustrx-la-arc-store-ok"),
+                      //% "Stored unencrypted"
+                      risk: qsTrId("rustrx-la-arc-store-risk") },
+                    //% "This phone verified"
+                    { slice: tab.verifySlice, ok: qsTrId("rustrx-la-arc-verified-ok"),
+                      //% "This phone not verified"
+                      risk: qsTrId("rustrx-la-arc-verified-risk") },
+                    //% "Key backup"
+                    { slice: tab.recoverySlice, ok: qsTrId("rustrx-la-arc-backup-ok"),
+                      risk: rustrx.recoveryState === "incomplete"
+                            //% "Recovery key missing"
+                            ? qsTrId("rustrx-la-arc-backup-key-missing")
+                            //% "No key backup"
+                            : qsTrId("rustrx-la-arc-backup-risk") },
+                    //% "Other devices verified"
+                    { slice: tab.devicesSlice, ok: qsTrId("rustrx-la-arc-devices-ok"),
+                      //% "Unverified devices"
+                      risk: qsTrId("rustrx-la-arc-devices-risk") }
+                ]
+                Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    font.pixelSize: Theme.fontSizeSmall
+                    text: modelData.slice === "risk" ? modelData.risk : modelData.ok
+                    color: modelData.slice === "ok" ? Tunables.securityComplete
+                         : modelData.slice === "risk" ? Theme.errorColor
+                         : Theme.highlightDimmerColor
+                }
+            }
+        }
+
         Item { width: 1; height: Theme.paddingSmall }
 
         Label {
@@ -226,18 +263,37 @@ SilicaFlickable {
                   : qsTrId("rustrx-la-security-ok")
         }
 
-        // every missing safeguard, a tap leads to its fix
+        // every missing safeguard, a tap leads to its fix: in a box with an
+        // arrow, as a button is, so it reads as something to tap
         Repeater {
             model: tab.risks
             BackgroundItem {
                 id: riskRow
-                width: column.width
+                x: Theme.horizontalPageMargin
+                width: column.width - 2 * x
                 height: riskText.height + 2 * Theme.paddingMedium
                 enabled: modelData.go.length > 0
                 onClicked: tab.follow(modelData.go)
+                // the box drawn here; BackgroundItem's own square highlight off
+                highlightedColor: "transparent"
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.paddingMedium
+                    visible: riskRow.enabled
+                    color: riskRow.highlighted ? Theme.rgba(Theme.highlightBackgroundColor, Theme.highlightBackgroundOpacity)
+                                               : Theme.rgba(Theme.primaryColor, Theme.opacityFaint / 2)
+                    border.color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
+                    border.width: Math.max(1, Math.round(Theme.paddingSmall / 4))
+                }
+                Image {
+                    id: riskArrow
+                    visible: riskRow.enabled
+                    anchors { right: parent.right; rightMargin: Theme.paddingSmall; verticalCenter: parent.verticalCenter }
+                    source: "image://theme/icon-m-right?" + (riskRow.highlighted ? Theme.highlightColor : Theme.primaryColor)
+                }
                 Image {
                     id: riskIcon
-                    x: Theme.horizontalPageMargin
+                    x: Theme.paddingMedium
                     y: Theme.paddingMedium
                     sourceSize.width: Theme.iconSizeSmall
                     sourceSize.height: Theme.iconSizeSmall
@@ -245,7 +301,7 @@ SilicaFlickable {
                 }
                 Column {
                     id: riskText
-                    anchors { left: riskIcon.right; leftMargin: Theme.paddingMedium; right: parent.right; rightMargin: Theme.horizontalPageMargin }
+                    anchors { left: riskIcon.right; leftMargin: Theme.paddingMedium; right: riskArrow.left; rightMargin: Theme.paddingSmall }
                     y: Theme.paddingMedium
                     Label {
                         width: parent.width

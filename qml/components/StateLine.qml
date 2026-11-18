@@ -16,48 +16,29 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
-import Rustrx 1.0
 
-// A state that matters for safety, readable at a glance: a thin circle
-// with a check in green when it is good, with a cross in red when not,
-// empty while not known yet, in front of the text saying it (the
-// Encryption page; the green is the security ring's).
+// A state that matters for safety, readable at a glance: its icon
+// (StateIcon: a green check, a red cross) in front of the text saying it,
+// on the Encryption page.
 Item {
     id: line
 
-    // "good", "bad" or "" (not known yet); not "state", which is the Item's own
-    property string level
+    // "good", "bad" or "" (not known yet)
+    property alias level: icon.level
     property alias text: label.text
 
-    readonly property color tone: level === "good" ? Tunables.securityComplete
-                                : level === "bad" ? Theme.errorColor
-                                : Theme.secondaryColor
-
     width: parent ? parent.width : 0
-    height: Math.max(circle.height, label.height)
+    height: Math.max(Theme.iconSizeMedium, label.height)
 
-    Rectangle {
-        id: circle
+    StateIcon {
+        id: icon
         x: Theme.horizontalPageMargin
         anchors.verticalCenter: parent.verticalCenter
-        width: Theme.iconSizeMedium
-        height: width
-        radius: width / 2
-        color: "transparent"
-        border.color: line.tone
-        border.width: Math.max(1, Math.round(Theme.paddingSmall / 2))
-        Image {
-            anchors.centerIn: parent
-            visible: line.level.length > 0
-            sourceSize.width: Theme.iconSizeSmallPlus
-            sourceSize.height: Theme.iconSizeSmallPlus
-            source: (line.level === "good" ? "image://theme/icon-m-acknowledge?" : "image://theme/icon-m-clear?") + line.tone
-        }
     }
 
     Label {
         id: label
-        anchors { left: circle.right; leftMargin: Theme.paddingLarge; right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+        anchors { left: parent.left; leftMargin: Theme.horizontalPageMargin + Theme.iconSizeMedium + Theme.paddingLarge; right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
         wrapMode: Text.Wrap
         color: Theme.highlightColor
         font.pixelSize: Theme.fontSizeSmall

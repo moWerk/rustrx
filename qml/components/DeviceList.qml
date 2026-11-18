@@ -55,13 +55,21 @@ Column {
             contentHeight: Math.max(Theme.itemSizeMedium, info.height + 2 * Theme.paddingSmall)
             menu: model.current ? null : removeMenu
 
+            // verified or not at a glance; a login without encryption keys
+            // has nothing to verify and gets no icon
+            StateIcon {
+                id: verifiedIcon
+                anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                level: model.keys === true && model.verified === true ? "good" : model.unverified ? "bad" : ""
+            }
+
             Column {
                 id: info
                 anchors {
                     left: parent.left
                     right: parent.right
                     leftMargin: Theme.horizontalPageMargin
-                    rightMargin: Theme.horizontalPageMargin
+                    rightMargin: Theme.horizontalPageMargin + Theme.iconSizeMedium + Theme.paddingMedium
                     verticalCenter: parent.verticalCenter
                 }
                 Label {

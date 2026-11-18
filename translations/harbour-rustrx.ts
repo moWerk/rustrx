@@ -348,6 +348,42 @@
         <source>Checking…</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-arc-store-ok">
+        <source>Encrypted on the phone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-arc-store-risk">
+        <source>Stored unencrypted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-arc-verified-ok">
+        <source>This phone verified</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-arc-verified-risk">
+        <source>This phone not verified</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-arc-backup-ok">
+        <source>Key backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-arc-backup-key-missing">
+        <source>Recovery key missing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-arc-backup-risk">
+        <source>No key backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-arc-devices-ok">
+        <source>Other devices verified</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-arc-devices-risk">
+        <source>Unverified devices</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-la-risk-no-backup">
         <source>There is no key backup. If you lose this phone, your encrypted messages are gone.</source>
         <translation type="unfinished"></translation>
