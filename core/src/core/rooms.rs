@@ -4,6 +4,9 @@
 //! previews and join rules are in spaces.rs)
 
 use super::*;
+use matrix_sdk::ruma::directory::RoomTypeFilter;
+use matrix_sdk::ruma::room::RoomType;
+use matrix_sdk::ruma::OwnedServerName;
 
 impl Core {
     /// The room's own notification rule, "default" without one: "notification_mode".
@@ -245,6 +248,45 @@ impl Core {
             })
             .collect();
         self.emit(json!({"ev": "search_results", "term": term, "users": users, "rooms": rooms}));
+        Ok(())
+    }
+
+    /// Rooms and spaces from one server's public directory (the own one
+    /// without `server`), by part of their name, topic or address, for
+    /// joining without the exact address. Answered by
+    /// "room_search_results"; a server that will not answer gives none.
+    pub(crate) async fn search_rooms(&self, term: &str, server: Option<&str>) -> Result<()> {
+        let client = self.client().await?;
+        let mut req = get_public_rooms_filtered::v3::Request::new();
+        req.limit = Some(SEARCH_ROOMS_LIMIT.into());
+        req.filter.generic_search_term = Some(term.to_owned());
+        req.server = server.and_then(|s| OwnedServerName::try_from(s.trim()).ok());
+        // spaces too: the directory leaves them out unless asked
+        req.filter.room_types = vec![RoomTypeFilter::Default, RoomTypeFilter::Space];
+        let rooms: Vec<Value> = client
+            .public_rooms_filtered(req)
+            .await
+            .map(|r| r.chunk)
+            .unwrap_or_else(|e| {
+                tracing::info!("room directory search: {e}");
+                Vec::new()
+            })
+            .into_iter()
+            .map(|r| {
+                let joined = client.get_room(&r.room_id).is_some_and(|room| room.state() == RoomState::Joined);
+                json!({
+                    "room_id": r.room_id.as_str(),
+                    "name": r.name,
+                    "alias": r.canonical_alias.map(|a| a.to_string()),
+                    "topic": r.topic,
+                    "member_count": r.num_joined_members,
+                    "avatar_mxc": r.avatar_url.map(|u| u.to_string()),
+                    "is_space": r.room_type == Some(RoomType::Space),
+                    "joined": joined,
+                })
+            })
+            .collect();
+        self.emit(json!({"ev": "room_search_results", "term": term, "server": server, "rooms": rooms}));
         Ok(())
     }
 

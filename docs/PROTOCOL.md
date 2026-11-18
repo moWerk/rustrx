@@ -86,6 +86,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `set_room_name` / `set_room_topic` | `room_id`, `name` / `topic` | `rooms` |
 | `invite` | `room_id`, `user_id` | |
 | `search` | `term` | `search_results` |
+| `search_rooms` | `term`, `server?` (a server's public directory; the own one without) | `room_search_results` |
 | `set_room_avatar` | `room_id`, `path`, `w?`, `h?` (a prepared picture) | `rooms` (through the sync) |
 | `refresh_rooms` | | `rooms` (for tests: `tools/test/dev.sh`) |
 
@@ -157,6 +158,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `notification_mode` | `room_id`, `mode` (`all`, `mentions`, `mute`, `default`) |
 | `joined` | `room_id` |
 | `dm_ready` | `room_id`, `user_id` |
+| `room_search_results` | `term`, `server`, `rooms`: `{room_id, name, alias, topic, member_count, avatar_mxc, is_space, joined}` |
 | `search_results` | `term`, `users`: `{user_id, name}`, `rooms`: `{room_id, name, alias, topic, member_count, joined}` |
 | `verification` | `flow_id`, `state`, `other_user`, `we_started`, `self_verification` |
 | `sas` | `flow_id`, `state`, `emojis?`, `decimals?`, `reason?` |

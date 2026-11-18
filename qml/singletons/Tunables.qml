@@ -108,6 +108,9 @@ QtObject {
     readonly property int minSearchChars: 2
     // shortest room address to look up
     readonly property int minJoinChars: 3
+    // joining by part of a name also searches this server's public
+    // directory, the biggest one, besides the own server's
+    readonly property string bigDirectoryServer: "matrix.org"
     // shortest key export passphrase
     readonly property int minPassphrase: 8
     // most used emoji kept for the picker's top row and the reactions

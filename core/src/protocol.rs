@@ -174,6 +174,9 @@ pub(crate) enum Command {
     Invite { room_id: String, user_id: String },
     /// Users and public rooms; answered by "search_results".
     Search { term: String },
+    /// Public rooms and spaces in one server's directory (the own one when
+    /// none is named), by part of a name or address: "room_search_results".
+    SearchRooms { term: String, server: Option<String> },
     RefreshRooms,
 
     /// The users this account ignores: "ignored_users".
@@ -270,7 +273,7 @@ mod tests {
         "join_room", "leave_room", "join_by_id_or_alias", "room_preview", "knock", "room_link",
         "set_join_rule", "space_open", "space_close", "space_add_child", "space_remove_child",
         "space_leave", "create_dm", "create_room", "room_members", "set_room_name",
-        "set_room_avatar", "set_own_avatar", "set_room_topic", "invite", "search", "refresh_rooms", "ignored_users", "user_info", "kick", "ban", "unban",
+        "set_room_avatar", "set_own_avatar", "set_room_topic", "invite", "search", "search_rooms", "refresh_rooms", "ignored_users", "user_info", "kick", "ban", "unban",
         "verification_request_self", "verify_user", "verification_accept", "verification_start_sas",
         "verification_confirm", "verification_mismatch", "verification_cancel",
         "recovery_recover", "recovery_enable", "recovery_reset", "identity_reset",
@@ -282,7 +285,7 @@ mod tests {
 
     /// How many fields the commands require, all together. Like COMMANDS, a
     /// change here is a change of the contract.
-    const REQUIRED_FIELDS: usize = 111;
+    const REQUIRED_FIELDS: usize = 112;
 
 
     /// The names serde knows, from its own error for an unknown tag

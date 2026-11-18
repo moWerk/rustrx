@@ -815,6 +815,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit paginated(ev.value("room_id").toString(), ev.value("at_start").toBool());
     } else if (type == QLatin1String("search_results")) {
         emit searchResults(ev);
+    } else if (type == QLatin1String("room_search_results")) {
+        emit roomSearchResults(ev);
     } else if (type == QLatin1String("typing")) {
         emit typing(ev.value("room_id").toString(), ev.value("names").toStringList());
     } else if (type == QLatin1String("notification_mode")) {

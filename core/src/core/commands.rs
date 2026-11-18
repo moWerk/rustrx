@@ -141,6 +141,7 @@ impl Core {
             SetRoomTopic { room_id, topic } => self.set_room_topic(&room_id, &topic).await,
             Invite { room_id, user_id } => self.invite(&room_id, &user_id).await,
             Search { term } => self.search(&term).await,
+            SearchRooms { term, server } => self.search_rooms(&term, given(&server)).await,
             RefreshRooms => self.refresh_rooms().await,
 
             // --- encryption (verification.rs, account.rs) ---

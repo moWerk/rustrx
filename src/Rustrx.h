@@ -295,6 +295,7 @@ signals:
     void devices(const QVariantList &devices);
     void deviceDeleted(const QString &deviceId);
     void searchResults(const QVariantMap &results);
+    void roomSearchResults(const QVariantMap &results);
     void profile(const QVariantMap &profile);
     void dmReady(const QString &roomId, const QString &userId);
     void joined(const QString &roomId);
