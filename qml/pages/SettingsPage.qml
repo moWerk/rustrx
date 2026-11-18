@@ -79,9 +79,15 @@ Page {
     // key: Settings opens on Account, where the risks and their fixes are;
     // a missing recovery key goes on to the Encryption page, its only fix
     property bool showEncryption
-    onStatusChanged: if (status === PageStatus.Active && showEncryption) {
-        showEncryption = false
-        if (rustrx.recoveryState === "incomplete") encryptionLater.start()
+    // a tab to open on, by its kind (the dev hook)
+    property string startTab
+    onStatusChanged: {
+        if (status !== PageStatus.Active) return
+        if (startTab.length) { showTab(startTab); startTab = "" }
+        if (showEncryption) {
+            showEncryption = false
+            if (rustrx.recoveryState === "incomplete") encryptionLater.start()
+        }
     }
     Timer {
         id: encryptionLater
