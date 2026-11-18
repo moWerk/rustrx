@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../../components"
 
 // Settings, Account, Encryption: verifying this device, the recovery key and
 // key backup, a reset, and room keys to and from a file. Rare, stateful and
@@ -62,17 +63,13 @@ Page {
 
             PageHeader { title: qsTrId("rustrx-se-encryption") }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: Theme.highlightColor
-                font.pixelSize: Theme.fontSizeSmall
+            StateLine {
+                level: rustrx.verificationState === "verified" ? "good"
+                     : rustrx.verificationState === "unverified" ? "bad" : ""
                 text: page.verificationText()
             }
 
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 visible: rustrx.verificationState !== "verified"
                 //% "Verify this device"
                 text: qsTrId("rustrx-bt-verify-device")
@@ -84,12 +81,9 @@ Page {
 
             Item { width: 1; height: Theme.paddingLarge }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: Theme.highlightColor
-                font.pixelSize: Theme.fontSizeSmall
+            StateLine {
+                level: rustrx.recoveryState === "enabled" ? "good"
+                     : rustrx.recoveryState === "incomplete" || rustrx.recoveryState === "disabled" ? "bad" : ""
                 text: page.recoveryText()
             }
 
@@ -112,8 +106,7 @@ Page {
                 }
             }
 
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 visible: rustrx.recoveryState !== "enabled"
                 enabled: keyField.text.trim().length > 0
                 //% "Restore encrypted messages"
@@ -125,8 +118,7 @@ Page {
             }
 
             // no other device and no recovery key: start over
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 visible: rustrx.recoveryState === "incomplete" && rustrx.verificationState !== "verified"
                 //% "Reset encryption"
                 text: qsTrId("rustrx-bt-reset-identity")
@@ -156,12 +148,14 @@ Page {
                 visible: settings.resetApprovalUrl.length > 0
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: Theme.paddingLarge
-                Button {
+                PageButton {
+                    inRow: true
                     //% "Open approval"
                     text: qsTrId("rustrx-bt-open-approval")
                     onClicked: app.openExternal(settings.resetApprovalUrl)
                 }
-                Button {
+                PageButton {
+                    inRow: true
                     text: qsTrId("rustrx-bt-sso-copy")
                     onClicked: {
                         Clipboard.text = settings.resetApprovalUrl
@@ -170,8 +164,7 @@ Page {
                 }
             }
 
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 visible: rustrx.recoveryState === "disabled"
                 //% "Turn on key backup"
                 text: qsTrId("rustrx-bt-enable-backup")
@@ -183,8 +176,7 @@ Page {
             }
 
             // the old key cannot be shown again; a new one can be made
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            PageButton {
                 visible: rustrx.recoveryState === "enabled"
                 //% "New recovery key"
                 text: qsTrId("rustrx-bt-new-recovery-key")
