@@ -280,13 +280,19 @@ ListItem {
             }
 
             // the bubble: own messages at the right in the highlight colour,
-            // others at the left with the sender's name on top (no avatars)
+            // others at the left with the sender's name on top (no avatars).
+            // A picture or video sent on its own (no caption, no reply) has
+            // no bubble: the picture itself, its corners rounded as one,
+            // the name above and the time below it.
             Item {
                 id: bubble
+                readonly property bool bare: isMedia && msgType !== "sticker" && replyTo === null
+                                             && !(model.caption && model.caption.length)
+                readonly property real edge: bare ? 0 : pad
                 visible: !plainLine
                 x: own ? parent.width - width - sideMargin : sideMargin
-                width: inner.width + 2 * pad
-                height: visible ? inner.height + 2 * pad : 0
+                width: inner.width + 2 * edge
+                height: visible ? inner.height + 2 * edge : 0
 
                 // the chat jumped here from a reply's quote: a moment of highlight
                 Rectangle {
@@ -297,6 +303,7 @@ ListItem {
                     Behavior on opacity { FadeAnimation { duration: Tunables.jumpFlashMs } }
                 }
                 Rectangle {
+                    visible: !bubble.bare
                     anchors.fill: parent
                     radius: Theme.paddingLarge / 2
                     color: own ? Theme.rgba(Theme.highlightBackgroundColor, Theme.opacityFaint)
@@ -305,8 +312,8 @@ ListItem {
 
                 Column {
                     id: inner
-                    x: pad
-                    y: pad
+                    x: bubble.edge
+                    y: bubble.edge
                     spacing: Theme.paddingSmall / 2
 
                     Label {
@@ -429,8 +436,22 @@ ListItem {
                         visible: active
                         sourceComponent: Component {
                             Item {
-                                width: Math.min(innerMax, Math.min(msg.width, Screen.width) * Tunables.mediaMaxWidth)
-                                height: Math.min(width, Math.max(Theme.itemSizeLarge, width * (model.h && model.w ? model.h / model.w : Tunables.mediaFallbackAspect)))
+                                readonly property real maxWidth: Math.min(innerMax, Math.min(msg.width, Screen.width) * Tunables.mediaMaxWidth)
+                                readonly property bool sized: !!(model.h && model.w)
+                                readonly property real aspect: sized ? model.h / model.w : Tunables.mediaFallbackAspect
+                                // a portrait one as narrow as it is: no empty sides
+                                // beside it, and the rounded corners on its own
+                                height: Math.min(maxWidth, Math.max(Theme.itemSizeLarge, maxWidth * aspect))
+                                width: sized ? Math.min(maxWidth, height / aspect) : maxWidth
+                                layer.enabled: bubble.bare
+                                layer.effect: RoundMask { radiusPx: Theme.paddingLarge / 2 }
+
+                                // without a bubble: a shade where it is still loading
+                                Rectangle {
+                                    visible: bubble.bare && picture.status !== Image.Ready
+                                    anchors.fill: parent
+                                    color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint / 2)
+                                }
 
                                 Image {
                                     id: picture

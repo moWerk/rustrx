@@ -16,22 +16,29 @@
  */
 import QtQuick 2.6
 
-// The mask for a room or own picture: layer.effect: RoundMask {} (clip:
-// true would cut a square). A square with rounded corners, the radius a
-// share of the side: 0.5 (the default) a circle, the setting's value
-// app.avatarRadius elsewhere. The edge softens over the outer 1 %.
+// The mask for a room or own picture, or a message's picture or video:
+// layer.effect: RoundMask {} (clip: true would cut a square). Rounded
+// corners, the radius a share of the shorter side: 0.5 (the default) a
+// circle on a square, the setting's value app.avatarRadius elsewhere; or
+// radiusPx, in pixels, for a picture of any shape. The edge softens over
+// one pixel.
 ShaderEffect {
     property real radius: 0.5
+    property real radiusPx: -1
+    // the corner in pixels, and the size, for the shader
+    readonly property real r: radiusPx >= 0 ? radiusPx : radius * Math.min(width, height)
+    readonly property size box: Qt.size(width, height)
     fragmentShader: "
         varying highp vec2 qt_TexCoord0;
         uniform sampler2D source;
         uniform lowp float qt_Opacity;
-        uniform highp float radius;
+        uniform highp float r;
+        uniform highp vec2 box;
         void main() {
-            // distance outside the rounded square (negative inside)
-            highp vec2 q = abs(qt_TexCoord0 - vec2(0.5)) - vec2(0.5 - radius);
-            highp float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
-            lowp float a = 1.0 - smoothstep(-0.01, 0.0, d);
+            // distance outside the rounded rectangle, in pixels (negative inside)
+            highp vec2 q = abs((qt_TexCoord0 - vec2(0.5)) * box) - (box * 0.5 - vec2(r));
+            highp float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+            lowp float a = 1.0 - smoothstep(-1.0, 0.0, d);
             gl_FragColor = texture2D(source, qt_TexCoord0) * a * qt_Opacity;
         }"
 }
