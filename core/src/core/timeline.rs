@@ -534,7 +534,11 @@ impl Core {
     pub(crate) async fn edit(&self, room_id: &str, event_id: Option<String>, txn_id: Option<String>, body: &str) -> Result<()> {
         let room = self.room(room_id).await?;
         let tl = self.timeline_holding(&room, event_id.as_deref()).await?;
-        let content: RoomMessageEventContentWithoutRelation = RoomMessageEventContent::text_markdown(body).into();
+        // as a new message is made: an edited "||secret||" lost its spoiler
+        // and other clients showed it in the clear
+        let mut content = RoomMessageEventContent::text_markdown(body);
+        with_spoilers(&mut content, body);
+        let content: RoomMessageEventContentWithoutRelation = content.into();
         tl.edit(&Self::item_id(event_id, txn_id)?, EditedContent::RoomMessage(content)).await?;
         Ok(())
     }
@@ -854,20 +858,28 @@ fn spoilers_in_html(html: &str) -> Option<String> {
     // the "||" outside code, each with the paragraph it is in
     let mut marks: Vec<(usize, usize)> = Vec::new();
     let (mut para, mut code, mut i) = (0usize, 0usize, 0usize);
+    // bytes only: every index kept is an ASCII "<", ">" or "|", so the
+    // slices below always fall on a character boundary (string slicing
+    // at byte steps panicked on "ä" or an emoji)
     let b = html.as_bytes();
     while i < b.len() {
         if b[i] == b'<' {
-            let end = html[i..].find('>').map_or(b.len(), |e| i + e + 1);
-            let tag = html[i + 1..end.saturating_sub(1)].trim_start_matches('/');
-            let name: String = tag.chars().take_while(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_lowercase();
+            let end = b[i..].iter().position(|&c| c == b'>').map_or(b.len(), |e| i + e + 1);
+            let closing = b.get(i + 1) == Some(&b'/');
+            let start = if closing { i + 2 } else { i + 1 };
+            let name: String = b[start.min(b.len())..]
+                .iter()
+                .take_while(|c| c.is_ascii_alphanumeric())
+                .map(|&c| (c as char).to_ascii_lowercase())
+                .collect();
             if name == "code" || name == "pre" {
-                if html[i + 1..].starts_with('/') { code = code.saturating_sub(1) } else { code += 1 }
+                if closing { code = code.saturating_sub(1) } else { code += 1 }
             }
             if BLOCK.contains(&name.as_str()) || name == "pre" {
                 para += 1;
             }
             i = end;
-        } else if code == 0 && html[i..].starts_with("||") {
+        } else if code == 0 && b[i..].starts_with(b"||") {
             marks.push((i, para));
             i += 2;
         } else {
@@ -961,6 +973,13 @@ mod tests {
         assert_eq!(sp("a |||| b"), None);
         assert_eq!(sp("odd ||one|| ||"), Some("odd <span data-mx-spoiler>one</span> ||".to_string()));
         assert_eq!(sp("no pair || here"), None);
+        // not ASCII, and broken tags: no panic, the right pairs
+        // Planted-bug: slice the str at byte steps (panics on "ä").
+        assert_eq!(sp("||x|| ä").as_deref(), Some("<span data-mx-spoiler>x</span> ä"));
+        assert_eq!(sp("ä ||ü😀|| 😀").as_deref(), Some("ä <span data-mx-spoiler>ü😀</span> 😀"));
+        assert_eq!(sp("<p>||a||</p><").as_deref(), Some("<p><span data-mx-spoiler>a</span></p><"));
+        assert_eq!(sp("||a|| <ä"), Some("<span data-mx-spoiler>a</span> <ä".to_string()));
+        assert_eq!(sp("<ä||a||"), None);
         assert_eq!(sp("||My first<br>Multiline<br />Spoiler||").as_deref(),
                    Some("<span data-mx-spoiler>My first<br>Multiline<br />Spoiler</span>"));
 
