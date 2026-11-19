@@ -434,6 +434,8 @@ QString Rustrx::dev(const QString &json)
         const QString what = req.value("voip").toString();
         if (req.contains("tone"))
             m_voip->setTestTone(req.value("tone").toBool());
+        if (req.contains("aec"))
+            m_voip->setEchoCancelling(req.value("aec").toBool());
         if (req.contains("policy_class"))
             m_callAudio->configure(req.value("policy_class").toString(), req.value("by_process").toBool());
         if (what == QLatin1String("place"))

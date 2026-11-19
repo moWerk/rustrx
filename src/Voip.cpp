@@ -24,7 +24,11 @@
 #include <QUrl>
 #include <QUuid>
 
+#include <gst/app/gstappsink.h>
+#include <gst/app/gstappsrc.h>
 #include <gst/gst.h>
+#include <speex/speex_echo.h>
+#include <speex/speex_preprocess.h>
 #include <gst/sdp/sdp.h>
 #include <gst/webrtc/webrtc.h>
 
@@ -404,11 +408,19 @@ bool Voip::startPipeline()
     const QString source = m_testTone
             ? QStringLiteral("audiotestsrc is-live=true wave=sine freq=440 volume=0.3")
             : QStringLiteral("pulsesrc stream-properties=\"props,media.role=(string)phone,media.name=(string)rustrx-call\"");
+    // with echo cancelling, the microphone goes through this process
+    // (capture -> Speex -> aec) and on into the encoder
+    const QString aecCaps = QStringLiteral("audio/x-raw,format=S16LE,rate=%1,channels=1,layout=interleaved").arg(Keys::kVoipAecRate);
+    const QString mic = m_aec
+            ? QStringLiteral("%1 ! audioconvert ! audioresample ! %2 ! appsink name=capture emit-signals=true sync=false "
+                             "appsrc name=aec is-live=true format=time do-timestamp=true caps=%2 ! audioconvert ! audioresample")
+                  .arg(source, aecCaps)
+            : source + QStringLiteral(" ! audioconvert ! audioresample");
     const QString desc = QStringLiteral(
             "webrtcbin name=w bundle-policy=max-bundle latency=%1 "
-            "%2 ! audioconvert ! audioresample ! volume name=mic ! queue ! opusenc bitrate=%3 ! "
+            "%2 ! volume name=mic ! queue ! opusenc bitrate=%3 ! "
             "rtpopuspay pt=111 ! application/x-rtp,media=audio,encoding-name=OPUS,payload=111,clock-rate=48000 ! w.")
-            .arg(Keys::kVoipJitterMs).arg(source).arg(Keys::kVoipOpusBitrate);
+            .arg(Keys::kVoipJitterMs).arg(mic).arg(Keys::kVoipOpusBitrate);
     GError *err = nullptr;
     m_pipe = gst_parse_launch(desc.toUtf8().constData(), &err);
     if (err) {
@@ -422,6 +434,22 @@ bool Voip::startPipeline()
     m_webrtc = gst_bin_get_by_name(GST_BIN(m_pipe), "w");
     m_volume = gst_bin_get_by_name(GST_BIN(m_pipe), "mic");
     g_object_set(m_volume, "mute", m_muted ? TRUE : FALSE, nullptr);
+    if (m_aec) {
+        const int frame = Keys::kVoipAecRate * Keys::kVoipAecFrameMs / 1000;
+        m_echo = speex_echo_state_init(frame, Keys::kVoipAecRate * Keys::kVoipAecTailMs / 1000);
+        int rate = Keys::kVoipAecRate;
+        speex_echo_ctl(m_echo, SPEEX_ECHO_SET_SAMPLING_RATE, &rate);
+        m_denoise = speex_preprocess_state_init(frame, Keys::kVoipAecRate);
+        speex_preprocess_ctl(m_denoise, SPEEX_PREPROCESS_SET_ECHO_STATE, m_echo);
+        int on = 1;
+        speex_preprocess_ctl(m_denoise, SPEEX_PREPROCESS_SET_DENOISE, &on);
+        m_micIn.clear();
+        m_farIn.clear();
+        m_aecSrc = gst_bin_get_by_name(GST_BIN(m_pipe), "aec");
+        GstElement *capture = gst_bin_get_by_name(GST_BIN(m_pipe), "capture");
+        g_signal_connect(capture, "new-sample", G_CALLBACK(&Voip::onMicSample), this);
+        gst_object_unref(capture);
+    }
 
     // TURN from the homeserver; its host doubles as the STUN server
     bool stun = false;
@@ -467,6 +495,18 @@ void Voip::stopPipeline()
     }
     g_signal_handlers_disconnect_by_data(m_webrtc, this);
     gst_element_set_state(m_pipe, GST_STATE_NULL);
+    if (m_aecSrc)
+        gst_object_unref(m_aecSrc);
+    m_aecSrc = nullptr;
+    {
+        QMutexLocker lock(&m_aecLock);
+        if (m_denoise)
+            speex_preprocess_state_destroy(m_denoise);
+        if (m_echo)
+            speex_echo_state_destroy(m_echo);
+        m_denoise = nullptr;
+        m_echo = nullptr;
+    }
     gst_object_unref(m_volume);
     gst_object_unref(m_webrtc);
     gst_object_unref(m_pipe);
@@ -602,9 +642,17 @@ void Voip::onPadAdded(GstElement *, GstPad *pad, void *self)
     const QString sink = v->m_testTone
             ? QStringLiteral("fakesink sync=false")
             : QStringLiteral("pulsesink stream-properties=\"props,media.role=(string)phone,media.name=(string)rustrx-call\"");
+    // with echo cancelling, what is played also goes to Speex as the echo
+    // to take out of the microphone
+    const QString ref = v->m_aec
+            ? QStringLiteral(" far. ! queue ! audioconvert ! audioresample ! "
+                             "audio/x-raw,format=S16LE,rate=%1,channels=1,layout=interleaved ! "
+                             "appsink name=farref emit-signals=true sync=false").arg(Keys::kVoipAecRate)
+            : QString();
     const QString desc = QStringLiteral(
             "queue ! rtpopusdepay ! opusdec ! audioconvert ! audioresample ! "
-            "level interval=%1 post-messages=true ! %2").arg(qint64(Keys::kVoipLevelMs) * 1000000).arg(sink);
+            "level interval=%1 post-messages=true ! tee name=far ! queue ! %2%3")
+            .arg(qint64(Keys::kVoipLevelMs) * 1000000).arg(sink, ref);
     GError *err = nullptr;
     GstElement *bin = gst_parse_bin_from_description(desc.toUtf8().constData(), TRUE, &err);
     if (err) {
@@ -613,12 +661,83 @@ void Voip::onPadAdded(GstElement *, GstPad *pad, void *self)
         QMetaObject::invokeMethod(v, "onMediaError", Qt::QueuedConnection, Q_ARG(QString, what));
         return;
     }
+    if (v->m_aec) {
+        GstElement *far = gst_bin_get_by_name(GST_BIN(bin), "farref");
+        if (far && GST_IS_APP_SINK(far))
+            g_signal_connect(far, "new-sample", G_CALLBACK(&Voip::onFarSample), v);
+        if (far)
+            gst_object_unref(far);
+    }
     gst_bin_add(GST_BIN(v->m_pipe), bin);
     gst_element_sync_state_with_parent(bin);
     GstPad *sinkPad = gst_element_get_static_pad(bin, "sink");
     if (gst_pad_link(pad, sinkPad) != GST_PAD_LINK_OK)
         QMetaObject::invokeMethod(v, "onMediaError", Qt::QueuedConnection, Q_ARG(QString, QStringLiteral("the far end's audio does not link")));
     gst_object_unref(sinkPad);
+}
+
+// ---- echo cancelling (Speex), on GStreamer's threads ---------------------
+
+static QByteArray takeSample(GstElement *sink)
+{
+    QByteArray out;
+    GstSample *sample = gst_app_sink_pull_sample(GST_APP_SINK(sink));
+    if (!sample)
+        return out;
+    GstBuffer *buf = gst_sample_get_buffer(sample);
+    GstMapInfo map;
+    if (buf && gst_buffer_map(buf, &map, GST_MAP_READ)) {
+        out = QByteArray(reinterpret_cast<const char *>(map.data), int(map.size));
+        gst_buffer_unmap(buf, &map);
+    }
+    gst_sample_unref(sample);
+    return out;
+}
+
+// what the far end says, as it is played: Speex's echo reference
+int Voip::onFarSample(GstElement *sink, void *self)
+{
+    Voip *v = static_cast<Voip *>(self);
+    const QByteArray data = takeSample(sink);
+    QMutexLocker lock(&v->m_aecLock);
+    if (!v->m_echo)
+        return GST_FLOW_OK;
+    v->m_farIn += data;
+    const int bytes = Keys::kVoipAecRate * Keys::kVoipAecFrameMs / 1000 * 2;
+    while (v->m_farIn.size() >= bytes) {
+        speex_echo_playback(v->m_echo, reinterpret_cast<const spx_int16_t *>(v->m_farIn.constData()));
+        v->m_farIn.remove(0, bytes);
+    }
+    return GST_FLOW_OK;
+}
+
+// the microphone: the echo out, then noise suppression, on to the encoder
+int Voip::onMicSample(GstElement *sink, void *self)
+{
+    Voip *v = static_cast<Voip *>(self);
+    const QByteArray data = takeSample(sink);
+    const int bytes = Keys::kVoipAecRate * Keys::kVoipAecFrameMs / 1000 * 2;
+    QByteArray clean;
+    {
+        QMutexLocker lock(&v->m_aecLock);
+        if (!v->m_echo || !v->m_aecSrc)
+            return GST_FLOW_OK;
+        v->m_micIn += data;
+        while (v->m_micIn.size() >= bytes) {
+            QByteArray frame(bytes, Qt::Uninitialized);
+            speex_echo_capture(v->m_echo, reinterpret_cast<const spx_int16_t *>(v->m_micIn.constData()),
+                               reinterpret_cast<spx_int16_t *>(frame.data()));
+            speex_preprocess_run(v->m_denoise, reinterpret_cast<spx_int16_t *>(frame.data()));
+            clean += frame;
+            v->m_micIn.remove(0, bytes);
+        }
+    }
+    if (clean.isEmpty())
+        return GST_FLOW_OK;
+    GstBuffer *buf = gst_buffer_new_allocate(nullptr, gsize(clean.size()), nullptr);
+    gst_buffer_fill(buf, 0, clean.constData(), gsize(clean.size()));
+    gst_app_src_push_buffer(GST_APP_SRC(v->m_aecSrc), buf);
+    return GST_FLOW_OK;
 }
 
 void Voip::onStatsReply(GstPromise *promise, void *self)

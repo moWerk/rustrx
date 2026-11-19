@@ -9,7 +9,7 @@ DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 QT += dbus multimedia network
 # calls: GStreamer's webrtcbin (Voip.cpp)
 CONFIG += link_pkgconfig
-PKGCONFIG += gstreamer-1.0 gstreamer-sdp-1.0 gstreamer-webrtc-1.0
+PKGCONFIG += gstreamer-1.0 gstreamer-sdp-1.0 gstreamer-webrtc-1.0 gstreamer-app-1.0 speexdsp
 # a call's audio as a call (the audio policy, CallAudio.cpp)
 PKGCONFIG += libresourceqt5
 

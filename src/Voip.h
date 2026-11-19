@@ -16,6 +16,8 @@
  */
 #pragma once
 
+#include <QByteArray>
+#include <QMutex>
 #include <QObject>
 #include <QStringList>
 #include <QTimer>
@@ -27,6 +29,8 @@ typedef struct _GstPromise GstPromise;
 typedef struct _GstPad GstPad;
 typedef struct _GstBus GstBus;
 typedef struct _GstMessage GstMessage;
+typedef struct SpeexEchoState_ SpeexEchoState;
+typedef struct SpeexPreprocessState_ SpeexPreprocessState;
 
 // One-to-one calls the classic Matrix way (m.call.invite, answer,
 // candidates, select_answer, hangup, reject; VoIP version 1), with
@@ -76,6 +80,8 @@ public:
     // tests: a tone instead of the microphone, and the far end's level and
     // packet counts in the log and in status()
     void setTestTone(bool on) { m_testTone = on; }
+    // echo cancelling (Speex) on the microphone; on unless a test turns it off
+    void setEchoCancelling(bool on) { m_aec = on; }
     QVariantMap status() const;
 
     // a TURN uri with credentials as webrtcbin takes it, or "" for one it
@@ -136,6 +142,8 @@ private:
     static void onAnswerReply(GstPromise *promise, void * self);
     static void onStatsReply(GstPromise *promise, void * self);
     static int onBusMessage(GstBus *bus, GstMessage *msg, void * self);
+    static int onMicSample(GstElement *sink, void *self);
+    static int onFarSample(GstElement *sink, void *self);
 
     QString m_ownUserId;
     QString m_state = QStringLiteral("idle");
@@ -165,6 +173,14 @@ private:
     GstElement *m_webrtc = nullptr;
     GstElement *m_volume = nullptr;   // the microphone's, for mute
     unsigned m_busWatch = 0;
+
+    // echo cancelling: the microphone and the far end in 10 ms frames
+    bool m_aec = true;
+    GstElement *m_aecSrc = nullptr;
+    SpeexEchoState *m_echo = nullptr;
+    SpeexPreprocessState *m_denoise = nullptr;
+    QMutex m_aecLock;
+    QByteArray m_micIn, m_farIn;
 
     QTimer m_candidateTimer;   // batches candidates into one event
     QTimer m_inviteTimer;      // the invite's lifetime

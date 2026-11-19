@@ -183,6 +183,10 @@ static const int kVoipLevelMs = 500;
 // the receiving jitter buffer (ms) and the Opus bitrate (bit/s)
 static const int kVoipJitterMs = 100;
 static const int kVoipOpusBitrate = 32000;
+// echo cancelling (Speex): its rate, frame and how long an echo it learns
+static const int kVoipAecRate = 16000;
+static const int kVoipAecFrameMs = 10;
+static const int kVoipAecTailMs = 200;
 
 }
 
