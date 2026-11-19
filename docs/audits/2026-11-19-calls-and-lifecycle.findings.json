@@ -72,9 +72,9 @@
    "id": "S6",
    "severity": "low",
    "area": "calls privacy",
-   "status": "OPEN (queue): relay-only option",
+   "status": "FIXED 946e6be (Settings > Privacy: ice-transport-policy=relay, no STUN, non-relay candidates filtered from events and SDP; no TURN ends the call as no_relay)",
    "summary": "A call shows the peer the device's IP addresses; no relay-only switch.",
-   "test": ""
+   "test": "tst_voip relay filter; on the phone (0.6 checklist §4)"
   },
   {
    "id": "S7",
@@ -376,23 +376,23 @@
    "id": "V10",
    "severity": "low",
    "area": "cover",
-   "status": "OPEN (queue)",
+   "status": "FIXED 946e6be (cover: who or \"Call\", state or length, Muted; Answer / Unmute / Hang up)",
    "summary": "The cover shows nothing about a running call.",
-   "test": ""
+   "test": "on the phone (0.6 checklist §3)"
   },
   {
    "id": "V11",
    "severity": "medium",
    "area": "proximity",
-   "status": "OPEN: check whether communication mode blanks via MCE",
+   "status": "FIXED 946e6be (MCE req_call_state_change ringing/active/none from the app; MCE accepted it from the user session on jp26 and drops it with the sender)",
    "summary": "No proximity blanking during earpiece calls.",
-   "test": ""
+   "test": "on the phone (0.6 checklist §2)"
   },
   {
    "id": "R1",
    "severity": "medium",
    "area": "RoomInfoPage",
-   "status": "OPEN (queue, measure)",
+   "status": "FIXED 3612c7b (room_settings only when the own room's entry changed)",
    "summary": "room_settings requested after every room-list change while a chat is open.",
    "test": ""
   },
@@ -400,7 +400,7 @@
    "id": "R2",
    "severity": "medium",
    "area": "RoomPage findMarker",
-   "status": "OPEN (queue, measure)",
+   "status": "FIXED 3612c7b (TimelineModel::rowOfKind instead of get() per row)",
    "summary": "get(i) for every row on every count change.",
    "test": ""
   },
@@ -448,9 +448,9 @@
    "id": "D2",
    "severity": "low",
    "area": "spoilers",
-   "status": "OPEN",
+   "status": "FIXED 3612c7b (opened spoilers kept per event id until another room opens)",
    "summary": "A revealed spoiler covers again after scrolling away.",
-   "test": ""
+   "test": "on the phone (0.6 checklist §10)"
   },
   {
    "id": "C1",

@@ -186,9 +186,20 @@ void Media::setOwnAvatar(const QString &path)
         emit command({{"cmd", "set_own_avatar"}, {"path", out}});
 }
 
+// prepared files the core has long read: away, before they pile up
+static void sweepOutgoing()
+{
+    const QDateTime before = QDateTime::currentDateTime().addMSecs(-Keys::kOutgoingKeepMs);
+    for (const QFileInfo &f : QDir(outgoingDir()).entryInfoList(QDir::Files | QDir::NoDotAndDotDot)) {
+        if (f.lastModified() < before)
+            QFile::remove(f.filePath());
+    }
+}
+
 void Media::sendFile(const QString &roomId, const QString &path, const QString &caption,
                      const QString &threadRoot)
 {
+    sweepOutgoing();
     const QString p = localPath(path);
     QVariantMap cmd{{"cmd", "send_file"}, {"room_id", roomId}, {"path", p}};
     if (!threadRoot.isEmpty())

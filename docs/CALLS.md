@@ -1,4 +1,93 @@
-# Calls in Rustrx: plan and spike
+# Calls in Rustrx
+
+Two kinds since 0.6: **classic calls** (1:1, `m.call.*`, the calls Element
+Web and Android and nheko make, end-to-end encrypted in an encrypted
+direct chat) and **Element Call** (MatrixRTC in a WebView, unencrypted
+rooms only until Sailfish OS ships a newer Gecko). The first part is the
+classic calls; from "Element Call: plan and spike" on is the history of
+the second.
+
+## Classic calls (0.6)
+
+**Signalling.** Matrix VoIP version 1: `m.call.invite`, `answer`,
+`candidates`, `select_answer`, `hangup`, `reject`, each with `party_id`,
+`version "1"`, an invite with `lifetime` and `invitee`. The core only
+carries them (`voip_send`, the `voip` event, `turn_server`; docs/PROTOCOL.md);
+the state machine is `src/Voip.cpp`. In an encrypted room the events go
+encrypted like messages. A ring needs a direct chat or the invite naming
+us, and rings at most two minutes whatever its sender says; a call while
+one runs is told `user_busy`; only the peer of the call can answer or end
+it; candidates wait until the invite or answer is out (the core sends
+each command on its own and a candidates event could overtake it).
+
+**Media.** GStreamer as Sailfish OS 5 ships it (1.26): `webrtcbin` with
+`bundle-policy=max-bundle`, libnice, DTLS-SRTP; the microphone
+(`pulsesrc`, `media.role=phone`) through Opus at 32 kbit/s
+(`rtpopuspay pt=111`); the far end through `rtpopusdepay ! opusdec !
+level ! tee` to `pulsesink` and to the echo canceller's reference.
+TURN credentials come from the homeserver (`turn_server`); its host
+doubles as STUN.
+
+**Echo.** Speex's echo canceller (speexdsp) at 16 kHz, 10 ms frames, a
+300 ms tail. The microphone leaves the pipeline at an appsink, is paired
+frame by frame with the far end's audio (a queue of at most 120 ms) in
+`speex_echo_cancellation`, and comes back through an appsrc. Speex's
+noise suppression and gain control stay off: they took the far end's
+voice down 15 dB and made it crackle.
+
+**The earpiece.** Sailfish OS's audio policy (ohmd and pulseaudio's
+xpolicy) keeps an app's streams in the "othermedia" group on the
+loudspeaker and gives apps neither of its call classes: "ipcall" is
+refused (EACCES), "call" is the cellular voice call mode, where the
+microphone is silent and playback corked. And the sandbox has its own PID
+namespace, so a resource set cannot be bound to the app's PID. What
+works, as Android App Support does it:
+
+1. A policy rule, installed with the RPM
+   (`/etc/pulse/xpolicy.conf.d/harbour-rustrx-xpolicy.conf`): streams of
+   `harbour-rustrx` with `media.role=phone` go into the group `aliencall`.
+   PulseAudio reads it only when it starts, so the RPM restarts it once
+   when the rule is new or changed.
+2. During the call (`src/CallRoute.cpp`, libpulse): the card with a
+   `communication` profile (`droid_card.primary`) switches to it, and
+   the sink with an `output-earpiece` port (or a plugged headset's) gets
+   the earpiece; the speaker button switches the port to
+   `output-speaker`. Afterwards both go back; a port left on "parking"
+   becomes the speaker.
+
+Every call starts on the earpiece, like a phone call.
+
+**Proximity.** During a call Rustrx tells MCE its state the way the
+phone app does (`req_call_state_change`: "ringing", "active", "none";
+`src/CallState.cpp`). MCE then blanks the screen while the phone is at
+the ear, so a cheek cannot mute or hang up. MCE ties the state to the
+caller's bus connection and drops it when the process ends, a crash
+included. The stand-in never does this; its ring is a notification.
+
+**Relay only** (Settings > Privacy, off by default, as in Element). The
+peer learns the phone's addresses from the ICE candidates. With the
+switch on, `webrtcbin` gets `ice-transport-policy=relay`, no STUN server
+is set, and any candidate that is not a relay one is left out of the
+events and the SDP. The peer then sees only the server's relay. A server
+without TURN cannot connect such a call: it ends at once, with its own
+reason, instead of failing after a while.
+
+**Answering.** The call page's lower half answers with a sideways swipe
+and declines with a swipe up, reverse-designed from the phone app's
+behaviour (our own code, `qml/components/IncomingCallSwipe.qml`). The
+ring is also a notification with the VoIP ringtone, Answer and Decline,
+with Rustrx closed too (background mode: the stand-in rings and hands
+the call to the app). The cover shows the call: who (or only "Call" when
+chat names stay inside Rustrx), its state or length, and Answer, Hang up
+or Unmute.
+
+**Tests.** `tests/cpp/voip` runs two engines calling each other over a
+wire with real WebRTC, a different tone on each side and the far end's
+level measured, plus the ringing rules (direct chats, lifetime, busy,
+others in the room), a call that cannot be sent, TURN addresses and the
+relay-only filter.
+
+# Element Call: plan and spike
 
 Status: in Rustrx since 0.4.4 (the spike branch was merged). First call on 2026-11-15, 01:58, on the
 Jolla Phone 2026: Element Call joined a room, camera and microphone working.

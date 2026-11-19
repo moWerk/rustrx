@@ -110,18 +110,54 @@ SilicaFlickable {
             }
         }
 
-        //% "Photos"
-        SectionHeader { text: qsTrId("rustrx-se-photos") }
+        //% "Pictures and videos"
+        SectionHeader { text: qsTrId("rustrx-se-pictures-videos") }
 
-        // a photo's EXIF says where, when and with what it was taken (src/Exif.h)
+        // what a picture or video says about itself: place, time, camera
+        // (src/Exif.h, Png.h, Mp4.h); a downscaled picture is drawn anew
+        // and keeps nothing at any level
+        ComboBox {
+            id: metadataBox
+            width: parent.width
+            //% "Leave out when sending"
+            label: qsTrId("rustrx-la-metadata-level")
+            description: [
+                //% "Pictures and videos go as the camera saved them, with the place and time they were taken."
+                qsTrId("rustrx-la-metadata-keep-hint"),
+                //% "Where a picture or video was taken goes; the rest stays (time, camera, which way up)."
+                qsTrId("rustrx-la-metadata-location-hint"),
+                //% "Pictures and videos leave without the place and time they were taken, the camera and anything else it noted, only which way up they are."
+                qsTrId("rustrx-la-metadata-all-hint")
+            ][Math.max(0, currentIndex)]
+            // the box follows the setting (the ComboBox sets currentIndex itself)
+            readonly property int shownIndex: Math.max(0, Math.min(2, rustrx.metadataLevel))
+            currentIndex: shownIndex
+            onShownIndexChanged: currentIndex = shownIndex
+            menu: ContextMenu {
+                //% "Nothing"
+                MenuItem { text: qsTrId("rustrx-me-metadata-keep") }
+                //% "The location"
+                MenuItem { text: qsTrId("rustrx-me-metadata-location") }
+                //% "All metadata"
+                MenuItem { text: qsTrId("rustrx-me-metadata-all") }
+            }
+            onCurrentIndexChanged: {
+                if (currentIndex >= 0 && currentIndex !== rustrx.metadataLevel)
+                    rustrx.metadataLevel = currentIndex
+            }
+        }
+
+        //% "Calls"
+        SectionHeader { text: qsTrId("rustrx-se-calls") }
+
         TextSwitch {
-            //% "Remove metadata from photos"
-            text: qsTrId("rustrx-la-strip-metadata")
-            //% "Photos (JPEG, as the camera takes them) leave without the place and time they were taken, the camera and anything else it noted, only which way up they are. Videos and other pictures go as they are. Off: photos go as the camera saved them."
-            description: qsTrId("rustrx-la-strip-metadata-hint2")
-            checked: rustrx.stripMetadata
+            //% "Calls only through a relay"
+            text: qsTrId("rustrx-la-relay-only")
+            //% "The other side sees your server's relay instead of your phone's internet address. Needs a relay on your server (most have one); without it calls do not connect. The sound may lag a little more."
+            description: qsTrId("rustrx-la-relay-only-hint")
+            checked: rustrx.callsRelayOnly
             automaticCheck: false
-            onClicked: rustrx.stripMetadata = !rustrx.stripMetadata
+            onClicked: rustrx.callsRelayOnly = !rustrx.callsRelayOnly
         }
 
         // what anyone holding or seeing the phone learns
@@ -141,8 +177,8 @@ SilicaFlickable {
         TextSwitch {
             //% "Chat names outside Rustrx"
             text: qsTrId("rustrx-la-chat-details")
-            //% "Notifications and the cover name the chat and who wrote. Off: only Rustrx and the counts."
-            description: qsTrId("rustrx-la-chat-details-hint")
+            //% "Notifications and the cover name the chat, who wrote and who is calling. Off: only Rustrx, the counts and \"Call\"."
+            description: qsTrId("rustrx-la-chat-details-hint2")
             checked: service.chatDetails
             automaticCheck: false
             onClicked: service.chatDetails = !service.chatDetails

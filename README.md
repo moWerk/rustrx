@@ -28,8 +28,8 @@ person's needs instead of looking at what other clients do. It is lean and
 text first, made for texting and sharing some pictures and files. Rooms and
 people sit apart by default, timestamps are short (5m, 3h, 2d), the room
 list can be sorted, filtered and searched, and it runs on community ports
-without sailfish-secrets. Since 0.4.4 it also has calls (unencrypted rooms for
-now), threads, spaces with requests to join, and Twemoji with custom emoji and
+without sailfish-secrets. Since 0.6 it makes classic 1:1 calls with Element and
+nheko, end-to-end encrypted, on the earpiece (and Element Call since 0.4.4), threads, spaces with requests to join, and Twemoji with custom emoji and
 stickers. It also works well as the client for a second account next to another one.
 
 ![Rustrx 0.4.9 on the Pro¹-X: Settings as four tabs, Account with its security ring all green and "Log out now", Privacy in short groups (online status, location removed from photos, chat names outside Rustrx, invitations from strangers), App with the avatar corners slider and a choice box opened by press and drag, About with the thanks to everyone who reported or suggested](screenshots/rustrx-0.4.9.jpg)
@@ -72,6 +72,8 @@ stickers. It also works well as the client for a second account next to another 
   tap replies. Messages sit in bubbles, without avatars:
   the sender's name is inside. The header shows the room's picture and who
   is typing, "read by ..." shows read receipts. Drafts are kept per room.
+  Pinned messages: a pill under the header steps through them; pinning and
+  unpinning in a message's menu, where the room allows it.
 - Threads: replies in a thread are marked in the room and open their
   thread; a thread's page shows it alone with its own text field; "Reply
   in thread" in a message's menu; the room's threads, with the new
@@ -83,6 +85,15 @@ stickers. It also works well as the client for a second account next to another 
   requests to join with a notification and a list to accept, decline or
   ban; asking to join yourself; a preview before joining by address or
   link.
+- Classic 1:1 calls in direct chats, the ones Element Web and Android and
+  nheko make (`m.call.*`): end-to-end encrypted in an encrypted chat, audio
+  through GStreamer's WebRTC with Opus and an echo canceller, on the
+  earpiece like a phone call (the speaker button for the loudspeaker), the
+  screen dark at the ear. A ringing call is answered with a swipe as in the
+  phone app, from its notification (also with Rustrx closed) or from the
+  cover; a second call is told you are busy. Optionally only through the
+  server's relay, so the other side never sees the phone's address. How
+  the earpiece works on Sailfish OS: docs/CALLS.md.
 - Calls through Element Call in a WebView, with the SDK's widget driver
   behind it: incoming calls ring (VoIP ringtone, Answer, Decline), a
   running call shows in the room and the list. Unencrypted rooms only
@@ -101,7 +112,11 @@ stickers. It also works well as the client for a second account next to another 
   apps. `matrix:` and matrix.to links open in Rustrx.
 - A page for each room: its picture (moderators can change it), name,
   topic, address, encryption, favourite, low priority, members, invite,
-  leave, and its own notification level.
+  leave, and its own notification level. Moderation as the room's power
+  levels allow: roles, muting, removing, banning (from a whole space too),
+  revoking invitations, removing someone's recent messages, who may do
+  what, who can read the history, guests, the room directory, server
+  access lists, upgrading a room.
 - Notifications per room, updated in place, opening the room on a tap, and
   one for each new invitation; also while Rustrx is open, except for the
   room in front.
@@ -120,9 +135,10 @@ stickers. It also works well as the client for a second account next to another 
   turns green once the store is encrypted, the device verified, a recovery
   key set and the other devices verified, with each gap named; the
   logged-in devices, storage and the debug log. Privacy: read receipts,
-  typing, showing as online (off by default), photos (JPEG) sent without
-  their metadata, only which way up they are (on by default; videos go as
-  they are), message text and chat names outside Rustrx,
+  typing, showing as online (off by default), what pictures and videos
+  leave without (nothing, the location, or all metadata but which way up
+  they are, the default; JPEG, PNG and MP4), calls only through a relay,
+  message text and chat names (and who calls) outside Rustrx,
   invitations from strangers, ignored users. App: appearance (avatar
   corners from square to round, preview lines, the tabs), notifications.
   About. Portrait and landscape, or locked to portrait.
@@ -137,7 +153,7 @@ stickers. It also works well as the client for a second account next to another 
   it also holds Element Call's own warnings, with query strings and long
   ids cut out.
 - The cover shows unread counts and the connection state, with actions for
-  search and the latest room with unread messages.
+  search and the latest room with unread messages; during a call, the call.
 
 ## How it is built
 
@@ -169,7 +185,7 @@ the Jolla Phone 2026 since, and developed and maintained for the long run.
 Tested with two accounts, on matrix.org and on tchncs.de (single sign-on
 through its account service); since 0.4.7 servers with an account service
 are logged into through it (OAuth 2.0), since 0.4.8 also with a QR code. Not
-yet there: encrypted calls, pinned messages, forwarding, QR verification. Push through UnifiedPush
+yet there: video calls, forwarding, QR verification. Push through UnifiedPush
 works with [Foghorn](https://openrepos.net/content/projectmoon/foghorn) as the
 distributor; the stand-in remains the fallback without one.
 

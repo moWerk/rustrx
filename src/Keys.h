@@ -107,6 +107,10 @@ static const char kDevCommandsFlag[] = "dev-commands";
 static const char kLogDir[] = "logs";
 // in the cache folder: pictures prepared for sending, recordings, shares
 static const char kOutgoingDir[] = "outgoing";
+// prepared files are swept after this long: the core reads a file when the
+// send_file command arrives, so an hour leaves room for a send held behind
+// a long video's copy (a stripped video is as large as the original)
+static const qint64 kOutgoingKeepMs = 60 * 60 * 1000;
 static const char kVoiceDir[] = "voice";
 static const char kSharedDir[] = "shared";
 // in Downloads: saved media
