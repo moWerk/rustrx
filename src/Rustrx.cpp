@@ -64,6 +64,53 @@ QString Rustrx::objectPath() { return QString::fromLatin1(Keys::kObjectPath); }
 QString Rustrx::interfaceName() { return QString::fromLatin1(Keys::kInterface); }
 QString Rustrx::connectorName() { return QString::fromLatin1(UnifiedPush::kConnectorName); }
 
+// The store's key from the sailfish-secrets plugin, loaded only where it
+// can be (its library is not a dependency of the package), handed to the
+// core. The key goes from the plugin's buffer straight to the core, which
+// keeps its own copy; this one is wiped (Wipe.h, audit B13). False when
+// there is none (no plugin, Secrets locked, its prompt not answered).
+bool Rustrx::handStoreKeyOn()
+{
+    QElapsedTimer secretsTime;
+    secretsTime.start();
+    char key[128];
+    bool haveKey = false;
+    QLibrary secrets(SailfishApp::pathTo(QString::fromLatin1(Keys::kSecretsPlugin)).toLocalFile());
+    typedef int (*StoreKeyFn)(char *, int);
+    if (StoreKeyFn fn = reinterpret_cast<StoreKeyFn>(secrets.resolve(Keys::kSecretsSymbol))) {
+        const int n = fn(key, sizeof key);
+        haveKey = n > 0 && n < int(sizeof key);
+    } else {
+        qInfo().noquote() << "startup: no sailfish-secrets plugin:" << secrets.errorString();
+    }
+    qInfo().noquote() << "startup: store key" << (haveKey ? "from sailfish-secrets" : "none")
+                      << "after" << secretsTime.elapsed() << "ms";
+    if (haveKey) {
+        key[sizeof key - 1] = 0;
+        rustrx_set_store_key(key);
+    }
+    Wipe::bytes(key, sizeof key);
+    return haveKey;
+}
+
+void Rustrx::retryRestore()
+{
+    if (!m_restoreFailed || m_restoring)
+        return;
+    m_restoring = true;
+    emit stateChanged();
+    // after the page has shown that it is asking: Secrets' prompt comes
+    // over it, and this waits for the answer
+    QTimer::singleShot(Keys::kRestoreRetryPaintMs, this, [this]() {
+        if (handStoreKeyOn()) {
+            command({ { "cmd", "restore" } });
+        } else {
+            m_restoring = false;
+            emit stateChanged();
+        }
+    });
+}
+
 QString Rustrx::settingsFile()
 {
     return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QLatin1String("/harbour-rustrx.conf");
@@ -135,29 +182,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     QDir().mkpath(dataDir);
     // the store's key from sailfish-secrets, if it works here; without it the
     // store stays unencrypted (community ports without sailfish-secrets)
-    QElapsedTimer secretsTime;
-    secretsTime.start();
-    // the sailfish-secrets plugin, loaded only where it can be: its library
-    // is not a dependency of the package
-    // the key goes from the plugin's buffer straight to the core, which
-    // keeps its own copy; this one is wiped (Wipe.h, audit B13)
-    char key[128];
-    bool haveKey = false;
-    QLibrary secrets(SailfishApp::pathTo(QString::fromLatin1(Keys::kSecretsPlugin)).toLocalFile());
-    typedef int (*StoreKeyFn)(char *, int);
-    if (StoreKeyFn fn = reinterpret_cast<StoreKeyFn>(secrets.resolve(Keys::kSecretsSymbol))) {
-        const int n = fn(key, sizeof key);
-        haveKey = n > 0 && n < int(sizeof key);
-    } else {
-        qInfo().noquote() << "startup: no sailfish-secrets plugin:" << secrets.errorString();
-    }
-    qInfo().noquote() << "startup: store key" << (haveKey ? "from sailfish-secrets" : "none")
-                      << "after" << secretsTime.elapsed() << "ms";
-    if (haveKey) {
-        key[sizeof key - 1] = 0;
-        rustrx_set_store_key(key);
-    }
-    Wipe::bytes(key, sizeof key);
+    handStoreKeyOn();
     m_handleEvent = staticMetaObject.method(staticMetaObject.indexOfMethod(
             QMetaObject::normalizedSignature("handleEvent(QVariantMap)").constData()));
     if (!m_handleEvent.isValid())
@@ -725,6 +750,10 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_ready = true;
         m_loggedIn = ev.value("logged_in").toBool();
         m_keptUser = ev.value("kept_user").toString();
+        // a saved session the store's key was missing for (Secrets' prompt
+        // not answered): not a logout, the start page offers to ask again
+        m_restoreFailed = ev.value("restore_failed").toBool();
+        m_restoring = false;
         emit stateChanged();
         // the stand-in has nothing to do logged out. A session it could not
         // open yet (the store's key before the first unlock) is retried by
@@ -736,6 +765,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         }
     } else if (type == QLatin1String("logged_in")) {
         m_logoutReason.clear();
+        m_restoreFailed = false;
+        m_restoring = false;
         m_ready = true;
         m_loggedIn = true;
         m_loggingIn = false;

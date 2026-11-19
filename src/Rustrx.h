@@ -52,6 +52,10 @@ class Rustrx : public QObject
     Q_PROPERTY(QString logoutReason READ logoutReason NOTIFY stateChanged)
     // the user whose store was kept when the server ended the session
     Q_PROPERTY(QString keptUser READ keptUser NOTIFY stateChanged)
+    // the saved session could not be opened: the store's key did not come
+    // (Secrets locked, its prompt not answered); retryRestore() asks again
+    Q_PROPERTY(bool restoreFailed READ restoreFailed NOTIFY stateChanged)
+    Q_PROPERTY(bool restoring READ restoring NOTIFY stateChanged)
     Q_PROPERTY(QString syncState READ syncState NOTIFY syncStateChanged)
     Q_PROPERTY(QString verificationState READ verificationState NOTIFY encryptionChanged)
     Q_PROPERTY(QString recoveryState READ recoveryState NOTIFY encryptionChanged)
@@ -125,6 +129,9 @@ public:
     QString syncState() const { return m_syncState; }
     QString logoutReason() const { return m_logoutReason; }
     QString keptUser() const { return m_keptUser; }
+    bool restoreFailed() const { return m_restoreFailed; }
+    bool restoring() const { return m_restoring; }
+    Q_INVOKABLE void retryRestore();
     QString verificationState() const { return m_verificationState; }
     QString recoveryState() const { return m_recoveryState; }
     QString storeState() const { return m_storeState; }
@@ -419,6 +426,9 @@ private:
     QString m_syncState = QStringLiteral("idle");
     QString m_logoutReason;
     QString m_keptUser;
+    bool m_restoreFailed = false;
+    bool m_restoring = false;
+    bool handStoreKeyOn();
     QString m_verificationState = QStringLiteral("unknown");
     QString m_recoveryState = QStringLiteral("unknown");
     QString m_storeState;

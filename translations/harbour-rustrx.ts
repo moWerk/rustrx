@@ -2920,5 +2920,17 @@
         <source>Pictures and videos</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-bt-restore-retry">
+        <source>Try again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-restore-failed">
+        <source>Your messages are locked</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-restore-failed-hint">
+        <source>Sailfish Secrets did not give Rustrx the key to its messages, for example because its question was not answered. You are still logged in; nothing is lost.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

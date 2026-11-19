@@ -40,6 +40,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `login_qr` | `user?`, `homeserver?` | `qr_login` (`state`: `qr` with `width` and `modules` ("1" dark, row by row), `scanned`, `waiting` with `user_code`, `syncing`, `done`), then `logged_in` or `login_error` |
 | `qr_check_code` | `code` (the two digits the other device shows) | |
 | `login_cancel` | | `login_error` of the waiting `login_sso` or `login_oauth` |
+| `restore` | | `ready` (as at start); the saved session opened again after the store key arrived late (`rustrx_set_store_key` first); ignored while logged in |
 | `logout` | | `logged_out` |
 
 ### The open room

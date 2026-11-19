@@ -28,6 +28,10 @@ pub(crate) enum Command {
     QrCheckCode { code: u8 },
     /// A browser or QR login still waiting ends ("login_error").
     LoginCancel,
+    /// Opens the saved session again after a start that could not (the
+    /// store's key came later, from Secrets' prompt): "ready" as at start.
+    /// Ignored while logged in.
+    Restore,
     Logout,
 
     // --- the open room ---
@@ -332,7 +336,7 @@ mod tests {
     /// Every command the core accepts, in the enum's order. Adding a command
     /// is a reviewed act: update this list and docs/PROTOCOL.md.
     const COMMANDS: &[&str] = &[
-        "probe_server", "login_password", "login_sso", "login_oauth", "login_qr", "qr_check_code", "login_cancel", "logout",
+        "probe_server", "login_password", "login_sso", "login_oauth", "login_qr", "qr_check_code", "login_cancel", "restore", "logout",
         "open_room", "close_room", "paginate_back", "send_text", "send_sticker",
         "open_thread", "close_thread", "save_draft", "retry_send", "thread_list", "close_thread_list", "mark_thread_read",
         "push_set", "push_remove", "push_check", "push_handle", "send_file", "react", "redact", "edit",

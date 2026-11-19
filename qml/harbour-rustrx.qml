@@ -151,6 +151,10 @@ ApplicationWindow {
             if (last.length && !asked.length && !uri.length && !knocks && !(shared.files || shared.text)) showRoom(last)
             // started by the requests' notification
             if (knocks) showKnocks()
+        } else if (rustrx.restoreFailed) {
+            // the session is there, its key did not come: the start page asks again
+            if (current !== "start")
+                pageStack.replaceAbove(null, Qt.resolvedUrl("pages/StartPage.qml"))
         } else if (current !== "login") {
             console.log("route: logged out on page", current, "reason", rustrx.logoutReason)
             pageStack.replaceAbove(null, Qt.resolvedUrl("pages/LoginPage.qml"))

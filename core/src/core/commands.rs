@@ -62,6 +62,12 @@ impl Core {
                 self.login_cancel();
                 Ok(())
             }
+            Restore => {
+                if self.state.lock().await.client.is_none() {
+                    self.boot();
+                }
+                Ok(())
+            }
             Logout => self.logout().await,
 
             // --- the open room (timeline.rs, threads.rs, push.rs, packs.rs) ---

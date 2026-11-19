@@ -131,6 +131,8 @@ static const char kDownloadDir[] = "Rustrx";
 // the sailfish-secrets plugin, loaded only where it can be
 static const char kSecretsPlugin[] = "lib/librustrx-secrets.so";
 static const char kSecretsSymbol[] = "rustrx_secrets_store_key";
+// asking Secrets again waits this long, so the page shows it is asking
+static const int kRestoreRetryPaintMs = 150;
 // the debug log's names (DebugLog::install, DebugLog::collect)
 static const char kLogApp[] = "app";
 static const char kLogBackground[] = "background";

@@ -109,8 +109,9 @@ pub(crate) fn store_key() -> Option<&'static str> {
     STORE_KEY.get().map(String::as_str).filter(|k| !k.is_empty())
 }
 
-/// Set the store key; call before rustrx_start. Returns 0, or 1 when it was
-/// set already, 2 on a bad argument.
+/// Set the store key; call before rustrx_start, or later, before the
+/// "restore" command, when the key came late (Secrets' prompt answered on a
+/// second try). Returns 0, or 1 when it was set already, 2 on a bad argument.
 #[no_mangle]
 pub extern "C" fn rustrx_set_store_key(key: *const c_char) -> i32 {
     if key.is_null() {
