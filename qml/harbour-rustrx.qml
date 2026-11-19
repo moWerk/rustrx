@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import QtSensors 5.2
 import Rustrx 1.0
 import Sailfish.Silica 1.0
 import "pages"
@@ -182,6 +183,14 @@ ApplicationWindow {
             return
         }
         pageStack.push(Qt.resolvedUrl("pages/VoipPage.qml"))
+    }
+    // the screen at the ear during a call on the earpiece: Rustrx blanks it
+    // itself (MCE does only for the phone app's route, see CallState)
+    ProximitySensor {
+        active: rustrx.voip.state !== "idle" && rustrx.voip.state !== "incoming" && !rustrx.voip.speaker
+        alwaysOn: true
+        onReadingChanged: rustrx.setCallNear(reading !== null && reading.near)
+        onActiveChanged: if (!active) rustrx.setCallNear(false)
     }
     Timer { id: voipRetry; interval: Tunables.retryIntervalMs; onTriggered: if (rustrx.voip.state !== "idle") app.showVoip() }
     Connections {

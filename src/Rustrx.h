@@ -33,6 +33,7 @@ class TimelineModel;
 class UnifiedPush;
 class Voip;
 class CallRoute;
+class CallState;
 
 // The bridge to librustrx: commands go out as JSON, events come back on
 // tokio threads and are re-posted onto the GUI thread before anything here
@@ -132,6 +133,8 @@ public:
     bool restoreFailed() const { return m_restoreFailed; }
     bool restoring() const { return m_restoring; }
     Q_INVOKABLE void retryRestore();
+    // the proximity sensor during a call (see CallState)
+    Q_INVOKABLE void setCallNear(bool near);
     QString verificationState() const { return m_verificationState; }
     QString recoveryState() const { return m_recoveryState; }
     QString storeState() const { return m_storeState; }
@@ -442,6 +445,7 @@ private:
     UnifiedPush *m_push;
     Voip *m_voip;
     CallRoute *m_callRoute;
+    CallState *m_callState;
     // the tabs' room lists, their settings, unread totals and requests to join
     RoomLists *m_lists;
     // sending files and pictures, avatars, media downloads, emote pictures

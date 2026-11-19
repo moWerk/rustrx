@@ -16,7 +16,7 @@ status=0
 run() {
     env QT_QPA_PLATFORM=offscreen "$@" || status=1
 }
-for t in twemoji renderhtml golden exif png mp4 readpoint voip devhook sharecopy handover callroute; do
+for t in twemoji renderhtml golden exif png mp4 readpoint voip devhook sharecopy handover callroute callstate; do
     run "$build/$t/tst_$t" "$@"
 done
 # the room order by name depends on the locale: once without collation

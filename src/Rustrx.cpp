@@ -93,6 +93,12 @@ bool Rustrx::handStoreKeyOn()
     return haveKey;
 }
 
+void Rustrx::setCallNear(bool near)
+{
+    if (!m_handover.standIn())
+        m_callState->setNear(near);
+}
+
 void Rustrx::retryRestore()
 {
     if (!m_restoreFailed || m_restoring)
@@ -154,11 +160,12 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     });
     // the screen goes dark at the ear, as in the phone app; the app's call
     // only (the stand-in rings through its notification)
-    auto *callState = new CallState(this);
-    connect(m_voip, &Voip::changed, callState, [this, callState]() {
+    m_callState = new CallState(this);
+    connect(m_voip, &Voip::changed, m_callState, [this]() {
         if (!m_handover.standIn())
-            callState->follow(m_voip->state());
+            m_callState->follow(m_voip->state());
     });
+    connect(m_voip, &Voip::speakerChanged, m_callState, &CallState::setSpeaker);
     // the stand-in rings but never runs a call: whatever hands over to the
     // app (a tap, Answer) takes the ringing call along
     connect(m_voip, &Voip::changed, this, [this]() {
