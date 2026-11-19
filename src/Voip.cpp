@@ -260,6 +260,10 @@ void Voip::finish(const QString &reason, bool tellPeer, const QString &wireReaso
     }
     stopPipeline();
     m_endReason = reason;
+    // a test's tone or echo setting lasts one call (a tone left on made a
+    // later real call send 440 Hz and play nothing)
+    m_testTone = false;
+    m_aec = true;
     setState(QStringLiteral("idle"));
     reset();
 }

@@ -78,7 +78,7 @@ public:
     Q_INVOKABLE void hangup();
 
     // tests: a tone instead of the microphone, and the far end's level and
-    // packet counts in the log and in status()
+    // packet counts in the log and in status(); for the next call only
     void setTestTone(bool on) { m_testTone = on; }
     // echo cancelling (Speex) on the microphone; on unless a test turns it off
     void setEchoCancelling(bool on) { m_aec = on; }
