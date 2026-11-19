@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "SecretStore.h"
+#include "Keys.h"
 #include "Wipe.h"
 
 #include <QDebug>
@@ -37,13 +38,27 @@ static Secret::Identifier keyId()
     return Secret::Identifier(kName, kCollection, SecretManager::DefaultEncryptedStoragePluginName);
 }
 
+// The stand-in and a push wake run with nobody at the screen: they never
+// ask (a locked phone's prompt waited for good, and the process held the
+// bus name, so Rustrx did not open), and never make a key. Only the app
+// asks and makes the first one.
+static bool background()
+{
+    return qgetenv(Keys::kEnvBackground) == "1" || qgetenv(Keys::kEnvPushWake) == "1";
+}
+
+static SecretManager::UserInteractionMode interaction()
+{
+    return background() ? SecretManager::PreventInteraction : SecretManager::SystemInteraction;
+}
+
 // the stored key, or empty when there is none (or the daemon cannot be reached)
 static QByteArray fetch(SecretManager &manager, bool *missing)
 {
     StoredSecretRequest request;
     request.setManager(&manager);
     request.setIdentifier(keyId());
-    request.setUserInteractionMode(SecretManager::SystemInteraction);
+    request.setUserInteractionMode(interaction());
     request.startRequest();
     request.waitForFinished();
     const Result r = request.result();
@@ -79,7 +94,7 @@ QByteArray SecretStore::storeKey()
     SecretManager manager;
     bool missing = false;
     QByteArray key = fetch(manager, &missing);
-    if (!key.isEmpty() || !missing)
+    if (!key.isEmpty() || !missing || background())
         return key;   // the key, or sailfish-secrets does not work: no key
 
     // the first time: 32 random bytes as hex, in a collection of our own
