@@ -104,9 +104,9 @@
    "id": "S10",
    "severity": "info",
    "area": "session.json",
-   "status": "OPEN (queue)",
+   "status": "FIXED e5d2efc (session.json sealed with the store key where sailfish-secrets gives one; plain without; a plain file is sealed at its first read)",
    "summary": "Access and refresh tokens are in a plain 0600 file outside the encrypted store.",
-   "test": ""
+   "test": "session_file::tests sealed_round_trip, plain_is_migrated_to_sealed, wrong_or_missing_key_is_an_error_not_a_logout, no_key_stays_plain"
   },
   {
    "id": "K1",
@@ -120,9 +120,9 @@
    "id": "K2",
    "severity": "medium",
    "area": "moderation writes",
-   "status": "OPEN (queue): per-room write lock and sent-value overlay",
+   "status": "FIXED 5bf161a (per-room write lock; sent values overlaid until the sync shows them: power levels, history, guests, access list, addresses, pins)",
    "summary": "Power-level and setting changes build on local state that the sync updates later: two quick changes can revert one another; the reply shows the old value.",
-   "test": ""
+   "test": "moderation::tests::quick_changes_build_on_each_other, pins_build_on_the_list"
   },
   {
    "id": "K3",
@@ -168,9 +168,9 @@
    "id": "K8",
    "severity": "low",
    "area": "shutdown budget",
-   "status": "OPEN (queue)",
+   "status": "FIXED e5d2efc (commands aborted, login tasks and sync stopped, session saved, client paused, runtime stopped, one budget)",
    "summary": "Shutdown stops only login tasks; command tasks run on; 3 s may be less than Client::pause needs. Latent aws-lc exit-destructor risk while tokio threads live.",
-   "test": ""
+   "test": "tests::shutdown_aborts_commands_and_stops_the_runtime"
   },
   {
    "id": "K9",
@@ -184,25 +184,25 @@
    "id": "K10",
    "severity": "low",
    "area": "mark_read",
-   "status": "OPEN",
+   "status": "FIXED f42e9f1 (held back when older than our receipt, by the events' times)",
    "summary": "Receipts for a closed room have no order check.",
-   "test": ""
+   "test": "timeline::tests::closed_room_receipts_never_go_back"
   },
   {
    "id": "K11",
    "severity": "low",
    "area": "login",
-   "status": "OPEN",
+   "status": "FIXED e5d2efc (one login at a time; a second gets login_error)",
    "summary": "Two logins can run at once.",
-   "test": ""
+   "test": "tests::a_second_login_is_refused"
   },
   {
    "id": "K12",
    "severity": "low",
    "area": "edit (timeline.rs)",
-   "status": "FIXED 45e5b9a",
+   "status": "FIXED 45e5b9a (spoilers), f42e9f1 (mentions and custom emoji: given by the UI, and the message's own kept)",
    "summary": "An edit dropped spoilers (shown in the clear); mentions and custom emoji still dropped (OPEN).",
-   "test": ""
+   "test": "timeline::tests::an_edit_keeps_pills_and_custom_emoji"
   },
   {
    "id": "K13",
@@ -216,23 +216,23 @@
    "id": "K14",
    "severity": "low",
    "area": "blocking file work on runtime workers",
-   "status": "OPEN",
+   "status": "FIXED d5071b6 (emote looked up by name; storage walk in spawn_blocking; send_file and avatars on tokio::fs)",
    "summary": "fetch_emote lists the emote folder per request, storage_info walks folders, send_file reads with std::fs.",
-   "test": ""
+   "test": "tests::a_cached_emote_is_found_by_name"
   },
   {
    "id": "K15",
    "severity": "low",
    "area": "duplicates",
-   "status": "OPEN",
+   "status": "FIXED d5071b6 (one escape_html, one cached_thread_unread)",
    "summary": "escape_html three times, thread-unread caching twice, and more.",
-   "test": ""
+   "test": "timeline::tests::edges (escape)"
   },
   {
    "id": "K16",
    "severity": "trivial",
    "area": "docs",
-   "status": "OPEN",
+   "status": "FIXED e5d2efc (six C functions in PROTOCOL.md, README, hints), d5071b6 (doc comments)",
    "summary": "Misplaced doc comments (push.rs:13, protocol.rs:296); PROTOCOL.md says three C functions, there are six.",
    "test": ""
   },

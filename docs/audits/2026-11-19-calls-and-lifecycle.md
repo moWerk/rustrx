@@ -69,6 +69,9 @@ the dev hook as an allowlist (S4), the cover during a call (V10),
 proximity blanking (V11), and two performance items to measure first
 (R1, R2). README and CALLS.md need the classic calls before release.
 
+Of these, K2, K8 and S10 were done later the same day, with K10 to K16
+(the ledger has the commits and tests).
+
 ## To try on the phones
 
 - Background mode: close Rustrx, the stand-in should start (the code
