@@ -585,3 +585,12 @@ def test_every_translation_has_its_source_text():
     ts = read("translations/harbour-rustrx.ts")
     empty = re.findall(r'<message id="([^"]+)"[^>]*>\s*<source>\s*</source>', ts)
     assert not empty, empty[:20]
+
+
+def test_qml_that_uses_tunables_imports_them():
+    """Tunables is a singleton of the Rustrx module: a file that uses it
+    imports Rustrx 1.0, or every binding to it fails at run time.
+    Planted-bug: VoipPage without the import (its closing moment was a
+    ReferenceError on the phone, qmllint does not see it)."""
+    missing = [p.name for p in QML if "Tunables." in code(p) and not re.search(r"^import Rustrx 1\.0", read(p.relative_to(ROOT).as_posix()), re.M)]
+    assert not missing, missing
