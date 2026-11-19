@@ -422,7 +422,22 @@ impl Core {
     pub(crate) async fn probe_server(&'static self, user: Option<String>, homeserver: Option<String>) -> Result<()> {
         let server = Self::server_of(user.as_deref(), &homeserver)?;
         let client = self.build_client(&server, false).await.map_err(|e| anyhow!("{server}: {e}"))?;
-        let flows = client.matrix_auth().get_login_types().await?.flows;
+        // a server that delegates its logins to an account service (MAS, or
+        // Synapse's delegated auth with another OpenID provider) may have no
+        // /login at all: M_UNRECOGNIZED there means "the browser only", not
+        // a server that cannot be used (doctorflynt's Casdoor, 0.5.0)
+        let meta = client.oauth().server_metadata().await;
+        if let Err(e) = &meta {
+            tracing::info!("probe: no account service ({e})");
+        }
+        let flows = match client.matrix_auth().get_login_types().await {
+            Ok(types) => types.flows,
+            Err(e) if meta.is_ok() => {
+                tracing::info!("probe: no /login beside the account service ({e})");
+                Vec::new()
+            }
+            Err(e) => return Err(e.into()),
+        };
         let mut password = false;
         let mut idps: Vec<String> = Vec::new();
         let mut sso = false;
@@ -437,9 +452,8 @@ impl Core {
             }
         }
         // a server with an account service (MAS, matrix.org since 2025) signs
-        // new people up in the browser; the password login works afterwards
-        let meta = client.oauth().server_metadata().await;
-        // an account service: logins belong in the browser (single sign-on);
+        // new people up in the browser; the password login works afterwards.
+        // An account service: logins belong in the browser (single sign-on);
         // tchncs.de refused a correct password over m.login.password
         let account_service = meta.is_ok();
         // QR login needs the rendezvous of MSC4108 (tchncs.de has it,
