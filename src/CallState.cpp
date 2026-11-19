@@ -18,6 +18,7 @@
 
 #include <QDBusConnection>
 #include <QDBusMessage>
+#include <QDBusPendingCall>
 #include <QDebug>
 
 CallState::~CallState()
