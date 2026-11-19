@@ -106,6 +106,8 @@ Voip::Voip(QObject *parent) : QObject(parent)
             return;
         qInfo() << "voip: no TURN credentials in time, going on without";
         m_waitingForTurn = false;
+        if (relayMissing())
+            return;
         if (m_offerer)
             negotiateAsOfferer();
         else if (m_state == QLatin1String("connecting") && startPipeline())
@@ -223,6 +225,8 @@ void Voip::handleTurn(const QVariantMap &ev)
         return;
     m_waitingForTurn = false;
     m_turnTimer.stop();
+    if (relayMissing())
+        return;
     if (m_offerer && m_state == QLatin1String("outgoing")) {
         negotiateAsOfferer();
     } else if (!m_offerer && m_state == QLatin1String("connecting")) {
@@ -231,6 +235,38 @@ void Voip::handleTurn(const QVariantMap &ev)
         else
             finish(QStringLiteral("user_media_failed"), true, QStringLiteral("user_media_failed"));
     }
+}
+
+// relay only, and the server gave no relay this call could use: it ends
+// here, with its own reason, instead of trying and failing after a while
+bool Voip::relayMissing()
+{
+    if (!m_relayOnly || (m_state != QLatin1String("outgoing") && m_state != QLatin1String("connecting")))
+        return false;
+    for (const QString &uri : m_turnUris) {
+        if (!turnUrl(uri, m_turnUser, m_turnPass).isEmpty())
+            return false;
+    }
+    qInfo() << "voip: relay only, and the server offers no relay";
+    // a caller's invite has not gone out yet; an answerer's caller waits
+    finish(QStringLiteral("no_relay"), m_state == QLatin1String("connecting"), QStringLiteral("ice_failed"));
+    return true;
+}
+
+bool Voip::isRelayCandidate(const QString &candidate)
+{
+    return candidate.contains(QLatin1String(" typ relay"));
+}
+
+QString Voip::relayOnlySdp(const QString &sdp)
+{
+    QStringList kept;
+    for (const QString &line : sdp.split(QStringLiteral("\r\n"))) {
+        if (line.startsWith(QLatin1String("a=candidate:")) && !isRelayCandidate(line))
+            continue;
+        kept << line;
+    }
+    return kept.join(QStringLiteral("\r\n"));
 }
 
 void Voip::reject()
@@ -527,8 +563,11 @@ bool Voip::startPipeline()
         gst_object_unref(capture);
     }
 
-    // TURN from the homeserver; its host doubles as the STUN server
-    bool stun = false;
+    // TURN from the homeserver; its host doubles as the STUN server, except
+    // with relay only, where STUN would only find the address to hide
+    if (m_relayOnly)
+        gst_util_set_object_arg(G_OBJECT(m_webrtc), "ice-transport-policy", "relay");
+    bool stun = m_relayOnly;
     for (const QString &uri : m_turnUris) {
         const QString url = turnUrl(uri, m_turnUser, m_turnPass);
         if (url.isEmpty())
@@ -909,8 +948,10 @@ void Voip::onOfferCreated(const QString &sdp, int gen)
             finish(QStringLiteral("user_media_failed"), false);
         return;
     }
+    // webrtcbin should gather only relays then; what it finds anyway stays here
+    const QString out = m_relayOnly ? relayOnlySdp(sdp) : sdp;
     QVariantMap content{ { "lifetime", Keys::kVoipInviteLifetimeMs },
-                         { "offer", QVariantMap{ { "type", "offer" }, { "sdp", sdp } } } };
+                         { "offer", QVariantMap{ { "type", "offer" }, { "sdp", out } } } };
     if (!m_invitee.isEmpty())
         content.insert("invitee", m_invitee);
     send(QStringLiteral("m.call.invite"), content);
@@ -945,7 +986,8 @@ void Voip::onAnswerCreated(const QString &sdp, int gen)
         finish(QStringLiteral("ice_failed"), true, QStringLiteral("ice_failed"));
         return;
     }
-    send(QStringLiteral("m.call.answer"), { { "answer", QVariantMap{ { "type", "answer" }, { "sdp", sdp } } } });
+    const QString out = m_relayOnly ? relayOnlySdp(sdp) : sdp;
+    send(QStringLiteral("m.call.answer"), { { "answer", QVariantMap{ { "type", "answer" }, { "sdp", out } } } });
 }
 
 void Voip::onIceCandidate(int mline, const QString &candidate, int gen)
@@ -953,6 +995,8 @@ void Voip::onIceCandidate(int mline, const QString &candidate, int gen)
     if (gen != m_pipeGen.load())
         return;
     if (m_state == QLatin1String("idle"))
+        return;
+    if (m_relayOnly && !isRelayCandidate(candidate))
         return;
     m_localCandidates << QVariantMap{ { "candidate", candidate }, { "sdpMLineIndex", mline } };
     // not before the invite or answer is out (it starts the timer then)

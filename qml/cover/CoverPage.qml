@@ -22,12 +22,25 @@ import Sailfish.Silica 1.0
 // the unread count in front. In a chat (dodoradio's design): the room's
 // picture in the back, its name on top, its latest unread message or the
 // unread count in the middle, and at the bottom the app's name, or the
-// connection state when it is not connected.
+// connection state when it is not connected. During a classic call: who
+// (or only "Call", as chat names stay inside Rustrx), its state or length,
+// and the one action that fits, as the phone app's cover has them.
 CoverBackground {
     id: cover
 
+    readonly property var call: rustrx.voip
+    readonly property bool inCall: call.state !== "idle"
+    property int callSeconds
+    Timer {
+        running: cover.call.state === "connected" && cover.status === Cover.Active
+        interval: 1000
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: cover.callSeconds = Math.max(0, Math.round((Date.now() - cover.call.connectedAt) / 1000))
+    }
+
     // the open chat on the cover, unless names stay inside Rustrx (Privacy)
-    readonly property bool inChat: app.chatDetails && rustrx.loggedIn && rustrx.openRoomId.length > 0
+    readonly property bool inChat: !inCall && app.chatDetails && rustrx.loggedIn && rustrx.openRoomId.length > 0
     property var chat: ({})
     function refreshChat() { chat = inChat ? (rustrx.roomInfo(rustrx.openRoomId) || {}) : {} }
     onInChatChanged: refreshChat()
@@ -84,7 +97,7 @@ CoverBackground {
     }
 
     Column {
-        visible: !cover.inChat
+        visible: !cover.inChat && !cover.inCall
         anchors {
             left: parent.left
             right: parent.right
@@ -209,6 +222,48 @@ CoverBackground {
 
     }
 
+    Column {
+        visible: cover.inCall
+        anchors {
+            left: parent.left
+            right: parent.right
+            top: parent.top
+            margins: Theme.paddingLarge
+        }
+        spacing: Theme.paddingMedium
+        Label {
+            width: parent.width
+            //% "Call"
+            text: app.chatDetails ? cover.call.peerName : qsTrId("rustrx-la-cover-call")
+            font.pixelSize: Theme.fontSizeMedium
+            color: Theme.highlightColor
+            wrapMode: Text.Wrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+        }
+        Label {
+            width: parent.width
+            wrapMode: Text.Wrap
+            font.pixelSize: cover.call.state === "connected" ? Theme.fontSizeHuge : Theme.fontSizeSmall
+            text: {
+                switch (cover.call.state) {
+                case "outgoing": return qsTrId("rustrx-la-voip-calling")
+                case "incoming": return qsTrId("rustrx-la-voip-incoming")
+                case "connecting": return qsTrId("rustrx-la-voip-connecting")
+                }
+                var m = Math.floor(cover.callSeconds / 60), r = cover.callSeconds % 60
+                return m + ":" + (r < 10 ? "0" : "") + r
+            }
+        }
+        Label {
+            visible: cover.call.muted
+            //% "Muted"
+            text: qsTrId("rustrx-la-cover-muted")
+            font.pixelSize: Theme.fontSizeSmall
+            color: Theme.highlightColor
+        }
+    }
+
     // the same line at the bottom in both views: "Rustrx" while connected,
     // which is the usual case; otherwise what is wrong
     Label {
@@ -236,8 +291,35 @@ CoverBackground {
 
     // left: find a room or a person; right: the most recent room with
     // unread messages (only while there is one)
+    // a call: answer while it rings, unmute while muted, else hang up
     CoverActionList {
-        enabled: rustrx.loggedIn
+        enabled: cover.call.state === "incoming"
+        CoverAction {
+            iconSource: "image://theme/icon-cover-answer"
+            onTriggered: {
+                cover.call.answer()
+                app.activate()
+                app.showVoip()
+            }
+        }
+    }
+    CoverActionList {
+        enabled: cover.inCall && cover.call.state !== "incoming" && cover.call.muted
+        CoverAction {
+            iconSource: "image://theme/icon-cover-unmute"
+            onTriggered: cover.call.muted = false
+        }
+    }
+    CoverActionList {
+        enabled: cover.inCall && cover.call.state !== "incoming" && !cover.call.muted
+        CoverAction {
+            iconSource: "image://theme/icon-cover-hangup"
+            onTriggered: cover.call.hangup()
+        }
+    }
+
+    CoverActionList {
+        enabled: rustrx.loggedIn && !cover.inCall
         CoverAction {
             iconSource: "image://theme/icon-cover-search"
             onTriggered: {

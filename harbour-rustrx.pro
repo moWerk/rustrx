@@ -29,6 +29,7 @@ SOURCES += src/main.cpp \
     src/DebugLog.cpp \
     src/FrameStats.cpp \
     src/KeyboardSlide.cpp \
+    src/CallState.cpp \
     src/Voip.cpp \
     src/CallRoute.cpp
 
@@ -46,6 +47,7 @@ HEADERS += src/Rustrx.h \
     src/DebugLog.h \
     src/FrameStats.h \
     src/KeyboardSlide.h \
+    src/CallState.h \
     src/Voip.h \
     src/CallRoute.h \
     src/LocalOnly.h \

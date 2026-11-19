@@ -87,12 +87,18 @@ public:
     void setTestTone(bool on, int hz = 440) { m_testTone = on; m_toneHz = hz; }
     // echo cancelling (Speex) on the microphone; on unless a test turns it off
     void setEchoCancelling(bool on) { m_aec = on; }
+    // only relay (TURN) candidates: the peer sees the server's address,
+    // never this phone's; with no relay to be had the call ends
+    void setRelayOnly(bool on) { m_relayOnly = on; }
     QVariantMap status() const;
 
     // a TURN uri with credentials as webrtcbin takes it, or "" for one it
     // cannot use; the a=mid of each m-line of an SDP (both for tests too)
     static QString turnUrl(const QString &uri, const QString &user, const QString &pass);
     static QStringList mids(const QString &sdp);
+    // a candidate through a relay; an SDP without the others' lines
+    static bool isRelayCandidate(const QString &candidate);
+    static QString relayOnlySdp(const QString &sdp);
 
     // a ringing invite as it stands, to hand over from the stand-in to the
     // app (which never saw the event), and taken up there; "answer" in it
@@ -137,6 +143,7 @@ private:
     bool startPipeline();
     void stopPipeline();
     void negotiateAsOfferer();
+    bool relayMissing();
     void applyRemote(const QString &type, const QString &sdp);
     void addRemoteCandidates(const QVariantList &candidates);
     void flushCandidates();
@@ -182,6 +189,7 @@ private:
     QString m_turnUser, m_turnPass;
     bool m_turnAsked = false;
     bool m_waitingForTurn = false;
+    bool m_relayOnly = false;
 
     GstElement *m_pipe = nullptr;
     GstElement *m_webrtc = nullptr;

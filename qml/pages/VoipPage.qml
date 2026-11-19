@@ -118,6 +118,8 @@ Page {
                 case "user_media_failed": return qsTrId("rustrx-la-voip-media-failed")
                 //% "The call could not be set up: no connection to the server"
                 case "send_failed": return qsTrId("rustrx-la-voip-send-failed")
+                //% "Calls go only through a relay (Settings > Privacy), and your server offers none"
+                case "no_relay": return qsTrId("rustrx-la-voip-no-relay")
                 }
                 //% "Call ended"
                 return qsTrId("rustrx-la-voip-ended")

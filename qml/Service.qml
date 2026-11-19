@@ -266,7 +266,12 @@ Item {
     function ringCall(roomId, roomName, senderName, ring, eventId, expiresMs) {
         stopRinging(roomId)
         var n = ringComponent.createObject(service, { roomId: roomId, eventId: eventId, ring: ring })
-        n.summary = ring
+        // who calls and from where stays inside Rustrx when chat names do (Privacy)
+        n.summary = !chatDetails
+                //: notification title when chat names stay inside Rustrx
+                //% "Incoming call"
+                ? qsTrId("rustrx-no-call-anonymous")
+                : ring
                 //: notification title, %1 who calls
                 //% "%1 is calling"
                 ? qsTrId("rustrx-no-call-ring").arg(senderName)
@@ -274,7 +279,8 @@ Item {
                 //% "Call in %1"
                 : qsTrId("rustrx-no-call-group").arg(roomName)
         n.previewSummary = n.summary
-        n.body = ring ? roomName
+        n.body = !chatDetails ? "Rustrx"
+                : ring ? roomName
                 //: notification body, %1 who started the call
                 //% "%1 started a call"
                 : qsTrId("rustrx-no-call-started").arg(senderName)

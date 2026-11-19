@@ -25,6 +25,7 @@
 #include "UnifiedPush.h"
 #include "Voip.h"
 #include "CallRoute.h"
+#include "CallState.h"
 #include "Keys.h"
 #include "rustrx_core.h"
 #include <sailfishapp.h>
@@ -92,10 +93,18 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     connect(m_push, &UnifiedPush::command, this, &Rustrx::command);
     m_voip = new Voip(this);
     connect(m_voip, &Voip::command, this, &Rustrx::command);
+    m_voip->setRelayOnly(callsRelayOnly());
     // the earpiece during a call (the loudspeaker on the speaker button)
     m_callRoute = new CallRoute(this);
     connect(m_voip, &Voip::audioNeeded, m_callRoute, &CallRoute::setActive);
     connect(m_voip, &Voip::speakerChanged, m_callRoute, &CallRoute::setSpeaker);
+    // the screen goes dark at the ear, as in the phone app; the app's call
+    // only (the stand-in rings through its notification)
+    auto *callState = new CallState(this);
+    connect(m_voip, &Voip::changed, callState, [this, callState]() {
+        if (!m_handover.standIn())
+            callState->follow(m_voip->state());
+    });
     // the stand-in rings but never runs a call: whatever hands over to the
     // app (a tap, Answer) takes the ringing call along
     connect(m_voip, &Voip::changed, this, [this]() {
@@ -330,6 +339,20 @@ void Rustrx::setDebugLog(bool on)
         return;
     m_settings.setValue(QLatin1String(Keys::kDebugLog), on);
     DebugLog::setEnabled(on);
+    emit settingsChanged();
+}
+
+bool Rustrx::callsRelayOnly() const
+{
+    return m_settings.value(QLatin1String(Keys::kVoipRelayOnly), Keys::kVoipRelayOnlyDefault).toBool();
+}
+
+void Rustrx::setCallsRelayOnly(bool on)
+{
+    if (on == callsRelayOnly())
+        return;
+    m_settings.setValue(QLatin1String(Keys::kVoipRelayOnly), on);
+    m_voip->setRelayOnly(on);
     emit settingsChanged();
 }
 
