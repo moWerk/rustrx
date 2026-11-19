@@ -64,6 +64,21 @@ private slots:
         QCOMPARE(t.model.seenEventId(5), QString());
         QCOMPARE(t.model.seenEventId(-1), QStringLiteral("$2"));
     }
+
+    // where the room opens when its unread line is not loaded: the newest
+    // message with our own receipt (an older receipt left on a message
+    // does not count). Planted-bug: search from the oldest row.
+    void ownReceiptRow()
+    {
+        Timeline t;
+        QVariantMap old = message("$1"), read = message("$3");
+        old.insert("own_read", true);
+        read.insert("own_read", true);
+        t.model.setItems({ old, message("$2"), read, message("$4"), message("$5") });
+        QCOMPARE(t.model.rowOwnRead(), 2);
+        t.model.setItems({ message("$1"), message("$2") });
+        QCOMPARE(t.model.rowOwnRead(), -1);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestReadPoint)

@@ -64,6 +64,8 @@ public:
     // the first row of a kind ("readmarker"), or -1; without get()'s copy
     // of every row (the room page asks on each change of the count)
     Q_INVOKABLE int rowOfKind(const QString &kind) const;
+    // the newest message our own read receipt is on (-1: not loaded)
+    Q_INVOKABLE int rowOwnRead() const;
     // the message a reader has read up to when the row was on screen: the
     // row's own, or the next older one (past dates, the unread line and
     // messages still being sent); empty when there is none

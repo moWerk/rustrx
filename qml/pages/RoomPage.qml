@@ -180,7 +180,7 @@ Page {
     // not shown: new messages in a room read to its end bring up no line
     function readTo(id) {
         readUpTo = id.length ? id : rustrx.timeline.seenEventId(0)
-        queueReceipt(id, !id.length && markerRow < 0)
+        queueReceipt(id, !id.length && rustrx.timeline.rowOfKind("readmarker") < 0)
     }
 
     // at most one receipt per moment: at the newest end the list's
@@ -378,8 +378,13 @@ Page {
     // to it
     property int markerRow: -1
     property int unreadAbove: -1
+    // the unread line, else the message our read receipt is on: the unread
+    // count runs from the receipt, and the line (m.fully_read, moved by
+    // other clients only now and then) can lie further back than any
+    // search, which then opened the room at the bottom and read it all
     function findMarker() {
-        return rustrx.timeline.rowOfKind("readmarker")
+        var line = rustrx.timeline.rowOfKind("readmarker")
+        return line >= 0 ? line : rustrx.timeline.rowOwnRead()
     }
     function checkMarker() {
         // read as shown: what comes after the last read message; read on

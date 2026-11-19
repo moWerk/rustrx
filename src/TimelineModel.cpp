@@ -626,6 +626,14 @@ int TimelineModel::rowOfKind(const QString &kind) const
     return -1;
 }
 
+int TimelineModel::rowOwnRead() const
+{
+    for (int i = 0; i < m_items.size(); ++i)
+        if (m_items.at(i).toMap().value(QStringLiteral("own_read")).toBool())
+            return i;
+    return -1;
+}
+
 QString TimelineModel::seenEventId(int row) const
 {
     // newest first: older rows have higher indexes

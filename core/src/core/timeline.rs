@@ -171,8 +171,15 @@ impl Core {
             Self::fetch_replied(timeline, &items, &mut replies_asked);
             Self::receipt_names(room, &items, &mut names).await;
             let mut json = items_json(&items, own, &names);
+            // the message our own read receipt is on (the SDK keeps our
+            // receipts off the items): the room's unread count runs from
+            // there, where the unread line (m.fully_read) can lag far behind
+            let own_read = timeline.latest_user_read_receipt_timeline_event_id(own).await;
             if let Value::Array(list) = &mut json {
                 for item in list.iter_mut() {
+                    if own_read.as_ref().is_some_and(|id| item["event_id"].as_str() == Some(id.as_str())) {
+                        item["own_read"] = Value::Bool(true);
+                    }
                     let root = item["event_id"].as_str().map(str::to_owned);
                     if let (Some(root), Some(thread)) = (root, item.get_mut("thread")) {
                         Self::mark_thread_unread(room, own, &root, thread, &mut unread).await;
