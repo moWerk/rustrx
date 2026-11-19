@@ -93,6 +93,11 @@ bool Rustrx::handStoreKeyOn()
     return haveKey;
 }
 
+bool Rustrx::callDark() const
+{
+    return m_callState->blanked();
+}
+
 void Rustrx::setCallNear(bool near)
 {
     if (!m_handover.standIn())
@@ -166,6 +171,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
             m_callState->follow(m_voip->state());
     });
     connect(m_voip, &Voip::speakerChanged, m_callState, &CallState::setSpeaker);
+    connect(m_callState, &CallState::blankedChanged, this, &Rustrx::callDarkChanged);
     // the stand-in rings but never runs a call: whatever hands over to the
     // app (a tap, Answer) takes the ringing call along
     connect(m_voip, &Voip::changed, this, [this]() {

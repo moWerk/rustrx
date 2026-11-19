@@ -184,8 +184,8 @@ ApplicationWindow {
         }
         pageStack.push(Qt.resolvedUrl("pages/VoipPage.qml"))
     }
-    // the screen at the ear during a call on the earpiece: Rustrx blanks it
-    // itself (MCE does only for the phone app's route, see CallState)
+    // the screen at the ear during a call on the earpiece: the call page
+    // goes dark (MCE does it only for the phone app's route, see CallState)
     ProximitySensor {
         active: rustrx.voip.state !== "idle" && rustrx.voip.state !== "incoming" && !rustrx.voip.speaker
         alwaysOn: true

@@ -40,13 +40,6 @@ void CallState::setNear(bool near)
     rethinkBlank();
 }
 
-static void mceRequest(const char *method)
-{
-    QDBusMessage msg = QDBusMessage::createMethodCall(QStringLiteral("com.nokia.mce"), QStringLiteral("/com/nokia/mce/request"),
-                                                      QStringLiteral("com.nokia.mce.request"), QLatin1String(method));
-    QDBusConnection::systemBus().asyncCall(msg);
-}
-
 void CallState::rethinkBlank()
 {
     const bool blank = m_sent == QLatin1String("active") && m_near && !m_speaker;
@@ -54,7 +47,7 @@ void CallState::rethinkBlank()
         return;
     m_blanked = blank;
     qInfo() << "call screen:" << (blank ? "dark at the ear" : "on");
-    mceRequest(blank ? "req_display_state_off" : "req_display_state_on");
+    emit blankedChanged();
 }
 
 void CallState::follow(const QString &voipState)

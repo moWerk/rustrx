@@ -25,9 +25,11 @@
 // way to the call); "none" ends it. MCE blanks the screen at the ear only
 // when the audio policy's route is the earpiece (tklock.c: audio_route ==
 // AUDIO_ROUTE_HANDSET), and an app's call never gets that route: Rustrx
-// sets the earpiece beside the policy. So Rustrx blanks it itself, with
-// MCE's display requests, while the call is on the earpiece and the
-// proximity sensor is covered, so a cheek does not mute or hang up. A ringing call stays "none" (the ringtone needs it). MCE ties the state to this process's
+// sets the earpiece beside the policy. So Rustrx darkens the call page
+// itself while the call is on the earpiece and the proximity sensor is
+// covered, and takes every touch, so a cheek does not mute or hang up.
+// Not with MCE's display off request: that is a screen off like the power
+// key's, the lock screen and the device lock follow (the author's test). A ringing call stays "none" (the ringtone needs it). MCE ties the state to this process's
 // bus connection and drops it when the process goes, a crash included.
 class CallState : public QObject
 {
@@ -38,6 +40,9 @@ public:
 
     // tests: the screen is dark at the ear now
     bool blanked() const { return m_blanked; }
+
+signals:
+    void blankedChanged();
 
 public slots:
     // the call's state from Voip: idle, incoming, outgoing, connecting, connected

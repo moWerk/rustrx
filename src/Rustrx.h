@@ -57,6 +57,8 @@ class Rustrx : public QObject
     // (Secrets locked, its prompt not answered); retryRestore() asks again
     Q_PROPERTY(bool restoreFailed READ restoreFailed NOTIFY stateChanged)
     Q_PROPERTY(bool restoring READ restoring NOTIFY stateChanged)
+    // the call page is dark at the ear (see CallState)
+    Q_PROPERTY(bool callDark READ callDark NOTIFY callDarkChanged)
     Q_PROPERTY(QString syncState READ syncState NOTIFY syncStateChanged)
     Q_PROPERTY(QString verificationState READ verificationState NOTIFY encryptionChanged)
     Q_PROPERTY(QString recoveryState READ recoveryState NOTIFY encryptionChanged)
@@ -132,6 +134,7 @@ public:
     QString keptUser() const { return m_keptUser; }
     bool restoreFailed() const { return m_restoreFailed; }
     bool restoring() const { return m_restoring; }
+    bool callDark() const;
     Q_INVOKABLE void retryRestore();
     // the proximity sensor during a call (see CallState)
     Q_INVOKABLE void setCallNear(bool near);
@@ -257,6 +260,7 @@ public:
     Q_INVOKABLE QVariantMap takePendingShare() { return m_handover.takePendingShare(); }
 
 signals:
+    void callDarkChanged();
     // a dev command for the UI (see dev())
     void devUi(const QVariantMap &request);
     void stateChanged();

@@ -28,7 +28,7 @@ Page {
     readonly property var call: rustrx.voip
     allowedOrientations: Orientation.Portrait
     // a running call is ended by its button, not by a swipe
-    backNavigation: call.state === "idle"
+    backNavigation: call.state === "idle" && !rustrx.callDark
 
     // the call's length, while it runs
     property int seconds
@@ -160,6 +160,19 @@ Page {
                 rotation: 135
                 onClicked: page.call.hangup()
             }
+        }
+    }
+
+    // at the ear: black over everything, and no touch gets through (a
+    // cheek would mute or hang up); uncovered, the call is back at once
+    Rectangle {
+        anchors.fill: parent
+        z: 1000
+        color: "black"
+        visible: rustrx.callDark
+        MouseArea {
+            anchors.fill: parent
+            preventStealing: true
         }
     }
 }
