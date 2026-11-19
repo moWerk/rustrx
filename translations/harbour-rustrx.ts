@@ -2868,5 +2868,9 @@
         <source>Photos (JPEG, as the camera takes them) leave without the place and time they were taken, the camera and anything else it noted, only which way up they are. Videos and other pictures go as they are. Off: photos go as the camera saved them.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-voip-send-failed">
+        <source>The call could not be set up: no connection to the server</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

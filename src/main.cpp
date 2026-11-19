@@ -205,12 +205,13 @@ int main(int argc, char *argv[])
     if (standIn)
         return app->exec();
 
+    // made before the window, so it outlives the window that reads it
+    KeyboardSlide keyboardSlide;
     // the window lives as long as the process (see Service.qml)
     QScopedPointer<QQuickView> view(SailfishApp::createView());
     view->engine()->setNetworkAccessManagerFactory(&localOnly);
     view->rootContext()->setContextProperty(QStringLiteral("rustrx"), &rustrx);
     view->rootContext()->setContextProperty(QStringLiteral("voice"), &voice);
-    KeyboardSlide keyboardSlide;
     view->rootContext()->setContextProperty(QStringLiteral("keyboardSlide"), &keyboardSlide);
     view->rootContext()->setContextProperty(QStringLiteral("service"), service.data());
     view->rootContext()->setContextProperty(QStringLiteral("appVersion"), QStringLiteral(APP_VERSION));

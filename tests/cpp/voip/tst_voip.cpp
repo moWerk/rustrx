@@ -212,7 +212,9 @@ private slots:
         d.setOwnUserId(QStringLiteral("@b:example.org"));
         d.handleEvent(invite("c3", 9000000000000LL, true));
         QCOMPARE(d.state(), QStringLiteral("incoming"));
-        QVERIFY(d.ringing().value("expires_at").toLongLong() <= QDateTime::currentMSecsSinceEpoch() + 120000);
+        // the cap is 2 min; Qt's coarse timers may report up to 5 % more
+        // (an exact <= 120000 failed now and then); uncapped it is years
+        QVERIFY(d.ringing().value("expires_at").toLongLong() < QDateTime::currentMSecsSinceEpoch() + 130000);
     }
 
     // Planted-bug: an invite while busy is dropped silently (the caller
@@ -245,6 +247,20 @@ private slots:
         b.handleEvent({ { "type", "m.call.hangup" }, { "room_id", "!r" }, { "sender", "@a:example.org" }, { "own", false },
                         { "content", QVariantMap{ { "call_id", "c1" }, { "party_id", "pa" }, { "version", "1" } } } });
         QCOMPARE(b.state(), QStringLiteral("idle"));
+    }
+
+    // Planted-bug: sendFailed() does nothing (an answer that could not be
+    // sent stayed on "Connecting…" for good).
+    void aCallThatCannotBeSentEnds()
+    {
+        Voip b;
+        b.setOwnUserId(QStringLiteral("@b:example.org"));
+        b.handleEvent(invite("c1", 60000, true));
+        b.answer();
+        QCOMPARE(b.state(), QStringLiteral("connecting"));
+        b.sendFailed();
+        QCOMPARE(b.state(), QStringLiteral("idle"));
+        QCOMPARE(b.endReason(), QStringLiteral("send_failed"));
     }
 
     // Planted-bug: the credentials go in unescaped (an "@" in the password

@@ -116,6 +116,8 @@ Page {
                 case "ice_failed": return qsTrId("rustrx-la-voip-ice-failed")
                 //% "The microphone or speaker could not be used"
                 case "user_media_failed": return qsTrId("rustrx-la-voip-media-failed")
+                //% "The call could not be set up: no connection to the server"
+                case "send_failed": return qsTrId("rustrx-la-voip-send-failed")
                 }
                 //% "Call ended"
                 return qsTrId("rustrx-la-voip-ended")

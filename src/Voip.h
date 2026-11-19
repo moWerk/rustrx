@@ -57,7 +57,7 @@ class Voip : public QObject
     // when the media came up (ms since the epoch), 0 before
     Q_PROPERTY(qint64 connectedAt READ connectedAt NOTIFY changed)
     // why the last call ended: "", "hangup", "rejected", "answered_elsewhere",
-    // "invite_timeout", "ice_failed", "user_media_failed"
+    // "invite_timeout", "ice_failed", "user_media_failed", "send_failed"
     Q_PROPERTY(QString endReason READ endReason NOTIFY changed)
 
 public:
@@ -105,8 +105,9 @@ public:
     // from the core
     void handleEvent(const QVariantMap &ev);
     void handleTurn(const QVariantMap &ev);
-    // the core sent one of our events ("voip_sent")
+    // the core sent one of our events ("voip_sent"), or could not
     void handleSent(const QVariantMap &ev);
+    void sendFailed();
 
 signals:
     void changed();

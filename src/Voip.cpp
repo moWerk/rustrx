@@ -308,6 +308,17 @@ void Voip::reset()
     }
 }
 
+// An event of the call could not be sent (no network, refused). Before
+// our invite or answer is out the call cannot come about: it ends instead
+// of showing "Calling…" or "Connecting…" until a timeout (an answer had
+// none). Later failures (a candidates batch) leave it to ICE.
+void Voip::sendFailed()
+{
+    if (m_descSent || (m_state != QLatin1String("outgoing") && m_state != QLatin1String("connecting")))
+        return;
+    finish(QStringLiteral("send_failed"), false);
+}
+
 // Rustrx is quitting: a running call is hung up, and the process waits
 // (a little) until the hangup has left, so the other side stops ringing or
 // talking to nobody

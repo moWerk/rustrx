@@ -836,6 +836,9 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     } else if (type == QLatin1String("error")) {
         const QString cmd = ev.value("cmd").toString();
         qWarning().noquote() << "core error:" << cmd << ev.value("message").toString();
+        // a call event that did not leave: the call cannot be set up
+        if (cmd == QLatin1String("voip_send"))
+            m_voip->sendFailed();
         if (cmd == QLatin1String("login_password") || cmd == QLatin1String("login_sso")
                 || cmd == QLatin1String("login_oauth") || cmd == QLatin1String("login_qr")) {
             m_loggingIn = false;
