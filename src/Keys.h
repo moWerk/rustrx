@@ -206,6 +206,10 @@ static const int kVoipInviteLifetimeMaxMs = 120000;
 static const int kVoipQuitHangupMs = 1500;
 static const int kVoipCandidateBatchMs = 300;
 static const int kVoipTurnWaitMs = 3000;
+// ICE that has failed gets this long to come back before the call ends: an
+// answer can take 20 s and more over federation, and the answerer's checks
+// give up after some 8 s without the caller's replies (browsers wait ~30 s)
+static const int kVoipIceFailGraceMs = 30000;
 static const int kVoipStatsMs = 2000;
 static const int kVoipLevelMs = 500;
 // the receiving jitter buffer (ms) and the Opus bitrate (bit/s)

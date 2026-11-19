@@ -20,10 +20,10 @@
 #include <QObject>
 #include <QString>
 
-// The call as MCE knows it, the way the phone app tells it: "ringing" or
-// "active" turn on MCE's in-call behaviour, above all blanking the screen
-// while the phone is at the ear (the proximity sensor), so a cheek does not
-// mute or hang up; "none" ends it. MCE ties the state to this process's
+// The call as MCE knows it, the way the phone app tells it: "active" turns
+// on MCE's in-call behaviour, above all blanking the screen while the phone
+// is at the ear (the proximity sensor), so a cheek does not mute or hang
+// up; "none" ends it. A ringing call stays "none" (the ringtone needs it). MCE ties the state to this process's
 // bus connection and drops it when the process goes, a crash included.
 class CallState : public QObject
 {

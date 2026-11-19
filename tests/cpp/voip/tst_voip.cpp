@@ -23,6 +23,7 @@ public:
     Voip a, b;
     QStringList sent;   // "a:m.call.invite", ...
     bool deliver = true;
+    int answerDelayMs = 0;   // the answer's way to the caller (federation lag)
 
     Wire()
     {
@@ -64,7 +65,8 @@ public:
         QVariantMap echo = ev;
         echo.insert("own", true);
         ev.insert("own", false);
-        QTimer::singleShot(5, to, [to, ev]() { to->handleEvent(ev); });
+        const int delay = type == QLatin1String("m.call.answer") ? qMax(5, answerDelayMs) : 5;
+        QTimer::singleShot(delay, to, [to, ev]() { to->handleEvent(ev); });
         QTimer::singleShot(5, from, [from, echo]() { from->handleEvent(echo); });
     }
 };
@@ -115,6 +117,26 @@ private slots:
         QCOMPARE(w.a.state(), QStringLiteral("idle"));
         QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("idle"), 3000);
         QCOMPARE(w.b.endReason(), QStringLiteral("hangup"));
+    }
+
+    // An answer that takes a while to reach the caller (23 s from tchncs.de
+    // to matrix.org, the author's first test of 0.6): the answerer's ICE
+    // gives up after some 8 s without the caller's replies, and the call
+    // must still connect once the answer is there.
+    // Planted-bug: ICE "failed" ends the call at once.
+    void aLateAnswerStillConnects()
+    {
+        Wire w;
+        w.answerDelayMs = 12000;
+        w.a.place(QStringLiteral("!dm:example.org"), QStringLiteral("@b:example.org"), QStringLiteral("B"));
+        QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("incoming"), 5000);
+        w.b.answer();
+        QTRY_COMPARE_WITH_TIMEOUT(w.a.state(), QStringLiteral("connected"), 30000);
+        QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("connected"), 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(w.a.status().value("remote_level_db").toDouble() > -40, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(w.b.status().value("remote_level_db").toDouble() > -40, 10000);
+        w.a.hangup();
+        QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("idle"), 3000);
     }
 
     // Planted-bug: the caller ignores m.call.reject (it rings on).

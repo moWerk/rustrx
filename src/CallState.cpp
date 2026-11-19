@@ -28,9 +28,10 @@ CallState::~CallState()
 
 void CallState::follow(const QString &voipState)
 {
-    if (voipState == QLatin1String("incoming"))
-        request(QStringLiteral("ringing"));
-    else if (voipState == QLatin1String("idle"))
+    // not while it rings: ngfd plays the VoIP ringtone only with no call
+    // state (voip_ringtone.ini: call_state.mode == none), and with
+    // "ringing" set first a ring plays as the short in-call tones
+    if (voipState == QLatin1String("idle") || voipState == QLatin1String("incoming"))
         request(QStringLiteral("none"));
     else
         request(QStringLiteral("active"));

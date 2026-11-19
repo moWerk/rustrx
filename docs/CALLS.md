@@ -28,6 +28,12 @@ level ! tee` to `pulsesink` and to the echo canceller's reference.
 TURN credentials come from the homeserver (`turn_server`); its host
 doubles as STUN.
 
+**A late answer.** Over federation an answer can take 20 seconds and
+more to reach the caller (tchncs.de to matrix.org, 23 s in the first
+test). The answerer's ICE fails after some 8 s without the caller's
+replies; Rustrx waits 30 s for it to come back (browsers wait about as
+long) and libnice does recover once the caller has the answer.
+
 **Echo.** Speex's echo canceller (speexdsp) at 16 kHz, 10 ms frames, a
 300 ms tail. The microphone leaves the pipeline at an appsink, is paired
 frame by frame with the far end's audio (a queue of at most 120 ms) in
@@ -58,8 +64,10 @@ works, as Android App Support does it:
 Every call starts on the earpiece, like a phone call.
 
 **Proximity.** During a call Rustrx tells MCE its state the way the
-phone app does (`req_call_state_change`: "ringing", "active", "none";
-`src/CallState.cpp`). MCE then blanks the screen while the phone is at
+phone app does (`req_call_state_change`: "active" from placing or
+answering, "none" at the end; `src/CallState.cpp`). Not "ringing": ngfd
+plays the VoIP ringtone only while no call state is set, and otherwise
+two short in-call tones. MCE then blanks the screen while the phone is at
 the ear, so a cheek cannot mute or hang up. MCE ties the state to the
 caller's bus connection and drops it when the process ends, a crash
 included. The stand-in never does this; its ring is a notification.

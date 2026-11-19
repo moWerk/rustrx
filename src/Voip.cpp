@@ -99,6 +99,12 @@ Voip::Voip(QObject *parent) : QObject(parent)
         GstPromise *p = gst_promise_new_with_change_func(&Voip::onStatsReply, this, nullptr);
         g_signal_emit_by_name(m_webrtc, "get-stats", nullptr, p);
     });
+    m_iceFailTimer.setSingleShot(true);
+    m_iceFailTimer.setInterval(Keys::kVoipIceFailGraceMs);
+    connect(&m_iceFailTimer, &QTimer::timeout, this, [this]() {
+        qInfo() << "voip: ICE did not come back";
+        finish(QStringLiteral("ice_failed"), true, m_connectedAt ? QStringLiteral("ice_timeout") : QStringLiteral("ice_failed"));
+    });
     m_turnTimer.setSingleShot(true);
     m_turnTimer.setInterval(Keys::kVoipTurnWaitMs);
     connect(&m_turnTimer, &QTimer::timeout, this, [this]() {
@@ -323,6 +329,7 @@ void Voip::reset()
     m_inviteTimer.stop();
     m_statsTimer.stop();
     m_turnTimer.stop();
+    m_iceFailTimer.stop();
     m_waitingForTurn = false;
     m_localCandidates.clear();
     m_remoteCandidates.clear();
@@ -1016,13 +1023,17 @@ void Voip::onIceState(int state, int gen)
         return;
     qInfo() << "voip: ICE state" << state;
     if (state == GST_WEBRTC_ICE_CONNECTION_STATE_CONNECTED || state == GST_WEBRTC_ICE_CONNECTION_STATE_COMPLETED) {
+        m_iceFailTimer.stop();
         if (m_state == QLatin1String("connecting")) {
             m_connectedAt = nowMs();
             setState(QStringLiteral("connected"));
             m_statsTimer.start();
         }
     } else if (state == GST_WEBRTC_ICE_CONNECTION_STATE_FAILED) {
-        finish(QStringLiteral("ice_failed"), true, m_connectedAt ? QStringLiteral("ice_timeout") : QStringLiteral("ice_failed"));
+        // not yet the end: the other side's replies may still come (a late
+        // answer, a network that is back)
+        if (!m_iceFailTimer.isActive())
+            m_iceFailTimer.start();
     }
 }
 

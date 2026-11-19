@@ -211,6 +211,7 @@ private:
     QTimer m_inviteTimer;      // the invite's lifetime
     QTimer m_statsTimer;       // packet counts while connected
     QTimer m_turnTimer;        // stop waiting for TURN credentials
+    QTimer m_iceFailTimer;     // failed ICE ends the call after this
     double m_lastLevel = -100;
     int m_packetsIn = 0, m_packetsOut = 0;
     int m_candidatesAdded = 0;
