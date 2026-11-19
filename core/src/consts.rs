@@ -48,6 +48,9 @@ pub(crate) const SEND_RETRY_DELAY: Duration = Duration::from_secs(30);
 /// Timeline changes this close together are sent as one snapshot
 /// (rooms and threads).
 pub(crate) const TIMELINE_COALESCE: Duration = Duration::from_millis(60);
+/// Of the shutdown's budget, at most this (and at most a fifth) is kept
+/// for stopping the runtime after the client paused.
+pub(crate) const SHUTDOWN_RUNTIME_RESERVE: Duration = Duration::from_millis(500);
 /// How long a call ring lasts when the caller sets no lifetime (MSC4075).
 pub(crate) const RING_LIFETIME_DEFAULT_MS: u64 = 30_000;
 /// The longest ring lifetime accepted from a caller.

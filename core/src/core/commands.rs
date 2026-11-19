@@ -18,7 +18,15 @@ impl Core {
                 return;
             }
         };
-        self.rt.spawn(async move {
+        // checked under the list's lock, which shutdown takes to set it:
+        // no command slips in after the list was emptied
+        let Ok(mut running) = self.commands.lock() else { return };
+        if self.stopped.load(std::sync::atomic::Ordering::Acquire) {
+            tracing::info!(%cmd, "command after shutdown, not run");
+            return;
+        }
+        running.retain(|t| !t.is_finished());
+        running.push(self.rt.spawn(async move {
             // a panic in a handler would end its task silently, and the UI
             // would wait for an answer that never comes
             match std::panic::AssertUnwindSafe(self.handle(command)).catch_unwind().await {
@@ -26,7 +34,18 @@ impl Core {
                 Ok(Err(e)) => self.error(&cmd, &e),
                 Err(_) => self.error(&cmd, &anyhow!("internal error")),
             }
-        });
+        }));
+    }
+
+    /// The running commands, taken out for the shutdown to abort.
+    pub(crate) fn take_commands(&self) -> Vec<JoinHandle<()>> {
+        match self.commands.lock() {
+            Ok(mut running) => {
+                self.stopped.store(true, std::sync::atomic::Ordering::Release);
+                std::mem::take(&mut *running)
+            }
+            Err(_) => Vec::new(),
+        }
     }
 
     pub(crate) async fn handle(&'static self, command: Command) -> Result<()> {

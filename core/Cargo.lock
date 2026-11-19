@@ -3159,6 +3159,7 @@ dependencies = [
  "anyhow",
  "futures-util",
  "matrix-sdk",
+ "matrix-sdk-store-encryption",
  "matrix-sdk-ui",
  "mime",
  "mime_guess",

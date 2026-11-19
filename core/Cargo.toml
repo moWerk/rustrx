@@ -28,6 +28,9 @@ anyhow = "1"
 # the QR code of a QR login, drawn by the UI (already in the tree through
 # matrix-sdk's qrcode feature)
 qrcode = { version = "0.14", default-features = false }
+# seals session.json with the store's key (in the tree through matrix-sdk's
+# sqlite store; the version in Cargo.lock)
+matrix-sdk-store-encryption = "=0.19.1"
 
 [profile.release]
 opt-level = 2

@@ -63,7 +63,7 @@ const DEVICE_NAME: &str = "Rustrx (Sailfish OS)";
 const USER_AGENT: &str = concat!("Rustrx/", env!("CARGO_PKG_VERSION"), " (Sailfish OS)");
 
 #[derive(Serialize, Deserialize)]
-struct SavedSession {
+pub(crate) struct SavedSession {
     homeserver: String,
     session: MatrixSession,
     /// whether the server had native sliding sync at login; a restore then
@@ -169,7 +169,16 @@ impl Teardown {
 }
 
 pub(crate) struct Core {
-    rt: Runtime,
+    /// where every task runs
+    rt: tokio::runtime::Handle,
+    /// the runtime itself, taken and stopped by `shutdown`
+    runtime: std::sync::Mutex<Option<Runtime>>,
+    /// the running commands' tasks (dispatch), aborted first at shutdown
+    commands: std::sync::Mutex<Vec<JoinHandle<()>>>,
+    /// set by `shutdown`: no command starts any more
+    stopped: std::sync::atomic::AtomicBool,
+    /// a login is running (LoginGuard): a second one is refused
+    login_busy: std::sync::atomic::AtomicBool,
     data_dir: PathBuf,
     emitter: Emitter,
     state: Mutex<State>,
@@ -197,6 +206,7 @@ mod packs;
 mod push;
 mod rooms;
 mod session;
+mod session_file;
 mod spaces;
 mod sync;
 mod threads;
@@ -207,8 +217,15 @@ pub(crate) use spaces::join_rule_name;
 
 impl Core {
     pub(crate) fn new(rt: Runtime, data_dir: PathBuf, emitter: Emitter) -> Self {
-        Core { rt, data_dir, emitter, state: Mutex::new(State::default()), sso_cancel: tokio::sync::Notify::new(), push_lock: Mutex::new(()), qr_check: Mutex::new(None),
+        Core { rt: rt.handle().clone(), runtime: std::sync::Mutex::new(Some(rt)), commands: std::sync::Mutex::new(Vec::new()),
+               stopped: std::sync::atomic::AtomicBool::new(false), login_busy: std::sync::atomic::AtomicBool::new(false),
+               data_dir, emitter, state: Mutex::new(State::default()), sso_cancel: tokio::sync::Notify::new(), push_lock: Mutex::new(()), qr_check: Mutex::new(None),
                threads_read: tokio::sync::watch::channel(0).0 }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn runtime_handle(&self) -> tokio::runtime::Handle {
+        self.rt.clone()
     }
 
     pub(crate) fn emit(&self, value: Value) {

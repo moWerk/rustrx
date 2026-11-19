@@ -1,13 +1,22 @@
 # The core protocol
 
 Rustrx is two halves: the Rust core (`core/`, matrix-rust-sdk) and the Qt/QML
-UI. They talk through three C functions (`src/rustrx_core.h`) and JSON:
+UI. They talk through six C functions (`src/rustrx_core.h`) and JSON:
 
+- `rustrx_version()`: the core's version.
+- `rustrx_set_store_key(key)`: the store's key from sailfish-secrets, once,
+  before `rustrx_start`. It is the store's passphrase and seals
+  `session.json` (the access and refresh tokens); without it both stay
+  unencrypted.
+- `rustrx_start(data_dir, callback, ctx)`: once per process.
 - `rustrx_command(json)`: one command object, `{"cmd": "...", ...}`.
 - The callback given to `rustrx_start`: one event object per call,
   `{"ev": "...", ...}`, on a core thread; the bridge (`src/Rustrx.cpp`)
   hands it to the GUI thread.
 - `rustrx_stop()`: no event reaches the callback afterwards.
+- `rustrx_shutdown(timeout_ms)`: at the process's end, within the time
+  given: running commands are aborted, the session is saved, the client's
+  stores close and the core's threads stop. No command runs afterwards.
 
 **Version 2** (since 0.4.7: one name per concept). The core sends `"proto": 2` with `ready` and `logged_in`
 (`PROTO` in `core/src/consts.rs`); the bridge warns in the log when it expects

@@ -36,7 +36,7 @@ pub(crate) struct Emitter {
 }
 
 /// Cleared by rustrx_stop: the callback's receiver is going away, no event
-/// may reach it any more (tokio tasks keep running until the process ends).
+/// may reach it any more (tokio tasks run on until rustrx_shutdown).
 static LIVE: AtomicBool = AtomicBool::new(true);
 
 impl Emitter {
@@ -245,6 +245,69 @@ mod tests {
         let (core, _sink) = test_core();
         let done = std::thread::spawn(move || core.shutdown(Duration::from_millis(500))).join();
         assert!(done.is_ok(), "shutdown panicked");
+    }
+
+    /// The shutdown aborts a running command, stops the runtime (no task
+    /// outlives it into the process's exit), and stays in its budget; a
+    /// command after it does not run.
+    /// Planted-bugs: drop the `t.abort()` loop in `shutdown` (the command,
+    /// mark_read waiting 22 s between retries, is awaited until the
+    /// timeout: too slow); put the runtime back instead of stopping it
+    /// (`*self.runtime.lock().unwrap() = Some(runtime)`: the sleeping task
+    /// still holds its sentinel).
+    #[test]
+    fn shutdown_aborts_commands_and_stops_the_runtime() {
+        let (core, sink) = test_core();
+        // "not logged in", retried after 2, 5 and 15 s: a long command
+        assert_eq!(send(core, r#"{"cmd":"mark_read","room_id":"!a:b"}"#), 0);
+        let sentinel = std::sync::Arc::new(());
+        let held = sentinel.clone();
+        core.runtime_handle().spawn(async move {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            drop(held);
+        });
+        std::thread::sleep(Duration::from_millis(200));
+        let started = Instant::now();
+        let done = std::thread::spawn(move || core.shutdown(Duration::from_secs(3))).join();
+        assert!(done.is_ok(), "shutdown panicked");
+        assert!(started.elapsed() < Duration::from_secs(1), "took {:?}", started.elapsed());
+        assert_eq!(std::sync::Arc::strong_count(&sentinel), 1, "a task outlived the runtime");
+        assert!(events(sink).is_empty(), "{:?}", events(sink));
+        assert_eq!(send(core, r#"{"cmd":"open_room","room_id":"!a:b"}"#), 0);
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(events(sink).is_empty(), "a command ran after the shutdown: {:?}", events(sink));
+        // a second shutdown has nothing left to do and returns
+        core.shutdown(Duration::from_millis(100));
+    }
+
+    /// While a login runs, a second one of any kind is refused at once
+    /// with login_error (before any network), and the guard is let go.
+    /// Planted-bug: in `login_or_refuse`, drop the emit (the second login
+    /// ends silently: no event) or return a guard anyway (`begin_login`
+    /// always Some: the second login goes on to the network).
+    #[test]
+    fn a_second_login_is_refused() {
+        let (core, sink) = test_core();
+        let first = core.begin_login().expect("no login runs yet");
+        assert!(core.begin_login().is_none());
+        let logins = [
+            r#"{"cmd":"login_password","user":"@a:example.invalid","password":"x"}"#,
+            r#"{"cmd":"login_sso","homeserver":"example.invalid"}"#,
+            r#"{"cmd":"login_oauth","homeserver":"example.invalid"}"#,
+            r#"{"cmd":"login_qr","homeserver":"example.invalid"}"#,
+        ];
+        for login in logins {
+            sink.lock().unwrap().clear();
+            assert_eq!(send(core, login), 0);
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while sink.lock().unwrap().is_empty() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let got = events(sink);
+            assert_eq!(got, vec![json!({"ev": "login_error", "message": "another login is still running"})], "{login}");
+        }
+        drop(first);
+        assert!(core.begin_login().is_some(), "the guard was not let go");
     }
 
     /// Before rustrx_start every command, even a null pointer, is refused

@@ -4,9 +4,33 @@
 
 use super::*;
 
+/// One login at a time: held from a login's start to its end (after_login
+/// included), let go on every way out.
+pub(crate) struct LoginGuard(&'static Core);
+
+impl Drop for LoginGuard {
+    fn drop(&mut self) {
+        self.0.login_busy.store(false, std::sync::atomic::Ordering::Release);
+    }
+}
+
 impl Core {
-    pub(crate) fn session_path(&self) -> PathBuf {
-        self.data_dir.join(SESSION_FILE)
+    /// The login's guard, or None when another login is running.
+    pub(crate) fn begin_login(&'static self) -> Option<LoginGuard> {
+        use std::sync::atomic::Ordering;
+        self.login_busy.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).ok().map(|_| LoginGuard(self))
+    }
+
+    /// The guard for a login that may start; when another runs, this one
+    /// is refused with "login_error" (two at once wrote one store from two
+    /// clients, and the later after_login replaced the first's client)
+    fn login_or_refuse(&'static self) -> Option<LoginGuard> {
+        let guard = self.begin_login();
+        if guard.is_none() {
+            tracing::info!("login: another login is running, refused");
+            self.emit(json!({"ev": "login_error", "message": "another login is still running"}));
+        }
+        guard
     }
 
     /// Restore a saved session, or report that a login is needed.
@@ -35,11 +59,9 @@ impl Core {
     }
 
     pub(crate) async fn restore(&'static self) -> Result<bool> {
-        let path = self.session_path();
-        if !path.exists() {
-            return Ok(false);
-        }
-        let saved: SavedSession = serde_json::from_slice(&std::fs::read(&path)?)?;
+        // before the client and its store: a session that cannot be
+        // unsealed is an error here, and the store is left alone
+        let Some(saved) = self.load_session()? else { return Ok(false) };
         let t = std::time::Instant::now();
         let client = match saved.sliding_sync {
             Some(native) => self.build_client_with(&saved.homeserver, true, Some(native)).await?,
@@ -194,24 +216,9 @@ impl Core {
             sliding_sync: Some(!matches!(client.sliding_sync_version(), Version::None)),
             client_id,
         };
-        // the tokens: owner-only, and complete or absent (a crash mid-write
-        // must not leave a half file for the next start)
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-        let path = self.session_path();
-        let tmp = path.with_extension("json.tmp");
-        {
-            let mut f = std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&tmp)?;
-            f.write_all(&serde_json::to_vec(&saved)?)?;
-            f.sync_all()?;
-        }
-        std::fs::rename(&tmp, &path)?;
-        Ok(())
+        // the tokens: sealed with the store's key where there is one,
+        // owner-only, complete or absent (session_file.rs)
+        self.write_session(&saved)
     }
 
     pub(crate) async fn after_login(&'static self, client: Client) -> Result<()> {
@@ -385,7 +392,7 @@ impl Core {
         };
         tracing::warn!(soft_logout, "the server no longer accepts this session");
         let client = teardown.stop().await;
-        std::fs::remove_file(self.session_path()).ok();
+        self.remove_session();
         let user = client.as_ref().and_then(|c| c.user_id()).map(|u| u.to_string());
         if let (Some(user), Some(device)) = (user.as_deref(), client.as_ref().and_then(|c| c.device_id())) {
             let kept = json!({"user_id": user, "device_id": device.as_str()});
@@ -484,6 +491,7 @@ impl Core {
     }
 
     pub(crate) async fn login_password(&'static self, user: String, password: String, homeserver: Option<String>) -> Result<()> {
+        let Some(_login) = self.login_or_refuse() else { return Ok(()) };
         if self.state.lock().await.client.is_some() {
             bail!("already logged in");
         }
@@ -519,6 +527,7 @@ impl Core {
     }
 
     pub(crate) async fn login_sso(&'static self, user: Option<String>, homeserver: Option<String>, idp: Option<String>) -> Result<()> {
+        let Some(_login) = self.login_or_refuse() else { return Ok(()) };
         if self.state.lock().await.client.is_some() {
             bail!("already logged in");
         }
@@ -579,8 +588,26 @@ impl Core {
     /// (Qt's main thread, no runtime there) its timer panicked, the panic
     /// could not leave the extern "C" fn, and every quit since 0.4.7 ended
     /// in abort() before any of this ran.
+    /// In this order, all within `limit`: the running commands are aborted
+    /// (none may write after the stores closed, nor hold the state's lock),
+    /// the login's tasks and the sync stop, the session is saved, the
+    /// client pauses (its stores close), and last the runtime stops, so no
+    /// tokio thread is left running into the process's exit handlers.
     pub(crate) fn shutdown(&'static self, limit: Duration) {
-        let done = self.rt.block_on(async { tokio::time::timeout(limit, async {
+        let start = std::time::Instant::now();
+        let Some(runtime) = self.runtime.lock().ok().and_then(|mut r| r.take()) else {
+            return; // stopped already
+        };
+        // the runtime's own stop gets what the rest leaves, and at least this
+        let reserve = (limit / 5).min(SHUTDOWN_RUNTIME_RESERVE);
+        let commands = self.take_commands();
+        let done = self.rt.block_on(async { tokio::time::timeout(limit.saturating_sub(reserve), async {
+            for t in &commands {
+                t.abort();
+            }
+            for t in commands {
+                let _ = t.await;
+            }
             let teardown = self.state.lock().await.take_login();
             // the tokens as they are now: a refresh that ended while this
             // process was leaving may not have reached session.json yet
@@ -603,6 +630,9 @@ impl Core {
         if done.is_err() {
             tracing::warn!("shutdown: not finished in time");
         }
+        // what is left of the budget: tasks still running are dropped at
+        // their next wait, blocking ones are not waited for longer
+        runtime.shutdown_timeout(limit.saturating_sub(start.elapsed()));
     }
 
     /// Logging in with a QR code (MSC4108): this device shows a code, a
@@ -617,6 +647,7 @@ impl Core {
         use matrix_sdk::authentication::oauth::ClientRegistrationData;
         use matrix_sdk::reqwest::Url;
         use std::future::IntoFuture;
+        let Some(_login) = self.login_or_refuse() else { return Ok(()) };
         if self.state.lock().await.client.is_some() {
             bail!("already logged in");
         }
@@ -704,6 +735,7 @@ impl Core {
         use matrix_sdk::authentication::oauth::ClientRegistrationData;
         use matrix_sdk::reqwest::Url;
         use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerIpAddress};
+        let Some(_login) = self.login_or_refuse() else { return Ok(()) };
         if self.state.lock().await.client.is_some() {
             bail!("already logged in");
         }
@@ -787,7 +819,7 @@ impl Core {
             tracing::warn!("logout: a newer login or logout came first, nothing removed");
             return Ok(());
         }
-        std::fs::remove_file(self.session_path()).ok();
+        self.remove_session();
         self.wipe_local_data();
         self.emit(json!({"ev": "logged_out"}));
         Ok(())
