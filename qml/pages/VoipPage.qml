@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
 
 // A classic one-to-one call (rustrx.voip): who, how far it got, and the
 // buttons for it. It follows the call's state and goes when the call ends.
@@ -53,13 +54,25 @@ Page {
         onTriggered: if (page.status === PageStatus.Active) pageStack.pop()
     }
 
+    // ringing: the lower half answers or declines by a swipe, as in the phone app
+    IncomingCallSwipe {
+        visible: page.call.state === "incoming"
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        height: parent.height * 0.55
+        onAnswered: page.call.answer()
+        onDeclined: page.call.reject()
+    }
+
     Column {
         anchors.centerIn: parent
+        // above the swipe while ringing
+        anchors.verticalCenterOffset: page.call.state === "incoming" ? -parent.height * 0.28 : 0
         width: parent.width - 2 * Theme.horizontalPageMargin
         spacing: Theme.paddingLarge
 
         Icon {
             anchors.horizontalCenter: parent.horizontalCenter
+            visible: page.call.state !== "incoming"
             source: "image://theme/icon-l-answer"
         }
         Label {
@@ -113,21 +126,6 @@ Page {
 
         Item { width: 1; height: Theme.paddingLarge }
 
-        Row {
-            anchors.horizontalCenter: parent.horizontalCenter
-            spacing: Theme.paddingLarge * 2
-            visible: page.call.state === "incoming"
-            Button {
-                //% "Decline"
-                text: qsTrId("rustrx-bt-voip-decline")
-                onClicked: page.call.reject()
-            }
-            Button {
-                //% "Answer"
-                text: qsTrId("rustrx-bt-voip-answer")
-                onClicked: page.call.answer()
-            }
-        }
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Theme.paddingLarge * 2

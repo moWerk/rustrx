@@ -2813,14 +2813,6 @@
         <source>Rustrx stays upright when the phone turns. Pictures and videos still turn with it, and so does everything while a slide-out keyboard is open.</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-bt-voip-answer">
-        <source>Answer</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-bt-voip-decline">
-        <source>Decline</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-la-voip-calling">
         <source>Calling…</source>
         <translation type="unfinished"></translation>
@@ -2867,6 +2859,10 @@
     </message>
     <message id="rustrx-me-voip-call">
         <source>Call</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-voip-swipe-hint">
+        <source>Swipe left or right to answer, up to decline</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
