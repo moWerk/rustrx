@@ -1,0 +1,536 @@
+{
+ "audit": "2026-11-19 calls, lifecycle and the night's work (0.5.0 -> 0.6 work)",
+ "date": "2026-11-19",
+ "baseline": "0.5.0 (96837b7) plus the classic-call work of the night (a93f0b3..1156f09)",
+ "method": "Six read-only agents (Rust core, C++ bridge, QML and UX, security and privacy, tests/docs/build, the abort on quit with gdb on the Jolla Phone 2026), triage with an advisor, fixes in batches built and installed on the Jolla Phone 2026 and the Pro1-X. See 2026-11-19-calls-and-lifecycle.md.",
+ "findings": [
+  {
+   "id": "A1",
+   "severity": "high",
+   "area": "process exit (session.rs, lib.rs)",
+   "status": "FIXED a5c2441",
+   "summary": "Every quit since 0.4.7 aborted (exit 134): Core::shutdown made its tokio timeout on Qt's main thread, outside the runtime; the panic could not leave the extern \"C\" rustrx_shutdown. Session save, store pause, ordered bus-name release and the stand-in start after closing never ran; lipstick crashed in the same second several times.",
+   "test": "core test shutdown_outside_the_runtime_finishes (fails on the old line: 'there is no reactor running'); jp26: dev quit -> exit(0), no lipstick crash"
+  },
+  {
+   "id": "A2",
+   "severity": "medium",
+   "area": "regression of the night (Service.qml)",
+   "status": "FIXED 1156f09",
+   "summary": "The call's Connections block was inserted inside the one for rustrx: push notifications, knocks, closing a ringing call's notification and the quit request did nothing in test builds 0.5.0-2 to -13 (no release had it).",
+   "test": "static test_connections_handle_signals_of_their_target (fails on the broken file)"
+  },
+  {
+   "id": "S1",
+   "severity": "medium",
+   "area": "calls (call.rs, Voip.cpp)",
+   "status": "FIXED bd632e1",
+   "summary": "Any member of any room could ring every member's phone; the sender's invite lifetime was uncapped (past INT_MAX the ring never stopped, real calls dropped as busy).",
+   "test": "tst_voip whoMayRingAndForHowLong"
+  },
+  {
+   "id": "S2",
+   "severity": "medium",
+   "area": "files (timeline.rs get_media, Handover.cpp)",
+   "status": "PARTLY FIXED 9d530c1: symlinked Downloads/Rustrx refused, copies created new; handover file only within 2 min. OPEN: validate handover fields themselves",
+   "summary": "An app with the Downloads permission plus a Matrix sender could plant files in Rustrx's private folders through a link, among them handover.json, which was trusted on read (answer a call, share session.json).",
+   "test": ""
+  },
+  {
+   "id": "S3",
+   "severity": "low",
+   "area": "debug log (DebugLog.cpp)",
+   "status": "FIXED 9d530c1 (QSaveFile)",
+   "summary": "The log copy was written through a link planted under its predictable name.",
+   "test": ""
+  },
+  {
+   "id": "S4",
+   "severity": "low",
+   "area": "dev hook (Rustrx.cpp)",
+   "status": "OPEN (queue): allowlist instead of denylist",
+   "summary": "The dev hook's refused list misses send_file with any path, get_media dest_dir, voip place.",
+   "test": ""
+  },
+  {
+   "id": "S5",
+   "severity": "low",
+   "area": "calls (Voip.cpp)",
+   "status": "FIXED bd632e1",
+   "summary": "Answer, candidates and hangup were taken from anyone in the room who saw the call id.",
+   "test": "tst_voip othersInTheRoomCannotEndIt"
+  },
+  {
+   "id": "S6",
+   "severity": "low",
+   "area": "calls privacy",
+   "status": "OPEN (queue): relay-only option",
+   "summary": "A call shows the peer the device's IP addresses; no relay-only switch.",
+   "test": ""
+  },
+  {
+   "id": "S7",
+   "severity": "low",
+   "area": "share (ShareAdaptor.cpp)",
+   "status": "OPEN: copy path shares into the cache at share time",
+   "summary": "A shared path is checked at share time but sent later (link swap).",
+   "test": ""
+  },
+  {
+   "id": "S8",
+   "severity": "low",
+   "area": "received files (MessageDelegate.qml)",
+   "status": "FIXED 9d530c1",
+   "summary": "A received file opened by the sender's name without encoding; installers started from a message.",
+   "test": "static test (the one allowed openUrlExternally line)"
+  },
+  {
+   "id": "S9",
+   "severity": "low",
+   "area": "privacy wording (PrivacyTab.qml)",
+   "status": "FIXED 9d530c1 (wording); stripping videos and PNG OPEN (queue)",
+   "summary": "Metadata stripping covers JPEG only, the setting promised photos in general.",
+   "test": ""
+  },
+  {
+   "id": "S10",
+   "severity": "info",
+   "area": "session.json",
+   "status": "OPEN (queue)",
+   "summary": "Access and refresh tokens are in a plain 0600 file outside the encrypted store.",
+   "test": ""
+  },
+  {
+   "id": "K1",
+   "severity": "high",
+   "area": "spoilers (timeline.rs)",
+   "status": "FIXED 45e5b9a",
+   "summary": "A message with a spoiler pair and any non-ASCII character (ä, emoji) or a trailing '<' panicked in the core and was not sent.",
+   "test": "core test spoilers (umlauts, emoji, broken tags)"
+  },
+  {
+   "id": "K2",
+   "severity": "medium",
+   "area": "moderation writes",
+   "status": "OPEN (queue): per-room write lock and sent-value overlay",
+   "summary": "Power-level and setting changes build on local state that the sync updates later: two quick changes can revert one another; the reply shows the old value.",
+   "test": ""
+  },
+  {
+   "id": "K3",
+   "severity": "medium",
+   "area": "open_room",
+   "status": "FIXED 729bc13",
+   "summary": "A late open installed its timeline after a close or a newer open.",
+   "test": "none (timing)"
+  },
+  {
+   "id": "K4",
+   "severity": "low",
+   "area": "space_open, call_start",
+   "status": "FIXED 729bc13",
+   "summary": "Same race for space pages and Element Call.",
+   "test": "none (timing)"
+  },
+  {
+   "id": "K5",
+   "severity": "medium",
+   "area": "push in the running app (push.rs)",
+   "status": "FIXED 729bc13 (SingleProcess with the sync service); NOT EXERCISED on the phones: the open app leaves pushes to its sync, the stand-in path was not tested",
+   "summary": "The notification client ran a second encryption sync beside the main one over the same crypto store.",
+   "test": "jp26 -> Prawn encrypted message with the app open: decrypted and notified (push_handle not reached)"
+  },
+  {
+   "id": "K6",
+   "severity": "low",
+   "area": "sync start",
+   "status": "FIXED 729bc13",
+   "summary": "Classic sync and the encryption task were registered without checking the login generation.",
+   "test": "none"
+  },
+  {
+   "id": "K7",
+   "severity": "low",
+   "area": "redact_recent",
+   "status": "FIXED 729bc13",
+   "summary": "Removing recent messages ran on after a logout.",
+   "test": "none"
+  },
+  {
+   "id": "K8",
+   "severity": "low",
+   "area": "shutdown budget",
+   "status": "OPEN (queue)",
+   "summary": "Shutdown stops only login tasks; command tasks run on; 3 s may be less than Client::pause needs. Latent aws-lc exit-destructor risk while tokio threads live.",
+   "test": ""
+  },
+  {
+   "id": "K9",
+   "severity": "low",
+   "area": "panic visibility",
+   "status": "PARTLY FIXED a5c2441 (panic hook also to stderr)",
+   "summary": "Nothing from shutdown reached the debug log (queued to a finished Qt loop).",
+   "test": ""
+  },
+  {
+   "id": "K10",
+   "severity": "low",
+   "area": "mark_read",
+   "status": "OPEN",
+   "summary": "Receipts for a closed room have no order check.",
+   "test": ""
+  },
+  {
+   "id": "K11",
+   "severity": "low",
+   "area": "login",
+   "status": "OPEN",
+   "summary": "Two logins can run at once.",
+   "test": ""
+  },
+  {
+   "id": "K12",
+   "severity": "low",
+   "area": "edit (timeline.rs)",
+   "status": "FIXED 45e5b9a",
+   "summary": "An edit dropped spoilers (shown in the clear); mentions and custom emoji still dropped (OPEN).",
+   "test": ""
+  },
+  {
+   "id": "K13",
+   "severity": "low",
+   "area": "create_room",
+   "status": "FIXED bbd606c",
+   "summary": "knock_restricted ignored; restricted without a space quietly invite only.",
+   "test": ""
+  },
+  {
+   "id": "K14",
+   "severity": "low",
+   "area": "blocking file work on runtime workers",
+   "status": "OPEN",
+   "summary": "fetch_emote lists the emote folder per request, storage_info walks folders, send_file reads with std::fs.",
+   "test": ""
+  },
+  {
+   "id": "K15",
+   "severity": "low",
+   "area": "duplicates",
+   "status": "OPEN",
+   "summary": "escape_html three times, thread-unread caching twice, and more.",
+   "test": ""
+  },
+  {
+   "id": "K16",
+   "severity": "trivial",
+   "area": "docs",
+   "status": "OPEN",
+   "summary": "Misplaced doc comments (push.rs:13, protocol.rs:296); PROTOCOL.md says three C functions, there are six.",
+   "test": ""
+  },
+  {
+   "id": "B1",
+   "severity": "medium",
+   "area": "calls (Voip.cpp)",
+   "status": "FIXED bd632e1",
+   "summary": "Queued GStreamer callbacks of a stopped pipeline acted on the next call.",
+   "test": ""
+  },
+  {
+   "id": "B4",
+   "severity": "low",
+   "area": "calls",
+   "status": "FIXED bd632e1",
+   "summary": "reset() cleared the speaker without telling CallRoute.",
+   "test": ""
+  },
+  {
+   "id": "B5",
+   "severity": "low",
+   "area": "calls",
+   "status": "FIXED bd632e1",
+   "summary": "Floating pipeline ref not sunk; far-end bin leaked on a parse error.",
+   "test": ""
+  },
+  {
+   "id": "B7",
+   "severity": "medium",
+   "area": "CallRoute.cpp",
+   "status": "OPEN (queue)",
+   "summary": "PulseAudio calls block the GUI thread without a timeout.",
+   "test": ""
+  },
+  {
+   "id": "B8",
+   "severity": "low",
+   "area": "main.cpp order",
+   "status": "OPEN",
+   "summary": "KeyboardSlide destroyed before the view that uses it.",
+   "test": ""
+  },
+  {
+   "id": "B10",
+   "severity": "low",
+   "area": "Mp4.h",
+   "status": "OPEN",
+   "summary": "Signed size compare with a 64-bit box size.",
+   "test": ""
+  },
+  {
+   "id": "B11",
+   "severity": "low",
+   "area": "Exif.h",
+   "status": "OPEN",
+   "summary": "Fill bytes and standalone markers make strip() give up (re-encode fallback, safe).",
+   "test": ""
+  },
+  {
+   "id": "B13",
+   "severity": "low",
+   "area": "store key",
+   "status": "OPEN",
+   "summary": "Key material not wiped from memory.",
+   "test": ""
+  },
+  {
+   "id": "V1",
+   "severity": "high",
+   "area": "call page (harbour-rustrx.qml)",
+   "status": "FIXED bd632e1",
+   "summary": "Answering from the notification with Rustrx closed could leave it on the start spinner (no room list built).",
+   "test": "to try on the phone (morning list)"
+  },
+  {
+   "id": "V2",
+   "severity": "high",
+   "area": "call page",
+   "status": "FIXED bd632e1",
+   "summary": "A ring reached from its notification or after coming back to the front showed no answer screen.",
+   "test": ""
+  },
+  {
+   "id": "V3",
+   "severity": "high",
+   "area": "call page",
+   "status": "FIXED bd632e1",
+   "summary": "Opening a room from a notification removed the call page; a second call page could be pushed.",
+   "test": ""
+  },
+  {
+   "id": "V4",
+   "severity": "high",
+   "area": "call page",
+   "status": "FIXED bd632e1",
+   "summary": "A second call ringing within 2 s of the first ending lost its page; its swipe stayed dead.",
+   "test": ""
+  },
+  {
+   "id": "V5",
+   "severity": "medium",
+   "area": "call page",
+   "status": "FIXED bd632e1",
+   "summary": "A stale 'Call ended' page stayed under another page.",
+   "test": ""
+  },
+  {
+   "id": "V6",
+   "severity": "high",
+   "area": "quit during a call",
+   "status": "FIXED bd632e1",
+   "summary": "Quitting sent no hangup; the other side rang or talked to nobody until timeout.",
+   "test": "jp26 quit mid-call: Prawn ended with 'hangup' at once, exit(0)"
+  },
+  {
+   "id": "V7",
+   "severity": "medium",
+   "area": "busy",
+   "status": "FIXED bd632e1",
+   "summary": "An invite during a call was dropped silently.",
+   "test": "tst_voip busyAnswersBusy"
+  },
+  {
+   "id": "V8",
+   "severity": "medium",
+   "area": "two kinds of call",
+   "status": "FIXED bd632e1",
+   "summary": "A classic call and an Element Call could run at once.",
+   "test": ""
+  },
+  {
+   "id": "V9",
+   "severity": "medium",
+   "area": "stand-in ring",
+   "status": "OPEN: to check on the phone",
+   "summary": "A ring adopted from the stand-in might keep ringing.",
+   "test": ""
+  },
+  {
+   "id": "V10",
+   "severity": "low",
+   "area": "cover",
+   "status": "OPEN (queue)",
+   "summary": "The cover shows nothing about a running call.",
+   "test": ""
+  },
+  {
+   "id": "V11",
+   "severity": "medium",
+   "area": "proximity",
+   "status": "OPEN: check whether communication mode blanks via MCE",
+   "summary": "No proximity blanking during earpiece calls.",
+   "test": ""
+  },
+  {
+   "id": "R1",
+   "severity": "medium",
+   "area": "RoomInfoPage",
+   "status": "OPEN (queue, measure)",
+   "summary": "room_settings requested after every room-list change while a chat is open.",
+   "test": ""
+  },
+  {
+   "id": "R2",
+   "severity": "medium",
+   "area": "RoomPage findMarker",
+   "status": "OPEN (queue, measure)",
+   "summary": "get(i) for every row on every count change.",
+   "test": ""
+  },
+  {
+   "id": "P1",
+   "severity": "medium",
+   "area": "choice boxes",
+   "status": "FIXED bbd606c",
+   "summary": "Bound currentIndex broke at the first tap; refused or remote changes never showed; index -1 could send undefined.",
+   "test": ""
+  },
+  {
+   "id": "P2",
+   "severity": "medium",
+   "area": "mute (UserPage.qml)",
+   "status": "FIXED bbd606c",
+   "summary": "Muting demoted moderators; unmuting gave back the send level, not the role.",
+   "test": ""
+  },
+  {
+   "id": "P3",
+   "severity": "low",
+   "area": "member lists",
+   "status": "FIXED bbd606c",
+   "summary": "Members list and roles page stayed stale after a change.",
+   "test": ""
+  },
+  {
+   "id": "N1",
+   "severity": "medium",
+   "area": "Secrets notice",
+   "status": "FIXED bd632e1",
+   "summary": "Agreeing did not route again.",
+   "test": ""
+  },
+  {
+   "id": "D1",
+   "severity": "low",
+   "area": "bare media texture",
+   "status": "OPEN (measure)",
+   "summary": "layer.enabled costs one offscreen texture per bare picture.",
+   "test": ""
+  },
+  {
+   "id": "D2",
+   "severity": "low",
+   "area": "spoilers",
+   "status": "OPEN",
+   "summary": "A revealed spoiler covers again after scrolling away.",
+   "test": ""
+  },
+  {
+   "id": "C1",
+   "severity": "high",
+   "area": "CI (ci.yml)",
+   "status": "FIXED cdfd52a",
+   "summary": "The C++ job had no GStreamer: every push since a93f0b3 was red and the whole C++ suite skipped.",
+   "test": "the CI run of cdfd52a and later"
+  },
+  {
+   "id": "T2",
+   "severity": "high",
+   "area": "tst_voip",
+   "status": "FIXED cdfd52a",
+   "summary": "Same tone on both sides: the echo cancellers removed it; the test passed only by reading early.",
+   "test": "two tones, level checked again after 8 s"
+  },
+  {
+   "id": "L1",
+   "severity": "medium",
+   "area": "LoginPage",
+   "status": "FIXED 9d530c1",
+   "summary": "'Other ways to log in' showed its id since 0.4.7.",
+   "test": "static test_every_translation_has_its_source_text"
+  },
+  {
+   "id": "T3",
+   "severity": "medium",
+   "area": "voip_send failure",
+   "status": "OPEN",
+   "summary": "A failed send never reaches Voip; an answer stays 'connecting'.",
+   "test": ""
+  },
+  {
+   "id": "T4",
+   "severity": "medium",
+   "area": "Voip tests",
+   "status": "PARTLY: busy, DM, lifetime, peer binding added; mute, per-call reset, AEC pairing, CallRoute port choice OPEN",
+   "summary": "New call logic without tests.",
+   "test": ""
+  },
+  {
+   "id": "T5",
+   "severity": "medium",
+   "area": "static tests",
+   "status": "OPEN",
+   "summary": "The Connections test misses one-line blocks and model targets; page.call aliases unchecked.",
+   "test": ""
+  },
+  {
+   "id": "D3",
+   "severity": "medium",
+   "area": "call page honesty",
+   "status": "FIXED 9d530c1",
+   "summary": "'End-to-end encrypted' showed in unencrypted rooms too.",
+   "test": ""
+  },
+  {
+   "id": "DOC",
+   "severity": "medium",
+   "area": "README, CALLS.md, hints",
+   "status": "OPEN (release prep)",
+   "summary": "README status, moderation, pinned messages; CALLS.md on classic calls and the earpiece findings.",
+   "test": ""
+  },
+  {
+   "id": "M1",
+   "severity": "low",
+   "area": "server ACL",
+   "status": "FIXED bbd606c",
+   "summary": "The own server was matched with its port.",
+   "test": "core test acl_host_drops_the_port"
+  },
+  {
+   "id": "P-RPM",
+   "severity": "low",
+   "area": "spec scripts",
+   "status": "OPEN",
+   "summary": "The pulse restart runs only when the rule first arrives; a later change to it needs a reboot.",
+   "test": ""
+  },
+  {
+   "id": "BG",
+   "severity": "medium",
+   "area": "background mode after the abort fix",
+   "status": "OPEN: to try on the phone",
+   "summary": "The code after app->exec() (start the stand-in after closing in background mode) runs for the first time since 0.4.7.",
+   "test": ""
+  }
+ ]
+}
