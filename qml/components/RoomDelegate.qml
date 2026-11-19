@@ -287,13 +287,10 @@ ListItem {
                 font.pixelSize: Theme.fontSizeSmall * Tunables.metaTextScale
                 color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
                 textFormat: Text.StyledText
-                // the first line starts after the icons: a blank picture as wide
-                // as them, not a shifted line (onLineLaidOut), which leaves the
-                // line's emoji pictures undrawn in Qt 5 (a gap where they are)
-                readonly property string lead: indent > 0 ? "<img src=\"" + Qt.resolvedUrl("spacer.png")
-                                                             + "\" width=\"" + Math.round(indent) + "\" height=\"1\">" : ""
-                text: lead + body
-                readonly property string body: {
+                onLineLaidOut: if (line.number === 0) { line.x += indent; line.width -= indent }
+                text: {
+                    // a new indent needs a new layout (Qt 5.6 has no forceLayout)
+                    var unused = indent
                     //% "Invitation. Long press to accept or decline."
                     if (invited) return qsTrId("rustrx-la-invitation")
                     // a space: its topic, else how many rooms it holds
