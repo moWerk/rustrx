@@ -33,6 +33,13 @@ Page {
     // the member a direct chat was asked for from this page
     property string pendingDm
 
+    // back from a person's page (a kick, a ban, a new role): the list again
+    onStatusChanged: if (status === PageStatus.Active && members.length) rustrx.command({ cmd: "room_members", room_id: roomId })
+    Connections {
+        target: rustrx
+        onMembers: if (roomId === page.roomId) page.members = members
+    }
+
     property string filter
     // the sections in their order; a member without a membership (an older
     // core) counts as joined

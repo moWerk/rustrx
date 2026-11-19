@@ -117,13 +117,20 @@ impl Core {
         }
         // who may join, when not public: invite (the preset's), ask to
         // join, or the members of the parent space
+        // A rule that cannot be made is an error, not quietly "invite only"
+        // (the audit found "knock_restricted" ignored and "restricted"
+        // without a space turned into invite only)
+        let space_rule = |knock: bool| -> Result<Option<JoinRule>> {
+            let Some(p) = parent else { bail!("members of a space can join only a room in a space") };
+            let allow = vec![AllowRule::room_membership(OwnedRoomId::try_from(p)?)];
+            Ok(Some(if knock { JoinRule::KnockRestricted(Restricted::new(allow)) } else { JoinRule::Restricted(Restricted::new(allow)) }))
+        };
         let rule = match join_rule {
             Some("knock") => Some(JoinRule::Knock),
-            Some("restricted") => match parent {
-                Some(p) => Some(JoinRule::Restricted(Restricted::new(vec![AllowRule::room_membership(OwnedRoomId::try_from(p)?)]))),
-                None => None,
-            },
-            _ => None,
+            Some("restricted") => space_rule(false)?,
+            Some("knock_restricted") => space_rule(true)?,
+            Some("invite") | Some("public") | None => None,
+            Some(other) => bail!("unknown join rule {other}"),
         };
         if let Some(rule) = rule {
             req.initial_state.push(InitialStateEvent::with_empty_state_key(RoomJoinRulesEventContent::new(rule)).to_raw_any());

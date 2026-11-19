@@ -377,7 +377,11 @@ Page {
                 description: info.can_join_rules === true ? ""
                              //% "Only admins can change it."
                              : qsTrId("rustrx-la-rule-admins-only")
-                currentIndex: Math.max(0, page.rules.indexOf(info.join_rule || "invite"))
+                // the box follows the room (the ComboBox sets currentIndex itself,
+                // which broke a plain binding: a refused or remote change never showed)
+                readonly property int shownIndex: Math.max(0, page.rules.indexOf(info.join_rule || "invite"))
+                currentIndex: shownIndex
+                onShownIndexChanged: currentIndex = shownIndex
                 menu: ContextMenu {
                     Repeater {
                         model: page.rules
@@ -385,6 +389,7 @@ Page {
                     }
                 }
                 onCurrentIndexChanged: {
+                    if (currentIndex < 0) return
                     var r = page.rules[currentIndex]
                     if (info.join_rule && r !== info.join_rule && info.can_join_rules === true)
                         rustrx.command({ cmd: "set_join_rule", room_id: roomId, rule: r })
@@ -409,7 +414,9 @@ Page {
                 description: page.may.history === true
                              //% "Changes apply to what is said from now on."
                              ? qsTrId("rustrx-la-history-hint") : qsTrId("rustrx-la-rule-admins-only")
-                currentIndex: Math.max(0, values.indexOf(page.settings.history_visibility || "shared"))
+                readonly property int shownIndex: Math.max(0, values.indexOf(page.settings.history_visibility || "shared"))
+                currentIndex: shownIndex
+                onShownIndexChanged: currentIndex = shownIndex
                 menu: ContextMenu {
                     //% "Members, all of it"
                     MenuItem { text: qsTrId("rustrx-me-history-shared") }
@@ -421,6 +428,7 @@ Page {
                     MenuItem { text: qsTrId("rustrx-me-history-anyone") }
                 }
                 onCurrentIndexChanged: {
+                    if (currentIndex < 0) return
                     var v = values[currentIndex]
                     if (page.may.history === true && page.settings.history_visibility && v !== page.settings.history_visibility)
                         rustrx.command({ cmd: "set_history_visibility", room_id: roomId, value: v })
@@ -509,7 +517,9 @@ Page {
                 label: qsTrId("rustrx-la-notifications")
                 enabled: page.notifyMode.length > 0
                 readonly property var modes: ["default", "all", "mentions", "mute"]
-                currentIndex: Math.max(0, modes.indexOf(page.notifyMode))
+                readonly property int shownIndex: Math.max(0, modes.indexOf(page.notifyMode))
+                currentIndex: shownIndex
+                onShownIndexChanged: currentIndex = shownIndex
                 menu: ContextMenu {
                     //% "Default"
                     MenuItem { text: qsTrId("rustrx-me-notify-default") }
@@ -521,6 +531,7 @@ Page {
                     MenuItem { text: qsTrId("rustrx-me-notify-mute") }
                 }
                 onCurrentIndexChanged: {
+                    if (currentIndex < 0) return
                     var m = modes[currentIndex]
                     if (page.notifyMode.length && m !== page.notifyMode)
                         rustrx.command({ cmd: "set_notification_mode", room_id: roomId, mode: m })

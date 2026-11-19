@@ -67,6 +67,16 @@ pub(crate) fn acl_matches(pattern: &str, server: &str) -> bool {
     go(pattern.as_bytes(), server.as_bytes())
 }
 
+/// A server name as access lists see it: without its port ("[::1]:8448"
+/// is "[::1]"). Matched with the port, a homeserver whose name has one
+/// was refused a valid list.
+pub(crate) fn acl_host(server: &str) -> &str {
+    if server.starts_with('[') {
+        return server.find(']').map_or(server, |e| &server[..=e]);
+    }
+    server.rsplit_once(':').map_or(server, |(host, _)| host)
+}
+
 /// Whether a server may take part under an access list.
 pub(crate) fn acl_allows(allow: &[String], deny: &[String], server: &str) -> bool {
     allow.iter().any(|p| acl_matches(p, server)) && !deny.iter().any(|p| acl_matches(p, server))
@@ -172,7 +182,7 @@ impl Core {
             "canonical_alias": room.canonical_alias().map(|a| a.to_string()),
             "alt_aliases": room.alt_aliases().iter().map(|a| a.to_string()).collect::<Vec<_>>(),
             "server_acl": acl,
-            "own_server": me.server_name().as_str(),
+            "own_server": acl_host(me.server_name().as_str()),
             "pinned": room.pinned_event_ids().unwrap_or_default().iter().map(|e| e.to_string()).collect::<Vec<_>>(),
             "creators": room.creators().unwrap_or_default().iter().map(|u| u.to_string()).collect::<Vec<_>>(),
         }));
@@ -281,7 +291,7 @@ impl Core {
     /// rejected by the others.
     pub(crate) async fn set_server_acl(&self, room_id: &str, allow: &[String], deny: &[String], allow_ip_literals: bool) -> Result<()> {
         let room = self.room(room_id).await?;
-        let own = room.own_user_id().server_name().as_str().to_owned();
+        let own = acl_host(room.own_user_id().server_name().as_str()).to_owned();
         let clean = |v: &[String]| -> Vec<String> { v.iter().map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).collect() };
         let (allow, deny) = (clean(allow), clean(deny));
         if !acl_allows(&allow, &deny, &own) {
@@ -476,6 +486,8 @@ mod tests {
     }
 
     /// The own server must stay in: allowed and not denied.
+    /// Planted-bug: `acl_allows` with `||` instead of `&& !` (a denied own
+    /// server passes).
     #[test]
     fn acl_keeps_the_own_server() {
         let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
@@ -483,6 +495,20 @@ mod tests {
         assert!(!acl_allows(&s(&["*"]), &s(&["tchncs.de"]), "tchncs.de"));
         assert!(!acl_allows(&s(&["matrix.org"]), &s(&[]), "tchncs.de"));
         assert!(!acl_allows(&s(&[]), &s(&[]), "tchncs.de"));
+    }
+
+    /// Access lists name servers without a port.
+    /// Planted-bug: `acl_host` returns the name as given (a server with a
+    /// port never matches "example.org").
+    #[test]
+    fn acl_host_drops_the_port() {
+        assert_eq!(acl_host("example.org:8448"), "example.org");
+        assert_eq!(acl_host("example.org"), "example.org");
+        assert_eq!(acl_host("[::1]:8448"), "[::1]");
+        assert_eq!(acl_host("[::1]"), "[::1]");
+        assert_eq!(acl_host("1.2.3.4:80"), "1.2.3.4");
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert!(acl_allows(&s(&["example.org"]), &s(&[]), acl_host("example.org:8448")));
     }
 
     /// Planted-bug: drop the zero padding: "100" sorts before "20".
@@ -495,6 +521,8 @@ mod tests {
         assert!(o.iter().all(|x| x.len() <= 50));
     }
 
+    /// Planted-bug: map `Infinite` to "admin" (room creators of v12 rooms
+    /// show as admins).
     #[test]
     fn roles_from_levels() {
         assert_eq!(role_of(UserPowerLevel::Infinite), "creator");

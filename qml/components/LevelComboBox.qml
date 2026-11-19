@@ -40,20 +40,24 @@ HoldComboBox {
     }
 
     width: parent ? parent.width : 0
-    currentIndex: custom ? levels.length : Math.max(0, levels.indexOf(level))
+    // The choice acts on the tapped entry, and the box shows the level as
+    // the room has it: the ComboBox sets currentIndex itself (a binding
+    // there breaks at the first tap, a refused or remote change then never
+    // showed), and an index of -1 gave chosen(undefined).
+    readonly property int shownIndex: custom ? levels.length : Math.max(0, levels.indexOf(level))
+    currentIndex: shownIndex
+    onShownIndexChanged: currentIndex = shownIndex
     menu: ContextMenu {
         Repeater {
             model: box.levels
-            MenuItem { text: box.roleName(modelData) }
+            MenuItem {
+                text: box.roleName(modelData)
+                onClicked: if (modelData !== box.level) box.chosen(modelData)
+            }
         }
         MenuItem {
             visible: box.custom
             text: qsTrId("rustrx-la-role-level").arg(box.level)
         }
-    }
-    onCurrentIndexChanged: {
-        if (currentIndex >= levels.length) return
-        var l = levels[currentIndex]
-        if (l !== level) chosen(l)
     }
 }

@@ -28,6 +28,13 @@ Page {
     property var settings: ({})
     property var members: []
 
+    // back from a person's page (a kick, a ban, a new role): the list again
+    onStatusChanged: if (status === PageStatus.Active && members.length) rustrx.command({ cmd: "room_members", room_id: roomId })
+    Connections {
+        target: rustrx
+        onMembers: if (roomId === page.roomId) page.members = members
+    }
+
     readonly property var levels: settings.levels || ({})
     readonly property var events: levels.events || ({})
     readonly property bool canChange: !!settings.may && settings.may.power_levels === true

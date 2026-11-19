@@ -223,11 +223,28 @@ Page {
                 readonly property bool custom: page.roleLevels.indexOf(page.info.power) < 0
                 // only roles up to our own level can be given
                 readonly property var offered: page.roleLevels.filter(function (l) { return l <= (page.info.own_level || 0) })
-                currentIndex: custom ? offered.length : Math.max(0, offered.indexOf(page.info.power))
+                // the tapped entry acts, the box follows the room (LevelComboBox)
+                readonly property int shownIndex: custom ? offered.length : Math.max(0, offered.indexOf(page.info.power))
+                currentIndex: shownIndex
+                onShownIndexChanged: currentIndex = shownIndex
+                function choose(level) {
+                    if (!page.loaded || level === page.info.power) return
+                    if (page.info.is_self && level < page.info.power) {
+                        //% "Lowering your own role: no one below you can give it back"
+                        remorse.execute(qsTrId("rustrx-re-self-demote"), function () { page.setLevel(level) })
+                        // until the remorse runs out, the box shows the role as it is
+                        currentIndex = shownIndex
+                    } else {
+                        page.setLevel(level)
+                    }
+                }
                 menu: ContextMenu {
                     Repeater {
                         model: roleBox.offered
-                        MenuItem { text: page.roleName(modelData === 100 ? "admin" : modelData === 50 ? "moderator" : "member") }
+                        MenuItem {
+                            text: page.roleName(modelData === 100 ? "admin" : modelData === 50 ? "moderator" : "member")
+                            onClicked: roleBox.choose(modelData)
+                        }
                     }
                     MenuItem {
                         visible: roleBox.custom
@@ -236,25 +253,17 @@ Page {
                         text: qsTrId("rustrx-la-role-level").arg(page.info.power)
                     }
                 }
-                onCurrentIndexChanged: {
-                    if (!page.loaded || currentIndex >= offered.length) return
-                    var level = offered[currentIndex]
-                    if (level === page.info.power) return
-                    if (page.info.is_self && level < page.info.power) {
-                        //% "Lowering your own role: no one below you can give it back"
-                        remorse.execute(qsTrId("rustrx-re-self-demote"), function () { page.setLevel(level) })
-                    } else {
-                        page.setLevel(level)
-                    }
-                }
                 description: page.info.is_self
                              //% "You can lower your own role, but not raise it again."
                              ? qsTrId("rustrx-la-role-self-hint") : ""
             }
 
-            // muted: a level below the one for sending messages
+            // muted: a level below the one for sending messages. Only for
+            // those without a role: muting a moderator demoted them, and
+            // unmuting could not give their level back (their role is
+            // changed above first, on purpose)
             TextSwitch {
-                visible: !!page.info.can_mute && page.info.membership === "join"
+                visible: !!page.info.can_mute && page.info.membership === "join" && (page.info.power || 0) < 50
                 readonly property int sendLevel: page.info.events_default || 0
                 //% "Muted"
                 text: qsTrId("rustrx-la-muted")
