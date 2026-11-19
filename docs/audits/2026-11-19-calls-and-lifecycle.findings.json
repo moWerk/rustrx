@@ -272,7 +272,7 @@
    "id": "B8",
    "severity": "low",
    "area": "main.cpp order",
-   "status": "OPEN",
+   "status": "FIXED 1d6fcd8",
    "summary": "KeyboardSlide destroyed before the view that uses it.",
    "test": ""
   },
@@ -480,9 +480,9 @@
    "id": "T3",
    "severity": "medium",
    "area": "voip_send failure",
-   "status": "OPEN",
+   "status": "FIXED 1d6fcd8",
    "summary": "A failed send never reaches Voip; an answer stays 'connecting'.",
-   "test": ""
+   "test": "tst_voip aCallThatCannotBeSentEnds"
   },
   {
    "id": "T4",
@@ -496,7 +496,7 @@
    "id": "T5",
    "severity": "medium",
    "area": "static tests",
-   "status": "OPEN",
+   "status": "FIXED 16f8140 (static Connections test covers page.call, models, Qt.application, one-liners)",
    "summary": "The Connections test misses one-line blocks and model targets; page.call aliases unchecked.",
    "test": ""
   },
