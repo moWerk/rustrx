@@ -172,6 +172,18 @@ static const int kVoiceSampleRate = 48000;
 static const qint64 kLogMaxSize = 1024 * 1024;
 static const int kLogCheckEveryLines = 50;
 
+// calls (Voip): an invite rings this long (Element's value); candidates go
+// out together after this pause; TURN credentials are waited for this
+// long; the far end's level and the packet counts are noted this often
+static const int kVoipInviteLifetimeMs = 60000;
+static const int kVoipCandidateBatchMs = 300;
+static const int kVoipTurnWaitMs = 3000;
+static const int kVoipStatsMs = 2000;
+static const int kVoipLevelMs = 500;
+// the receiving jitter buffer (ms) and the Opus bitrate (bit/s)
+static const int kVoipJitterMs = 100;
+static const int kVoipOpusBitrate = 32000;
+
 }
 
 #endif

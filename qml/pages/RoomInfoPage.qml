@@ -100,11 +100,21 @@ Page {
         contentHeight: column.height
 
         PullDownMenu {
+            // a direct chat: a classic call, end-to-end encrypted like its messages
+            MenuItem {
+                visible: !page.isSpace && info.is_dm === true && !!info.dm_user && rustrx.voip.state === "idle"
+                //% "Call"
+                text: qsTrId("rustrx-me-voip-call")
+                onClicked: {
+                    rustrx.voip.place(roomId, info.dm_user, info.name || info.dm_user)
+                    app.showVoip()
+                }
+            }
             MenuItem {
                 visible: !page.isSpace
-                //: experimental: a call through Element Call
-                //% "Call (test)"
-                text: qsTrId("rustrx-me-call-test")
+                //: a call through Element Call, the other way to call (unencrypted rooms only for now)
+                //% "Call with Element Call"
+                text: qsTrId("rustrx-me-call-element")
                 onClicked: rustrx.command({ cmd: "call_start", room_id: roomId })
             }
             MenuItem {

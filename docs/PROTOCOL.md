@@ -157,6 +157,12 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `call_end` | | `call_ended` |
 | `call_decline` | `room_id`, `event_id` (the ring) | |
 
+### 1:1 calls (legacy m.call.*; the call itself runs in the UI)
+| cmd | fields | answered by |
+|---|---|---|
+| `voip_send` | `room_id`, `type` (`m.call.invite`, `answer`, `candidates`, `hangup`, `select_answer`, `reject`, `negotiate`; anything else is an error), `content` (an object, the event's content) | `voip_sent` |
+| `turn_server` | | `turn_server` |
+
 ## Events
 
 | ev | fields |
@@ -221,6 +227,9 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `call_ended` | `room_id` |
 | `call_ring` | `room_id`, `room_name`, `sender`, `sender_name`, `ring`, `event_id`, `expires_ms` |
 | `calls_allowed` | `room_id` |
+| `voip` | `room_id`, `room_name`, `type` (an m.call.* type), `sender`, `sender_name`, `own` (sent by this account, from any of its devices, this one too), `content` (the event's content as received, decrypted), `event_id`, `age_ms` |
+| `voip_sent` | `room_id`, `type`, `call_id` (from the content, "" without), `event_id` |
+| `turn_server` | `username`, `password`, `uris` (empty when the server has no TURN or the request failed), `ttl` (seconds) |
 | `log` | `line` (a log line; the sandbox drops stderr, the UI puts it in the journal) |
 
 ### Room object

@@ -51,6 +51,22 @@ pub(crate) const CALL_MEMBER_TYPES: [&str; 2] = ["org.matrix.msc3401.call.member
 /// MSC4310, answering a ring with no.
 const DECLINE_TYPE: &str = "org.matrix.msc4310.rtc.decline";
 
+/// How old an event is, in ms: the server's age where it gives one, as
+/// the phone's clock can be off (a mainline phone boots with a wrong date
+/// until NTP); else from its timestamp.
+fn event_age_ms(raw: &Raw<AnySyncMessageLikeEvent>) -> u64 {
+    let sent = raw.get_field::<u64>("origin_server_ts").ok().flatten().unwrap_or(0);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    raw.get_field::<Value>("unsigned")
+        .ok()
+        .flatten()
+        .and_then(|u| u.get("age").and_then(Value::as_u64))
+        .unwrap_or_else(|| now.saturating_sub(sent))
+}
+
 impl Core {
     /// Incoming calls: a ring (or a group call's notification) from someone
     /// else that is still fresh becomes "call_ring"; the UI rings until it
@@ -67,20 +83,8 @@ impl Core {
                 return;
             }
             let content = raw.get_field::<Value>("content").ok().flatten().unwrap_or(Value::Null);
-            let sent = raw.get_field::<u64>("origin_server_ts").ok().flatten().unwrap_or(0);
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as u64)
-                .unwrap_or(0);
             let lifetime = content.get("lifetime").and_then(Value::as_u64).unwrap_or(RING_LIFETIME_DEFAULT_MS).min(RING_LIFETIME_MAX_MS);
-            // the server's age where it gives one: the phone's clock can be
-            // off (a mainline phone boots with a wrong date until NTP)
-            let age = raw
-                .get_field::<Value>("unsigned")
-                .ok()
-                .flatten()
-                .and_then(|u| u.get("age").and_then(Value::as_u64))
-                .unwrap_or_else(|| now.saturating_sub(sent));
+            let age = event_age_ms(&raw);
             let event_id = raw.get_field::<String>("event_id").ok().flatten().unwrap_or_default();
             if age >= lifetime {
                 tracing::info!(room = %room.room_id(), age, lifetime, "call: ring too old");
@@ -103,6 +107,72 @@ impl Core {
                 "event_id": event_id, "expires_ms": lifetime - age,
             }));
         });
+
+        // 1:1 calls (m.call.*): every event goes to the UI as it came, our
+        // own too; the call's state machine there needs our echo (and
+        // another device of ours answering) to tell its party from ours.
+        // Handlers get the decrypted event in an encrypted room.
+        client.add_event_handler(|raw: Raw<AnySyncMessageLikeEvent>, room: Room| async move {
+            let Ok(Some(kind)) = raw.get_field::<String>("type") else { return };
+            if !crate::protocol::voip_type_allowed(&kind) {
+                return;
+            }
+            let sender = raw.get_field::<String>("sender").ok().flatten().unwrap_or_default();
+            let own = sender == room.own_user_id().as_str();
+            let content = raw.get_field::<Value>("content").ok().flatten().unwrap_or(Value::Null);
+            let event_id = raw.get_field::<String>("event_id").ok().flatten().unwrap_or_default();
+            let age = event_age_ms(&raw);
+            let sender_name = match UserId::parse(sender.as_str()) {
+                Ok(u) => member_name(&room, &u).await,
+                Err(_) => sender.clone(),
+            };
+            let call_id = content.get("call_id").and_then(Value::as_str).unwrap_or("").to_owned();
+            tracing::info!(room = %room.room_id(), %kind, %call_id, own, age, "voip: event");
+            crate::instance().emit(json!({
+                "ev": "voip", "room_id": room.room_id().as_str(), "room_name": room_name(&room),
+                "type": kind, "sender": sender, "sender_name": sender_name, "own": own,
+                "content": content, "event_id": event_id, "age_ms": age,
+            }));
+        });
+    }
+
+    /// One m.call.* event from the UI's call, sent like any event (so
+    /// encrypted in an encrypted room).
+    pub(crate) async fn voip_send(&'static self, room_id: &str, kind: &str, content: serde_json::Map<String, Value>) -> Result<()> {
+        if !crate::protocol::voip_type_allowed(kind) {
+            bail!("not a call event: {kind}");
+        }
+        let room = self.room(room_id).await?;
+        let call_id = content.get("call_id").and_then(Value::as_str).unwrap_or("").to_owned();
+        let sent = room.send_raw(kind, Value::Object(content)).await?;
+        let event_id = sent.response.event_id;
+        tracing::info!(room = %room.room_id(), %kind, %call_id, "voip: sent");
+        self.emit(json!({
+            "ev": "voip_sent", "room_id": room.room_id().as_str(), "type": kind,
+            "call_id": call_id, "event_id": event_id.as_str(),
+        }));
+        Ok(())
+    }
+
+    /// The homeserver's TURN server for a call. None (no TURN set up, an
+    /// error) is an answer too, with no uris: on a LAN a call works without.
+    pub(crate) async fn turn_server(&'static self) -> Result<()> {
+        use matrix_sdk::ruma::api::client::voip::get_turn_server_info;
+        let client = self.client().await?;
+        match client.send(get_turn_server_info::v3::Request::new()).await {
+            Ok(r) => {
+                tracing::info!(uris = r.uris.len(), ttl = r.ttl.as_secs(), "voip: turn server");
+                self.emit(json!({
+                    "ev": "turn_server", "username": r.username, "password": r.password,
+                    "uris": r.uris, "ttl": r.ttl.as_secs(),
+                }));
+            }
+            Err(e) => {
+                tracing::info!("voip: no turn server: {e}");
+                self.emit(json!({"ev": "turn_server", "username": "", "password": "", "uris": [], "ttl": 0}));
+            }
+        }
+        Ok(())
     }
 
     /// No to a ring (MSC4310): the caller's clients stop ringing for us.

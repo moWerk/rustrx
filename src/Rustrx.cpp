@@ -23,6 +23,7 @@
 #include "TimelineModel.h"
 #include "Twemoji.h"
 #include "UnifiedPush.h"
+#include "Voip.h"
 #include "Keys.h"
 #include "rustrx_core.h"
 #include <sailfishapp.h>
@@ -88,6 +89,8 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     connect(m_media, &Media::settingsChanged, this, &Rustrx::settingsChanged);
     m_push = new UnifiedPush(dataDir, this);
     connect(m_push, &UnifiedPush::command, this, &Rustrx::command);
+    m_voip = new Voip(this);
+    connect(m_voip, &Voip::command, this, &Rustrx::command);
     // a push: the woken process fetches the message; a running app or
     // stand-in has it from its sync anyway
     connect(m_push, &UnifiedPush::pushed, this, [this](const QString &roomId, const QString &eventId) {
@@ -182,6 +185,14 @@ void Rustrx::open()
 
 void Rustrx::answerCall(const QString &roomId)
 {
+    // a classic call ringing in that room: answered here, its page follows
+    // the call's state
+    if (m_voip->state() == QLatin1String("incoming") && m_voip->roomId() == roomId) {
+        m_voip->answer();
+        emit callAnswered(roomId);
+        open();
+        return;
+    }
     m_handover.setPendingCall(roomId);
     emit callAnswered(roomId);
     openRoomFromNotification(roomId);
@@ -217,6 +228,10 @@ void Rustrx::openKnocks()
 void Rustrx::declineCall(const QString &roomId, const QString &eventId)
 {
     emit callAnswered(roomId);
+    if (m_voip->state() == QLatin1String("incoming") && m_voip->roomId() == roomId) {
+        m_voip->reject();
+        return;
+    }
     if (!eventId.isEmpty())
         command({ { "cmd", "call_decline" }, { "room_id", roomId }, { "event_id", eventId } });
 }
@@ -376,7 +391,7 @@ QString Rustrx::dev(const QString &json)
     QJsonObject out;
     out["stand_in"] = m_handover.standIn();
     // the stand-in has no window: no pages, no call page
-    if (m_handover.standIn() && (req.contains("ui") || req.value("cmd").toString().startsWith(QLatin1String("call_")))) {
+    if (m_handover.standIn() && (req.contains("ui") || req.contains("voip") || req.value("cmd").toString().startsWith(QLatin1String("call_")))) {
         out["error"] = QStringLiteral("the stand-in is running, not the app");
         return QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Compact));
     }
@@ -390,6 +405,20 @@ QString Rustrx::dev(const QString &json)
     } else if (req.contains("cmd")) {
         command(req);
         out["ok"] = true;
+    } else if (req.contains("voip")) {
+        // calls driven from a shell: place (room_id, invitee, tone), answer,
+        // hangup, status; "tone" plays a test tone instead of the microphone
+        // and measures the far end instead of playing it
+        const QString what = req.value("voip").toString();
+        if (req.contains("tone"))
+            m_voip->setTestTone(req.value("tone").toBool());
+        if (what == QLatin1String("place"))
+            m_voip->place(req.value("room_id").toString(), req.value("invitee").toString(), req.value("invitee").toString());
+        else if (what == QLatin1String("answer"))
+            m_voip->answer();
+        else if (what == QLatin1String("hangup"))
+            m_voip->hangup();
+        out["voip"] = QJsonObject::fromVariantMap(m_voip->status());
     } else if (req.contains("rooms")) {
         QJsonArray rooms;
         const QHash<QString, QVariantMap> &byId = m_lists->roomsById();
@@ -641,6 +670,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_loggedIn = true;
         m_loggingIn = false;
         m_userId = ev.value("user_id").toString();
+        m_voip->setOwnUserId(m_userId);
         m_homeserver = ev.value("homeserver").toString();
         m_storeState = ev.value("store").toString();
         emit stateChanged();
@@ -748,6 +778,12 @@ void Rustrx::handleEvent(const QVariantMap &ev)
                               ev.value("is_dm").toBool(), ev.value("noisy").toBool());
     } else if (type == QLatin1String("calls_allowed")) {
         emit callsAllowed(ev.value("room_id").toString());
+    } else if (type == QLatin1String("voip")) {
+        m_voip->handleEvent(ev);
+    } else if (type == QLatin1String("turn_server")) {
+        m_voip->handleTurn(ev);
+    } else if (type == QLatin1String("voip_sent")) {
+        m_voip->handleSent(ev);
     } else if (type == QLatin1String("call_ring")) {
         emit callRing(ev.value("room_id").toString(), ev.value("room_name").toString(),
                       ev.value("sender_name").toString(), ev.value("ring").toBool(),

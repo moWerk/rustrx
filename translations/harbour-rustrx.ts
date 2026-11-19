@@ -1586,11 +1586,6 @@
         <source>I have understood the above</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-me-call-test">
-        <source>Call (test)</source>
-        <extracomment>experimental: a call through Element Call</extracomment>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-me-room-picture">
         <source>Change the room&apos;s picture</source>
         <translation type="unfinished"></translation>
@@ -2816,6 +2811,62 @@
     </message>
     <message id="rustrx-la-portrait-only-hint2">
         <source>Rustrx stays upright when the phone turns. Pictures and videos still turn with it, and so does everything while a slide-out keyboard is open.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-voip-answer">
+        <source>Answer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-voip-decline">
+        <source>Decline</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-voip-calling">
+        <source>Calling…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-voip-connecting">
+        <source>Connecting…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-voip-elsewhere">
+        <source>Answered on another device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-voip-encrypted">
+        <source>End-to-end encrypted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-voip-ended">
+        <source>Call ended</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-voip-ice-failed">
+        <source>The connection failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-voip-incoming">
+        <source>Is calling you</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-voip-media-failed">
+        <source>The microphone or speaker could not be used</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-voip-no-answer">
+        <source>No answer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-voip-rejected">
+        <source>Declined</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-call-element">
+        <source>Call with Element Call</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-voip-call">
+        <source>Call</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

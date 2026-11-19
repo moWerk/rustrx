@@ -216,6 +216,8 @@ impl Core {
             }
             KnockSeen { room_id, user_ids } => self.knock_seen(&room_id, &user_ids).await,
             CallDecline { room_id, event_id } => self.call_decline(&room_id, &event_id).await,
+            VoipSend { room_id, r#type, content } => self.voip_send(&room_id, &r#type, content).await,
+            TurnServer => self.turn_server().await,
         }
     }
 }

@@ -7,6 +7,9 @@ isEmpty(VERSION): VERSION = 0.4.3
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 QT += dbus multimedia network
+# calls: GStreamer's webrtcbin (Voip.cpp)
+CONFIG += link_pkgconfig
+PKGCONFIG += gstreamer-1.0 gstreamer-sdp-1.0 gstreamer-webrtc-1.0
 
 CONFIG += sailfishapp sailfishapp_i18n sailfishapp_i18n_idbased sailfishapp_i18n_unfinished
 
@@ -23,7 +26,8 @@ SOURCES += src/main.cpp \
     src/VoiceRecorder.cpp \
     src/DebugLog.cpp \
     src/FrameStats.cpp \
-    src/KeyboardSlide.cpp
+    src/KeyboardSlide.cpp \
+    src/Voip.cpp
 
 HEADERS += src/Rustrx.h \
     src/Handover.h \
@@ -39,6 +43,7 @@ HEADERS += src/Rustrx.h \
     src/DebugLog.h \
     src/FrameStats.h \
     src/KeyboardSlide.h \
+    src/Voip.h \
     src/LocalOnly.h \
     src/Exif.h \
     src/Mp4.h \

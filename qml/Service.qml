@@ -84,6 +84,13 @@ Item {
         onInvited: if (known || cfg.strangerInvites) service.notifyInvite(roomId, roomName, inviter, direct)
         onInviteGone: service.closeInvite(roomId)
         onCallRing: service.ringCall(roomId, roomName, senderName, ring, eventId, expiresMs)
+    }
+    // a classic call (Voip) rings like an Element Call ring; Answer and
+    // Decline reach it through the same notification actions
+    Connections {
+        target: rustrx.voip
+        onIncoming: service.ringCall(roomId, roomName, peerName, true, "", Tunables.voipRingMs)
+        onChanged: if (rustrx.voip.state !== "incoming") service.stopRinging(rustrx.voip.roomId)
         onNewKnock: service.notifyKnock(roomName, isSpace, name, reason)
         onPushNotification: service.notifyPush(roomId, eventId, roomName, senderName, body, isDm)
         onKnockRequestsChanged: if (rustrx.knockRequests.length === 0) knockNote.close()

@@ -161,6 +161,22 @@ ApplicationWindow {
 
     Timer { id: routeRetry; interval: Tunables.retryIntervalMs; onTriggered: route() }
 
+    // the classic call's page: shown when a call starts here or rings while
+    // Rustrx is in front; it closes itself when the call ends
+    function showVoip() {
+        var top = pageStack.currentPage
+        if (top && top.objectName === "voipPage") return
+        if (pageStack.busy) { voipRetry.restart(); return }
+        pageStack.push(Qt.resolvedUrl("pages/VoipPage.qml"))
+    }
+    Timer { id: voipRetry; interval: Tunables.retryIntervalMs; onTriggered: if (rustrx.voip.state !== "idle") app.showVoip() }
+    Connections {
+        target: rustrx.voip
+        onIncoming: if (Qt.application.active) app.showVoip()
+        // answered from the notification: the page follows
+        onChanged: if (rustrx.voip.state === "connecting" || rustrx.voip.state === "connected") app.showVoip()
+    }
+
     // a copied secret (the recovery key) out of the clipboard after a
     // while, unless something else was copied since; here, so it outlives
     // the page it was copied on

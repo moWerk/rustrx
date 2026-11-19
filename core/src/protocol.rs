@@ -269,6 +269,28 @@ pub(crate) enum Command {
     KnockSeen { room_id: String, user_ids: Vec<String> },
     /// No to an incoming call's ring (`event_id` of the ring).
     CallDecline { room_id: String, event_id: String },
+    // --- 1:1 calls (legacy m.call.*; the call itself is the UI's) ---
+    /// One m.call.* event (VOIP_TYPES), its content as the UI built it;
+    /// answered by "voip_sent".
+    VoipSend { room_id: String, r#type: String, content: serde_json::Map<String, serde_json::Value> },
+    /// The homeserver's TURN credentials: "turn_server".
+    TurnServer,
+}
+
+/// The legacy 1:1 call events (m.call.*) the UI may send and is given.
+/// Anything else through voip_send would be a way to post arbitrary events.
+pub(crate) const VOIP_TYPES: [&str; 7] = [
+    "m.call.invite",
+    "m.call.answer",
+    "m.call.candidates",
+    "m.call.hangup",
+    "m.call.select_answer",
+    "m.call.reject",
+    "m.call.negotiate",
+];
+
+pub(crate) fn voip_type_allowed(kind: &str) -> bool {
+    VOIP_TYPES.contains(&kind)
 }
 
 /// A non-empty string, or nothing (the UI sends "" for "no reply" and the like).
@@ -323,11 +345,12 @@ mod tests {
         "devices", "delete_device", "profile", "set_display_name", "ignore_user",
         "unignore_user", "storage_info", "clear_media",
         "call_start", "call_message", "call_end", "knock_answer", "knock_seen", "call_decline",
+        "voip_send", "turn_server",
     ];
 
     /// How many fields the commands require, all together. Like COMMANDS, a
     /// change here is a change of the contract.
-    const REQUIRED_FIELDS: usize = 151;
+    const REQUIRED_FIELDS: usize = 154;
 
 
     /// The names serde knows, from its own error for an unknown tag
@@ -339,7 +362,7 @@ mod tests {
     }
 
     /// The smallest object that parses as `name`: each field serde says is
-    /// missing gets the first of "", false, [], 0 that it takes.
+    /// missing gets the first of "", false, [], 0, {} that it takes.
     fn minimal(name: &str) -> Value {
         let mut v = json!({"cmd": name});
         for _ in 0..16 {
@@ -352,7 +375,7 @@ mod tests {
                 .and_then(|(_, rest)| rest.split_once('`'))
                 .map(|(f, _)| f.to_owned())
                 .unwrap_or_else(|| panic!("{name}: {err}"));
-            let fill = [json!(""), json!(false), json!([]), json!(0)]
+            let fill = [json!(""), json!(false), json!([]), json!(0), json!({})]
                 .into_iter()
                 .find(|candidate| {
                     let mut t = v.clone();
@@ -474,6 +497,8 @@ mod tests {
             json!({"cmd": "knock_answer", "room_id": "!a:b", "user_id": "@u:b", "accept": "true"}),
             json!({"cmd": "send_text", "room_id": "!a:b", "body": "x", "emotes": {"a": 1}}),
             json!({"cmd": "send_file", "room_id": "!a:b", "path": "/x", "w": -5}),
+            json!({"cmd": "voip_send", "room_id": "!a:b", "content": {}}),
+            json!({"cmd": "voip_send", "room_id": "!a:b", "type": "m.call.hangup"}),
             json!("logout"),
             json!(null),
         ];
@@ -512,6 +537,9 @@ mod tests {
             json!({"cmd": "paginate_back", "room_id": "!a:b", "count": 65535}),
             json!({"cmd": "create_room"}),
             json!({"cmd": "mark_read", "room_id": "!a:b", "event_id": null}),
+            json!({"cmd": "turn_server", "room_id": null}),
+            // the type is judged by the handler (an error event), not here
+            json!({"cmd": "voip_send", "room_id": "!a:b", "type": "m.room.message", "content": {}}),
         ];
         for case in cases {
             assert!(parse(case.clone()).is_ok(), "refused: {}", &case.to_string()[..case.to_string().len().min(120)]);
@@ -526,6 +554,43 @@ mod tests {
         match parse(json!({"cmd": "mark_read", "room_id": "!a:b", "event_id": "$e:b"})).unwrap() {
             Command::MarkRead { event_id, .. } => assert_eq!(event_id.as_deref(), Some("$e:b")),
             other => panic!("{other:?}"),
+        }
+    }
+
+    /// voip_send's content is the event's content: only an object is one,
+    /// and it reaches the handler whole (the SDP and the candidates are
+    /// nested, a lost field is a call that never connects).
+    /// Planted-bug: make `content` a `serde_json::Value` (null, a string
+    /// and an array would then be sent as an event's content).
+    #[test]
+    fn voip_send_content_is_an_object_kept_whole() {
+        for content in [Value::Null, json!("x"), json!([1]), json!(5)] {
+            let case = json!({"cmd": "voip_send", "room_id": "!a:b", "type": "m.call.invite", "content": content});
+            assert!(parse(case).is_err(), "accepted content {content}");
+        }
+        let content = json!({"call_id": "c1", "party_id": "p", "version": "1", "lifetime": 60000,
+                             "offer": {"type": "offer", "sdp": "v=0\r\n"}, "future_field": [1, {"x": null}]});
+        let case = json!({"cmd": "voip_send", "room_id": "!a:b", "type": "m.call.invite", "content": content, "extra": 1});
+        match parse(case).unwrap() {
+            Command::VoipSend { r#type, content: got, .. } => {
+                assert_eq!(r#type, "m.call.invite");
+                assert_eq!(serde_json::to_value(&got).unwrap(), content);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// Only the seven m.call.* types pass; voip_send must not become a way
+    /// to post any event (a state-looking name, a ring, a message).
+    /// Planted-bug: `kind.starts_with("m.call.")` in `voip_type_allowed`.
+    #[test]
+    fn voip_types_are_the_legacy_call_events_only() {
+        for t in VOIP_TYPES {
+            assert!(voip_type_allowed(t), "{t}");
+        }
+        for t in ["", "m.call", "m.call.", "m.call.member", "m.call.invite ", "M.call.invite", "m.room.message",
+                  "m.call.notify", "org.matrix.msc4075.rtc.notification", "m.call.invitex"] {
+            assert!(!voip_type_allowed(t), "{t:?}");
         }
     }
 

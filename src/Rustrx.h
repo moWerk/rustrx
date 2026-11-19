@@ -31,6 +31,7 @@ class RoomLists;
 class RoomModel;
 class TimelineModel;
 class UnifiedPush;
+class Voip;
 
 // The bridge to librustrx: commands go out as JSON, events come back on
 // tokio threads and are re-posted onto the GUI thread before anything here
@@ -70,6 +71,8 @@ class Rustrx : public QObject
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
     // push through UnifiedPush (Foghorn), the stand-in's lighter successor
     Q_PROPERTY(UnifiedPush *push READ push CONSTANT)
+    // classic 1:1 calls (m.call.*, WebRTC through GStreamer)
+    Q_PROPERTY(Voip *voip READ voip CONSTANT)
     // the open thread's messages (root and replies), beside the room's
     Q_PROPERTY(TimelineModel *thread READ thread CONSTANT)
     // changes whenever a thread is marked seen (bindings read it to update)
@@ -171,6 +174,7 @@ public:
     // a process the distributor started for one push (no window, no sync)
     void setPushWake(bool on) { m_handover.setPushWake(on); }
     UnifiedPush *push() const { return m_push; }
+    Voip *voip() const { return m_voip; }
     // the file the stand-in's unit looks for (in the sandbox's own config folder)
     static QString backgroundFlagPath() { return Handover::backgroundFlagPath(); }
     // a user unit: the stand-in (harbour-rustrx.service) or the app for it to
@@ -420,6 +424,7 @@ private:
     Handover m_handover;
     QList<QVariantMap> m_pendingPushes;
     UnifiedPush *m_push;
+    Voip *m_voip;
     // the tabs' room lists, their settings, unread totals and requests to join
     RoomLists *m_lists;
     // sending files and pictures, avatars, media downloads, emote pictures

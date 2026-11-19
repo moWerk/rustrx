@@ -20,6 +20,11 @@ Requires:   qt5-qtdeclarative-import-sensors
 Requires:   nemo-qml-plugin-configuration-qt5
 Requires:   sailfish-components-webview-qt5
 Requires:   sailfishshare-components
+# calls: webrtcbin, DTLS and SRTP (bad), ICE (libnice), Opus and RTP (base, good)
+Requires:   gstreamer1.0-plugins-bad
+Requires:   gstreamer1.0-plugins-good
+Requires:   gstreamer1.0-plugins-base
+Requires:   libnice
 BuildRequires:  pkgconfig(sailfishapp) >= 1.0.2
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5Qml)
@@ -27,6 +32,9 @@ BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5DBus)
 BuildRequires:  pkgconfig(Qt5Multimedia)
 BuildRequires:  pkgconfig(sailfishsecrets)
+BuildRequires:  pkgconfig(gstreamer-1.0)
+BuildRequires:  pkgconfig(gstreamer-sdp-1.0)
+BuildRequires:  pkgconfig(gstreamer-webrtc-1.0)
 BuildRequires:  desktop-file-utils
 BuildRequires:  qt5-qttools-linguist
 
