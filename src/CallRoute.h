@@ -28,6 +28,7 @@ struct pa_threaded_mainloop;
 struct pa_context;
 struct pa_operation;
 struct pa_time_event;
+struct pa_sink_input_info;
 struct pa_mainloop_api;
 struct pa_card_info;
 struct pa_sink_info;
@@ -61,13 +62,15 @@ public:
 
     void setActive(bool on);
     void setSpeaker(bool on);
+    // mainline: a call stream that came after the switch joins the card's sink
+    void follow();
 
     // tests: no step queued or running
     bool idle();
 
 private:
-    enum class Op { Activate, Speaker, Restore };
-    enum class Step { Idle, Connecting, Cards, Profile, Sinks, Port, RestoreProfile, RestorePort };
+    enum class Op { Activate, Speaker, Restore, Follow };
+    enum class Step { Idle, Connecting, Cards, Profile, Sinks, Port, RestoreProfile, RestorePort, UcmSink, UcmInputs, UcmMove };
     struct Job { Op op; bool speaker; };
 
     // all below run on PulseAudio's thread, or with its lock held
@@ -80,6 +83,8 @@ private:
     void setSpeakerRoute();
     void listSinks();
     void setPort(const QString &port, Step step);
+    void listUcmSink();
+    void moveNextInput();
     void restoreProfile();
     void restorePort();
     void restored();
@@ -93,6 +98,8 @@ private:
     static void onCard(pa_context *ctx, const pa_card_info *info, int eol, void *self);
     static void onSink(pa_context *ctx, const pa_sink_info *info, int eol, void *self);
     static void onSuccess(pa_context *ctx, int success, void *self);
+    static void onUcmSink(pa_context *ctx, const pa_sink_info *info, int eol, void *self);
+    static void onUcmInput(pa_context *ctx, const pa_sink_input_info *info, int eol, void *self);
     static void onTimeout(pa_mainloop_api *api, pa_time_event *e, const struct timeval *tv, void *self);
 
     // the GUI thread's view
@@ -118,6 +125,10 @@ private:
     // mainline (ALSA UCM): outputs are profiles, the call switches those
     bool m_ucm = false;
     CallRoutePlan::Card m_ucmCard;
+    QList<uint32_t> m_cardIndexes;     // m_cards' PulseAudio indexes
+    uint32_t m_ucmCardIndex = uint32_t(-1);   // PA_INVALID_INDEX
+    uint32_t m_ucmSinkIndex = uint32_t(-1);   // PA_INVALID_INDEX
+    QList<uint32_t> m_ucmInputs;       // our call streams still to move
     QString m_targetProfile;           // the profile being set
 
     // the destructor's wait for the queue to empty

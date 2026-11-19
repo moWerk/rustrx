@@ -123,6 +123,8 @@ signals:
     // the call wants the phone's call audio (from placing to the end)
     void audioNeeded(bool on);
     void speakerChanged(bool on);
+    // the far end's audio has a player now (its stream follows shortly)
+    void farAudioStarted();
     // the core sent this call's hangup
     void hangupSent();
 

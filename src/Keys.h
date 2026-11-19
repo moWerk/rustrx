@@ -229,6 +229,9 @@ static const bool kVoipRelayOnlyDefault = false;
 // long is given up; quitting gives a pending restore this long
 static const int kCallRouteTimeoutMs = 3000;
 static const int kCallRouteQuitWaitMs = 1500;
+// mainline: after the far end's player starts, when to look for its stream
+// and move it to the card's sink (PulseAudio makes it a moment later)
+static const int kCallRouteFollowMs[] = { 300, 1000, 2500 };
 
 }
 

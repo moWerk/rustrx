@@ -20,6 +20,7 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QMutexLocker>
+#include <unistd.h>
 #include <pulse/pulseaudio.h>
 
 using namespace CallRoutePlan;
@@ -81,6 +82,12 @@ void CallRoute::setSpeaker(bool on)
 {
     m_speaker = on;
     enqueue({ Op::Speaker, on });
+}
+
+void CallRoute::follow()
+{
+    if (m_active)
+        enqueue({ Op::Follow, false });
 }
 
 bool CallRoute::idle()
@@ -173,6 +180,14 @@ void CallRoute::begin()
         else
             connectPulse();
         return;
+    case Op::Follow:
+        if (!m_routed || !m_ucm)
+            done();
+        else if (ready)
+            listUcmSink();
+        else
+            connectPulse();
+        return;
     }
 }
 
@@ -212,6 +227,9 @@ void CallRoute::onState(pa_context *ctx, void *self)
         case Op::Speaker:
             r->setSpeakerRoute();
             break;
+        case Op::Follow:
+            r->listUcmSink();
+            break;
         }
     } else if (!PA_CONTEXT_IS_GOOD(state)) {
         if (r->m_step != Step::Idle)
@@ -234,6 +252,7 @@ void CallRoute::listCards()
 {
     m_step = Step::Cards;
     m_cards.clear();
+    m_cardIndexes.clear();
     track(pa_context_get_card_info_list(m_ctx, &CallRoute::onCard, this));
 }
 
@@ -247,6 +266,7 @@ void CallRoute::onCard(pa_context *, const pa_card_info *i, int eol, void *self)
         for (uint32_t k = 0; k < i->n_profiles; ++k)
             c.profiles << QString::fromUtf8(i->profiles2[k]->name);
         r->m_cards << c;
+        r->m_cardIndexes << i->index;
         return;
     }
     if (r->m_op) {
@@ -268,6 +288,7 @@ void CallRoute::onCard(pa_context *, const pa_card_info *i, int eol, void *self)
         }
         r->m_ucm = true;
         r->m_ucmCard = r->m_cards.at(found);
+        r->m_ucmCardIndex = r->m_cardIndexes.at(found);
     }
     // a route that was never restored (PulseAudio gave up) keeps what was
     // there before it
@@ -354,6 +375,73 @@ void CallRoute::setPort(const QString &port, Step step)
                                            &CallRoute::onSuccess, this));
 }
 
+// mainline: the profile switch takes the old sink away and PulseAudio
+// moves the call to its fallback, the null sink, where the policy leaves
+// it (its route still names the loudspeaker); so our own call streams
+// follow the card to the sink of its new profile
+void CallRoute::listUcmSink()
+{
+    m_step = Step::UcmSink;
+    m_ucmSinkIndex = PA_INVALID_INDEX;
+    track(pa_context_get_sink_info_list(m_ctx, &CallRoute::onUcmSink, this));
+}
+
+void CallRoute::onUcmSink(pa_context *, const pa_sink_info *i, int eol, void *self)
+{
+    CallRoute *r = static_cast<CallRoute *>(self);
+    if (r->m_step != Step::UcmSink)
+        return;
+    if (eol == 0 && i) {
+        if (i->card == r->m_ucmCardIndex && r->m_ucmSinkIndex == PA_INVALID_INDEX)
+            r->m_ucmSinkIndex = i->index;
+        return;
+    }
+    if (r->m_op) {
+        pa_operation_unref(r->m_op);
+        r->m_op = nullptr;
+    }
+    if (eol < 0 || r->m_ucmSinkIndex == PA_INVALID_INDEX) {
+        qWarning() << "voip: the card has no sink for the call";
+        r->done();
+        return;
+    }
+    r->m_step = Step::UcmInputs;
+    r->m_ucmInputs.clear();
+    r->track(pa_context_get_sink_input_info_list(r->m_ctx, &CallRoute::onUcmInput, r));
+}
+
+void CallRoute::onUcmInput(pa_context *, const pa_sink_input_info *i, int eol, void *self)
+{
+    CallRoute *r = static_cast<CallRoute *>(self);
+    if (r->m_step != Step::UcmInputs)
+        return;
+    if (eol == 0 && i) {
+        const char *pid = pa_proplist_gets(i->proplist, PA_PROP_APPLICATION_PROCESS_ID);
+        const char *role = pa_proplist_gets(i->proplist, PA_PROP_MEDIA_ROLE);
+        if (pid && role && QByteArray(pid) == QByteArray::number(qint64(getpid()))
+                && QByteArray(role) == "phone" && i->sink != r->m_ucmSinkIndex)
+            r->m_ucmInputs << i->index;
+        return;
+    }
+    if (r->m_op) {
+        pa_operation_unref(r->m_op);
+        r->m_op = nullptr;
+    }
+    r->moveNextInput();
+}
+
+void CallRoute::moveNextInput()
+{
+    if (m_ucmInputs.isEmpty()) {
+        done();
+        return;
+    }
+    m_step = Step::UcmMove;
+    const uint32_t input = m_ucmInputs.takeFirst();
+    qInfo() << "voip: call stream" << input << "moved to sink" << m_ucmSinkIndex;
+    track(pa_context_move_sink_input_by_index(m_ctx, input, m_ucmSinkIndex, &CallRoute::onSuccess, this));
+}
+
 void CallRoute::restoreProfile()
 {
     if (m_cardProfile.isEmpty()) {
@@ -406,7 +494,7 @@ void CallRoute::onSuccess(pa_context *, int success, void *self)
             if (success)
                 qInfo().noquote() << "voip: call heard on" << r->m_targetProfile << "of" << r->m_card;
             r->m_routed = true;
-            r->done();
+            r->listUcmSink();
         } else {
             r->listSinks();
         }
@@ -417,6 +505,11 @@ void CallRoute::onSuccess(pa_context *, int success, void *self)
         else
             qWarning().noquote() << "voip: the port" << r->m_portName << "was refused";
         r->done();
+        break;
+    case Step::UcmMove:
+        if (!success)
+            qWarning() << "voip: the call could not be moved to the card's sink";
+        r->moveNextInput();
         break;
     case Step::RestoreProfile:
         if (!success)

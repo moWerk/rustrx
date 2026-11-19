@@ -811,6 +811,8 @@ void Voip::onPadAdded(GstElement *, GstPad *pad, void *self)
     if (gst_pad_link(pad, sinkPad) != GST_PAD_LINK_OK)
         QMetaObject::invokeMethod(v, "onMediaError", Qt::QueuedConnection, Q_ARG(QString, QStringLiteral("the far end's audio does not link")), Q_ARG(int, v->m_pipeGen.load()));
     gst_object_unref(sinkPad);
+    if (!v->m_testTone)
+        QMetaObject::invokeMethod(v, "farAudioStarted", Qt::QueuedConnection);
 }
 
 // ---- echo cancelling (Speex), on GStreamer's threads ---------------------

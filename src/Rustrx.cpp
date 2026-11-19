@@ -147,6 +147,11 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     m_callRoute = new CallRoute(this);
     connect(m_voip, &Voip::audioNeeded, m_callRoute, &CallRoute::setActive);
     connect(m_voip, &Voip::speakerChanged, m_callRoute, &CallRoute::setSpeaker);
+    // PulseAudio makes the stream a moment after the player starts
+    connect(m_voip, &Voip::farAudioStarted, m_callRoute, [this] {
+        for (int ms : Keys::kCallRouteFollowMs)
+            QTimer::singleShot(ms, m_callRoute, &CallRoute::follow);
+    });
     // the screen goes dark at the ear, as in the phone app; the app's call
     // only (the stand-in rings through its notification)
     auto *callState = new CallState(this);
