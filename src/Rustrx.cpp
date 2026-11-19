@@ -27,6 +27,7 @@
 #include "CallRoute.h"
 #include "CallState.h"
 #include "Keys.h"
+#include "Wipe.h"
 #include "rustrx_core.h"
 #include <sailfishapp.h>
 
@@ -137,21 +138,25 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     secretsTime.start();
     // the sailfish-secrets plugin, loaded only where it can be: its library
     // is not a dependency of the package
-    QByteArray storeKey;
+    // the key goes from the plugin's buffer straight to the core, which
+    // keeps its own copy; this one is wiped (Wipe.h, audit B13)
+    char key[128];
+    bool haveKey = false;
     QLibrary secrets(SailfishApp::pathTo(QString::fromLatin1(Keys::kSecretsPlugin)).toLocalFile());
     typedef int (*StoreKeyFn)(char *, int);
     if (StoreKeyFn fn = reinterpret_cast<StoreKeyFn>(secrets.resolve(Keys::kSecretsSymbol))) {
-        char buf[128];
-        const int n = fn(buf, sizeof buf);
-        if (n > 0)
-            storeKey = QByteArray(buf, n);
+        const int n = fn(key, sizeof key);
+        haveKey = n > 0 && n < int(sizeof key);
     } else {
         qInfo().noquote() << "startup: no sailfish-secrets plugin:" << secrets.errorString();
     }
-    qInfo().noquote() << "startup: store key" << (storeKey.isEmpty() ? "none" : "from sailfish-secrets")
+    qInfo().noquote() << "startup: store key" << (haveKey ? "from sailfish-secrets" : "none")
                       << "after" << secretsTime.elapsed() << "ms";
-    if (!storeKey.isEmpty())
-        rustrx_set_store_key(storeKey.constData());
+    if (haveKey) {
+        key[sizeof key - 1] = 0;
+        rustrx_set_store_key(key);
+    }
+    Wipe::bytes(key, sizeof key);
     m_handleEvent = staticMetaObject.method(staticMetaObject.indexOfMethod(
             QMetaObject::normalizedSignature("handleEvent(QVariantMap)").constData()));
     if (!m_handleEvent.isValid())

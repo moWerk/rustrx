@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "SecretStore.h"
+#include "Wipe.h"
 
 #include <QDebug>
 #include <QFile>
@@ -83,12 +84,15 @@ QByteArray SecretStore::storeKey()
 
     // the first time: 32 random bytes as hex, in a collection of our own
     QFile random(QStringLiteral("/dev/urandom"));
-    if (!random.open(QIODevice::ReadOnly))
+    if (!random.open(QIODevice::ReadOnly | QIODevice::Unbuffered))
         return QByteArray();
-    const QByteArray bytes = random.read(32);
-    if (bytes.size() != 32 || !createCollection(manager))
+    QByteArray bytes = random.read(32);
+    if (bytes.size() != 32 || !createCollection(manager)) {
+        Wipe::array(bytes);
         return QByteArray();
+    }
     key = bytes.toHex();
+    Wipe::array(bytes);
 
     Secret secret(keyId());
     secret.setType(Secret::TypeBlob);
@@ -110,10 +114,14 @@ QByteArray SecretStore::storeKey()
 
 extern "C" Q_DECL_EXPORT int rustrx_secrets_store_key(char *out, int size)
 {
-    const QByteArray key = SecretStore::storeKey();
-    if (key.isEmpty() || key.size() >= size)
-        return 0;
-    memcpy(out, key.constData(), key.size());
-    out[key.size()] = 0;
-    return key.size();
+    // the only owner of the key's buffer once storeKey() has returned: wiped
+    // after the copy (audit B13)
+    QByteArray key = SecretStore::storeKey();
+    const int n = key.size();
+    if (n > 0 && n < size) {
+        memcpy(out, key.constData(), size_t(n));
+        out[n] = 0;
+    }
+    Wipe::array(key);
+    return n > 0 && n < size ? n : 0;
 }
