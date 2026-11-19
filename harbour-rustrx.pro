@@ -49,6 +49,7 @@ HEADERS += src/Rustrx.h \
     src/KeyboardSlide.h \
     src/CallState.h \
     src/Voip.h \
+    src/AecFrames.h \
     src/CallRoute.h \
     src/CallRoutePlan.h \
     src/LocalOnly.h \

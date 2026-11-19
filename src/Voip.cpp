@@ -16,6 +16,7 @@
  */
 #define GST_USE_UNSTABLE_API
 #include "Voip.h"
+#include "AecFrames.h"
 #include "Keys.h"
 
 #include <QDateTime>
@@ -161,7 +162,9 @@ QVariantMap Voip::status() const
              { "remote_level_db", m_lastLevel }, { "packets_in", m_packetsIn },
              { "packets_out", m_packetsOut }, { "end_reason", m_endReason },
              { "remote_candidates", m_candidatesAdded },
-             { "turn", m_turnUris.size() } };
+             { "turn", m_turnUris.size() },
+             // the next call's test settings (tests: they last one call)
+             { "test_tone", m_testTone }, { "aec", m_aec } };
 }
 
 void Voip::send(const QString &type, QVariantMap content)
@@ -829,10 +832,7 @@ int Voip::onFarSample(GstElement *sink, void *self)
     QMutexLocker lock(&v->m_aecLock);
     if (!v->m_echo)
         return GST_FLOW_OK;
-    v->m_farIn += data;
-    const int most = Keys::kVoipAecRate * Keys::kVoipAecQueueMs / 1000 * 2;
-    if (v->m_farIn.size() > most)
-        v->m_farIn.remove(0, v->m_farIn.size() - most);
+    AecFrames::queueFar(v->m_farIn, data, AecFrames::farQueueBytes());
     return GST_FLOW_OK;
 }
 
@@ -841,7 +841,6 @@ int Voip::onMicSample(GstElement *sink, void *self)
 {
     Voip *v = static_cast<Voip *>(self);
     const QByteArray data = takeSample(sink);
-    const int bytes = Keys::kVoipAecRate * Keys::kVoipAecFrameMs / 1000 * 2;
     QByteArray clean;
     {
         QMutexLocker lock(&v->m_aecLock);
@@ -850,19 +849,11 @@ int Voip::onMicSample(GstElement *sink, void *self)
         v->m_micIn += data;
         // each microphone frame with one frame of the far end (silence
         // when none came): the two in step, whatever the network does
-        static const QByteArray silence(Keys::kVoipAecRate * Keys::kVoipAecFrameMs / 1000 * 2, '\0');
-        while (v->m_micIn.size() >= bytes) {
-            QByteArray frame(bytes, Qt::Uninitialized);
-            const bool far = v->m_farIn.size() >= bytes;
-            speex_echo_cancellation(v->m_echo, reinterpret_cast<const spx_int16_t *>(v->m_micIn.constData()),
-                                    reinterpret_cast<const spx_int16_t *>(far ? v->m_farIn.constData() : silence.constData()),
-                                    reinterpret_cast<spx_int16_t *>(frame.data()));
-            if (far)
-                v->m_farIn.remove(0, bytes);
-            speex_preprocess_run(v->m_denoise, reinterpret_cast<spx_int16_t *>(frame.data()));
-            clean += frame;
-            v->m_micIn.remove(0, bytes);
-        }
+        clean = AecFrames::pair(v->m_micIn, v->m_farIn, AecFrames::frameBytes(), [v](const char *mic, const char *far, char *out) {
+            speex_echo_cancellation(v->m_echo, reinterpret_cast<const spx_int16_t *>(mic),
+                                    reinterpret_cast<const spx_int16_t *>(far), reinterpret_cast<spx_int16_t *>(out));
+            speex_preprocess_run(v->m_denoise, reinterpret_cast<spx_int16_t *>(out));
+        });
     }
     if (clean.isEmpty())
         return GST_FLOW_OK;

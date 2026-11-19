@@ -5,10 +5,14 @@
 // this machine, DTLS, SRTP and Opus for real. A test tone goes in on both
 // sides; the far end's level and packet counts show it came through.
 //
+// Also the echo canceller's frame pairing (src/AecFrames.h) and what a
+// call leaves behind for the next one.
+//
 // Each test names the bug it exists to catch ("Planted-bug:"); it was
 // trusted only after failing against that bug planted on purpose.
 
 #include "Voip.h"
+#include "AecFrames.h"
 
 #include <QtTest>
 
@@ -261,6 +265,126 @@ private slots:
         b.sendFailed();
         QCOMPARE(b.state(), QStringLiteral("idle"));
         QCOMPARE(b.endReason(), QStringLiteral("send_failed"));
+    }
+
+    // Planted-bug: setMuted does not reach the microphone's volume (the
+    // far end hears on). Planted-bug: unmuting leaves it muted.
+    void muteSilencesTheFarEnd()
+    {
+        Wire w;
+        w.a.place(QStringLiteral("!dm:example.org"), QStringLiteral("@b:example.org"), QStringLiteral("B"));
+        QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("incoming"), 5000);
+        w.b.answer();
+        QTRY_COMPARE_WITH_TIMEOUT(w.a.state(), QStringLiteral("connected"), 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(w.b.status().value("remote_level_db").toDouble() > -40, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(w.a.status().value("remote_level_db").toDouble() > -40, 10000);
+        w.a.setMuted(true);
+        QVERIFY(w.a.muted());
+        // a's tone is gone at b (silence through Opus reads far below)
+        QTRY_VERIFY2_WITH_TIMEOUT(w.b.status().value("remote_level_db").toDouble() < -70,
+                                  qPrintable(w.b.status().value("remote_level_db").toString()), 5000);
+        // and only a's microphone: b is still heard at a
+        QVERIFY2(w.a.status().value("remote_level_db").toDouble() > -40, qPrintable(w.a.status().value("remote_level_db").toString()));
+        w.a.setMuted(false);
+        QTRY_VERIFY2_WITH_TIMEOUT(w.b.status().value("remote_level_db").toDouble() > -40,
+                                  qPrintable(w.b.status().value("remote_level_db").toString()), 5000);
+        w.a.hangup();
+        QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("idle"), 3000);
+    }
+
+    // Planted-bug: the test tone outlives the call (a later real call
+    // sent 440 Hz and played nothing). Planted-bug: echo cancelling stays
+    // off after a test turned it off. Planted-bug: the loudspeaker stays
+    // on after the call (the next call starts there, and CallRoute is not
+    // told). Planted-bug: mute stays on after the call.
+    void eachCallStartsAfresh()
+    {
+        Voip b;
+        b.setOwnUserId(QStringLiteral("@b:example.org"));
+        QSignalSpy speaker(&b, &Voip::speakerChanged);
+        b.setTestTone(true);
+        b.setEchoCancelling(false);
+        QCOMPARE(b.status().value("test_tone").toBool(), true);
+        QCOMPARE(b.status().value("aec").toBool(), false);
+        b.handleEvent(invite("c1", 60000, true));
+        b.answer();
+        b.setSpeaker(true);
+        b.setMuted(true);
+        QCOMPARE(b.state(), QStringLiteral("connecting"));
+        b.hangup();
+        QCOMPARE(b.state(), QStringLiteral("idle"));
+        QCOMPARE(b.status().value("test_tone").toBool(), false);
+        QCOMPARE(b.status().value("aec").toBool(), true);
+        QCOMPARE(b.speaker(), false);
+        QCOMPARE(b.muted(), false);
+        QCOMPARE(speaker.count(), 2);
+        QCOMPARE(speaker.last().at(0).toBool(), false);
+        // the same when the other side ends it
+        b.setSpeaker(true);   // between calls: only the setting
+        b.setTestTone(true);
+        b.handleEvent(invite("c2", 60000, true));
+        b.answer();
+        b.handleEvent({ { "type", "m.call.hangup" }, { "room_id", "!r" }, { "sender", "@a:example.org" }, { "own", false },
+                        { "content", QVariantMap{ { "call_id", "c2" }, { "party_id", "pa" }, { "version", "1" } } } });
+        QCOMPARE(b.state(), QStringLiteral("idle"));
+        QCOMPARE(b.status().value("test_tone").toBool(), false);
+        QCOMPARE(b.speaker(), false);
+        QCOMPARE(speaker.last().at(0).toBool(), false);
+    }
+
+    // Planted-bug: the far end's queue not capped (after a burst from the
+    // network the echo lies beyond what the canceller learns).
+    // Planted-bug: the cap keeps the oldest part instead of the newest.
+    void theFarEndWaitsAt120msAtMost()
+    {
+        QCOMPARE(AecFrames::frameBytes(), 320);       // 10 ms at 16 kHz, 16 bit
+        QCOMPARE(AecFrames::farQueueBytes(), 3840);   // 120 ms
+        QByteArray burst;
+        for (int i = 0; i < 5000; ++i)
+            burst.append(char(i % 251));
+        QByteArray far;
+        AecFrames::queueFar(far, burst.left(1000), AecFrames::farQueueBytes());
+        QCOMPARE(far, burst.left(1000));
+        AecFrames::queueFar(far, burst.mid(1000), AecFrames::farQueueBytes());
+        QCOMPARE(far.size(), 3840);
+        QCOMPARE(far, burst.right(3840));
+        AecFrames::queueFar(far, QByteArray(100, 'x'), AecFrames::farQueueBytes());
+        QCOMPARE(far.size(), 3840);
+        QVERIFY(far.endsWith(QByteArray(100, 'x')));
+    }
+
+    // Planted-bug: a far frame used twice (not taken off the queue).
+    // Planted-bug: the microphone waits for the far end (no silence when
+    // none came: the call's own voice stalls). Planted-bug: a part frame
+    // of the microphone dropped.
+    void eachMicrophoneFrameTakesOneFarFrame()
+    {
+        const int n = AecFrames::frameBytes();
+        QList<QPair<char, char>> seen;   // each frame: the microphone's first byte, the far end's
+        bool farSilent = true;
+        const auto process = [&](const char *mic, const char *far, char *out) {
+            seen << qMakePair(mic[0], far[0]);
+            if (far[0] == 0)
+                farSilent = farSilent && QByteArray(far, n) == QByteArray(n, '\0');
+            for (int i = 0; i < n; ++i)
+                out[i] = mic[i];
+        };
+        QByteArray mic = QByteArray(n, 'a') + QByteArray(n, 'b') + QByteArray(n / 2, 'c');
+        QByteArray far = QByteArray(n, '1') + QByteArray(100, '2');
+        QByteArray out = AecFrames::pair(mic, far, n, process);
+        QCOMPARE(seen, (QList<QPair<char, char>>{ qMakePair('a', '1'), qMakePair('b', '\0') }));
+        QVERIFY(farSilent);
+        QCOMPARE(out, QByteArray(n, 'a') + QByteArray(n, 'b'));
+        QCOMPARE(mic, QByteArray(n / 2, 'c'));   // waits for the rest of its frame
+        QCOMPARE(far, QByteArray(100, '2'));     // a part frame of the far end waits too
+        mic += QByteArray(n / 2, 'c');
+        far += QByteArray(n - 100, '2') + QByteArray(n, '3');
+        seen.clear();
+        out = AecFrames::pair(mic, far, n, process);
+        QCOMPARE(seen, (QList<QPair<char, char>>{ qMakePair('c', '2') }));
+        QCOMPARE(out, QByteArray(n, 'c'));
+        QVERIFY(mic.isEmpty());
+        QCOMPARE(far, QByteArray(n, '3'));
     }
 
     // Planted-bug: the credentials go in unescaped (an "@" in the password
