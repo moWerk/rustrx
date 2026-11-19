@@ -92,8 +92,8 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     connect(m_push, &UnifiedPush::command, this, &Rustrx::command);
     m_voip = new Voip(this);
     connect(m_voip, &Voip::command, this, &Rustrx::command);
-    auto *callAudio = new CallAudio(this);
-    connect(m_voip, &Voip::audioNeeded, callAudio, &CallAudio::setActive);
+    m_callAudio = new CallAudio(this);
+    connect(m_voip, &Voip::audioNeeded, m_callAudio, &CallAudio::setActive);
     // the stand-in rings but never runs a call: whatever hands over to the
     // app (a tap, Answer) takes the ringing call along
     connect(m_voip, &Voip::changed, this, [this]() {
@@ -429,6 +429,8 @@ QString Rustrx::dev(const QString &json)
         const QString what = req.value("voip").toString();
         if (req.contains("tone"))
             m_voip->setTestTone(req.value("tone").toBool());
+        if (req.contains("policy_class"))
+            m_callAudio->configure(req.value("policy_class").toString(), req.value("by_process").toBool());
         if (what == QLatin1String("place"))
             m_voip->place(req.value("room_id").toString(), req.value("invitee").toString(), req.value("invitee").toString());
         else if (what == QLatin1String("answer"))

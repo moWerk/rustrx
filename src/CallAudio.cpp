@@ -27,16 +27,28 @@ CallAudio::CallAudio(QObject *parent) : QObject(parent)
 {
 }
 
+void CallAudio::configure(const QString &applicationClass, bool byProcess)
+{
+    m_class = applicationClass;
+    m_byProcess = byProcess;
+    // made again at the next call with these
+    delete m_set;
+    m_set = nullptr;
+    qInfo() << "voip: call audio class" << m_class << "by process" << m_byProcess;
+}
+
 void CallAudio::setActive(bool on)
 {
     if (on == m_active)
         return;
     m_active = on;
     if (!m_set) {
-        m_set = new ResourcePolicy::ResourceSet(QStringLiteral("ipcall"), this);
+        m_set = new ResourcePolicy::ResourceSet(m_class, this);
         m_set->setAlwaysReply();
-        auto *audio = new ResourcePolicy::AudioResource(QStringLiteral("ipcall"));
-        audio->setProcessID(quint32(QCoreApplication::applicationPid()));
+        auto *audio = new ResourcePolicy::AudioResource(m_class);
+        // the sandbox's D-Bus proxy is the policy's peer, not this process
+        if (m_byProcess)
+            audio->setProcessID(quint32(QCoreApplication::applicationPid()));
         audio->setStreamTag(QStringLiteral("media.name"), QLatin1String(kStreamTag));
         m_set->addResourceObject(audio);
         m_set->addResource(ResourcePolicy::AudioRecorderType);

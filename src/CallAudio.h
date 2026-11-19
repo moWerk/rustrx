@@ -32,9 +32,13 @@ class CallAudio : public QObject
 public:
     explicit CallAudio(QObject *parent = nullptr);
     void setActive(bool on);
+    // tests: another policy class, or the audio bound by process too
+    void configure(const QString &applicationClass, bool byProcess);
     static const char kStreamTag[];
 
 private:
     ResourcePolicy::ResourceSet *m_set = nullptr;
     bool m_active = false;
+    QString m_class = QStringLiteral("ipcall");
+    bool m_byProcess = false;
 };

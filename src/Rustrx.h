@@ -32,6 +32,7 @@ class RoomModel;
 class TimelineModel;
 class UnifiedPush;
 class Voip;
+class CallAudio;
 
 // The bridge to librustrx: commands go out as JSON, events come back on
 // tokio threads and are re-posted onto the GUI thread before anything here
@@ -425,6 +426,7 @@ private:
     QList<QVariantMap> m_pendingPushes;
     UnifiedPush *m_push;
     Voip *m_voip;
+    CallAudio *m_callAudio;
     // the tabs' room lists, their settings, unread totals and requests to join
     RoomLists *m_lists;
     // sending files and pictures, avatars, media downloads, emote pictures
