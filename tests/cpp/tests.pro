@@ -4,3 +4,4 @@
 TEMPLATE = subdirs
 SUBDIRS = twemoji renderhtml golden roomsort exif png mp4 readpoint voip
 SUBDIRS = twemoji renderhtml golden roomsort exif mp4 readpoint voip devhook
+SUBDIRS = twemoji renderhtml golden roomsort exif mp4 readpoint voip devhook sharecopy

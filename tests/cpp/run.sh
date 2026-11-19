@@ -18,6 +18,7 @@ run() {
 }
 for t in twemoji renderhtml golden exif png mp4 readpoint voip; do
 for t in twemoji renderhtml golden exif mp4 readpoint voip devhook; do
+for t in twemoji renderhtml golden exif mp4 readpoint voip devhook sharecopy; do
     run "$build/$t/tst_$t" "$@"
 done
 # the room order by name depends on the locale: once without collation

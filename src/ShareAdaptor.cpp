@@ -17,6 +17,7 @@
 #include "ShareAdaptor.h"
 #include "Rustrx.h"
 #include "Keys.h"
+#include "ShareCopy.h"
 
 #include <QDBusArgument>
 #include <QDBusUnixFileDescriptor>
@@ -40,9 +41,10 @@ ShareAdaptor::ShareAdaptor(Rustrx *owner) : QObject(owner), m_owner(owner)
             QFile::remove(f.filePath());
 }
 
-// A path another app names is sent only when it is not one of this app's
-// own files (the session with its tokens, the store, the settings): a
-// caller that may not read them could otherwise have Rustrx send them.
+// A path another app names is taken (copied, ShareCopy.h) only when it is
+// not one of this app's own files (the session with its tokens, the store,
+// the settings): a caller that may not read them could otherwise have
+// Rustrx send them.
 bool ShareAdaptor::mayShare(const QString &path)
 {
     const QString real = QFileInfo(path).canonicalFilePath();
@@ -70,10 +72,11 @@ void ShareAdaptor::share(const QVariantMap &config)
         if (r.type() == QVariant::String || r.type() == QVariant::Url) {
             const QString path = Rustrx::localPath(r.toString());
             if (QFileInfo(path).isFile()) {
-                if (mayShare(path))
-                    files << path;
-                else
-                    qWarning() << "share: refused, a file of this app";
+                // copied now, the copy is sent (ShareCopy.h)
+                const QString copy = ShareCopy::fromPath(path, cache, QStringLiteral("shared-%1").arg(++n),
+                                                         Keys::kShareMaxBytes, Keys::kShareChunk, &ShareAdaptor::mayShare);
+                if (!copy.isEmpty())
+                    files << copy;
             } else {
                 qInfo() << "share: not a readable file, sent as text";
                 texts << path;   // a URL that is not a local file: send it as text
@@ -119,30 +122,9 @@ QString ShareAdaptor::copyFromDescriptor(const QDBusUnixFileDescriptor &fd, cons
 {
     if (!fd.isValid())
         return QString();
-    QDir().mkpath(cache);
-    const QString file = name.isEmpty() ? QStringLiteral("shared-%1").arg(n) : QFileInfo(name).fileName();
-    const QString path = cache + "/" + file;
-    QFile in;
-    QFile out(path);
-    // the descriptor stays owned by fd; QFile reads it without closing it
-    if (!in.open(fd.fileDescriptor(), QIODevice::ReadOnly, QFileDevice::DontCloseHandle)
-            || !out.open(QIODevice::WriteOnly)) {
-        qWarning() << "share: cannot copy a shared file";
-        return QString();
-    }
-    in.seek(0);
-    while (!in.atEnd()) {
-        const QByteArray chunk = in.read(Keys::kShareChunk);
-        if (chunk.isEmpty() || out.write(chunk) != chunk.size())
-            break;
-        if (out.size() > Keys::kShareMaxBytes) {
-            qWarning() << "share: larger than" << (Keys::kShareMaxBytes >> 20) << "MB, not taken";
-            out.remove();
-            return QString();
-        }
-    }
-    qInfo() << "share: received" << out.size() << "bytes";
-    return path;
+    // the descriptor stays owned by fd
+    return ShareCopy::fromDescriptor(fd.fileDescriptor(), cache, name, QStringLiteral("shared-%1").arg(n),
+                                     Keys::kShareMaxBytes, Keys::kShareChunk);
 }
 
 QVariant ShareAdaptor::unwrap(const QVariant &v)
