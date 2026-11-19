@@ -143,6 +143,15 @@ void Voip::setMuted(bool on)
     emit changed();
 }
 
+void Voip::setSpeaker(bool on)
+{
+    if (on == m_speaker)
+        return;
+    m_speaker = on;
+    emit speakerChanged(on);
+    emit changed();
+}
+
 QVariantMap Voip::status() const
 {
     return { { "state", m_state }, { "room_id", m_roomId }, { "call_id", m_callId },
@@ -287,8 +296,9 @@ void Voip::reset()
     m_lastLevel = -100;
     m_packetsIn = m_packetsOut = 0;
     m_candidatesAdded = 0;
-    if (m_muted) {
+    if (m_muted || m_speaker) {
         m_muted = false;
+        m_speaker = false;
         emit changed();
     }
 }
@@ -411,7 +421,7 @@ bool Voip::startPipeline()
     stopPipeline();
     const QString source = m_testTone
             ? QStringLiteral("audiotestsrc is-live=true wave=sine freq=440 volume=0.3")
-            : QStringLiteral("pulsesrc stream-properties=\"props,media.role=(string)phone,media.name=(string)rustrx-call\"");
+            : QStringLiteral("pulsesrc stream-properties=\"props,media.role=(string)phone\"");
     // with echo cancelling, the microphone goes through this process
     // (capture -> Speex -> aec) and on into the encoder
     const QString aecCaps = QStringLiteral("audio/x-raw,format=S16LE,rate=%1,channels=1,layout=interleaved").arg(Keys::kVoipAecRate);
@@ -650,7 +660,7 @@ void Voip::onPadAdded(GstElement *, GstPad *pad, void *self)
             ? QStringLiteral("fakesink sync=false")
             // at full volume: Sailfish's stream restore starts the "phone"
             // role 15 dB down, the far end was barely audible
-            : QStringLiteral("pulsesink volume=1.0 stream-properties=\"props,media.role=(string)phone,media.name=(string)rustrx-call\"");
+            : QStringLiteral("pulsesink volume=1.0 stream-properties=\"props,media.role=(string)phone\"");
     // with echo cancelling, what is played also goes to Speex as the echo
     // to take out of the microphone
     const QString ref = v->m_aec

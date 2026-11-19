@@ -51,6 +51,8 @@ class Voip : public QObject
     Q_PROPERTY(QString roomId READ roomId NOTIFY changed)
     Q_PROPERTY(QString peerName READ peerName NOTIFY changed)
     Q_PROPERTY(bool muted READ muted WRITE setMuted NOTIFY changed)
+    // heard on the loudspeaker instead of the earpiece (every call starts on the earpiece)
+    Q_PROPERTY(bool speaker READ speaker WRITE setSpeaker NOTIFY changed)
     // when the media came up (ms since the epoch), 0 before
     Q_PROPERTY(qint64 connectedAt READ connectedAt NOTIFY changed)
     // why the last call ended: "", "hangup", "rejected", "answered_elsewhere",
@@ -66,6 +68,8 @@ public:
     QString peerName() const { return m_peerName; }
     bool muted() const { return m_muted; }
     void setMuted(bool on);
+    bool speaker() const { return m_speaker; }
+    void setSpeaker(bool on);
     qint64 connectedAt() const { return m_connectedAt; }
     QString endReason() const { return m_endReason; }
 
@@ -108,6 +112,7 @@ signals:
     void incoming(const QString &roomId, const QString &roomName, const QString &peerName);
     // the call wants the phone's call audio (from placing to the end)
     void audioNeeded(bool on);
+    void speakerChanged(bool on);
 
 private slots:
     // from GStreamer's threads, queued onto this one
@@ -159,6 +164,7 @@ private:
     bool m_remoteSet = false;
     bool m_descSent = false;    // our invite or answer is out: candidates may follow
     bool m_muted = false;
+    bool m_speaker = false;
     bool m_testTone = false;
     qint64 m_connectedAt = 0;
     QString m_endReason;

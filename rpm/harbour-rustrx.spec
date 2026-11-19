@@ -27,8 +27,6 @@ Requires:   gstreamer1.0-plugins-base
 Requires:   libnice
 # echo cancelling on calls
 Requires:   speexdsp
-# a call's audio as a call (the audio policy's resource sets)
-Requires:   libresourceqt-qt5
 BuildRequires:  pkgconfig(sailfishapp) >= 1.0.2
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5Qml)
@@ -41,7 +39,7 @@ BuildRequires:  pkgconfig(gstreamer-sdp-1.0)
 BuildRequires:  pkgconfig(gstreamer-webrtc-1.0)
 BuildRequires:  pkgconfig(gstreamer-app-1.0)
 BuildRequires:  pkgconfig(speexdsp)
-BuildRequires:  pkgconfig(libresourceqt5)
+BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  desktop-file-utils
 BuildRequires:  qt5-qttools-linguist
 
@@ -93,6 +91,18 @@ desktop-file-install --delete-original \
     --dir %{buildroot}%{_datadir}/applications \
     %{buildroot}%{_datadir}/applications/*.desktop
 
+# The audio policy reads its rules when PulseAudio starts: restarted once,
+# when the call rule first arrives (not at every update: it cuts whatever
+# plays for a moment)
+%pre
+[ -e /etc/pulse/xpolicy.conf.d/harbour-rustrx-xpolicy.conf ] || touch /run/harbour-rustrx-xpolicy-new || :
+
+%post
+if [ -e /run/harbour-rustrx-xpolicy-new ]; then
+    rm -f /run/harbour-rustrx-xpolicy-new
+    systemctl-user try-restart pulseaudio.service >/dev/null 2>&1 || :
+fi
+
 %files
 %defattr(-,root,root,-)
 %license LICENSE
@@ -102,6 +112,7 @@ desktop-file-install --delete-original \
 %{_datadir}/dbus-1/services/net.mowerk.harbour_rustrx.service
 %{_datadir}/dbus-1/services/org.unifiedpush.Connector.rustrx.service
 %{_datadir}/lipstick/notificationcategories/x-harbour-rustrx.*.conf
+%config %{_sysconfdir}/pulse/xpolicy.conf.d/harbour-rustrx-xpolicy.conf
 %{_userunitdir}/harbour-rustrx.service
 %{_userunitdir}/harbour-rustrx-open.service
 %{_userunitdir}/post-user-session.target.wants/harbour-rustrx.service

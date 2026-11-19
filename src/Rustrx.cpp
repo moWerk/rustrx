@@ -24,7 +24,7 @@
 #include "Twemoji.h"
 #include "UnifiedPush.h"
 #include "Voip.h"
-#include "CallAudio.h"
+#include "CallRoute.h"
 #include "Keys.h"
 #include "rustrx_core.h"
 #include <sailfishapp.h>
@@ -92,8 +92,10 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     connect(m_push, &UnifiedPush::command, this, &Rustrx::command);
     m_voip = new Voip(this);
     connect(m_voip, &Voip::command, this, &Rustrx::command);
-    m_callAudio = new CallAudio(this);
-    connect(m_voip, &Voip::audioNeeded, m_callAudio, &CallAudio::setActive);
+    // the earpiece during a call (the loudspeaker on the speaker button)
+    m_callRoute = new CallRoute(this);
+    connect(m_voip, &Voip::audioNeeded, m_callRoute, &CallRoute::setActive);
+    connect(m_voip, &Voip::speakerChanged, m_callRoute, &CallRoute::setSpeaker);
     // the stand-in rings but never runs a call: whatever hands over to the
     // app (a tap, Answer) takes the ringing call along
     connect(m_voip, &Voip::changed, this, [this]() {
@@ -436,8 +438,8 @@ QString Rustrx::dev(const QString &json)
             m_voip->setTestTone(req.value("tone").toBool());
         if (req.contains("aec"))
             m_voip->setEchoCancelling(req.value("aec").toBool());
-        if (req.contains("policy_class"))
-            m_callAudio->configure(req.value("policy_class").toString(), req.value("by_process").toBool());
+        if (req.contains("speaker"))
+            m_voip->setSpeaker(req.value("speaker").toBool());
         if (what == QLatin1String("place"))
             m_voip->place(req.value("room_id").toString(), req.value("invitee").toString(), req.value("invitee").toString());
         else if (what == QLatin1String("answer"))

@@ -10,8 +10,8 @@ QT += dbus multimedia network
 # calls: GStreamer's webrtcbin (Voip.cpp)
 CONFIG += link_pkgconfig
 PKGCONFIG += gstreamer-1.0 gstreamer-sdp-1.0 gstreamer-webrtc-1.0 gstreamer-app-1.0 speexdsp
-# a call's audio as a call (the audio policy, CallAudio.cpp)
-PKGCONFIG += libresourceqt5
+# where a call is heard (CallRoute.cpp)
+PKGCONFIG += libpulse
 
 CONFIG += sailfishapp sailfishapp_i18n sailfishapp_i18n_idbased sailfishapp_i18n_unfinished
 
@@ -30,7 +30,7 @@ SOURCES += src/main.cpp \
     src/FrameStats.cpp \
     src/KeyboardSlide.cpp \
     src/Voip.cpp \
-    src/CallAudio.cpp
+    src/CallRoute.cpp
 
 HEADERS += src/Rustrx.h \
     src/Handover.h \
@@ -47,7 +47,7 @@ HEADERS += src/Rustrx.h \
     src/FrameStats.h \
     src/KeyboardSlide.h \
     src/Voip.h \
-    src/CallAudio.h \
+    src/CallRoute.h \
     src/LocalOnly.h \
     src/Exif.h \
     src/Mp4.h \
@@ -62,6 +62,11 @@ INSTALLS += corelib
 
 # notifications open their room through this service, also when the app is closed
 # and a push (UnifiedPush) wakes it through its connector name, without a window
+# Rustrx's call streams as calls for Sailfish's audio policy (CallRoute.h)
+xpolicy.files = rpm/harbour-rustrx-xpolicy.conf
+xpolicy.path = /etc/pulse/xpolicy.conf.d
+INSTALLS += xpolicy
+
 dbusservice.files = dbus/net.mowerk.harbour_rustrx.service dbus/org.unifiedpush.Connector.rustrx.service
 dbusservice.path = /usr/share/dbus-1/services
 INSTALLS += dbusservice

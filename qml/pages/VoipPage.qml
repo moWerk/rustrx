@@ -134,6 +134,12 @@ Page {
                 icon.source: page.call.muted ? "image://theme/icon-m-mic-mute" : "image://theme/icon-m-mic"
                 onClicked: page.call.muted = !page.call.muted
             }
+            // the earpiece unless this is on
+            IconButton {
+                icon.source: page.call.speaker ? "image://theme/icon-m-speaker-on" : "image://theme/icon-m-speaker"
+                highlighted: page.call.speaker
+                onClicked: page.call.speaker = !page.call.speaker
+            }
             // the theme has no hang-up icon: the handset, put down
             IconButton {
                 icon.source: "image://theme/icon-m-call"
