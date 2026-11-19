@@ -81,10 +81,18 @@ Page {
         onNotificationMode: if (roomId === page.roomId) page.notifyMode = mode
     }
 
-    // the room list carries the name and topic; pick changes up
+    // the room list carries the name and topic; pick changes up. The
+    // settings again only when this room's entry changed (a new event in it,
+    // which a change of its levels or rules is), not for every other room's
+    // message (audit R1)
     Connections {
         target: rustrx.rooms
-        onDataChanged: { refresh(); settingsLater.restart() }
+        onDataChanged: {
+            var before = JSON.stringify(page.info)
+            refresh()
+            if (JSON.stringify(page.info) !== before)
+                settingsLater.restart()
+        }
     }
     // someone changed the room's settings or levels: read them again, once
     Timer { id: settingsLater; interval: Tunables.typingDebounceMs; onTriggered: rustrx.command({ cmd: "room_settings", room_id: page.roomId }) }

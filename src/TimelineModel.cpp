@@ -618,6 +618,14 @@ int TimelineModel::rowOfEvent(const QString &eventId) const
     return -1;
 }
 
+int TimelineModel::rowOfKind(const QString &kind) const
+{
+    for (int i = 0; i < m_items.size(); ++i)
+        if (m_items.at(i).toMap().value(QStringLiteral("kind")).toString() == kind)
+            return i;
+    return -1;
+}
+
 QString TimelineModel::seenEventId(int row) const
 {
     // newest first: older rows have higher indexes
@@ -634,7 +642,15 @@ QString TimelineModel::spoilersShown(int row) const
 {
     if (row < 0 || row >= m_items.size())
         return QString();
-    return renderHtml(m_items.at(row).toMap().value(QStringLiteral("html")).toString(), 0, true);
+    const QVariantMap item = m_items.at(row).toMap();
+    m_spoilersOpen.insert(item.value(QStringLiteral("event_id")).toString());
+    return renderHtml(item.value(QStringLiteral("html")).toString(), 0, true);
+}
+
+bool TimelineModel::spoilersOpen(int row) const
+{
+    return row >= 0 && row < m_items.size()
+            && m_spoilersOpen.contains(m_items.at(row).toMap().value(QStringLiteral("event_id")).toString());
 }
 
 QVariantMap TimelineModel::get(int row) const
@@ -743,6 +759,7 @@ void TimelineModel::setMediaPath(const QString &eventId, bool thumb, const QStri
 void TimelineModel::clear()
 {
     m_rendered.clear();
+    m_spoilersOpen.clear();
     if (m_items.isEmpty())
         return;
     beginResetModel();

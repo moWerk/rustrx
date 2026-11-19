@@ -71,7 +71,12 @@ ListItem {
     readonly property string htmlText: model.html || ""
     // the message with its spoilers shown, once the reader tapped one
     property string spoilersShown
-    onHtmlTextChanged: spoilersShown = ""
+    // opened once, they stay open when the row scrolls back into view (audit D2)
+    function syncSpoilers() {
+        var m = msg.ListView.view ? msg.ListView.view.model : null
+        spoilersShown = m && htmlText.length && m.spoilersOpen(index) ? m.spoilersShown(index) : ""
+    }
+    onHtmlTextChanged: syncSpoilers()
     // a tap on a link in the text: a covered spoiler shows, the rest opens
     function linkTapped(link) {
         if (link === "rustrx:spoiler") spoilersShown = msg.ListView.view.model.spoilersShown(index)
@@ -231,7 +236,10 @@ ListItem {
         if (model.has_thumb) rustrx.getMedia(roomId, eventId, true)
         else if (msgType !== "video") rustrx.getMedia(roomId, eventId, false)
     }
-    Component.onCompleted: requestPicture()
+    Component.onCompleted: {
+        requestPicture()
+        syncSpoilers()
+    }
     onEventIdChanged: requestPicture()
 
     // the size of Twemoji in the small lines (reactions, a thread's latest

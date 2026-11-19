@@ -61,6 +61,9 @@ public:
     Q_INVOKABLE QVariantMap get(int row) const;
     // the row of an event, or -1 while it is not loaded (a reply's original)
     Q_INVOKABLE int rowOfEvent(const QString &eventId) const;
+    // the first row of a kind ("readmarker"), or -1; without get()'s copy
+    // of every row (the room page asks on each change of the count)
+    Q_INVOKABLE int rowOfKind(const QString &kind) const;
     // the message a reader has read up to when the row was on screen: the
     // row's own, or the next older one (past dates, the unread line and
     // messages still being sent); empty when there is none
@@ -68,6 +71,9 @@ public:
     // a row's message with its spoilers' text shown (they are covered in
     // the html role), for when the reader taps one
     Q_INVOKABLE QString spoilersShown(int row) const;
+    // the reader opened this row's spoilers: they stay open when its
+    // delegate comes back after scrolling (until another room opens)
+    Q_INVOKABLE bool spoilersOpen(int row) const;
     // the link a covered spoiler is
     static constexpr const char *kSpoilerLink = "rustrx:spoiler";
     // the cached full file for an event, or an empty string
@@ -121,6 +127,7 @@ private:
     int m_htmlRole, m_reactionsRole, m_replyRole, m_emotesRole, m_mediaRole, m_thumbRole;
     int m_bodyHtmlRole, m_captionHtmlRole, m_threadHtmlRole;
     mutable QHash<QString, Rendered> m_rendered;
+    mutable QSet<QString> m_spoilersOpen;   // event ids whose spoilers the reader opened
     // the emoji cache was emptied: the next snapshot asks for every row's
     bool m_askAll = false;
     struct Emote { QString path; QSize size; };

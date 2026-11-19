@@ -379,9 +379,7 @@ Page {
     property int markerRow: -1
     property int unreadAbove: -1
     function findMarker() {
-        for (var i = 0; i < rustrx.timeline.count; i++)
-            if (rustrx.timeline.get(i).kind === "readmarker") return i
-        return -1
+        return rustrx.timeline.rowOfKind("readmarker")
     }
     function checkMarker() {
         // read as shown: what comes after the last read message; read on
