@@ -698,7 +698,10 @@ static QByteArray takeSample(GstElement *sink)
     return out;
 }
 
-// what the far end says, as it is played: Speex's echo reference
+// What the far end says, as it goes to the loudspeaker: Speex's echo
+// reference, queued until the microphone's next frame takes it. It comes
+// in bursts (the network); the queue is kept short, so the echo in the
+// microphone stays within what the canceller learns (kVoipAecTailMs).
 int Voip::onFarSample(GstElement *sink, void *self)
 {
     Voip *v = static_cast<Voip *>(self);
@@ -707,11 +710,9 @@ int Voip::onFarSample(GstElement *sink, void *self)
     if (!v->m_echo)
         return GST_FLOW_OK;
     v->m_farIn += data;
-    const int bytes = Keys::kVoipAecRate * Keys::kVoipAecFrameMs / 1000 * 2;
-    while (v->m_farIn.size() >= bytes) {
-        speex_echo_playback(v->m_echo, reinterpret_cast<const spx_int16_t *>(v->m_farIn.constData()));
-        v->m_farIn.remove(0, bytes);
-    }
+    const int most = Keys::kVoipAecRate * Keys::kVoipAecQueueMs / 1000 * 2;
+    if (v->m_farIn.size() > most)
+        v->m_farIn.remove(0, v->m_farIn.size() - most);
     return GST_FLOW_OK;
 }
 
@@ -727,10 +728,17 @@ int Voip::onMicSample(GstElement *sink, void *self)
         if (!v->m_echo || !v->m_aecSrc)
             return GST_FLOW_OK;
         v->m_micIn += data;
+        // each microphone frame with one frame of the far end (silence
+        // when none came): the two in step, whatever the network does
+        static const QByteArray silence(Keys::kVoipAecRate * Keys::kVoipAecFrameMs / 1000 * 2, '\0');
         while (v->m_micIn.size() >= bytes) {
             QByteArray frame(bytes, Qt::Uninitialized);
-            speex_echo_capture(v->m_echo, reinterpret_cast<const spx_int16_t *>(v->m_micIn.constData()),
-                               reinterpret_cast<spx_int16_t *>(frame.data()));
+            const bool far = v->m_farIn.size() >= bytes;
+            speex_echo_cancellation(v->m_echo, reinterpret_cast<const spx_int16_t *>(v->m_micIn.constData()),
+                                    reinterpret_cast<const spx_int16_t *>(far ? v->m_farIn.constData() : silence.constData()),
+                                    reinterpret_cast<spx_int16_t *>(frame.data()));
+            if (far)
+                v->m_farIn.remove(0, bytes);
             speex_preprocess_run(v->m_denoise, reinterpret_cast<spx_int16_t *>(frame.data()));
             clean += frame;
             v->m_micIn.remove(0, bytes);

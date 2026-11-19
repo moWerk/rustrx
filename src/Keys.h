@@ -186,7 +186,9 @@ static const int kVoipOpusBitrate = 32000;
 // echo cancelling (Speex): its rate, frame and how long an echo it learns
 static const int kVoipAecRate = 16000;
 static const int kVoipAecFrameMs = 10;
-static const int kVoipAecTailMs = 200;
+static const int kVoipAecTailMs = 300;
+// the far end's audio waits at most this long for the microphone's frames
+static const int kVoipAecQueueMs = 120;
 
 }
 
