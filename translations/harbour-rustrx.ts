@@ -491,10 +491,6 @@
         <source>Activity</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-se-photos">
-        <source>Photos</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-se-screen">
         <source>Screen</source>
         <translation type="unfinished"></translation>
@@ -997,10 +993,6 @@
     </message>
     <message id="rustrx-la-chat-details">
         <source>Chat names outside Rustrx</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-la-chat-details-hint">
-        <source>Notifications and the cover name the chat and who wrote. Off: only Rustrx and the counts.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-stranger-invites">
@@ -2796,10 +2788,6 @@
         <source>Install Sailfish Secrets (sailfishsecretsdaemon with its default plugins), then log out and log in again.</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-strip-metadata">
-        <source>Remove metadata from photos</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-no-copied">
         <source>Copied</source>
         <translation type="unfinished"></translation>
@@ -2864,12 +2852,72 @@
         <source>Saved to %1. Install it from there yourself if you trust it.</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-strip-metadata-hint2">
-        <source>Photos (JPEG, as the camera takes them) leave without the place and time they were taken, the camera and anything else it noted, only which way up they are. Videos and other pictures go as they are. Off: photos go as the camera saved them.</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-la-voip-send-failed">
         <source>The call could not be set up: no connection to the server</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-chat-details-hint2">
+        <source>Notifications and the cover name the chat, who wrote and who is calling. Off: only Rustrx, the counts and "Call".</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-cover-call">
+        <source>Call</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-cover-muted">
+        <source>Muted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-metadata-all-hint">
+        <source>Pictures and videos leave without the place and time they were taken, the camera and anything else it noted, only which way up they are.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-metadata-keep-hint">
+        <source>Pictures and videos go as the camera saved them, with the place and time they were taken.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-metadata-level">
+        <source>Leave out when sending</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-metadata-location-hint">
+        <source>Where a picture or video was taken goes; the rest stays (time, camera, which way up).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-relay-only">
+        <source>Calls only through a relay</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-relay-only-hint">
+        <source>The other side sees your server's relay instead of your phone's internet address. Needs a relay on your server (most have one); without it calls do not connect. The sound may lag a little more.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-voip-no-relay">
+        <source>Calls go only through a relay (Settings &gt; Privacy), and your server offers none</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-metadata-all">
+        <source>All metadata</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-metadata-keep">
+        <source>Nothing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-metadata-location">
+        <source>The location</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-call-anonymous">
+        <source>Incoming call</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-calls">
+        <source>Calls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-pictures-videos">
+        <source>Pictures and videos</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
