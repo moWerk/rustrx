@@ -25,6 +25,8 @@ Requires:   gstreamer1.0-plugins-bad
 Requires:   gstreamer1.0-plugins-good
 Requires:   gstreamer1.0-plugins-base
 Requires:   libnice
+# a call's audio as a call (the audio policy's resource sets)
+Requires:   nemo-qml-plugin-policy-qt5
 BuildRequires:  pkgconfig(sailfishapp) >= 1.0.2
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5Qml)

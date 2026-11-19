@@ -149,6 +149,35 @@ private slots:
         QCOMPARE(b.state(), QStringLiteral("idle"));
     }
 
+    // A ring in the stand-in goes to the app with the handover file.
+    // Planted-bug: the app takes an expired ring (it rings for nothing).
+    void aRingingCallIsHandedOver()
+    {
+        Voip standIn;
+        standIn.setOwnUserId(QStringLiteral("@b:example.org"));
+        standIn.handleEvent({ { "type", "m.call.invite" }, { "room_id", "!dm" }, { "sender", "@a:example.org" }, { "own", false },
+                              { "age_ms", 1000 }, { "sender_name", "A" },
+                              { "content", QVariantMap{ { "call_id", "c1" }, { "party_id", "pa" }, { "version", "1" },
+                                                        { "lifetime", 60000 },
+                                                        { "offer", QVariantMap{ { "type", "offer" }, { "sdp", "v=0" } } } } } });
+        const QVariantMap invite = standIn.ringing();
+        QCOMPARE(invite.value("call_id").toString(), QStringLiteral("c1"));
+        QVERIFY(invite.value("expires_at").toLongLong() > QDateTime::currentMSecsSinceEpoch() + 50000);
+
+        Voip app;
+        app.takeRinging(invite);
+        QCOMPARE(app.state(), QStringLiteral("incoming"));
+        QCOMPARE(app.peerName(), QStringLiteral("A"));
+        QCOMPARE(app.roomId(), QStringLiteral("!dm"));
+
+        Voip late;
+        QVariantMap old = invite;
+        old.insert("expires_at", QDateTime::currentMSecsSinceEpoch() - 1);
+        late.takeRinging(old);
+        QCOMPARE(late.state(), QStringLiteral("idle"));
+        QVERIFY(Voip().ringing().isEmpty());
+    }
+
     // Planted-bug: the credentials go in unescaped (an "@" in the password
     // breaks the address).
     void turnAddresses()

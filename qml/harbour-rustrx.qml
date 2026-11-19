@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Rustrx 1.0
 import Sailfish.Silica 1.0
+import Nemo.Policy 1.0
 import "pages"
 import "components"
 
@@ -161,6 +162,18 @@ ApplicationWindow {
 
     Timer { id: routeRetry; interval: Tunables.retryIntervalMs; onTriggered: route() }
 
+    // A running classic call asks Sailfish's audio policy for the phone's
+    // call audio, as the dialer does for its calls: the policy then routes
+    // the call's streams (role "phone") as a call, not as media
+    property string voipClass: "ipcall"
+    Permissions {
+        enabled: rustrx.voip.state === "outgoing" || rustrx.voip.state === "connecting" || rustrx.voip.state === "connected"
+        autoRelease: true
+        applicationClass: app.voipClass
+        Resource { type: Resource.AudioPlayback; optional: false }
+        Resource { type: Resource.AudioRecorder; optional: true }
+    }
+
     // the classic call's page: shown when a call starts here or rings while
     // Rustrx is in front; it closes itself when the call ends
     function showVoip() {
@@ -172,9 +185,12 @@ ApplicationWindow {
     Timer { id: voipRetry; interval: Tunables.retryIntervalMs; onTriggered: if (rustrx.voip.state !== "idle") app.showVoip() }
     Connections {
         target: rustrx.voip
-        onIncoming: if (Qt.application.active) app.showVoip()
-        // answered from the notification: the page follows
-        onChanged: if (rustrx.voip.state === "connecting" || rustrx.voip.state === "connected") app.showVoip()
+        // ringing while Rustrx is in front (also a ring handed over by the
+        // stand-in), or answered from the notification: the page follows
+        onChanged: {
+            var s = rustrx.voip.state
+            if (s === "connecting" || s === "connected" || (s === "incoming" && Qt.application.active)) app.showVoip()
+        }
     }
 
     // a copied secret (the recovery key) out of the clipboard after a
@@ -494,6 +510,9 @@ ApplicationWindow {
                 pageStack.push(Qt.resolvedUrl("pages/SettingsPage.qml"), { startTab: request.tab || "" })
             } else if (request.ui === "back") {
                 if (pageStack.depth > 1) pageStack.pop()
+            } else if (request.ui === "voip_class") {
+                // tests: which audio policy class a call asks for
+                app.voipClass = request.value
             }
         }
     }

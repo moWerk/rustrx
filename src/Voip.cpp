@@ -283,6 +283,35 @@ void Voip::reset()
     }
 }
 
+QVariantMap Voip::ringing() const
+{
+    if (m_state != QLatin1String("incoming"))
+        return QVariantMap();
+    return { { "room_id", m_roomId }, { "call_id", m_callId }, { "party_id", m_peerParty },
+             { "version", version() }, { "offer", m_remoteOffer }, { "peer_name", m_peerName },
+             { "expires_at", nowMs() + m_inviteTimer.remainingTime() } };
+}
+
+void Voip::takeRinging(const QVariantMap &invite)
+{
+    const qint64 left = invite.value("expires_at").toLongLong() - nowMs();
+    if (invite.isEmpty() || left <= 0 || m_state != QLatin1String("idle"))
+        return;
+    reset();
+    m_roomId = invite.value("room_id").toString();
+    m_callId = invite.value("call_id").toString();
+    m_peerParty = invite.value("party_id").toString();
+    m_version = invite.value("version");
+    m_remoteOffer = invite.value("offer").toString();
+    m_peerName = invite.value("peer_name").toString();
+    m_endReason.clear();
+    m_inviteTimer.start(int(left));
+    setState(QStringLiteral("incoming"));
+    qInfo() << "voip: ringing call taken over from the stand-in, answer" << invite.value("answer").toBool();
+    if (invite.value("answer").toBool())
+        answer();
+}
+
 // ---- the core's events ----------------------------------------------------
 
 void Voip::handleEvent(const QVariantMap &ev)

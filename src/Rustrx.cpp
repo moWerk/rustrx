@@ -91,6 +91,12 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     connect(m_push, &UnifiedPush::command, this, &Rustrx::command);
     m_voip = new Voip(this);
     connect(m_voip, &Voip::command, this, &Rustrx::command);
+    // the stand-in rings but never runs a call: whatever hands over to the
+    // app (a tap, Answer) takes the ringing call along
+    connect(m_voip, &Voip::changed, this, [this]() {
+        if (m_handover.standIn())
+            m_handover.setPendingVoip(m_voip->ringing());
+    });
     // a push: the woken process fetches the message; a running app or
     // stand-in has it from its sync anyway
     connect(m_push, &UnifiedPush::pushed, this, [this](const QString &roomId, const QString &eventId) {
@@ -188,8 +194,15 @@ void Rustrx::answerCall(const QString &roomId)
     // a classic call ringing in that room: answered here, its page follows
     // the call's state
     if (m_voip->state() == QLatin1String("incoming") && m_voip->roomId() == roomId) {
-        m_voip->answer();
         emit callAnswered(roomId);
+        if (m_handover.standIn() || m_handover.pushWake()) {
+            QVariantMap invite = m_voip->ringing();
+            invite.insert("answer", true);
+            m_handover.setPendingVoip(invite);
+            m_handover.handOver();
+            return;
+        }
+        m_voip->answer();
         open();
         return;
     }
@@ -671,6 +684,9 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_loggingIn = false;
         m_userId = ev.value("user_id").toString();
         m_voip->setOwnUserId(m_userId);
+        // a call that rang in the stand-in, handed over with the app's start
+        if (!m_handover.standIn() && !m_handover.pushWake())
+            m_voip->takeRinging(m_handover.takePendingVoip());
         m_homeserver = ev.value("homeserver").toString();
         m_storeState = ev.value("store").toString();
         emit stateChanged();

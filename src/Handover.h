@@ -39,6 +39,9 @@ public:
     void setPendingKnocks(bool on) { m_pendingKnocks = on; }
     void setPendingUri(const QString &uri) { m_pendingUri = uri; }
     void setPendingShare(const QStringList &files, const QString &text);
+    // a classic call ringing in the stand-in (Voip::ringing()), for the app
+    void setPendingVoip(const QVariantMap &invite) { m_pendingVoip = invite; }
+    QVariantMap takePendingVoip();
     QString takePendingRoom();
     QString takePendingCall();
     bool takePendingKnocks();
@@ -68,6 +71,7 @@ private:
     bool m_pendingKnocks = false;
     QString m_pendingUri;
     QVariantMap m_pendingShare;
+    QVariantMap m_pendingVoip;
 };
 
 #endif

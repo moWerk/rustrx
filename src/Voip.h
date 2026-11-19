@@ -83,6 +83,12 @@ public:
     static QString turnUrl(const QString &uri, const QString &user, const QString &pass);
     static QStringList mids(const QString &sdp);
 
+    // a ringing invite as it stands, to hand over from the stand-in to the
+    // app (which never saw the event), and taken up there; "answer" in it
+    // answers at once (Answer was pressed in the notification)
+    QVariantMap ringing() const;
+    void takeRinging(const QVariantMap &invite);
+
     // from the core
     void handleEvent(const QVariantMap &ev);
     void handleTurn(const QVariantMap &ev);

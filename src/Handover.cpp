@@ -67,6 +67,13 @@ QString Handover::takePendingUri()
     return r;
 }
 
+QVariantMap Handover::takePendingVoip()
+{
+    const QVariantMap r = m_pendingVoip;
+    m_pendingVoip.clear();
+    return r;
+}
+
 QVariantMap Handover::takePendingShare()
 {
     const QVariantMap r = m_pendingShare;
@@ -100,6 +107,7 @@ bool Handover::handOver()
     o.insert("knocks", m_pendingKnocks);
     o.insert("uri", m_pendingUri);
     o.insert("share", QJsonObject::fromVariantMap(m_pendingShare));
+    o.insert("voip", QJsonObject::fromVariantMap(m_pendingVoip));
     QFile f(handoverPath());
     if (!f.open(QIODevice::WriteOnly) || f.write(QJsonDocument(o).toJson(QJsonDocument::Compact)) < 0)
         qWarning() << "stand-in: cannot write" << f.fileName() << f.errorString();
@@ -128,6 +136,7 @@ void Handover::takeHandover()
     m_pendingKnocks = o.value("knocks").toBool();
     m_pendingUri = o.value("uri").toString();
     m_pendingShare = o.value("share").toObject().toVariantMap();
+    m_pendingVoip = o.value("voip").toObject().toVariantMap();
 }
 
 QString Handover::backgroundFlagPath()
