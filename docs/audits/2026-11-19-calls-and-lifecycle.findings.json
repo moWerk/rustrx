@@ -96,9 +96,9 @@
    "id": "S9",
    "severity": "low",
    "area": "privacy wording (PrivacyTab.qml)",
-   "status": "FIXED 9d530c1 (wording); stripping videos and PNG OPEN (queue)",
+   "status": "FIXED 9d530c1 (wording), 29c6d11 (three levels for JPEG, PNG, other stills, MP4/MOV; settings UI still to switch to metadataLevel)",
    "summary": "Metadata stripping covers JPEG only, the setting promised photos in general.",
-   "test": ""
+   "test": "tst_exif levelOneTakesOnlyThePlace, tst_png levelOneTakesOnlyThePlace levelTwoTakesAll, tst_mp4 levelOneTakesOnlyThePlace levelTwoTakesAll"
   },
   {
    "id": "S10",
@@ -280,17 +280,17 @@
    "id": "B10",
    "severity": "low",
    "area": "Mp4.h",
-   "status": "OPEN",
+   "status": "FIXED 29c6d11",
    "summary": "Signed size compare with a 64-bit box size.",
-   "test": ""
+   "test": "tst_mp4 aHugeBoxSizeIsRefused"
   },
   {
    "id": "B11",
    "severity": "low",
    "area": "Exif.h",
-   "status": "OPEN",
+   "status": "FIXED 29c6d11",
    "summary": "Fill bytes and standalone markers make strip() give up (re-encode fallback, safe).",
-   "test": ""
+   "test": "tst_exif fillBytesAreSkipped standaloneMarkersAreSkipped"
   },
   {
    "id": "B13",
