@@ -218,6 +218,10 @@ static const int kVoipAecQueueMs = 120;
 // this phone's addresses; off by default, as in Element
 static const char kVoipRelayOnly[] = "callsRelayOnly";
 static const bool kVoipRelayOnlyDefault = false;
+// the call's route (CallRoute): a step PulseAudio has not finished in this
+// long is given up; quitting gives a pending restore this long
+static const int kCallRouteTimeoutMs = 3000;
+static const int kCallRouteQuitWaitMs = 1500;
 
 }
 

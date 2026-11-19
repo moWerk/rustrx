@@ -50,6 +50,7 @@ HEADERS += src/Rustrx.h \
     src/CallState.h \
     src/Voip.h \
     src/CallRoute.h \
+    src/CallRoutePlan.h \
     src/LocalOnly.h \
     src/Exif.h \
     src/Mp4.h \
