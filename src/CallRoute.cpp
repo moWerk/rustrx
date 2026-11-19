@@ -422,6 +422,12 @@ void CallRoute::giveUp(const char *why)
         m_op = nullptr;
     }
     dropContext();
+    // the call is over even where its route could not be put back: the
+    // next call starts on the earpiece again
+    if (m_job.op == Op::Restore) {
+        m_routed = false;
+        m_routeSpeaker = false;
+    }
     done();
 }
 
