@@ -227,7 +227,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `call_ended` | `room_id` |
 | `call_ring` | `room_id`, `room_name`, `sender`, `sender_name`, `ring`, `event_id`, `expires_ms` |
 | `calls_allowed` | `room_id` |
-| `voip` | `room_id`, `room_name`, `type` (an m.call.* type), `sender`, `sender_name`, `own` (sent by this account, from any of its devices, this one too), `content` (the event's content as received, decrypted), `event_id`, `age_ms` |
+| `voip` | `room_id`, `room_name`, `type` (an m.call.* type), `sender`, `sender_name`, `own` (sent by this account, from any of its devices, this one too), `content` (the event's content as received, decrypted), `event_id`, `age_ms`, `is_dm` (the room is a direct chat) |
 | `voip_sent` | `room_id`, `type`, `call_id` (from the content, "" without), `event_id` |
 | `turn_server` | `username`, `password`, `uris` (empty when the server has no TURN or the request failed), `ttl` (seconds) |
 | `log` | `line` (a log line; the sandbox drops stderr, the UI puts it in the journal) |

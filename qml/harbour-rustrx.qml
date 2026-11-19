@@ -163,10 +163,20 @@ ApplicationWindow {
 
     // the classic call's page: shown when a call starts here or rings while
     // Rustrx is in front; it closes itself when the call ends
+    // one call page: an existing one is brought back to the top rather
+    // than a second pushed; and only above the room list (a call answered
+    // from a notification with Rustrx closed would otherwise sit on the
+    // start page, and the list never came)
     function showVoip() {
-        var top = pageStack.currentPage
-        if (top && top.objectName === "voipPage") return
-        if (pageStack.busy) { voipRetry.restart(); return }
+        if (!pageStack.find(function (p) { return p.objectName === "main" }) || pageStack.busy) {
+            voipRetry.restart()
+            return
+        }
+        var page = pageStack.find(function (p) { return p.objectName === "voipPage" })
+        if (page) {
+            if (pageStack.currentPage !== page) pageStack.pop(page)
+            return
+        }
         pageStack.push(Qt.resolvedUrl("pages/VoipPage.qml"))
     }
     Timer { id: voipRetry; interval: Tunables.retryIntervalMs; onTriggered: if (rustrx.voip.state !== "idle") app.showVoip() }
@@ -178,6 +188,12 @@ ApplicationWindow {
             var s = rustrx.voip.state
             if (s === "connecting" || s === "connected" || (s === "incoming" && Qt.application.active)) app.showVoip()
         }
+    }
+    // back in front (from the cover, a notification, the lock screen) while
+    // a call rings or runs: its page
+    Connections {
+        target: Qt.application
+        onActiveChanged: if (Qt.application.active && rustrx.voip.state !== "idle") app.showVoip()
     }
 
     // a copied secret (the recovery key) out of the clipboard after a
@@ -231,6 +247,7 @@ ApplicationWindow {
             d.accepted.connect(function () {
                 cfg.secretsNoticeSeen = true
                 app.secretsNoticeUp = false
+                routeRetry.restart()
             })
         }
     }
@@ -581,6 +598,8 @@ ApplicationWindow {
         if (info.state === "invited") { main.showTab(info.is_dm ? 1 : 0); return }
         pageStack.push(Qt.resolvedUrl("pages/RoomPage.qml"),
                        { roomId: roomId, roomName: rustrx.roomInfo(roomId).name || "" }, PageStackAction.Immediate)
+        // a call's page went with the pop: back on top of the room
+        if (rustrx.voip.state !== "idle") showVoip()
     }
 
     // debug: close the app as the tile's close does

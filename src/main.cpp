@@ -161,7 +161,9 @@ int main(int argc, char *argv[])
     Rustrx rustrx(dataDir);
     // at the end the core stops first, then the name (the store's lock)
     // goes, so the next Rustrx never opens a store this one still writes
-    QObject::connect(app.data(), &QCoreApplication::aboutToQuit, [&bus]() {
+    QObject::connect(app.data(), &QCoreApplication::aboutToQuit, [&bus, &rustrx]() {
+        // a call is hung up first, while the core can still send
+        rustrx.voip()->endForQuit(Keys::kVoipQuitHangupMs);
         rustrx_shutdown(Keys::kShutdownMs);
         bus.unregisterService(kService);
     });

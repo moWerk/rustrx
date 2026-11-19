@@ -54,7 +54,7 @@ public:
         });
         QVariantMap ev{ { "ev", "voip" }, { "room_id", c.value("room_id") }, { "type", c.value("type") },
                         { "sender", QString::fromLatin1(sender) }, { "sender_name", QString::fromLatin1(name) },
-                        { "content", c.value("content") }, { "age_ms", 0 }, { "room_name", "DM" } };
+                        { "content", c.value("content") }, { "age_ms", 0 }, { "room_name", "DM" }, { "is_dm", true } };
         if (!deliver)
             return;
         QVariantMap echo = ev;
@@ -133,7 +133,7 @@ private slots:
         Voip b;
         b.setOwnUserId(QStringLiteral("@b:example.org"));
         b.handleEvent({ { "type", "m.call.invite" }, { "room_id", "!dm" }, { "sender", "@a:example.org" }, { "own", false },
-                        { "age_ms", 0 }, { "content", QVariantMap{ { "call_id", "c1" }, { "party_id", "pa" }, { "version", "1" },
+                        { "age_ms", 0 }, { "is_dm", true }, { "content", QVariantMap{ { "call_id", "c1" }, { "party_id", "pa" }, { "version", "1" },
                                                                    { "lifetime", 60000 },
                                                                    { "offer", QVariantMap{ { "type", "offer" }, { "sdp", "v=0" } } } } } });
         QCOMPARE(b.state(), QStringLiteral("incoming"));
@@ -165,7 +165,7 @@ private slots:
         Voip standIn;
         standIn.setOwnUserId(QStringLiteral("@b:example.org"));
         standIn.handleEvent({ { "type", "m.call.invite" }, { "room_id", "!dm" }, { "sender", "@a:example.org" }, { "own", false },
-                              { "age_ms", 1000 }, { "sender_name", "A" },
+                              { "age_ms", 1000 }, { "sender_name", "A" }, { "is_dm", true },
                               { "content", QVariantMap{ { "call_id", "c1" }, { "party_id", "pa" }, { "version", "1" },
                                                         { "lifetime", 60000 },
                                                         { "offer", QVariantMap{ { "type", "offer" }, { "sdp", "v=0" } } } } } });
@@ -185,6 +185,66 @@ private slots:
         late.takeRinging(old);
         QCOMPARE(late.state(), QStringLiteral("idle"));
         QVERIFY(Voip().ringing().isEmpty());
+    }
+
+    static QVariantMap invite(const char *callId, qint64 lifetime, bool dm, const char *invitee = nullptr,
+                              const char *sender = "@a:example.org")
+    {
+        QVariantMap content{ { "call_id", callId }, { "party_id", "pa" }, { "version", "1" }, { "lifetime", lifetime },
+                             { "offer", QVariantMap{ { "type", "offer" }, { "sdp", "v=0" } } } };
+        if (invitee)
+            content.insert("invitee", invitee);
+        return { { "type", "m.call.invite" }, { "room_id", "!r" }, { "sender", sender }, { "own", false },
+                 { "age_ms", 0 }, { "is_dm", dm }, { "content", content } };
+    }
+
+    // Planted-bug: no direct-chat check (anyone in a big room rings
+    // everyone). Planted-bug: no cap on the sender's lifetime.
+    void whoMayRingAndForHowLong()
+    {
+        Voip b;
+        b.setOwnUserId(QStringLiteral("@b:example.org"));
+        b.handleEvent(invite("c1", 60000, false));
+        QCOMPARE(b.state(), QStringLiteral("idle"));
+        b.handleEvent(invite("c2", 60000, false, "@b:example.org"));
+        QCOMPARE(b.state(), QStringLiteral("incoming"));
+        Voip d;
+        d.setOwnUserId(QStringLiteral("@b:example.org"));
+        d.handleEvent(invite("c3", 9000000000000LL, true));
+        QCOMPARE(d.state(), QStringLiteral("incoming"));
+        QVERIFY(d.ringing().value("expires_at").toLongLong() <= QDateTime::currentMSecsSinceEpoch() + 120000);
+    }
+
+    // Planted-bug: an invite while busy is dropped silently (the caller
+    // rings on).
+    void busyAnswersBusy()
+    {
+        Voip b;
+        b.setOwnUserId(QStringLiteral("@b:example.org"));
+        QSignalSpy sent(&b, &Voip::command);
+        b.handleEvent(invite("c1", 60000, true));
+        b.handleEvent(invite("c2", 60000, true, nullptr, "@c:example.org"));
+        QCOMPARE(b.state(), QStringLiteral("incoming"));
+        QCOMPARE(sent.count(), 1);
+        const QVariantMap cmd = sent.at(0).at(0).toMap();
+        QCOMPARE(cmd.value("type").toString(), QStringLiteral("m.call.hangup"));
+        QCOMPARE(cmd.value("content").toMap().value("call_id").toString(), QStringLiteral("c2"));
+        QCOMPARE(cmd.value("content").toMap().value("reason").toString(), QStringLiteral("user_busy"));
+    }
+
+    // Planted-bug: no sender check (a third person in the room who saw
+    // the call's id hangs it up).
+    void othersInTheRoomCannotEndIt()
+    {
+        Voip b;
+        b.setOwnUserId(QStringLiteral("@b:example.org"));
+        b.handleEvent(invite("c1", 60000, true));
+        b.handleEvent({ { "type", "m.call.hangup" }, { "room_id", "!r" }, { "sender", "@c:example.org" }, { "own", false },
+                        { "content", QVariantMap{ { "call_id", "c1" }, { "version", "1" } } } });
+        QCOMPARE(b.state(), QStringLiteral("incoming"));
+        b.handleEvent({ { "type", "m.call.hangup" }, { "room_id", "!r" }, { "sender", "@a:example.org" }, { "own", false },
+                        { "content", QVariantMap{ { "call_id", "c1" }, { "party_id", "pa" }, { "version", "1" } } } });
+        QCOMPARE(b.state(), QStringLiteral("idle"));
     }
 
     // Planted-bug: the credentials go in unescaped (an "@" in the password

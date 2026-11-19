@@ -40,6 +40,16 @@ Item {
     property bool hinting
     property bool done
 
+    // a new ring on the same page: from the start again
+    function reset() {
+        back.stop()
+        done = false
+        way = ""
+        dx = 0
+        dy = 0
+        hinting = false
+    }
+
     function mix(a, b, t) { return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1) }
 
     MouseArea {

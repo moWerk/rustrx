@@ -19,6 +19,7 @@
 #include "Keys.h"
 
 #include <QDateTime>
+#include <QEventLoop>
 #include <QDebug>
 #include <QRegularExpression>
 #include <QUrl>
@@ -290,6 +291,7 @@ void Voip::reset()
     m_descSent = false;
     m_offerer = false;
     m_peerParty.clear();
+    m_peerUser.clear();
     m_remoteOffer.clear();
     m_version = QVariant();
     m_connectedAt = 0;
@@ -298,9 +300,27 @@ void Voip::reset()
     m_candidatesAdded = 0;
     if (m_muted || m_speaker) {
         m_muted = false;
-        m_speaker = false;
+        if (m_speaker) {
+            m_speaker = false;
+            emit speakerChanged(false);
+        }
         emit changed();
     }
+}
+
+// Rustrx is quitting: a running call is hung up, and the process waits
+// (a little) until the hangup has left, so the other side stops ringing or
+// talking to nobody
+void Voip::endForQuit(int waitMs)
+{
+    if (m_state == QLatin1String("idle") || m_state == QLatin1String("incoming"))
+        return;
+    QEventLoop loop;
+    QTimer::singleShot(waitMs, &loop, &QEventLoop::quit);
+    connect(this, &Voip::hangupSent, &loop, &QEventLoop::quit);
+    hangup();
+    loop.exec();
+    qInfo() << "voip: hung up on quitting";
 }
 
 QVariantMap Voip::ringing() const
@@ -351,20 +371,35 @@ void Voip::handleEvent(const QVariantMap &ev)
         const QString invitee = c.value("invitee").toString();
         if (!invitee.isEmpty() && invitee != m_ownUserId)
             return;
-        const qint64 lifetime = c.value("lifetime").toLongLong();
+        // for nobody in particular: only in a direct chat (in a big room
+        // anyone could ring every member's phone)
+        if (invitee.isEmpty() && !ev.value("is_dm").toBool()) {
+            qInfo() << "voip: invite for nobody in particular outside a direct chat, not ringing";
+            return;
+        }
+        // the sender's lifetime, within reason (a huge one rang for weeks,
+        // past INT_MAX never stopped)
+        const qint64 lifetime = qBound(qint64(0), c.value("lifetime").toLongLong(), qint64(Keys::kVoipInviteLifetimeMaxMs));
         const qint64 age = ev.value("age_ms").toLongLong();
         if (age >= lifetime) {
             qInfo() << "voip: invite too old" << age << lifetime;
             return;
         }
         if (m_state != QLatin1String("idle")) {
-            qInfo() << "voip: invite while busy, not answered";
+            // busy: the caller hears so instead of ringing for a minute
+            if (callId != m_callId) {
+                qInfo() << "voip: invite while busy, answered busy";
+                emit command({ { "cmd", "voip_send" }, { "room_id", ev.value("room_id") }, { "type", "m.call.hangup" },
+                               { "content", QVariantMap{ { "call_id", callId }, { "party_id", newId() },
+                                                         { "version", c.value("version") }, { "reason", "user_busy" } } } });
+            }
             return;
         }
         reset();
         m_roomId = ev.value("room_id").toString();
         m_callId = callId;
         m_peerParty = party;
+        m_peerUser = ev.value("sender").toString();
         m_version = c.value("version");
         m_remoteOffer = c.value("offer").toMap().value("sdp").toString();
         m_peerName = ev.value("sender_name").toString();
@@ -377,6 +412,13 @@ void Voip::handleEvent(const QVariantMap &ev)
 
     if (callId != m_callId || m_state == QLatin1String("idle"))
         return;
+    // only the person we call, or who calls us: someone else in the room
+    // who saw the call's id cannot answer, hang up or send candidates
+    const QString sender = ev.value("sender").toString();
+    if (!own && !m_peerUser.isEmpty() && sender != m_peerUser) {
+        qInfo() << "voip: an event for this call from someone else in the room, ignored";
+        return;
+    }
 
     if (type == QLatin1String("m.call.answer")) {
         if (own) {
@@ -387,8 +429,11 @@ void Voip::handleEvent(const QVariantMap &ev)
         }
         if (!m_offerer || m_state != QLatin1String("outgoing"))
             return;
+        if (!m_invitee.isEmpty() && sender != m_invitee)
+            return;
         m_inviteTimer.stop();
         m_peerParty = party;
+        m_peerUser = sender;
         setState(QStringLiteral("connecting"));
         applyRemote(QStringLiteral("answer"), c.value("answer").toMap().value("sdp").toString());
         if (version().toString() == QLatin1String("1"))
@@ -419,6 +464,7 @@ void Voip::handleEvent(const QVariantMap &ev)
 bool Voip::startPipeline()
 {
     stopPipeline();
+    m_pipeGen.ref();
     const QString source = m_testTone
             ? QStringLiteral("audiotestsrc is-live=true wave=sine freq=%1 volume=0.3").arg(m_toneHz)
             : QStringLiteral("pulsesrc stream-properties=\"props,media.role=(string)phone\"");
@@ -437,6 +483,8 @@ bool Voip::startPipeline()
             .arg(Keys::kVoipJitterMs).arg(mic).arg(Keys::kVoipOpusBitrate);
     GError *err = nullptr;
     m_pipe = gst_parse_launch(desc.toUtf8().constData(), &err);
+    if (m_pipe)
+        gst_object_ref_sink(m_pipe);
     if (err) {
         qWarning() << "voip: pipeline:" << err->message;
         g_error_free(err);
@@ -506,6 +554,8 @@ void Voip::stopPipeline()
 {
     if (!m_pipe)
         return;
+    // whatever the old pipeline still has queued here is dropped
+    m_pipeGen.ref();
     if (m_busWatch) {
         g_source_remove(m_busWatch);
         m_busWatch = 0;
@@ -618,27 +668,29 @@ void Voip::onOfferReply(GstPromise *promise, void *self)
 {
     Voip *v = static_cast<Voip *>(self);
     const QString sdp = takeDescription(promise, "offer", v->m_webrtc);
-    QMetaObject::invokeMethod(v, "onOfferCreated", Qt::QueuedConnection, Q_ARG(QString, sdp));
+    QMetaObject::invokeMethod(v, "onOfferCreated", Qt::QueuedConnection, Q_ARG(QString, sdp), Q_ARG(int, v->m_pipeGen.load()));
 }
 
 void Voip::onAnswerReply(GstPromise *promise, void *self)
 {
     Voip *v = static_cast<Voip *>(self);
     const QString sdp = takeDescription(promise, "answer", v->m_webrtc);
-    QMetaObject::invokeMethod(v, "onAnswerCreated", Qt::QueuedConnection, Q_ARG(QString, sdp));
+    QMetaObject::invokeMethod(v, "onAnswerCreated", Qt::QueuedConnection, Q_ARG(QString, sdp), Q_ARG(int, v->m_pipeGen.load()));
 }
 
 void Voip::onIceCandidateCb(GstElement *, unsigned mline, char *candidate, void *self)
 {
-    QMetaObject::invokeMethod(static_cast<Voip *>(self), "onIceCandidate", Qt::QueuedConnection,
-                              Q_ARG(int, int(mline)), Q_ARG(QString, QString::fromUtf8(candidate)));
+    Voip *v = static_cast<Voip *>(self);
+    QMetaObject::invokeMethod(v, "onIceCandidate", Qt::QueuedConnection,
+                              Q_ARG(int, int(mline)), Q_ARG(QString, QString::fromUtf8(candidate)), Q_ARG(int, v->m_pipeGen.load()));
 }
 
 void Voip::onIceStateCb(GstElement *webrtc, void *, void *self)
 {
     GstWebRTCICEConnectionState state = GST_WEBRTC_ICE_CONNECTION_STATE_NEW;
     g_object_get(webrtc, "ice-connection-state", &state, nullptr);
-    QMetaObject::invokeMethod(static_cast<Voip *>(self), "onIceState", Qt::QueuedConnection, Q_ARG(int, int(state)));
+    Voip *v = static_cast<Voip *>(self);
+    QMetaObject::invokeMethod(v, "onIceState", Qt::QueuedConnection, Q_ARG(int, int(state)), Q_ARG(int, v->m_pipeGen.load()));
 }
 
 void Voip::onGatheringCb(GstElement *webrtc, void *, void *self)
@@ -646,7 +698,8 @@ void Voip::onGatheringCb(GstElement *webrtc, void *, void *self)
     GstWebRTCICEGatheringState state = GST_WEBRTC_ICE_GATHERING_STATE_NEW;
     g_object_get(webrtc, "ice-gathering-state", &state, nullptr);
     if (state == GST_WEBRTC_ICE_GATHERING_STATE_COMPLETE)
-        QMetaObject::invokeMethod(static_cast<Voip *>(self), "onIceGatheringDone", Qt::QueuedConnection);
+        QMetaObject::invokeMethod(static_cast<Voip *>(self), "onIceGatheringDone", Qt::QueuedConnection,
+                                  Q_ARG(int, static_cast<Voip *>(self)->m_pipeGen.load()));
 }
 
 // the far end's audio: Opus out of RTP, to the call route (or, in a test,
@@ -677,7 +730,9 @@ void Voip::onPadAdded(GstElement *, GstPad *pad, void *self)
     if (err) {
         const QString what = QString::fromUtf8(err->message);
         g_error_free(err);
-        QMetaObject::invokeMethod(v, "onMediaError", Qt::QueuedConnection, Q_ARG(QString, what));
+        if (bin)
+            gst_object_unref(bin);
+        QMetaObject::invokeMethod(v, "onMediaError", Qt::QueuedConnection, Q_ARG(QString, what), Q_ARG(int, v->m_pipeGen.load()));
         return;
     }
     if (v->m_aec) {
@@ -691,7 +746,7 @@ void Voip::onPadAdded(GstElement *, GstPad *pad, void *self)
     gst_element_sync_state_with_parent(bin);
     GstPad *sinkPad = gst_element_get_static_pad(bin, "sink");
     if (gst_pad_link(pad, sinkPad) != GST_PAD_LINK_OK)
-        QMetaObject::invokeMethod(v, "onMediaError", Qt::QueuedConnection, Q_ARG(QString, QStringLiteral("the far end's audio does not link")));
+        QMetaObject::invokeMethod(v, "onMediaError", Qt::QueuedConnection, Q_ARG(QString, QStringLiteral("the far end's audio does not link")), Q_ARG(int, v->m_pipeGen.load()));
     gst_object_unref(sinkPad);
 }
 
@@ -789,7 +844,8 @@ void Voip::onStatsReply(GstPromise *promise, void *self)
         }
     }
     gst_promise_unref(promise);
-    QMetaObject::invokeMethod(static_cast<Voip *>(self), "onStats", Qt::QueuedConnection, Q_ARG(int, in), Q_ARG(int, out));
+    Voip *v = static_cast<Voip *>(self);
+    QMetaObject::invokeMethod(v, "onStats", Qt::QueuedConnection, Q_ARG(int, in), Q_ARG(int, out), Q_ARG(int, v->m_pipeGen.load()));
 }
 
 // the bus runs on the main loop (Qt's glib dispatcher)
@@ -803,7 +859,7 @@ int Voip::onBusMessage(GstBus *, GstMessage *msg, void *self)
         const QString what = QString::fromUtf8(err ? err->message : "unknown");
         if (err)
             g_error_free(err);
-        v->onMediaError(QStringLiteral("%1: %2").arg(QString::fromUtf8(GST_OBJECT_NAME(msg->src)), what));
+        v->onMediaError(QStringLiteral("%1: %2").arg(QString::fromUtf8(GST_OBJECT_NAME(msg->src)), what), v->m_pipeGen.load());
         break;
     }
     case GST_MESSAGE_ELEMENT: {
@@ -833,8 +889,10 @@ G_GNUC_END_IGNORE_DEPRECATIONS
 
 // ---- back on this thread --------------------------------------------------
 
-void Voip::onOfferCreated(const QString &sdp)
+void Voip::onOfferCreated(const QString &sdp, int gen)
 {
+    if (gen != m_pipeGen.load())
+        return;   // from a pipeline that is gone
     if (sdp.isEmpty() || m_state != QLatin1String("outgoing")) {
         if (sdp.isEmpty())
             finish(QStringLiteral("user_media_failed"), false);
@@ -855,6 +913,8 @@ void Voip::onOfferCreated(const QString &sdp)
 void Voip::handleSent(const QVariantMap &ev)
 {
     const QString type = ev.value("type").toString();
+    if (type == QLatin1String("m.call.hangup") && ev.value("call_id").toString() == m_callId)
+        emit hangupSent();
     if (ev.value("call_id").toString() != m_callId || m_state == QLatin1String("idle"))
         return;
     if (type == QLatin1String("m.call.invite") || type == QLatin1String("m.call.answer")) {
@@ -864,8 +924,10 @@ void Voip::handleSent(const QVariantMap &ev)
     }
 }
 
-void Voip::onAnswerCreated(const QString &sdp)
+void Voip::onAnswerCreated(const QString &sdp, int gen)
 {
+    if (gen != m_pipeGen.load())
+        return;
     if (m_state != QLatin1String("connecting"))
         return;
     if (sdp.isEmpty()) {
@@ -875,8 +937,10 @@ void Voip::onAnswerCreated(const QString &sdp)
     send(QStringLiteral("m.call.answer"), { { "answer", QVariantMap{ { "type", "answer" }, { "sdp", sdp } } } });
 }
 
-void Voip::onIceCandidate(int mline, const QString &candidate)
+void Voip::onIceCandidate(int mline, const QString &candidate, int gen)
 {
+    if (gen != m_pipeGen.load())
+        return;
     if (m_state == QLatin1String("idle"))
         return;
     m_localCandidates << QVariantMap{ { "candidate", candidate }, { "sdpMLineIndex", mline } };
@@ -885,8 +949,10 @@ void Voip::onIceCandidate(int mline, const QString &candidate)
         m_candidateTimer.start();
 }
 
-void Voip::onIceGatheringDone()
+void Voip::onIceGatheringDone(int gen)
 {
+    if (gen != m_pipeGen.load())
+        return;
     // the end of our candidates, as an empty one (VoIP version 1)
     if (m_state == QLatin1String("idle"))
         return;
@@ -895,8 +961,10 @@ void Voip::onIceGatheringDone()
         m_candidateTimer.start();
 }
 
-void Voip::onIceState(int state)
+void Voip::onIceState(int state, int gen)
 {
+    if (gen != m_pipeGen.load())
+        return;
     qInfo() << "voip: ICE state" << state;
     if (state == GST_WEBRTC_ICE_CONNECTION_STATE_CONNECTED || state == GST_WEBRTC_ICE_CONNECTION_STATE_COMPLETED) {
         if (m_state == QLatin1String("connecting")) {
@@ -919,15 +987,19 @@ void Voip::onRemoteLevel(double rms)
     }
 }
 
-void Voip::onStats(int packetsIn, int packetsOut)
+void Voip::onStats(int packetsIn, int packetsOut, int gen)
 {
+    if (gen != m_pipeGen.load())
+        return;
     m_packetsIn = packetsIn;
     m_packetsOut = packetsOut;
     qInfo() << "voip: packets in" << packetsIn << "out" << packetsOut;
 }
 
-void Voip::onMediaError(const QString &what)
+void Voip::onMediaError(const QString &what, int gen)
 {
+    if (gen != m_pipeGen.load())
+        return;
     qWarning().noquote() << "voip: media error" << what;
     if (m_state != QLatin1String("idle"))
         finish(QStringLiteral("user_media_failed"), true, QStringLiteral("user_media_failed"));

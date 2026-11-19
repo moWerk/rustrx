@@ -45,18 +45,24 @@ Page {
 
     Connections {
         target: page.call
-        onChanged: if (page.call.state === "idle") closer.restart()
+        // a new call that rings within the moment keeps the page
+        onChanged: if (page.call.state === "idle") closer.restart(); else closer.stop()
     }
-    // the reason shows a moment, then the page goes
+    // the reason shows a moment, then the page goes (only if no new call
+    // started meanwhile; one under another page goes when it comes back)
     Timer {
         id: closer
         interval: Tunables.voipEndShownMs
-        onTriggered: if (page.status === PageStatus.Active) pageStack.pop()
+        onTriggered: if (page.call.state === "idle" && page.status === PageStatus.Active) pageStack.pop()
     }
+    onStatusChanged: if (status === PageStatus.Active && call.state === "idle" && !closer.running) closer.restart()
 
     // ringing: the lower half answers or declines by a swipe, as in the phone app
     IncomingCallSwipe {
+        id: swipe
         visible: page.call.state === "incoming"
+        // each ring starts with the handset in the middle
+        onVisibleChanged: if (visible) reset()
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: parent.height * 0.55
         onAnswered: page.call.answer()

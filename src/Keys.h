@@ -176,6 +176,10 @@ static const int kLogCheckEveryLines = 50;
 // out together after this pause; TURN credentials are waited for this
 // long; the far end's level and the packet counts are noted this often
 static const int kVoipInviteLifetimeMs = 60000;
+// an incoming invite rings at most this long, whatever its sender says
+static const int kVoipInviteLifetimeMaxMs = 120000;
+// quitting during a call: its hangup has this long to leave
+static const int kVoipQuitHangupMs = 1500;
 static const int kVoipCandidateBatchMs = 300;
 static const int kVoipTurnWaitMs = 3000;
 static const int kVoipStatsMs = 2000;

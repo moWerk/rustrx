@@ -473,6 +473,12 @@ QString Rustrx::dev(const QString &json)
 
 void Rustrx::command(const QVariantMap &cmd)
 {
+    // one call at a time: no Element Call while a classic call runs (two
+    // audio paths at once)
+    if (cmd.value("cmd").toString() == QLatin1String("call_start") && m_voip->state() != QLatin1String("idle")) {
+        qInfo() << "call_start refused: a classic call is going on";
+        return;
+    }
     // the emote pictures live in the media folder
     if (cmd.value("cmd").toString() == QLatin1String("clear_media")) {
         m_timeline->clearEmotes();

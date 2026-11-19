@@ -111,7 +111,7 @@ Page {
                 }
             }
             MenuItem {
-                visible: !page.isSpace
+                visible: !page.isSpace && rustrx.voip.state === "idle"
                 //: a call through Element Call, the other way to call (unencrypted rooms only for now)
                 //% "Call with Element Call"
                 text: qsTrId("rustrx-me-call-element")

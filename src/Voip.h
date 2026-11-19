@@ -17,6 +17,7 @@
 #pragma once
 
 #include <QByteArray>
+#include <QAtomicInt>
 #include <QMutex>
 #include <QObject>
 #include <QStringList>
@@ -97,6 +98,8 @@ public:
     // app (which never saw the event), and taken up there; "answer" in it
     // answers at once (Answer was pressed in the notification)
     QVariantMap ringing() const;
+    // quitting: hang up a running call and wait up to waitMs for it to leave
+    void endForQuit(int waitMs);
     void takeRinging(const QVariantMap &invite);
 
     // from the core
@@ -113,17 +116,19 @@ signals:
     // the call wants the phone's call audio (from placing to the end)
     void audioNeeded(bool on);
     void speakerChanged(bool on);
+    // the core sent this call's hangup
+    void hangupSent();
 
 private slots:
     // from GStreamer's threads, queued onto this one
-    void onOfferCreated(const QString &sdp);
-    void onAnswerCreated(const QString &sdp);
-    void onIceCandidate(int mline, const QString &candidate);
-    void onIceGatheringDone();
-    void onIceState(int state);
+    void onOfferCreated(const QString &sdp, int gen);
+    void onAnswerCreated(const QString &sdp, int gen);
+    void onIceCandidate(int mline, const QString &candidate, int gen);
+    void onIceGatheringDone(int gen);
+    void onIceState(int state, int gen);
     void onRemoteLevel(double rms);
-    void onStats(int packetsIn, int packetsOut);
-    void onMediaError(const QString &what);
+    void onStats(int packetsIn, int packetsOut, int gen);
+    void onMediaError(const QString &what, int gen);
 
 private:
     void send(const QString &type, QVariantMap content);
@@ -156,6 +161,7 @@ private:
     QString m_callId;
     QString m_partyId;          // ours, for this call
     QString m_peerParty;        // the answer we picked, or the caller's
+    QString m_peerUser;         // who that is: events of this call from others are ignored
     QString m_invitee;
     QString m_peerName;
     QString m_remoteOffer;
@@ -180,6 +186,9 @@ private:
     GstElement *m_webrtc = nullptr;
     GstElement *m_volume = nullptr;   // the microphone's, for mute
     unsigned m_busWatch = 0;
+    // the running pipeline's number: its callbacks carry it, and one from
+    // a pipeline that was stopped meanwhile (a call ended) is dropped
+    QAtomicInt m_pipeGen;
 
     // echo cancelling: the microphone and the far end in 10 ms frames
     bool m_aec = true;

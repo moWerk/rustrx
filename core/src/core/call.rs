@@ -127,11 +127,15 @@ impl Core {
                 Err(_) => sender.clone(),
             };
             let call_id = content.get("call_id").and_then(Value::as_str).unwrap_or("").to_owned();
-            tracing::info!(room = %room.room_id(), %kind, %call_id, own, age, "voip: event");
+            // whether the room is a direct chat: an invite for nobody in
+            // particular rings only there (anyone in a big room could ring
+            // every member's phone otherwise)
+            let is_dm = room.is_direct().await.unwrap_or(false);
+            tracing::info!(room = %room.room_id(), %kind, %call_id, own, age, is_dm, "voip: event");
             crate::instance().emit(json!({
                 "ev": "voip", "room_id": room.room_id().as_str(), "room_name": room_name(&room),
                 "type": kind, "sender": sender, "sender_name": sender_name, "own": own,
-                "content": content, "event_id": event_id, "age_ms": age,
+                "content": content, "event_id": event_id, "age_ms": age, "is_dm": is_dm,
             }));
         });
     }
