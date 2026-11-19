@@ -318,14 +318,14 @@ void Rustrx::setDownscaleImages(bool on)
     m_media->setDownscaleImages(on);
 }
 
-bool Rustrx::stripMetadata() const
+int Rustrx::metadataLevel() const
 {
-    return m_media->stripMetadata();
+    return m_media->metadataLevel();
 }
 
-void Rustrx::setStripMetadata(bool on)
+void Rustrx::setMetadataLevel(int level)
 {
-    m_media->setStripMetadata(on);
+    m_media->setMetadataLevel(level);
 }
 
 bool Rustrx::debugLog() const

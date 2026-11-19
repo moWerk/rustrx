@@ -22,6 +22,7 @@
 #include <QObject>
 #include <QSet>
 #include <QSize>
+#include <QThreadPool>
 #include <QString>
 #include <QVariantMap>
 
@@ -45,8 +46,10 @@ public:
 
     bool downscaleImages() const;
     void setDownscaleImages(bool on);
-    bool stripMetadata() const;
-    void setStripMetadata(bool on);
+    // what goes out of a picture or video before it is sent: 0 nothing,
+    // 1 the place, 2 all metadata (Keys::kMetadataLevel)
+    int metadataLevel() const;
+    void setMetadataLevel(int level);
 
     // a custom emoji's cached picture (file://), or "" while it is fetched
     // (emoteReady follows)
@@ -71,20 +74,28 @@ signals:
     void emoteReady(const QString &mxc, const QString &path);
     void settingsChanged();
 
+private slots:
+    // a video copy's stripping (VideoStrip, off the GUI thread) ended
+    void videoStripped(int id, bool ok, const QString &out, const QString &stem);
+
 private:
     // an avatar picture upright, at most 512 px, in the cache; its path and size
     QString prepareAvatar(const QString &path, const QString &cmd, QSize *size);
-    // a video's size and length into cmd, and its frame taken: the command
-    // waits in the queue until the frame is there (or not)
-    void prepareVideo(QVariantMap &cmd, const QString &stem);
     // files go to the core in the order they were sent; one waiting for its
-    // video frame holds back those after it
+    // video's stripped copy or frame holds back those after it
     struct Outgoing {
         QVariantMap cmd;
         QProcess *frame = nullptr;
+        int strip = 0;   // the stripping's id while it runs
     };
+    // a video's size and length into item's command, and its frame taken: the
+    // command waits in the queue until the frame is there (or not)
+    void prepareVideo(Outgoing &item, const QString &stem);
     void sendInOrder();
     QList<Outgoing> m_outgoing;
+    int m_lastStrip = 0;
+    // copying a video takes seconds; its destructor waits for a running one
+    QThreadPool m_strips;
 
     QSettings *m_settings;
     QHash<QString, QString> m_emotePaths;

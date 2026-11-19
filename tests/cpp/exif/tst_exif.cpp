@@ -3,6 +3,12 @@
 // Planted-bug: keep the old EXIF block (only the orientation should be
 // left): theCameraAndPlaceAreGone fails. Planted-bug: stop at the picture
 // without cutting what follows its end: nothingAfterThePicture fails.
+// Level 1, planted-bug: leave the values a GPS entry points to:
+// levelOneTakesOnlyThePlace fails; keep XMP at level 1: the same fails;
+// skip a GPS value outside the block instead of refusing it:
+// levelOneRefusesAGpsValueOutside fails.
+// Planted-bug: no fill-byte skip: fillBytesAreSkipped fails; no standalone
+// markers: standaloneMarkersAreSkipped fails.
 #include <QtTest>
 #include "Exif.h"
 
@@ -39,6 +45,8 @@ class TestExif : public QObject
         return t;
     }
 
+    static int tiffSize() { return tiff().size() + 12; }   // with "Canon EOS 5D"
+
     static QByteArray segment(int marker, const QByteArray &body)
     {
         QByteArray s;
@@ -64,6 +72,8 @@ class TestExif : public QObject
 
     // the scan: a stuffed 0xFF00 and a restart marker inside, then the end
     static QByteArray picture() { return QByteArray("\xFF\xDA\x00\x02pic\xFF\x00ture\xFF\xD0more\xFF\xD9", 21); }
+
+    static int le16(const QByteArray &b, int at) { return quint8(b.at(at)) | (quint8(b.at(at + 1)) << 8); }
 
 private slots:
     void theCameraAndPlaceAreGone()
@@ -112,6 +122,84 @@ private slots:
         QVERIFY(Exif::strip(j));
         QVERIFY(j.endsWith(picture()));
         QVERIFY(!j.contains("second image"));
+    }
+
+    void levelOneTakesOnlyThePlace()
+    {
+        const QByteArray before = jpeg();
+        QByteArray j = before;
+        QVERIFY(Exif::strip(j, 1));
+        // the GPS values, inline ("N") and pointed to, are zero
+        QByteArray rationals;
+        for (quint32 v : { 52u, 1u, 31u })
+            put32(rationals, v);
+        QVERIFY(!j.contains(rationals));
+        // the EXIF block is where it was, as long; the pointer to the GPS
+        // IFD stays, the IFD is empty
+        const int exif = before.indexOf("Exif");
+        QCOMPARE(j.indexOf("Exif"), exif);
+        const int tiff = exif + 6;
+        QCOMPARE(le16(j, tiff + 8 + 2 + 12), 0x8825);
+        QCOMPARE(le16(j, tiff + 38), 0);
+        QCOMPARE(j.mid(tiff + 38, 2 + 2 * 12 + 4 + 24), QByteArray(2 + 2 * 12 + 4 + 24, '\0'));
+        // the rest stays: the orientation, the camera, IPTC, the comment, ICC
+        QCOMPARE(Exif::orientation(j, tiff, tiff + tiffSize()), 6);
+        for (const char *kept : { "Canon EOS 5D", "byline", "taken at home", "ICC_PROFILE", "JFIF" })
+            QVERIFY2(j.contains(kept), kept);
+        // XMP can repeat the place, MPF points to pictures with their own
+        for (const char *gone : { "GPSLatitude", "xap", "MPF" })
+            QVERIFY2(!j.contains(gone), gone);
+        QVERIFY(j.endsWith(picture()));
+    }
+
+    void levelOneNothingAfterThePicture()
+    {
+        QByteArray j = jpeg() + QByteArray("\xFF\xD8\xFF\xE1second image with its own EXIF", 34);
+        QVERIFY(Exif::strip(j, 1));
+        QVERIFY(!j.contains("second image"));
+    }
+
+    void levelOneRefusesAGpsValueOutside()
+    {
+        QByteArray t = tiff();
+        // GPSLatitude's offset (entry 2 of the GPS IFD) past the block
+        const int at = 38 + 2 + 12 + 8;
+        t[at] = char(0xF0);
+        QByteArray j("\xFF\xD8", 2);
+        j += segment(0xE1, QByteArray("Exif\0\0", 6) + t);
+        j += picture();
+        QVERIFY(!Exif::strip(j, 1));
+    }
+
+    void levelZeroLeavesIt()
+    {
+        QByteArray j = jpeg();
+        QVERIFY(Exif::strip(j, 0));
+        QCOMPARE(j, jpeg());
+    }
+
+    void fillBytesAreSkipped()
+    {
+        QByteArray j("\xFF\xD8\xFF\xFF", 4);
+        j += segment(0xE0, QByteArray("JFIF\0\x01\x01\0\0\x01\0\x01\0\0", 14));
+        j += QByteArray("\xFF\xFF\xFF", 3) + segment(0xFE, QByteArray("taken at home"));
+        j += picture();
+        QVERIFY(Exif::strip(j));
+        QVERIFY(!j.contains("taken at home"));
+        QVERIFY(j.contains("JFIF"));
+        QVERIFY(j.endsWith(picture()));
+    }
+
+    void standaloneMarkersAreSkipped()
+    {
+        QByteArray j("\xFF\xD8", 2);
+        j += segment(0xE0, QByteArray("JFIF\0\x01\x01\0\0\x01\0\x01\0\0", 14));
+        j += QByteArray("\xFF\x01\xFF\xD3", 4);   // TEM, RST3
+        j += segment(0xFE, QByteArray("taken at home"));
+        j += picture();
+        QVERIFY(Exif::strip(j));
+        QVERIFY(!j.contains("taken at home"));
+        QVERIFY(j.endsWith(picture()));
     }
 
     void notAJpegIsRefused()

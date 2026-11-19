@@ -18,14 +18,17 @@
 #include "Exif.h"
 #include "Keys.h"
 #include "Mp4.h"
+#include "Png.h"
 
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QImage>
 #include <QImageReader>
 #include <QMimeDatabase>
 #include <QProcess>
+#include <QRunnable>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTimer>
@@ -39,10 +42,52 @@ static QString outgoingDir()
     return dir;
 }
 
+namespace {
+
+// a video's metadata out of a copy of it (Mp4::strip), off the GUI thread:
+// a copy of a long video takes seconds. The result goes back queued.
+class VideoStrip : public QRunnable
+{
+public:
+    VideoStrip(QObject *media, int id, const QString &in, const QString &out, const QString &stem, int level)
+        : m_media(media), m_id(id), m_in(in), m_out(out), m_stem(stem), m_level(level) {}
+
+    void run() override
+    {
+        QFile::remove(m_out);
+        // the copy writable even when the original is not
+        bool ok = QFile::copy(m_in, m_out)
+                && QFile::setPermissions(m_out, QFile::ReadOwner | QFile::WriteOwner);
+        if (ok) {
+            QFile file(m_out);
+            ok = file.open(QIODevice::ReadWrite) && Mp4::strip(file, m_level);
+        }
+        if (!ok)
+            QFile::remove(m_out);
+        QMetaObject::invokeMethod(m_media, "videoStripped", Qt::QueuedConnection,
+                                  Q_ARG(int, m_id), Q_ARG(bool, ok), Q_ARG(QString, m_out), Q_ARG(QString, m_stem));
+    }
+
+private:
+    QObject *m_media;
+    int m_id;
+    QString m_in, m_out, m_stem;
+    int m_level;
+};
+
+}
+
 Media::Media(QSettings *settings, QObject *parent)
     : QObject(parent)
     , m_settings(settings)
 {
+    // the switch before the levels: on meant all of it
+    const QString old = QLatin1String(Keys::kStripLocationOld);
+    if (m_settings->contains(old)) {
+        if (!m_settings->contains(QLatin1String(Keys::kMetadataLevel)))
+            m_settings->setValue(QLatin1String(Keys::kMetadataLevel), m_settings->value(old).toBool() ? 2 : 0);
+        m_settings->remove(old);
+    }
 }
 
 QString Media::localPath(const QString &path)
@@ -63,16 +108,17 @@ void Media::setDownscaleImages(bool on)
     emit settingsChanged();
 }
 
-bool Media::stripMetadata() const
+int Media::metadataLevel() const
 {
-    return m_settings->value(QLatin1String(Keys::kStripMetadata), Keys::kStripMetadataDefault).toBool();
+    return qBound(0, m_settings->value(QLatin1String(Keys::kMetadataLevel), Keys::kMetadataLevelDefault).toInt(), 2);
 }
 
-void Media::setStripMetadata(bool on)
+void Media::setMetadataLevel(int level)
 {
-    if (on == stripMetadata())
+    level = qBound(0, level, 2);
+    if (level == metadataLevel())
         return;
-    m_settings->setValue(QLatin1String(Keys::kStripMetadata), on);
+    m_settings->setValue(QLatin1String(Keys::kMetadataLevel), level);
     emit settingsChanged();
 }
 
@@ -153,6 +199,7 @@ void Media::sendFile(const QString &roomId, const QString &path, const QString &
     // pictures go out the way Element expects them: upright, at most 2048 px
     // on the long side when the setting asks for it, with their size and a
     // thumbnail, so the other side shows a preview instead of a bare file
+    const int level = metadataLevel();
     QImageReader reader(p);
     reader.setAutoTransform(true);
     const QByteArray format = reader.format();
@@ -168,18 +215,29 @@ void Media::sendFile(const QString &roomId, const QString &path, const QString &
                 const QString out = stem + ".jpg";
                 if (image.save(out, "JPEG", Keys::kUploadJpegQuality))
                     cmd.insert("path", out);
-            } else if (stripMetadata() && format == "jpeg") {
-                // as it is, its metadata out but the orientation (Exif.h);
-                // one that cannot be read is re-encoded, so nothing slips through
+            } else if (level >= 1) {
+                // a JPEG or PNG as it is, its metadata out (Exif.h, Png.h);
+                // one that cannot be read and every other format are
+                // re-encoded, so nothing slips through
+                const bool jpeg = format == "jpeg";
+                const bool png = format == "png";
+                QByteArray bytes;
                 QFile in(p);
-                QByteArray bytes = in.open(QIODevice::ReadOnly) ? in.readAll() : QByteArray();
-                const QString out = stem + ".jpg";
+                if ((jpeg || png) && in.open(QIODevice::ReadOnly))
+                    bytes = in.readAll();
+                const bool asPng = png || (!jpeg && image.hasAlphaChannel());
+                const QString out = stem + (asPng ? ".png" : ".jpg");
                 QFile file(out);
-                if (!bytes.isEmpty() && Exif::strip(bytes) && file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size()) {
+                if (!bytes.isEmpty() && (jpeg ? Exif::strip(bytes, level) : Png::strip(bytes, level))
+                        && file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size()) {
                     file.close();
                     cmd.insert("path", out);
-                } else if (image.save(out, "JPEG", Keys::kReencodeJpegQuality)) {
+                } else if (asPng ? image.save(out, "PNG") : image.save(out, "JPEG", Keys::kReencodeJpegQuality)) {
                     cmd.insert("path", out);
+                } else {
+                    // the original would go with what the setting keeps back
+                    emit errorOccurred(QStringLiteral("send_file"), QStringLiteral("cannot write ") + out);
+                    return;
                 }
             }
             cmd.insert("w", image.width());
@@ -195,17 +253,51 @@ void Media::sendFile(const QString &roomId, const QString &path, const QString &
     }
     // the type from the content too: a shared file's name may have no
     // extension the core knows, and a picture then went out as a file
-    cmd.insert("mime", QMimeDatabase().mimeTypeForFile(cmd.value("path").toString()).name());
+    const QString mime = QMimeDatabase().mimeTypeForFile(cmd.value("path").toString()).name();
+    cmd.insert("mime", mime);
     m_outgoing.append({ cmd, nullptr });
-    if (cmd.value("mime").toString().startsWith(QLatin1String("video/")))
-        prepareVideo(m_outgoing.last().cmd, outgoingDir() + "/" + QString::number(QDateTime::currentMSecsSinceEpoch()));
+    if (mime.startsWith(QLatin1String("video/"))) {
+        const QString stem = outgoingDir() + "/" + QString::number(QDateTime::currentMSecsSinceEpoch());
+        if (level >= 1) {
+            // a copy is stripped, and the send waits for it (videoStripped)
+            const int id = ++m_lastStrip;
+            m_outgoing.last().strip = id;
+            const QString suffix = QFileInfo(p).suffix();
+            const QString out = stem + "-" + QString::number(id) + "." + (suffix.isEmpty() ? QStringLiteral("mp4") : suffix);
+            m_strips.start(new VideoStrip(this, id, p, out, stem, level));
+        } else {
+            prepareVideo(m_outgoing.last(), stem);
+        }
+    }
+    sendInOrder();
+}
+
+void Media::videoStripped(int id, bool ok, const QString &out, const QString &stem)
+{
+    for (int i = 0; i < m_outgoing.size(); ++i) {
+        if (m_outgoing.at(i).strip != id)
+            continue;
+        if (ok) {
+            m_outgoing[i].strip = 0;
+            m_outgoing[i].cmd.insert("path", out);
+            prepareVideo(m_outgoing[i], stem);
+        } else {
+            // never the original instead: it says what the setting keeps back
+            // (a format Mp4.h does not know, a damaged file, a full disk)
+            m_outgoing.removeAt(i);
+            emit errorOccurred(QStringLiteral("send_file"),
+                               QStringLiteral("the video's metadata could not be removed, it was not sent"));
+        }
+        break;
+    }
     sendInOrder();
 }
 
 // videos go out the way other clients send them: with their size, their
 // length and a frame as thumbnail, so the other side shows a preview
-void Media::prepareVideo(QVariantMap &cmd, const QString &stem)
+void Media::prepareVideo(Outgoing &item, const QString &stem)
 {
+    QVariantMap &cmd = item.cmd;
     const QString path = cmd.value("path").toString();
     QFile file(path);
     if (file.open(QIODevice::ReadOnly)) {
@@ -220,7 +312,7 @@ void Media::prepareVideo(QVariantMap &cmd, const QString &stem)
 
     const QString thumbPath = stem + "-thumb.jpg";
     auto *frame = new QProcess(this);
-    m_outgoing.last().frame = frame;
+    item.frame = frame;
     auto done = [this, frame, thumbPath](bool ok) {
         for (Outgoing &o : m_outgoing) {
             if (o.frame != frame)
@@ -255,7 +347,7 @@ void Media::prepareVideo(QVariantMap &cmd, const QString &stem)
 
 void Media::sendInOrder()
 {
-    while (!m_outgoing.isEmpty() && !m_outgoing.first().frame)
+    while (!m_outgoing.isEmpty() && !m_outgoing.first().frame && !m_outgoing.first().strip)
         emit command(m_outgoing.takeFirst().cmd);
 }
 
