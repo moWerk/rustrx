@@ -519,6 +519,9 @@ void Rustrx::command(const QVariantMap &cmd)
 
 void Rustrx::loginPassword(const QString &user, const QString &password, const QString &homeserver)
 {
+    // one login at a time (the core refuses a second one too, audit K11)
+    if (m_loggingIn)
+        return;
     m_loggingIn = true;
     emit stateChanged();
     command({{"cmd", "login_password"}, {"user", user}, {"password", password}, {"homeserver", homeserver}});
@@ -526,6 +529,8 @@ void Rustrx::loginPassword(const QString &user, const QString &password, const Q
 
 void Rustrx::loginSso(const QString &user, const QString &homeserver, const QString &idp)
 {
+    if (m_loggingIn)
+        return;
     m_loggingIn = true;
     emit stateChanged();
     QVariantMap cmd{{"cmd", "login_sso"}, {"user", user}, {"homeserver", homeserver}};
@@ -536,6 +541,8 @@ void Rustrx::loginSso(const QString &user, const QString &homeserver, const QStr
 
 void Rustrx::loginOauth(const QString &user, const QString &homeserver, bool signup)
 {
+    if (m_loggingIn)
+        return;
     m_loggingIn = true;
     emit stateChanged();
     command({{"cmd", "login_oauth"}, {"user", user}, {"homeserver", homeserver}, {"signup", signup}});
@@ -543,6 +550,8 @@ void Rustrx::loginOauth(const QString &user, const QString &homeserver, bool sig
 
 void Rustrx::loginQr(const QString &user, const QString &homeserver)
 {
+    if (m_loggingIn)
+        return;
     m_loggingIn = true;
     emit stateChanged();
     command({{"cmd", "login_qr"}, {"user", user}, {"homeserver", homeserver}});

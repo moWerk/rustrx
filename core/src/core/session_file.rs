@@ -26,6 +26,20 @@ struct Sealed {
 
 const SEALED_VERSION: u32 = 1;
 
+/// A key is there but the seal does not fit it: the secret was lost and
+/// made anew. The session can never be read again, as the store cannot
+/// (store_passphrase removes that); unlike a missing key, this is final.
+#[derive(Debug)]
+pub(crate) struct SealKeyLost(String);
+
+impl std::fmt::Display for SealKeyLost {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the session's seal does not fit the store's key: {}", self.0)
+    }
+}
+
+impl std::error::Error for SealKeyLost {}
+
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -59,8 +73,8 @@ pub(crate) fn read_session_file(path: &Path, key: Option<&str>) -> Result<Option
         bail!("the session is sealed and the store's key is not available (sailfish-secrets locked or unreachable)");
     };
     let cipher = StoreCipher::import_with_key(key.as_bytes(), &unhex(&sealed.cipher)?)
-        .map_err(|e| anyhow!("the session's seal does not fit the store's key: {e}"))?;
-    let plain = cipher.decrypt_value_base64_data(sealed.value).map_err(|e| anyhow!("the session cannot be unsealed: {e}"))?;
+        .map_err(|e| SealKeyLost(e.to_string()))?;
+    let plain = cipher.decrypt_value_base64_data(sealed.value).map_err(|e| SealKeyLost(e.to_string()))?;
     Ok(Some((serde_json::from_slice(&plain)?, true)))
 }
 
@@ -107,6 +121,20 @@ pub(crate) fn load_session_file(path: &Path, key: Option<&str>) -> Result<Option
     Ok(Some(saved))
 }
 
+/// load_session_file, except that a seal the key does not fit removes the
+/// file: the session is gone for good and the login page comes, instead
+/// of a restore that fails on every start. A missing key stays an error.
+pub(crate) fn load_or_drop_session_file(path: &Path, key: Option<&str>) -> Result<Option<SavedSession>> {
+    match load_session_file(path, key) {
+        Err(e) if e.is::<SealKeyLost>() => {
+            tracing::warn!("session: {e}; it goes, a new login is needed");
+            std::fs::remove_file(path).ok();
+            Ok(None)
+        }
+        other => other,
+    }
+}
+
 impl Core {
     pub(crate) fn session_path(&self) -> PathBuf {
         self.data_dir.join(SESSION_FILE)
@@ -114,7 +142,7 @@ impl Core {
 
     /// The saved session, if any (sealed with the store's key, or plain).
     pub(crate) fn load_session(&self) -> Result<Option<SavedSession>> {
-        load_session_file(&self.session_path(), crate::store_key())
+        load_or_drop_session_file(&self.session_path(), crate::store_key())
     }
 
     pub(crate) fn write_session(&self, saved: &SavedSession) -> Result<()> {
@@ -220,6 +248,22 @@ mod tests {
         assert!(load_session_file(&path, None).is_err());
         assert!(path.exists());
         assert!(read_session_file(&path, Some("store-key-1")).unwrap().is_some());
+        std::fs::remove_dir_all(d).ok();
+    }
+
+    /// A key that does not fit (the secret made anew) drops the session, a
+    /// missing key keeps it.
+    /// Planted-bug: map the unseal failure to a plain anyhow error: the
+    /// file stays and every start fails.
+    #[test]
+    fn a_lost_key_drops_the_session_a_missing_one_keeps_it() {
+        let d = dir("lost");
+        let path = d.join(SESSION_FILE);
+        write_session_file(&path, &saved(), Some("store-key-1")).unwrap();
+        assert!(load_or_drop_session_file(&path, None).is_err());
+        assert!(path.exists());
+        assert!(load_or_drop_session_file(&path, Some("store-key-2")).unwrap().is_none());
+        assert!(!path.exists());
         std::fs::remove_dir_all(d).ok();
     }
 
