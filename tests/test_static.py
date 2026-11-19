@@ -543,39 +543,60 @@ def _signals(header):
 
 
 def test_connections_handle_signals_of_their_target():
-    """A Connections block for rustrx or rustrx.voip handles only that
-    object's signals. Planted-bug: a block inserted in the middle of
-    another one (Service.qml 2026-11-19: the call's Connections took over
+    """A Connections block handles only signals of its target: rustrx, the
+    call engine (rustrx.voip, also as VoipPage's page.call), the models
+    (rustrx.rooms and the like) and Qt.application. One-line blocks count
+    too. Planted-bug: a block inserted in the middle of another one
+    (Service.qml 2026-11-19: the call's Connections took over
     onPushNotification, onCallAnswered and five more, and the service
     silently stopped notifying)."""
-    known = {"rustrx": _signals("src/Rustrx.h"), "rustrx.voip": _signals("src/Voip.h")}
+    model = {"dataChanged", "rowsInserted", "rowsRemoved", "rowsMoved", "modelReset", "layoutChanged",
+             "modelAboutToBeReset", "rowsAboutToBeRemoved", "rowsAboutToBeInserted"}
+    rooms = _signals("src/RoomModel.h") | model
+    timeline = _signals("src/TimelineModel.h") | model
+    voip = _signals("src/Voip.h")
+    known = {"rustrx": _signals("src/Rustrx.h"), "rustrx.voip": voip, "page.call": voip,
+             "rustrx.rooms": rooms, "rustrx.people": rooms, "rustrx.spaces": rooms, "rustrx.all": rooms,
+             "rustrx.timeline": timeline, "rustrx.thread": timeline,
+             "Qt.application": {"activeChanged", "stateChanged", "aboutToQuit"}}
     bad = []
+    seen = set()
     for p in QML:
         lines = p.read_text(encoding="utf-8").split("\n")
         i = 0
         while i < len(lines):
-            if re.match(r"\s*Connections\s*\{", lines[i]):
-                depth, j, target, handlers = 0, i, None, []
-                while j < len(lines):
-                    depth += lines[j].count("{") - lines[j].count("}")
-                    if j > i and depth == 1:
-                        m = re.match(r"\s*target:\s*([\w.]+)\s*$", lines[j])
-                        if m:
-                            target = m.group(1)
-                        m = re.match(r"\s*on([A-Z]\w*)\s*:", lines[j])
-                        if m:
-                            handlers.append((j + 1, m.group(1)[0].lower() + m.group(1)[1:]))
-                    if depth == 0 and j > i:
-                        break
-                    j += 1
+            line = lines[i]
+            if re.match(r"\s*Connections\s*\{", line):
+                # one line: Connections { target: x; onY: ... }
+                if line.count("{") == line.count("}"):
+                    m = re.search(r"target:\s*([\w.]+)", line)
+                    target = m.group(1) if m else None
+                    handlers = [(i + 1, h[0].lower() + h[1:]) for h in re.findall(r"\bon([A-Z]\w*)\s*:", line)]
+                    j = i
+                else:
+                    depth, j, target, handlers = 0, i, None, []
+                    while j < len(lines):
+                        depth += lines[j].count("{") - lines[j].count("}")
+                        if j > i and depth == 1:
+                            m = re.match(r"\s*target:\s*([\w.]+)\s*$", lines[j])
+                            if m:
+                                target = m.group(1)
+                            m = re.match(r"\s*on([A-Z]\w*)\s*:", lines[j])
+                            if m:
+                                handlers.append((j + 1, m.group(1)[0].lower() + m.group(1)[1:]))
+                        if depth == 0 and j > i:
+                            break
+                        j += 1
                 if target in known:
-                    for line, sig in handlers:
+                    seen.add(target)
+                    for line_no, sig in handlers:
                         if sig not in known[target]:
-                            bad.append(f"{p.name}:{line} on{sig[0].upper()}{sig[1:]} for {target}")
+                            bad.append(f"{p.name}:{line_no} on{sig[0].upper()}{sig[1:]} for {target}")
                 i = j
             i += 1
     assert not bad, bad
-
+    # the parser reaches every kind it knows (a parser that finds nothing passes too)
+    assert {"rustrx", "rustrx.voip", "page.call", "rustrx.rooms", "Qt.application"} <= seen, seen
 
 def test_every_translation_has_its_source_text():
     """Each message in the .ts carries the English text (the //% line);
