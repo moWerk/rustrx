@@ -80,12 +80,19 @@ private slots:
         v0.insert("voip", call);
         QVERIFY(accepts(quiet, v0));
         QVERIFY(accepts(quiet, with(good(), "uri", "https://matrix.to/#/#room:example.org")));
+        // the longest ring, taken from the stand-in right away: its coarse
+        // timer may say up to 5 % more than the 2 min
+        QJsonObject longest = good();
+        longest.insert("voip", with(longest.value("voip").toObject(), "expires_at",
+                                    double(QDateTime::currentMSecsSinceEpoch() + 126000)));
+        QVERIFY(accepts(quiet, longest));
     }
 
     // Planted-bug: share paths not checked (a planted file shares the
     // session). Planted-bug: ids not checked (a call answered in a room
     // id that is not one). Planted-bug: the link not checked. Planted-bug:
-    // no bound on the ring's end. Planted-bug: unknown keys pass.
+    // no bound on the ring's end (and the bound without the timer's 5 %:
+    // the longest ring dropped). Planted-bug: unknown keys pass.
     void anythingElseDropsTheFile_data()
     {
         QTest::addColumn<QJsonObject>("file");
@@ -116,6 +123,7 @@ private slots:
         QTest::newRow("voip: version long") << withVoip("version", QString(40, '1'));
         QTest::newRow("voip: offer a list") << withVoip("offer", QJsonArray());
         QTest::newRow("voip: offer huge") << withVoip("offer", QString((1 << 20) + 1, 'a'));
+        QTest::newRow("voip: rings 3 min") << withVoip("expires_at", double(QDateTime::currentMSecsSinceEpoch()) + 180000);
         QTest::newRow("voip: rings for a year") << withVoip("expires_at", double(QDateTime::currentMSecsSinceEpoch()) + 365.0 * 86400000);
         QTest::newRow("voip: no end") << withVoip("expires_at", "soon");
         QTest::newRow("voip: answer a string") << withVoip("answer", "yes");

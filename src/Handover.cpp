@@ -231,7 +231,7 @@ bool isRinging(const QJsonValue &v)
     const QJsonValue party = o.value("party_id");
     const QJsonValue version = o.value("version");
     const QJsonValue expires = o.value("expires_at");
-    const qint64 latest = QDateTime::currentMSecsSinceEpoch() + Keys::kVoipInviteLifetimeMaxMs + Keys::kHandoverClockSlackMs;
+    const qint64 latest = QDateTime::currentMSecsSinceEpoch() + Keys::kVoipInviteLifetimeMaxMs + Keys::kHandoverRingSlackMs;
     return isRoomId(o.value("room_id"))
             && isOpaque(o.value("call_id"))
             // a version 0 invite has no party
