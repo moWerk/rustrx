@@ -531,3 +531,47 @@ def test_room_reads_only_what_was_shown():
     senders = [m.start() for m in re.finditer(r"app\.markRead\(", page)]
     allowed = [page.index(_qml_function(page, f)) for f in ("sendReceipt", "moveLine")]
     assert len(senders) == 3 and all(any(a <= s < a + 900 for a in allowed) for s in senders)
+
+
+def _signals(header):
+    """The signals a C++ class offers QML: its signals and its NOTIFYs."""
+    s = read(header)
+    names = set(re.findall(r"NOTIFY\s+(\w+)", s))
+    for block in re.findall(r"\bsignals:(.*?)(?:\n\s*(?:public|private|protected)\b|\n};)", s, re.S):
+        names |= set(re.findall(r"void\s+(\w+)\s*\(", block))
+    return names
+
+
+def test_connections_handle_signals_of_their_target():
+    """A Connections block for rustrx or rustrx.voip handles only that
+    object's signals. Planted-bug: a block inserted in the middle of
+    another one (Service.qml 2026-11-19: the call's Connections took over
+    onPushNotification, onCallAnswered and five more, and the service
+    silently stopped notifying)."""
+    known = {"rustrx": _signals("src/Rustrx.h"), "rustrx.voip": _signals("src/Voip.h")}
+    bad = []
+    for p in QML:
+        lines = p.read_text(encoding="utf-8").split("\n")
+        i = 0
+        while i < len(lines):
+            if re.match(r"\s*Connections\s*\{", lines[i]):
+                depth, j, target, handlers = 0, i, None, []
+                while j < len(lines):
+                    depth += lines[j].count("{") - lines[j].count("}")
+                    if j > i and depth == 1:
+                        m = re.match(r"\s*target:\s*([\w.]+)\s*$", lines[j])
+                        if m:
+                            target = m.group(1)
+                        m = re.match(r"\s*on([A-Z]\w*)\s*:", lines[j])
+                        if m:
+                            handlers.append((j + 1, m.group(1)[0].lower() + m.group(1)[1:]))
+                    if depth == 0 and j > i:
+                        break
+                    j += 1
+                if target in known:
+                    for line, sig in handlers:
+                        if sig not in known[target]:
+                            bad.append(f"{p.name}:{line} on{sig[0].upper()}{sig[1:]} for {target}")
+                i = j
+            i += 1
+    assert not bad, bad
