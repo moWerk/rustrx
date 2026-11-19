@@ -20,12 +20,15 @@
 
 namespace ResourcePolicy { class ResourceSet; }
 
-// While a classic call runs, Sailfish's audio policy is asked for the
-// phone's call audio (class "ipcall"), as the dialer does for its calls:
-// the policy then treats the call's streams as a call, not as media. The
-// streams are bound by a property they carry (media.name, kStreamTag),
-// not only by process: in the sandbox the policy's D-Bus peer is not the
-// process that plays.
+// While a classic call runs, Sailfish's audio policy can be asked for the
+// phone's call audio, as the dialer does for its calls. Off for now (no
+// class): measured on the Jolla Phone 2026, "ipcall" (the communication
+// mode, earpiece and the phone's echo cancelling) is refused to an app
+// ("Permission denied"), and "call" is granted but is the cellular mode:
+// earpiece, but the microphone goes silent and playback is corked. A dev
+// command sets a class for further tries. The streams are bound by a
+// property they carry (media.name, kStreamTag): in the sandbox the
+// policy's D-Bus peer is not the process that plays.
 class CallAudio : public QObject
 {
     Q_OBJECT
@@ -39,6 +42,6 @@ public:
 private:
     ResourcePolicy::ResourceSet *m_set = nullptr;
     bool m_active = false;
-    QString m_class = QStringLiteral("ipcall");
+    QString m_class;   // none: not asked
     bool m_byProcess = false;
 };

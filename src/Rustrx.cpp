@@ -422,6 +422,11 @@ QString Rustrx::dev(const QString &json)
     } else if (req.contains("cmd")) {
         command(req);
         out["ok"] = true;
+    } else if (req.value("quit").toBool()) {
+        // tests: a clean exit before an install (a kill while the window is
+        // up has crashed lipstick, on both phones)
+        QTimer::singleShot(200, qApp, &QCoreApplication::quit);
+        out["ok"] = true;
     } else if (req.contains("voip")) {
         // calls driven from a shell: place (room_id, invitee, tone), answer,
         // hangup, status; "tone" plays a test tone instead of the microphone

@@ -39,7 +39,7 @@ void CallAudio::configure(const QString &applicationClass, bool byProcess)
 
 void CallAudio::setActive(bool on)
 {
-    if (on == m_active)
+    if (on == m_active || (on && m_class.isEmpty()))
         return;
     m_active = on;
     if (!m_set) {
