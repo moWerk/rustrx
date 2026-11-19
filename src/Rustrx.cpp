@@ -403,6 +403,7 @@ QString Rustrx::dev(const QString &json)
     qInfo().noquote() << "dev" << req.value("cmd", req.value("ui", req.keys().value(0))).toString();
     QJsonObject out;
     out["stand_in"] = m_handover.standIn();
+    out["push_wake"] = m_handover.pushWake();
     // the stand-in has no window: no pages, no call page
     if (m_handover.standIn() && (req.contains("ui") || req.contains("voip") || req.value("cmd").toString().startsWith(QLatin1String("call_")))) {
         out["error"] = QStringLiteral("the stand-in is running, not the app");

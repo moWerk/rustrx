@@ -37,6 +37,7 @@
 #include "LocalOnly.h"
 #include "Rustrx.h"
 #include "UnifiedPush.h"
+#include "Voip.h"
 #include "DebugLog.h"
 #include "FrameStats.h"
 #include "KeyboardSlide.h"
@@ -92,6 +93,7 @@ int main(int argc, char *argv[])
     qmlRegisterUncreatableType<RoomModel>("Rustrx", 1, 0, "RoomModel", "owned by rustrx");
     qmlRegisterUncreatableType<TimelineModel>("Rustrx", 1, 0, "TimelineModel", "owned by rustrx");
     qmlRegisterUncreatableType<UnifiedPush>("Rustrx", 1, 0, "UnifiedPush", "owned by rustrx");
+    qmlRegisterUncreatableType<Voip>("Rustrx", 1, 0, "Voip", "owned by rustrx");
     // the tuned numbers (import Rustrx 1.0): one registration serves the
     // window's engine and Service.qml's
     qmlRegisterSingletonType(QUrl::fromLocalFile(SailfishApp::pathTo(QStringLiteral("qml/singletons/Tunables.qml")).toLocalFile()),
