@@ -21,6 +21,14 @@
    "test": "static test_connections_handle_signals_of_their_target (fails on the broken file)"
   },
   {
+   "id": "A3",
+   "severity": "medium",
+   "area": "call page (VoipPage.qml)",
+   "status": "FIXED 3bcda71",
+   "summary": "VoipPage used Tunables without importing the Rustrx module: a ReferenceError at the call's end on the phone (found by grepping the -18 log; qmllint does not see it).",
+   "test": "static test_qml_that_uses_tunables_imports_them; -19 on both phones: no QML errors since start"
+  },
+  {
    "id": "S1",
    "severity": "medium",
    "area": "calls (call.rs, Voip.cpp)",
