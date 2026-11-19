@@ -294,8 +294,11 @@ Page {
             }
 
 
-            //% "Other ways to log in"
-            SectionHeader { visible: !page.oauth; text: qsTrId("rustrx-se-other-ways") }
+            SectionHeader {
+                visible: !page.oauth
+                //% "Other ways to log in"
+                text: qsTrId("rustrx-se-other-ways")
+            }
 
             PageButton {
                 visible: !page.oauth

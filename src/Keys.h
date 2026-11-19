@@ -95,6 +95,8 @@ static const char kEnvPushWake[] = "RUSTRX_PUSH_WAKE";
 // in the config folder: the stand-in's handover, and the background mode
 // flag (systemd/harbour-rustrx.service checks it with ConditionPathExists)
 static const char kHandoverFile[] = "handover.json";
+// the handover file counts only this soon after the stand-in wrote it
+static const qint64 kHandoverMaxAgeMs = 120000;
 static const char kBackgroundFlag[] = "background";
 // in the data folder: push state, the dev command flag, the debug logs
 static const char kPushStateFile[] = "push.json";

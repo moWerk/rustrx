@@ -120,8 +120,9 @@ stickers. It also works well as the client for a second account next to another 
   turns green once the store is encrypted, the device verified, a recovery
   key set and the other devices verified, with each gap named; the
   logged-in devices, storage and the debug log. Privacy: read receipts,
-  typing, showing as online (off by default), photos sent without their
-  metadata, only which way up they are (on by default), message text and chat names outside Rustrx,
+  typing, showing as online (off by default), photos (JPEG) sent without
+  their metadata, only which way up they are (on by default; videos go as
+  they are), message text and chat names outside Rustrx,
   invitations from strangers, ignored users. App: appearance (avatar
   corners from square to round, preview lines, the tabs), notifications.
   About. Portrait and landscape, or locked to portrait.

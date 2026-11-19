@@ -117,8 +117,8 @@ SilicaFlickable {
         TextSwitch {
             //% "Remove metadata from photos"
             text: qsTrId("rustrx-la-strip-metadata")
-            //% "Photos leave without the place and time they were taken, the camera and anything else it noted, only which way up they are. Off: they go as the camera saved them."
-            description: qsTrId("rustrx-la-strip-metadata-hint")
+            //% "Photos (JPEG, as the camera takes them) leave without the place and time they were taken, the camera and anything else it noted, only which way up they are. Videos and other pictures go as they are. Off: photos go as the camera saved them."
+            description: qsTrId("rustrx-la-strip-metadata-hint2")
             checked: rustrx.stripMetadata
             automaticCheck: false
             onClicked: rustrx.stripMetadata = !rustrx.stripMetadata

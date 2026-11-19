@@ -23,6 +23,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QDateTime>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -126,6 +127,15 @@ bool Handover::handOver()
 void Handover::takeHandover()
 {
     QFile f(handoverPath());
+    // written by the stand-in seconds before this start; an older one was
+    // left over, or put there by someone else (what it asks for, a call
+    // answered or a file shared, is not taken from a stale file)
+    const QFileInfo info(f);
+    if (info.exists() && info.lastModified().msecsTo(QDateTime::currentDateTime()) > Keys::kHandoverMaxAgeMs) {
+        qWarning() << "stand-in: handover file too old, ignored";
+        f.remove();
+        return;
+    }
     if (!f.open(QIODevice::ReadOnly))
         return;
     const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();

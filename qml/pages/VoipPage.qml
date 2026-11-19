@@ -120,8 +120,10 @@ Page {
                 return qsTrId("rustrx-la-voip-ended")
             }
         }
+        // only where it is true: in an unencrypted room the call's keys
+        // (the DTLS fingerprints in the SDP) pass the server in the clear
         Label {
-            visible: page.call.state === "connected"
+            visible: page.call.state === "connected" && rustrx.roomInfo(page.call.roomId).encrypted === true
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
             font.pixelSize: Theme.fontSizeExtraSmall

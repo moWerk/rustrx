@@ -196,12 +196,27 @@ ListItem {
         }
     }
 
+    // A received file opens in the app its type belongs to; its name came
+    // from the sender, so the path is encoded piece by piece (a "#" or "?"
+    // in it opened another file), and installers and scripts are not
+    // started from a message: those stay in Downloads
+    function openFile(path) {
+        var ext = (/\.([a-z0-9]+)$/i.exec(path) || ["", ""])[1].toLowerCase()
+        if (["rpm", "apk", "deb", "sh", "desktop", "run", "bin", "appimage"].indexOf(ext) >= 0) {
+            //: %1 where the file was saved
+            //% "Saved to %1. Install it from there yourself if you trust it."
+            Notices.show(qsTrId("rustrx-no-saved-not-opened").arg(path))
+            return
+        }
+        Qt.openUrlExternally("file://" + path.split("/").map(encodeURIComponent).join("/"))
+    }
+
     Connections {
         target: rustrx
         onMediaExported: {
             if (!exporting || eventId !== model.event_id) return
             exporting = false
-            if (exportOpens) Qt.openUrlExternally("file://" + path)
+            if (exportOpens) msg.openFile(path)
             else Notices.show(qsTrId("rustrx-no-saved").arg(path))
         }
         onErrorOccurred: if (exporting && cmd === "get_media") exporting = false

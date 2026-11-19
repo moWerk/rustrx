@@ -364,7 +364,7 @@ def test_external_links_go_through_one_gate():
             if "Qt.openUrlExternally(" in line:
                 hits.append(f"{p.name}:{i}: {line.strip()}")
     allowed = [h for h in hits if h.startswith("harbour-rustrx.qml") and "Qt.openUrlExternally(url)" in h
-               or 'Qt.openUrlExternally("file://" + path)' in h]
+               or 'Qt.openUrlExternally("file://" + path.split("/").map(encodeURIComponent).join("/"))' in h]
     assert hits == allowed and len(allowed) == 2, hits
 
 
@@ -575,3 +575,13 @@ def test_connections_handle_signals_of_their_target():
                 i = j
             i += 1
     assert not bad, bad
+
+
+def test_every_translation_has_its_source_text():
+    """Each message in the .ts carries the English text (the //% line);
+    without it the id itself shows on screen. Planted-bug: the //% above
+    an element instead of its text: binding (LoginPage's "Other ways to
+    log in" showed "rustrx-se-other-ways" since 0.4.7)."""
+    ts = read("translations/harbour-rustrx.ts")
+    empty = re.findall(r'<message id="([^"]+)"[^>]*>\s*<source>\s*</source>', ts)
+    assert not empty, empty[:20]

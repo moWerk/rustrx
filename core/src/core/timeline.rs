@@ -706,6 +706,11 @@ impl Core {
                     .unwrap_or_else(|| format!("{safe}.{ext}"));
                 let dir = PathBuf::from(dir);
                 tokio::fs::create_dir_all(&dir).await?;
+                // Downloads is open to other apps: a link put there in the
+                // folder's place would lead the copy into Rustrx's own files
+                if tokio::fs::symlink_metadata(&dir).await?.file_type().is_symlink() {
+                    bail!("{} is a link, not a folder", dir.display());
+                }
                 let mut path = dir.join(&original);
                 if path.exists() {
                     path = dir.join(format!("{safe}-{original}"));
@@ -715,7 +720,15 @@ impl Core {
             None => self.data_dir.join(MEDIA_DIR).join(format!("{safe}{}.{ext}", if thumb { "-thumb" } else { "" })),
         };
         self.same_login(generation).await?;
-        tokio::fs::write(&path, &bytes).await?;
+        if exported {
+            // a new file only: never over one, never through a link left there
+            use tokio::io::AsyncWriteExt;
+            let mut f = tokio::fs::OpenOptions::new().write(true).create_new(true).open(&path).await?;
+            f.write_all(&bytes).await?;
+            f.flush().await?;
+        } else {
+            tokio::fs::write(&path, &bytes).await?;
+        }
         self.emit(json!({"ev": "media", "room_id": room.room_id().as_str(), "event_id": event_id,
                          "thumb": thumb, "exported": exported,
                          "path": path.to_string_lossy()}));

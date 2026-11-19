@@ -23,6 +23,7 @@
 #include <QFile>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QSaveFile>
 #include <QStandardPaths>
 
 static QtMessageHandler s_previous = nullptr;
@@ -126,8 +127,12 @@ QString DebugLog::collect(const QString &dir, const QString &header)
     QDir().mkpath(dir);
     const QString out = dir + QStringLiteral("/rustrx-log-")
             + QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-hhmm")) + QStringLiteral(".txt");
-    QFile file(out);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    // written beside and renamed into place: a link planted under that
+    // name (Downloads is open to other apps) is replaced, never written
+    // through into Rustrx's own files
+    QSaveFile file(out);
+    file.setDirectWriteFallback(false);
+    if (!file.open(QIODevice::WriteOnly))
         return QString();
     file.write(header.toUtf8() + "\n");
     QMutexLocker locker(&s_lock);
@@ -141,5 +146,5 @@ QString DebugLog::collect(const QString &dir, const QString &header)
             file.write(part.readAll());
         }
     }
-    return out;
+    return file.commit() ? out : QString();
 }

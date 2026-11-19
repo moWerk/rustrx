@@ -233,8 +233,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-se-other-ways">
-        <source></source>
-        <oldsource>Other ways to log in</oldsource>
+        <source>Other ways to log in</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-bt-sso">
@@ -2801,10 +2800,6 @@
         <source>Remove metadata from photos</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-strip-metadata-hint">
-        <source>Photos leave without the place and time they were taken, the camera and anything else it noted, only which way up they are. Off: they go as the camera saved them.</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-no-copied">
         <source>Copied</source>
         <translation type="unfinished"></translation>
@@ -2863,6 +2858,14 @@
     </message>
     <message id="rustrx-la-voip-swipe-hint">
         <source>Swipe left or right to answer, up to decline</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-saved-not-opened">
+        <source>Saved to %1. Install it from there yourself if you trust it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-strip-metadata-hint2">
+        <source>Photos (JPEG, as the camera takes them) leave without the place and time they were taken, the camera and anything else it noted, only which way up they are. Videos and other pictures go as they are. Off: photos go as the camera saved them.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
