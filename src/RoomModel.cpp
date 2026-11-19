@@ -100,8 +100,10 @@ QString RoomModel::nameHtml(const QVariantMap &room) const
     return Twemoji::inHtml(StyledText::escaped(room.value(QStringLiteral("name")).toString(), false), m_nameEmojiSize);
 }
 
-// the last message likewise: in one line its white space collapses first,
-// so the pictures' attributes keep their spaces
+// the last message escaped, in one line or with its breaks; its emoji stay
+// text in the system font, as in the message field: as pictures they were
+// drawn out of place by the preview's label (its first line shifted for the
+// icons, its fade), a gap or a picture a line too low on the phone
 QString RoomModel::previewHtml(const QVariantMap &room) const
 {
     QString b = StyledText::escaped(room.value(QStringLiteral("preview")).toString(), false);
@@ -109,7 +111,7 @@ QString RoomModel::previewHtml(const QVariantMap &room) const
         b.replace(QLatin1Char('\n'), QLatin1String("<br>"));
     else
         b = StyledText::oneLine(b);
-    return Twemoji::inHtml(b, m_previewEmojiSize);
+    return b;
 }
 
 void RoomModel::rerender(bool name)

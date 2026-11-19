@@ -98,6 +98,14 @@ class TestGolden : public QObject
         return bare.match(text).hasMatch();
     }
 
+    // The third intended change (0.6.0): a preview keeps its emoji as text
+    // (the label drew the pictures out of place). Made pictures again here,
+    // a preview must be the old output exactly, so nothing else changed.
+    static QString previewAsBefore(const QString &kind, const QString &now)
+    {
+        return kind.startsWith(QLatin1String("preview")) ? Twemoji::inHtml(now, kPreview) : now;
+    }
+
     // every case of a kind (and message type, for bodies): the number
     // checked; a difference fails with the first few shown
     void check(const QString &kind, const QString &type = QString())
@@ -118,7 +126,7 @@ class TestGolden : public QObject
             }
             ++checked;
             const QString want = withI3(c.value("out").toString().replace(QStringLiteral("@DIR@"), kDir));
-            const QString got = now(kind, in);
+            const QString got = previewAsBefore(kind, now(kind, in));
             if (got != want && ++differ <= 3)
                 qWarning("%s\n  input: %s\n  old:   %s\n  now:   %s", qPrintable(kind),
                          QJsonDocument(c.value("in").toObject()).toJson(QJsonDocument::Compact).constData(),
@@ -167,6 +175,16 @@ private slots:
     void previews() { check(QStringLiteral("preview")); }
     // Planted-bug: a multi-line preview's "\n" become "<br/>".
     void multiLinePreviews() { check(QStringLiteral("preview_multi")); }
+    // Planted-bug: the preview's emoji made Twemoji pictures again.
+    void previewEmojiStayText()
+    {
+        const QString party = QString::fromUtf8("Your prawn is done \xF0\x9F\x8E\x89 I copied all");
+        for (bool multi : { false, true }) {
+            const QString html = viaRoom({ { "name", "dodoradio" }, { "preview", party } }, multi, "preview_html");
+            QVERIFY2(!html.contains(QLatin1String("<img")), qPrintable(html));
+            QCOMPARE(html, party);
+        }
+    }
 };
 
 QTEST_GUILESS_MAIN(TestGolden)
