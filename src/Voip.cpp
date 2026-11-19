@@ -445,8 +445,11 @@ bool Voip::startPipeline()
         speex_echo_ctl(m_echo, SPEEX_ECHO_SET_SAMPLING_RATE, &rate);
         m_denoise = speex_preprocess_state_init(frame, Keys::kVoipAecRate);
         speex_preprocess_ctl(m_denoise, SPEEX_PREPROCESS_SET_ECHO_STATE, m_echo);
-        int on = 1;
-        speex_preprocess_ctl(m_denoise, SPEEX_PREPROCESS_SET_DENOISE, &on);
+        // only the echo's remains go; noise suppression on top took the
+        // far end's tone down 15 dB and made voices crackle (the author)
+        int off = 0;
+        speex_preprocess_ctl(m_denoise, SPEEX_PREPROCESS_SET_DENOISE, &off);
+        speex_preprocess_ctl(m_denoise, SPEEX_PREPROCESS_SET_AGC, &off);
         m_micIn.clear();
         m_farIn.clear();
         m_aecSrc = gst_bin_get_by_name(GST_BIN(m_pipe), "aec");
@@ -645,7 +648,9 @@ void Voip::onPadAdded(GstElement *, GstPad *pad, void *self)
         return;
     const QString sink = v->m_testTone
             ? QStringLiteral("fakesink sync=false")
-            : QStringLiteral("pulsesink stream-properties=\"props,media.role=(string)phone,media.name=(string)rustrx-call\"");
+            // at full volume: Sailfish's stream restore starts the "phone"
+            // role 15 dB down, the far end was barely audible
+            : QStringLiteral("pulsesink volume=1.0 stream-properties=\"props,media.role=(string)phone,media.name=(string)rustrx-call\"");
     // with echo cancelling, what is played also goes to Speex as the echo
     // to take out of the microphone
     const QString ref = v->m_aec
