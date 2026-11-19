@@ -215,6 +215,10 @@ static const int kVoipLevelMs = 500;
 // the receiving jitter buffer (ms) and the Opus bitrate (bit/s)
 static const int kVoipJitterMs = 100;
 static const int kVoipOpusBitrate = 32000;
+// sound waits at most this long (ms) in the call's queues, before the
+// encoder and before the player: older sound is dropped, so a stalled link
+// or a player still starting never plays it back late
+static const int kVoipQueueMs = 200;
 // echo cancelling (Speex): its rate, frame and how long an echo it learns
 static const int kVoipAecRate = 16000;
 static const int kVoipAecFrameMs = 10;

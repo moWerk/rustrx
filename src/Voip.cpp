@@ -538,9 +538,10 @@ bool Voip::startPipeline()
             : source + QStringLiteral(" ! audioconvert ! audioresample");
     const QString desc = QStringLiteral(
             "webrtcbin name=w bundle-policy=max-bundle latency=%1 "
-            "%2 ! volume name=mic ! queue ! opusenc bitrate=%3 ! "
+            "%2 ! volume name=mic ! "
+            "queue leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=%4 ! opusenc bitrate=%3 ! "
             "rtpopuspay pt=111 ! application/x-rtp,media=audio,encoding-name=OPUS,payload=111,clock-rate=48000 ! w.")
-            .arg(Keys::kVoipJitterMs).arg(mic).arg(Keys::kVoipOpusBitrate);
+            .arg(Keys::kVoipJitterMs).arg(mic).arg(Keys::kVoipOpusBitrate).arg(qint64(Keys::kVoipQueueMs) * 1000000);
     GError *err = nullptr;
     m_pipe = gst_parse_launch(desc.toUtf8().constData(), &err);
     if (m_pipe)
@@ -784,10 +785,15 @@ void Voip::onPadAdded(GstElement *, GstPad *pad, void *self)
                              "audio/x-raw,format=S16LE,rate=%1,channels=1,layout=interleaved ! "
                              "appsink name=farref emit-signals=true sync=false").arg(Keys::kVoipAecRate)
             : QString();
+    // leaky: while the phone switches its audio to the call, the player
+    // can stall for seconds; what arrives meanwhile is dropped instead of
+    // played in order afterwards, seconds late (the author's first calls)
+    const QString leaky = QStringLiteral("queue leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=%1")
+            .arg(qint64(Keys::kVoipQueueMs) * 1000000);
     const QString desc = QStringLiteral(
-            "queue ! rtpopusdepay ! opusdec ! audioconvert ! audioresample ! "
-            "level interval=%1 post-messages=true ! tee name=far ! queue ! %2%3")
-            .arg(qint64(Keys::kVoipLevelMs) * 1000000).arg(sink, ref);
+            "%4 ! rtpopusdepay ! opusdec ! audioconvert ! audioresample ! "
+            "level interval=%1 post-messages=true ! tee name=far ! %4 ! %2%3")
+            .arg(qint64(Keys::kVoipLevelMs) * 1000000).arg(sink, ref, leaky);
     GError *err = nullptr;
     GstElement *bin = gst_parse_bin_from_description(desc.toUtf8().constData(), TRUE, &err);
     if (err) {
