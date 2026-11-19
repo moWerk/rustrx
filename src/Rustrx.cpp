@@ -16,6 +16,7 @@
  */
 #include "Rustrx.h"
 #include "DebugLog.h"
+#include "DevHook.h"
 #include "Media.h"
 #include "RoomLists.h"
 #include "RoomModel.h"
@@ -442,13 +443,11 @@ QString Rustrx::dev(const QString &json)
         out["error"] = QStringLiteral("the stand-in is running, not the app");
         return QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Compact));
     }
-    // never through a test hook, flag or not: what hands over keys or the
-    // session, or ends it
-    static const QStringList refused{ "export_keys", "import_keys", "logout", "delete_device",
-                                      "login_password", "login_sso", "login_oauth", "login_qr", "qr_check_code", "recovery_recover", "recovery_enable",
-                                      "recovery_reset", "identity_reset", "push_set", "push_remove" };
-    if (refused.contains(req.value("cmd").toString())) {
-        out["error"] = QStringLiteral("not a dev command");
+    // only what the test tooling sends (DevHook.h), flag or not
+    const QString refused = DevHook::refusal(req);
+    if (!refused.isEmpty()) {
+        qWarning().noquote() << "dev: refused," << refused;
+        out["error"] = refused;
     } else if (req.contains("cmd")) {
         command(req);
         out["ok"] = true;

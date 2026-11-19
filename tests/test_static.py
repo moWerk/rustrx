@@ -386,19 +386,29 @@ def test_every_audit_has_its_ledger_and_is_listed():
         assert p.name in index, p.name
 
 
-def test_dev_hook_refuses_keys_and_session():
-    """The dev D-Bus hook runs core commands for tests; what hands over keys
-    or the session, or ends it, is refused there even with its flag file
-    (audit I9). Planted-bug: drop export_keys from the refused list."""
-    src = read("src/Rustrx.cpp")
-    block = re.search(r"static const QStringList refused\{(.*?)\};", src, re.S)
+def test_dev_hook_takes_only_the_test_commands():
+    """The dev D-Bus hook runs core commands for tests: only those on its
+    allowlist (src/DevHook.h, audit S4; before, a refused list, audit I9),
+    which must be real commands and none that hands over keys or the
+    session, ends it, or sends or fetches files. Rustrx::dev checks it
+    before anything runs. Planted-bug: export_keys on the allowlist.
+    Planted-bug: the check dropped from Rustrx::dev."""
+    src = read("src/DevHook.h")
+    block = re.search(r"QMap<QString, QStringList> commands\{(.*?)\};", src, re.S)
     assert block
-    refused = set(re.findall(r'"([a-z_]+)"', block.group(1)))
-    must = {"export_keys", "import_keys", "logout", "delete_device", "login_password",
-            "login_sso", "login_oauth", "recovery_recover", "recovery_enable", "recovery_reset",
-            "identity_reset", "push_set", "push_remove"}
-    assert must <= refused
-    assert refused <= protocol_commands()
+    allowed = set(re.findall(r'\{ "([a-z_]+)", \{', block.group(1)))
+    assert allowed == {"call_start", "refresh_rooms"}
+    assert allowed <= protocol_commands()
+    never = {"export_keys", "import_keys", "logout", "delete_device", "login_password",
+             "login_sso", "login_oauth", "login_qr", "qr_check_code", "recovery_recover",
+             "recovery_enable", "recovery_reset", "identity_reset", "push_set", "push_remove",
+             "send_file", "get_media"}
+    assert not allowed & never
+    dev = read("src/Rustrx.cpp")
+    dev = dev[dev.index("QString Rustrx::dev("):]
+    dev = dev[:dev.index("\n}\n")]
+    assert "DevHook::refusal(req)" in dev
+    assert dev.index("DevHook::refusal(req)") < dev.index("command(req)")
 
 
 def test_names_live_in_one_place():

@@ -55,6 +55,7 @@ HEADERS += src/Rustrx.h \
     src/Mp4.h \
     src/Png.h \
     src/Wipe.h \
+    src/DevHook.h \
     src/rustrx_core.h
 
 # the prebuilt core: lib/librustrx.so at build time, next to the data at run time

@@ -3,3 +3,4 @@
 # runs them). The app's own sources are compiled in unchanged.
 TEMPLATE = subdirs
 SUBDIRS = twemoji renderhtml golden roomsort exif png mp4 readpoint voip
+SUBDIRS = twemoji renderhtml golden roomsort exif mp4 readpoint voip devhook
