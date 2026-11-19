@@ -379,6 +379,7 @@ QVariantMap Voip::ringing() const
         return QVariantMap();
     return { { "room_id", m_roomId }, { "call_id", m_callId }, { "party_id", m_peerParty },
              { "version", version() }, { "offer", m_remoteOffer }, { "peer_name", m_peerName },
+             { "peer_user", m_peerUser },
              { "expires_at", nowMs() + m_inviteTimer.remainingTime() } };
 }
 
@@ -394,6 +395,8 @@ void Voip::takeRinging(const QVariantMap &invite)
     m_version = invite.value("version");
     m_remoteOffer = invite.value("offer").toString();
     m_peerName = invite.value("peer_name").toString();
+    // bound to the caller as in the stand-in: others in the room cannot end it
+    m_peerUser = invite.value("peer_user").toString();
     m_endReason.clear();
     m_inviteTimer.start(int(left));
     setState(QStringLiteral("incoming"));

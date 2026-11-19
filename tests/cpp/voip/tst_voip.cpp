@@ -182,6 +182,11 @@ private slots:
         QCOMPARE(app.state(), QStringLiteral("incoming"));
         QCOMPARE(app.peerName(), QStringLiteral("A"));
         QCOMPARE(app.roomId(), QStringLiteral("!dm"));
+        // still bound to the caller after the handover
+        // Planted-bug: takeRinging leaves the peer unbound
+        app.handleEvent({ { "type", "m.call.hangup" }, { "room_id", "!dm" }, { "sender", "@c:example.org" }, { "own", false },
+                          { "content", QVariantMap{ { "call_id", "c1" }, { "version", "1" } } } });
+        QCOMPARE(app.state(), QStringLiteral("incoming"));
 
         Voip late;
         QVariantMap old = invite;
@@ -389,6 +394,24 @@ private slots:
 
     // Planted-bug: the credentials go in unescaped (an "@" in the password
     // breaks the address).
+    // Relay only: what goes out names no address of the phone's own.
+    // Planted-bug: relayOnlySdp keeps every candidate line.
+    void relayOnlyKeepsOnlyRelays()
+    {
+        QVERIFY(Voip::isRelayCandidate(QStringLiteral("candidate:1 1 UDP 5 203.0.113.7 50000 typ relay raddr 0.0.0.0 rport 0")));
+        QVERIFY(!Voip::isRelayCandidate(QStringLiteral("candidate:2 1 UDP 2015 192.168.1.20 40000 typ host")));
+        QVERIFY(!Voip::isRelayCandidate(QStringLiteral("candidate:3 1 UDP 1677 198.51.100.4 40000 typ srflx raddr 192.168.1.20 rport 40000")));
+        const QString sdp = QStringLiteral("v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"
+                                           "a=candidate:2 1 UDP 2015 192.168.1.20 40000 typ host\r\n"
+                                           "a=candidate:1 1 UDP 5 203.0.113.7 50000 typ relay raddr 0.0.0.0 rport 0\r\n"
+                                           "a=mid:audio0\r\n");
+        const QString out = Voip::relayOnlySdp(sdp);
+        QVERIFY(!out.contains(QStringLiteral("192.168.1.20")));
+        QVERIFY(out.contains(QStringLiteral("typ relay")));
+        QVERIFY(out.contains(QStringLiteral("a=mid:audio0\r\n")));
+        QCOMPARE(Voip::mids(out), QStringList{ QStringLiteral("audio0") });
+    }
+
     void turnAddresses()
     {
         QCOMPARE(Voip::turnUrl("turn:turn.example.org:3478?transport=udp", "1700:@u:ex.org", "p@ss/w"),
