@@ -103,6 +103,9 @@ private slots:
     {
         QByteArray j("\xFF\xD8\xFF\xE0", 4);
         QVERIFY(!Png::strip(j));
+        // a PNG's chunks behind another signature
+        QByteArray other = QByteArray("GIF89a\0\0", 8) + picture().mid(8);
+        QVERIFY(!Png::strip(other));
     }
 
     void aCutFileIsRefused()

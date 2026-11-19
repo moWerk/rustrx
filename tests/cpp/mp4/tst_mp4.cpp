@@ -217,6 +217,11 @@ private slots:
         QBuffer b2(&bare);
         b2.open(QIODevice::ReadWrite);
         QVERIFY(!Mp4::strip(b2, 1));
+        // boxes, but no ftyp first
+        QByteArray noFtyp = phone().mid(12);
+        QBuffer b3(&noFtyp);
+        b3.open(QIODevice::ReadWrite);
+        QVERIFY(!Mp4::strip(b3, 1));
     }
 
     void aCutHeaderIsRefused()
