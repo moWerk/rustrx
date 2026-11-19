@@ -166,10 +166,10 @@ void CallRoute::begin()
         return;
     case Op::Speaker:
         m_routeSpeaker = m_job.speaker;
-        if (!m_routed || m_sink.isEmpty())
+        if (!m_routed || (m_sink.isEmpty() && !m_ucm))
             done();   // taken up by the next activation
         else if (ready)
-            setPort(callPort(m_routeSpeaker, m_headsetPort), Step::Port);
+            setSpeakerRoute();
         else
             connectPulse();
         return;
@@ -210,7 +210,7 @@ void CallRoute::onState(pa_context *ctx, void *self)
             r->restoreProfile();
             break;
         case Op::Speaker:
-            r->setPort(callPort(r->m_routeSpeaker, r->m_headsetPort), Step::Port);
+            r->setSpeakerRoute();
             break;
         }
     } else if (!PA_CONTEXT_IS_GOOD(state)) {
@@ -257,11 +257,17 @@ void CallRoute::onCard(pa_context *, const pa_card_info *i, int eol, void *self)
         r->giveUp("the cards could not be listed");
         return;
     }
-    const int found = card(r->m_cards);
+    int found = card(r->m_cards);
+    r->m_ucm = false;
     if (found < 0) {
-        qInfo() << "voip: no communication mode here, the call stays on the loudspeaker";
-        r->done();
-        return;
+        found = ucmCard(r->m_cards);
+        if (found < 0) {
+            qInfo() << "voip: no communication mode or earpiece profile here, the call stays on the loudspeaker";
+            r->done();
+            return;
+        }
+        r->m_ucm = true;
+        r->m_ucmCard = r->m_cards.at(found);
     }
     // a route that was never restored (PulseAudio gave up) keeps what was
     // there before it
@@ -269,14 +275,27 @@ void CallRoute::onCard(pa_context *, const pa_card_info *i, int eol, void *self)
         r->m_card = r->m_cards.at(found).name;
         r->m_cardProfile = r->m_cards.at(found).active;
     }
+    r->m_targetProfile = r->m_ucm ? ucmCallProfile(r->m_ucmCard, r->m_cardProfile, r->m_routeSpeaker)
+                                  : QString::fromLatin1(kCommunication);
     r->setProfile();
 }
 
 void CallRoute::setProfile()
 {
     m_step = Step::Profile;
-    track(pa_context_set_card_profile_by_name(m_ctx, m_card.toUtf8().constData(), kCommunication,
+    track(pa_context_set_card_profile_by_name(m_ctx, m_card.toUtf8().constData(), m_targetProfile.toUtf8().constData(),
                                               &CallRoute::onSuccess, this));
+}
+
+// the speaker button: a port on droid, a profile on mainline
+void CallRoute::setSpeakerRoute()
+{
+    if (m_ucm) {
+        m_targetProfile = ucmCallProfile(m_ucmCard, m_cardProfile, m_routeSpeaker);
+        setProfile();
+    } else {
+        setPort(callPort(m_routeSpeaker, m_headsetPort), Step::Port);
+    }
 }
 
 void CallRoute::listSinks()
@@ -365,6 +384,7 @@ void CallRoute::restored()
     m_sinkPort.clear();
     m_routed = false;
     m_routeSpeaker = false;
+    m_ucm = false;
     done();
 }
 
@@ -378,8 +398,18 @@ void CallRoute::onSuccess(pa_context *, int success, void *self)
     switch (r->m_step) {
     case Step::Profile:
         if (!success)
-            qWarning() << "voip: the communication mode was refused";
-        r->listSinks();
+            qWarning().noquote() << "voip: the profile" << r->m_targetProfile << "was refused";
+        if (r->m_ucm) {
+            // the profile is the output: nothing more to set
+            if (!r->m_routed)
+                qInfo().noquote() << "voip: call route on" << r->m_card << "was" << r->m_cardProfile;
+            if (success)
+                qInfo().noquote() << "voip: call heard on" << r->m_targetProfile << "of" << r->m_card;
+            r->m_routed = true;
+            r->done();
+        } else {
+            r->listSinks();
+        }
         break;
     case Step::Port:
         if (success)

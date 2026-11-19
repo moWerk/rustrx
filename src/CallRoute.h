@@ -77,6 +77,7 @@ private:
     void connectPulse();
     void listCards();
     void setProfile();
+    void setSpeakerRoute();
     void listSinks();
     void setPort(const QString &port, Step step);
     void restoreProfile();
@@ -114,6 +115,10 @@ private:
     QString m_card, m_cardProfile, m_sink, m_sinkPort;
     QString m_headsetPort;             // a plugged headset's port, if any
     QString m_portName;                // the port being set
+    // mainline (ALSA UCM): outputs are profiles, the call switches those
+    bool m_ucm = false;
+    CallRoutePlan::Card m_ucmCard;
+    QString m_targetProfile;           // the profile being set
 
     // the destructor's wait for the queue to empty
     QMutex m_idleLock;

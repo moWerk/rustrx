@@ -49,6 +49,27 @@ class TestCallRoute : public QObject
 
 private slots:
     void initTestCase() { s_previous = qInstallMessageHandler(capture); }
+    // The mainline Pro1-X's card as pactl lists it (2026-11-19): the call
+    // goes to the HiFi earpiece profile, never a Voice Call one, the
+    // speaker button to HiFi's speaker, headphones stay headphones.
+    // Planted-bug: ucmProfile matches "Voice Call (Earpiece, Mic)" first.
+    void mainlineProfiles()
+    {
+        const CallRoutePlan::Card pro1x{ QStringLiteral("alsa_card.Pro1X"), QStringLiteral("HiFi (Mic, Speaker)"),
+            { QStringLiteral("Voice Call (Earpiece, Mic)"), QStringLiteral("Voice Call (Headphones, Mic)"),
+              QStringLiteral("Voice Call (Mic, Speaker)"), QStringLiteral("HiFi (Earpiece, Mic)"),
+              QStringLiteral("HiFi (Headphones, Mic)"), QStringLiteral("HiFi (Mic, Speaker)"), QStringLiteral("off") } };
+        const CallRoutePlan::Card droid{ QStringLiteral("droid_card.primary"), QStringLiteral("default"),
+            { QStringLiteral("default"), QStringLiteral("communication") } };
+        QCOMPARE(CallRoutePlan::ucmCard({ droid }), -1);
+        QCOMPARE(CallRoutePlan::ucmCard({ droid, pro1x }), 1);
+        QCOMPARE(CallRoutePlan::card({ pro1x }), -1);
+        QCOMPARE(CallRoutePlan::ucmCallProfile(pro1x, pro1x.active, false), QStringLiteral("HiFi (Earpiece, Mic)"));
+        QCOMPARE(CallRoutePlan::ucmCallProfile(pro1x, pro1x.active, true), QStringLiteral("HiFi (Mic, Speaker)"));
+        QCOMPARE(CallRoutePlan::ucmCallProfile(pro1x, QStringLiteral("HiFi (Headphones, Mic)"), false),
+                 QStringLiteral("HiFi (Headphones, Mic)"));
+    }
+
     void init()
     {
         QMutexLocker lock(&s_lock);
@@ -165,7 +186,7 @@ private slots:
         if (logged("call route given up") && logged("at connecting"))
             QSKIP("no sound server here");
         QCOMPARE(logged("call route given up"), 0);
-        QCOMPARE(logged("no communication mode here") + logged("call route on"), 1);
+        QCOMPARE(logged("no communication mode") + logged("call route on"), 1);
         route.setActive(false);
         QTRY_VERIFY_WITH_TIMEOUT(route.idle(), Keys::kCallRouteTimeoutMs + 3000);
         QCOMPARE(logged("call route given up"), 0);

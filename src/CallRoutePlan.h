@@ -61,6 +61,45 @@ inline QString callPort(bool speaker, const QString &headset)
     return headset.isEmpty() ? QLatin1String(kEarpiece) : headset;
 }
 
+// Mainline ports (ALSA UCM, the Pro1-X #2): each output is a profile of
+// its own, "HiFi (Earpiece, Mic)", "HiFi (Mic, Speaker)", "HiFi
+// (Headphones, Mic)", so the call switches profiles and no port. The
+// "Voice Call (...)" ones are the modem's DSP path and stay the policy's
+// (memeline session, 2026-11-19: xpolicy.conf maps card_profile_earpiece
+// to "HiFi (Earpiece, Mic)" there).
+static const char kUcmHiFi[] = "HiFi (";
+
+// the card's HiFi profile for one output ("Earpiece", "Speaker",
+// "Headphones"), or ""
+inline QString ucmProfile(const Card &c, const char *output)
+{
+    for (const QString &p : c.profiles)
+        if (p.startsWith(QLatin1String(kUcmHiFi)) && p.contains(QLatin1String(output)))
+            return p;
+    return QString();
+}
+
+// a card with a HiFi earpiece profile (the last one listed), or -1
+inline int ucmCard(const QList<Card> &cards)
+{
+    int found = -1;
+    for (int i = 0; i < cards.size(); ++i)
+        if (!ucmProfile(cards.at(i), "Earpiece").isEmpty())
+            found = i;
+    return found;
+}
+
+// the profile the call is heard on: headphones when they were the output
+// before the call (their jack does not report itself there), else the
+// earpiece, or the loudspeaker on the speaker button
+inline QString ucmCallProfile(const Card &c, const QString &before, bool speaker)
+{
+    if (before.startsWith(QLatin1String(kUcmHiFi)) && before.contains(QLatin1String("Headphones")))
+        return before;
+    const QString p = ucmProfile(c, speaker ? "Speaker" : "Earpiece");
+    return p.isEmpty() ? before : p;
+}
+
 // where the sink goes back to: "parking" is no output at all, the
 // loudspeaker instead (the policy moves it on from there for whatever
 // plays next)
