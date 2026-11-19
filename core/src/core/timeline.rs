@@ -396,19 +396,7 @@ impl Core {
     ) -> Result<()> {
         let room = self.room(room_id).await?;
         let tl = self.timeline_target(&room, thread_root).await?;
-        let mut content = match (emote, markdown) {
-            (true, true) => RoomMessageEventContent::emote_markdown(body),
-            (true, false) => RoomMessageEventContent::emote_plain(body),
-            (false, true) => RoomMessageEventContent::text_markdown(body),
-            (false, false) => RoomMessageEventContent::text_plain(body),
-        };
-        if let Some(emotes) = emotes {
-            packs::with_emotes(&mut content, emotes);
-        }
-        with_mentions(&mut content, body, mentions);
-        if markdown {
-            with_spoilers(&mut content, body);
-        }
+        let content = message_content(body, markdown, emote, emotes, mentions);
         match reply_to {
             Some(reply) => {
                 let without: RoomMessageEventContentWithoutRelation = content.into();
@@ -544,15 +532,28 @@ impl Core {
         Ok(())
     }
 
-    pub(crate) async fn edit(&self, room_id: &str, event_id: Option<String>, txn_id: Option<String>, body: &str) -> Result<()> {
+    /// A message changed. Made as a new message is (an edited "||secret||"
+    /// lost its spoiler and other clients showed it in the clear; pills
+    /// and custom emoji fell back to plain text): with the custom emoji
+    /// and people the UI names, and those of the message as it was whose
+    /// shortcode or name is still in the text.
+    pub(crate) async fn edit(&self, room_id: &str, event_id: Option<String>, txn_id: Option<String>, body: &str,
+                             emotes: Option<&HashMap<String, String>>, mentions: &[crate::protocol::MentionArg]) -> Result<()> {
         let room = self.room(room_id).await?;
         let tl = self.timeline_holding(&room, event_id.as_deref()).await?;
-        // as a new message is made: an edited "||secret||" lost its spoiler
-        // and other clients showed it in the clear
-        let mut content = RoomMessageEventContent::text_markdown(body);
-        with_spoilers(&mut content, body);
-        let content: RoomMessageEventContentWithoutRelation = content.into();
-        tl.edit(&Self::item_id(event_id, txn_id)?, EditedContent::RoomMessage(content)).await?;
+        let id = Self::item_id(event_id, txn_id)?;
+        let old_html = match &id {
+            TimelineEventItemId::EventId(e) => tl.item_by_event_id(e).await.and_then(|item| {
+                match item.content().as_message().map(|m| m.msgtype()) {
+                    Some(MessageType::Text(t)) => t.formatted.as_ref().map(|f| f.body.clone()),
+                    Some(MessageType::Emote(t)) => t.formatted.as_ref().map(|f| f.body.clone()),
+                    _ => None,
+                }
+            }),
+            TimelineEventItemId::TransactionId(_) => None,
+        };
+        let content: RoomMessageEventContentWithoutRelation = edit_content(body, old_html.as_deref(), emotes, mentions).into();
+        tl.edit(&id, EditedContent::RoomMessage(content)).await?;
         Ok(())
     }
 
@@ -604,7 +605,17 @@ impl Core {
             };
             match tl {
                 Some(tl) => tl.send_multiple_receipts(receipts).await?,
-                None => room.send_multiple_receipts(receipts).await?,
+                // the timeline's order check, by the events' times: a late
+                // flush must not move the receipt back past what was read
+                // since (in another client, or in this room reopened)
+                None => {
+                    let target = EventId::parse(event_id)?;
+                    if receipt_moves_back(Self::own_receipt_ts(&room).await, Self::event_ts(&room, &target).await) {
+                        tracing::info!(room = %room.room_id(), "mark_read: older than the receipt there, not sent");
+                        return Ok(());
+                    }
+                    room.send_multiple_receipts(receipts).await?
+                }
             }
             return Ok(());
         }
@@ -636,6 +647,27 @@ impl Core {
         }
         let _ = room.set_unread_flag(false).await;
         Ok(())
+    }
+
+    /// When an event was sent (ms), from the event cache or the server.
+    async fn event_ts(room: &Room, event_id: &EventId) -> Option<u64> {
+        let config = matrix_sdk::config::RequestConfig::short_retry();
+        let event = room.load_or_fetch_event(event_id, Some(config)).await.ok()?;
+        event.timestamp().map(|t| u64::from(t.0))
+    }
+
+    /// When the event under our newest read receipt (public or private,
+    /// not in a thread) was sent; None when there is none or it is unknown.
+    async fn own_receipt_ts(room: &Room) -> Option<u64> {
+        use matrix_sdk::ruma::events::receipt::ReceiptType as Kind;
+        let own = room.own_user_id().to_owned();
+        let mut newest = None;
+        for kind in [Kind::Read, Kind::ReadPrivate] {
+            if let Ok(Some((id, _))) = room.load_user_receipt(kind, &ReceiptThread::Unthreaded, &own).await {
+                newest = newest.max(Self::event_ts(room, &id).await);
+            }
+        }
+        newest
     }
 
     /// Online or offline for others; also the state every later sync
@@ -819,6 +851,98 @@ fn sniff_extension(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
+/// A message as the composer's text makes it: markdown or not, an emote
+/// (/me) or not, its custom emoji, pills and spoilers.
+fn message_content(body: &str, markdown: bool, emote: bool, emotes: Option<&HashMap<String, String>>,
+                   mentions: &[crate::protocol::MentionArg]) -> RoomMessageEventContent {
+    let mut content = match (emote, markdown) {
+        (true, true) => RoomMessageEventContent::emote_markdown(body),
+        (true, false) => RoomMessageEventContent::emote_plain(body),
+        (false, true) => RoomMessageEventContent::text_markdown(body),
+        (false, false) => RoomMessageEventContent::text_plain(body),
+    };
+    if let Some(emotes) = emotes {
+        packs::with_emotes(&mut content, emotes);
+    }
+    with_mentions(&mut content, body, mentions);
+    if markdown {
+        with_spoilers(&mut content, body);
+    }
+    content
+}
+
+/// An edit's new content: as a new message, with the custom emoji and
+/// people given, plus those of the message as it was (`old_html`) whose
+/// shortcode or name the new text still has. The edit field picks no
+/// people, so without this every pill of the message was lost.
+fn edit_content(body: &str, old_html: Option<&str>, emotes: Option<&HashMap<String, String>>,
+                mentions: &[crate::protocol::MentionArg]) -> RoomMessageEventContent {
+    let mut all_emotes: HashMap<String, String> = old_html.map(emotes_in_html).unwrap_or_default();
+    if let Some(given) = emotes {
+        all_emotes.extend(given.iter().map(|(k, v)| (k.clone(), v.clone())));
+    }
+    let mut all_mentions = mentions.to_vec();
+    for pill in old_html.map(pills_in_html).unwrap_or_default() {
+        if body.contains(&pill.name) && !all_mentions.iter().any(|m| m.user_id == pill.user_id) {
+            all_mentions.push(pill);
+        }
+    }
+    message_content(body, true, false, Some(&all_emotes), &all_mentions)
+}
+
+/// An attribute's value in one HTML tag (double or single quotes).
+fn html_attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
+    for quote in ['"', '\''] {
+        let key = format!("{name}={quote}");
+        if let Some(start) = tag.find(&key).map(|i| i + key.len()) {
+            return tag[start..].find(quote).map(|end| &tag[start..start + end]);
+        }
+    }
+    None
+}
+
+/// Text from HTML: the entities escape_html writes, and the apostrophe.
+fn unescape_html(text: &str) -> String {
+    text.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&")
+}
+
+/// The custom emoji in a message's HTML, shortcode to mxc address
+/// (`<img data-mx-emoticon src="mxc://..." alt=":code:">`).
+fn emotes_in_html(html: &str) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    for part in html.split("<img").skip(1) {
+        let tag = &part[..part.find('>').unwrap_or(part.len())];
+        if !tag.contains("data-mx-emoticon") {
+            continue;
+        }
+        let (Some(src), Some(alt)) = (html_attr(tag, "src"), html_attr(tag, "alt")) else { continue };
+        let code = unescape_html(alt.trim().trim_matches(':'));
+        if src.starts_with("mxc://") && !code.is_empty() {
+            out.insert(code, src.to_owned());
+        }
+    }
+    out
+}
+
+/// The people a message's HTML links as pills (`<a
+/// href="https://matrix.to/#/@user:server">name</a>`), with their names.
+fn pills_in_html(html: &str) -> Vec<crate::protocol::MentionArg> {
+    let mut out = Vec::new();
+    for part in html.split("<a ").skip(1) {
+        let Some(close) = part.find('>') else { continue };
+        let Some(href) = html_attr(&part[..close], "href") else { continue };
+        let Some(target) = href.strip_prefix("https://matrix.to/#/") else { continue };
+        let target = target.split('?').next().unwrap_or("").replace("%40", "@").replace("%3A", ":").replace("%3a", ":");
+        let Ok(user) = UserId::parse(target.as_str()) else { continue };
+        let Some(end) = part[close + 1..].find("</a>") else { continue };
+        let name = unescape_html(&part[close + 1..close + 1 + end]);
+        if !name.trim().is_empty() && !name.contains('<') {
+            out.push(crate::protocol::MentionArg { user_id: user.to_string(), name });
+        }
+    }
+    out
+}
+
 /// The people picked while typing: the first place each one's name is
 /// written becomes a pill (a matrix.to link, as Element writes them), and
 /// the message says whom it mentions, "@room" the whole room (m.mentions:
@@ -938,6 +1062,13 @@ fn spoilers_in_html(html: &str) -> Option<String> {
     }
     out.push_str(&html[at..]);
     Some(out)
+}
+
+/// Whether a receipt on an event sent at `target` would move ours (on an
+/// event sent at `current`) back. Only when both are known: a receipt that
+/// cannot be placed goes out, as it did before.
+fn receipt_moves_back(current: Option<u64>, target: Option<u64>) -> bool {
+    matches!((current, target), (Some(c), Some(t)) if t < c)
 }
 
 /// The receipts for "read up to this message": the read receipt, private
@@ -1091,5 +1222,51 @@ mod tests {
         assert_eq!(r.public_read_receipt.as_ref(), Some(&id));
         assert!(r.private_read_receipt.is_none());
         assert_eq!(r.fully_read.as_ref(), Some(&id));
+    }
+
+    /// An edit keeps the message's pills and custom emoji where the new
+    /// text still has the name or shortcode, drops those it no longer has,
+    /// and adds the ones the UI gives, as a new message would.
+    /// Planted-bugs: skip the old pills in edit_content (`for pill in
+    /// Vec::new()`): Ann is no longer linked or mentioned; skip the old
+    /// emoji (`HashMap::new()` for all_emotes): :wave: stays text.
+    #[test]
+    fn an_edit_keeps_pills_and_custom_emoji() {
+        let old = "hi <a href=\"https://matrix.to/#/@ann:a.org\">Ann</a> and \
+                   <a href='https://matrix.to/#/%40bob%3Ab.org?via=b.org'>Bob &amp; co</a> \
+                   <img data-mx-emoticon src=\"mxc://a.org/w\" alt=\":wave:\" title=\":wave:\" height=\"32\">";
+        assert_eq!(emotes_in_html(old).get("wave").map(String::as_str), Some("mxc://a.org/w"));
+        let pills = pills_in_html(old);
+        assert_eq!(pills.iter().map(|p| (p.user_id.as_str(), p.name.as_str())).collect::<Vec<_>>(),
+                   vec![("@ann:a.org", "Ann"), ("@bob:b.org", "Bob & co")]);
+
+        let given: HashMap<String, String> = [("cat".to_owned(), "mxc://a.org/c".to_owned())].into();
+        let c = edit_content("hi Ann :wave: :cat:", Some(old), Some(&given), &[]);
+        let h = html(&c);
+        assert!(h.contains("<a href=\"https://matrix.to/#/@ann:a.org\">Ann</a>"), "{h}");
+        assert!(h.contains("src=\"mxc://a.org/w\""), "{h}");
+        assert!(h.contains("src=\"mxc://a.org/c\""), "{h}");
+        assert!(!h.contains("@bob:b.org"), "{h}");
+        let m = c.mentions.expect("mentions");
+        assert!(m.user_ids.contains(&UserId::parse("@ann:a.org").unwrap()));
+        assert!(!m.user_ids.contains(&UserId::parse("@bob:b.org").unwrap()), "Bob is no longer in the text");
+        // a message without HTML of its own is edited as a new one
+        let plain = edit_content("plain ||x||", None, None, &[]);
+        assert!(html(&plain).contains("data-mx-spoiler"));
+        assert!(plain.mentions.is_none());
+    }
+
+    /// A receipt for a closed room is held back only when it would move
+    /// ours back to an older message; one that cannot be placed goes out.
+    /// Planted-bug: compare the other way (`t > c`): every newer receipt
+    /// is held back and an older one moves ours back.
+    #[test]
+    fn closed_room_receipts_never_go_back() {
+        assert!(receipt_moves_back(Some(2_000), Some(1_000)));
+        assert!(!receipt_moves_back(Some(1_000), Some(2_000)));
+        assert!(!receipt_moves_back(Some(1_000), Some(1_000)));
+        assert!(!receipt_moves_back(None, Some(1_000)));
+        assert!(!receipt_moves_back(Some(1_000), None));
+        assert!(!receipt_moves_back(None, None));
     }
 }

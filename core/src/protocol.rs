@@ -97,7 +97,16 @@ pub(crate) enum Command {
     React { room_id: String, event_id: String, key: String },
     /// A sent event (event_id) is redacted, a local echo (txn_id) discarded.
     Redact { room_id: String, event_id: Option<String>, txn_id: Option<String>, reason: Option<String> },
-    Edit { room_id: String, event_id: Option<String>, txn_id: Option<String>, body: String },
+    /// `emotes` and `mentions` as for send_text; the message's own pills
+    /// and custom emoji stay where the new text still has them.
+    Edit {
+        room_id: String,
+        event_id: Option<String>,
+        txn_id: Option<String>,
+        body: String,
+        emotes: Option<std::collections::HashMap<String, String>>,
+        mentions: Option<Vec<MentionArg>>,
+    },
     PollVote { room_id: String, event_id: String, answers: Vec<String> },
     Report { room_id: String, event_id: String, reason: Option<String> },
     /// The event's JSON as received (and its latest edit): "event_source".
@@ -555,6 +564,17 @@ mod tests {
             Command::MarkRead { event_id, .. } => assert_eq!(event_id.as_deref(), Some("$e:b")),
             other => panic!("{other:?}"),
         }
+        // an edit carries its custom emoji and people, as a new message
+        let edit = json!({"cmd": "edit", "room_id": "!a:b", "event_id": "$e:b", "body": "hi Ann :w:",
+                          "emotes": {"w": "mxc://b/w"}, "mentions": [{"user_id": "@ann:b", "name": "Ann"}]});
+        match parse(edit).unwrap() {
+            Command::Edit { emotes, mentions, .. } => {
+                assert_eq!(emotes.unwrap().get("w").map(String::as_str), Some("mxc://b/w"));
+                assert_eq!(mentions.unwrap()[0].user_id, "@ann:b");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(parse(json!({"cmd": "edit", "room_id": "!a:b", "event_id": "$e:b", "body": "x"})).is_ok());
     }
 
     /// voip_send's content is the event's content: only an object is one,

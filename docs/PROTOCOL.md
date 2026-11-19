@@ -57,7 +57,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `send_file` | `room_id`, `path`, `mime?`, `caption?`, `w?`, `h?`, `thumb_path?`, `thumb_w?`, `thumb_h?`, `voice?`, `duration_ms?` (a voice message's or a video's length), `thread_root?` | `timeline` |
 | `react` | `room_id`, `event_id`, `key` (toggles) | `timeline` |
 | `redact` | `room_id`, `event_id?` or `txn_id?` (discards a local echo), `reason?` | `timeline` |
-| `edit` | `room_id`, `event_id?` or `txn_id?`, `body` | `timeline` |
+| `edit` | `room_id`, `event_id?` or `txn_id?`, `body`, `emotes?`, `mentions?` (as for `send_text`; the message's own pills and custom emoji stay where the new body still has the name or shortcode) | `timeline` |
 | `poll_vote` | `room_id`, `event_id`, `answers` (answer ids) | `timeline` |
 | `report` | `room_id`, `event_id`, `reason?` | |
 | `mark_read` | `room_id`, `private?` (a private receipt), `marker?` (default true; false leaves the fully-read marker), `event_id?` (read up to this message, never backwards; without it the whole room) | `rooms` |

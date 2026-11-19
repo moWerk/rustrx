@@ -150,7 +150,9 @@ Column {
             return
         }
         if (mode === "edit") {
-            if (text !== targetText) rustrx.command({ cmd: "edit", room_id: roomId, event_id: targetId, body: text })
+            if (text !== targetText)
+                rustrx.command({ cmd: "edit", room_id: roomId, event_id: targetId, body: text,
+                                 emotes: emotesIn(text), mentions: mentionsIn(text) })
             cancel()
             input.forceActiveFocus()
             return
