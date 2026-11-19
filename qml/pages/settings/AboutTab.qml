@@ -79,8 +79,8 @@ SilicaFlickable {
         // everyone whose report or idea went into Rustrx, as the changelog
         // and the release notes credit them (README's Credits keeps the same list)
         Label {
-            readonly property var names: ["doctorflynt", "dodoradio", "finceptum", "Fuzzillogic", "Luna-Terra-CG",
-                                          "MrHappy", "poetaster", "projectmoon", "Tealk"]
+            readonly property var names: ["doctorflynt", "dodoradio", "finceptum", "Fuzzillogic", "JimKnopfIoT",
+                                          "Luna-Terra-CG", "MrHappy", "poetaster", "projectmoon", "Tealk"]
             x: Theme.horizontalPageMargin
             width: parent.width - 2 * x
             horizontalAlignment: Text.AlignHCenter

@@ -209,9 +209,11 @@ from this repository and keep it updated.
 ## Credits
 
 Thanks for bug reports and ideas to doctorflynt, dodoradio, finceptum,
-Fuzzillogic, Luna-Terra-CG, MrHappy, poetaster, projectmoon and Tealk;
-dodoradio also for testing nearly every build and designing much of
-Rustrx with the author. The same list is on Settings > About.
+Fuzzillogic, JimKnopfIoT, Luna-Terra-CG, MrHappy, poetaster, projectmoon and
+Tealk; dodoradio also for testing nearly every build and designing much of
+Rustrx with the author, and JimKnopfIoT, whose Xmatic made the classic
+WebRTC calls first and so brought them to Rustrx. The same list is on
+Settings > About.
 
 ## Authorship
 
