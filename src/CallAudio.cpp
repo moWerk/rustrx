@@ -45,10 +45,11 @@ void CallAudio::setActive(bool on)
         });
         connect(m_set, &ResourcePolicy::ResourceSet::resourcesDenied, this, []() { qInfo() << "voip: call audio denied"; });
         connect(m_set, &ResourcePolicy::ResourceSet::lostResources, this, []() { qInfo() << "voip: call audio lost"; });
+        connect(m_set, &ResourcePolicy::ResourceSet::managerIsUp, this, []() { qInfo() << "voip: audio policy manager up"; });
+        connect(m_set, &ResourcePolicy::ResourceSet::errorCallback, this, [](quint32 code, const char *what) {
+            qWarning() << "voip: audio policy error" << code << what;
+        });
     }
-    qInfo() << "voip: call audio" << (on ? "asked for" : "released");
-    if (on)
-        m_set->acquire();
-    else
-        m_set->release();
+    const bool ok = on ? m_set->acquire() : m_set->release();
+    qInfo() << "voip: call audio" << (on ? "asked for" : "released") << (ok ? "" : "(failed)");
 }
