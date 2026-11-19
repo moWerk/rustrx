@@ -1,3 +1,27 @@
+* Thu Nov 19 2026 moWerk <mo@mowerk.net> - 0.6.0
+- New: classic 1:1 calls (m.call.*) with Element and nheko from a direct
+  chat's pulley, encrypted in encrypted chats (DTLS-SRTP over GStreamer,
+  Opus, echo canceller). On the earpiece like a phone call, speaker
+  button, headset; the screen goes dark at the ear. Ringing with the
+  handset swipe, in the notification with Answer and Decline, also with
+  Rustrx closed. The cover shows the call. Busy for a second call; a
+  late answer over federation still connects; quitting hangs up first.
+  Mainline ports switch the card's HiFi earpiece profile.
+- Privacy: calls only through a relay (off by default); "Leave out when
+  sending" with three levels (nothing, the location, all metadata) for
+  JPEG, PNG and MP4; login tokens encrypted with the Secrets key; with
+  chat names off, a ringing call does not name the caller.
+- Login works on servers that switched the old login off (continuwuity
+  OAuth "exclusive", delegated auth). An unanswered Secrets prompt shows
+  "Your messages are locked" with Try again, not the login page; the
+  background part never waits on that prompt.
+- Fixed (audit): the crash at every quit since 0.4.7; spoilers with
+  umlauts or emoji, edited spoilers in the clear; muting a moderator
+  demoted them; quick role or setting changes undoing each other; edits
+  losing mentions and custom emoji; "Other ways to log in" text; shared
+  files copied at once; received installers not started from a message;
+  the audio switching runs beside the app.
+
 * Thu Nov 19 2026 moWerk <mo@mowerk.net> - 0.5.0
 - New: moderation. What owners, admins and moderators may do comes from
   the room's power levels; controls show only where allowed. A person's
