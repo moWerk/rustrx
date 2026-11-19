@@ -539,6 +539,30 @@
    "status": "OPEN: to try on the phone",
    "summary": "The code after app->exec() (start the stand-in after closing in background mode) runs for the first time since 0.4.7.",
    "test": ""
+  },
+  {
+   "id": "S5b",
+   "severity": "low",
+   "area": "calls handover (Voip.cpp, Handover.cpp)",
+   "status": "FIXED 29035b0",
+   "summary": "A ring handed over from the stand-in lost its binding to the caller: anyone in the room who saw the call id could end it until an answer arrived (found by the C++ review).",
+   "test": "tst_voip aRingingCallIsHandedOver (stranger's hangup ignored), against a planted bug"
+  },
+  {
+   "id": "N2",
+   "severity": "medium",
+   "area": "secrets in background processes (SecretStore.cpp)",
+   "status": "FIXED 3c5a2e3",
+   "summary": "The stand-in and a push wake asked sailfish-secrets with SystemInteraction: on a phone not unlocked since boot the request failed or waited for good while holding the bus name, so opening Rustrx did nothing (seen on the Prawn, 15:43 and 15:49, after its reboot at 15:18). They now never ask and never make a key.",
+   "test": "on the phone (0.6 checklist §5, reboot without unlocking)"
+  },
+  {
+   "id": "S10b",
+   "severity": "medium",
+   "area": "session.json seal",
+   "status": "FIXED 135d2f8",
+   "summary": "With the secret lost and made anew, the store went but the sealed session stayed unreadable: restore_failed on every start, no login page. A key that does not fit now drops the session too; a missing key keeps it.",
+   "test": "core test a_lost_key_drops_the_session_a_missing_one_keeps_it, against a planted bug; jp26: a real 0.5 session sealed and read back (-23)"
   }
  ]
 }
