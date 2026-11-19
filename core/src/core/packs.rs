@@ -12,6 +12,7 @@ use matrix_sdk::ruma::events::{
     AnyGlobalAccountDataEventContent, AnyMessageLikeEventContent, GlobalAccountDataEventType, StateEventType,
 };
 use matrix_sdk::ruma::serde::Raw;
+use crate::serialize::escape_html;
 
 const USER_EMOTES: &str = "im.ponies.user_emotes";
 const EMOTE_ROOMS: &str = "im.ponies.emote_rooms";
@@ -47,11 +48,6 @@ fn pack_json(id: &str, source: &str, content: &Value) -> Option<Value> {
                 "avatar_mxc": avatar.or_else(|| out[0]["mxc"].as_str()), "images": out}))
 }
 
-/// Text into HTML, for a message that had no formatting of its own.
-fn escape_html(text: &str) -> String {
-    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\n', "<br>")
-}
-
 /// A message's text with its `:shortcode:` custom emoji: the body keeps the
 /// shortcode, the formatted body gets the picture (as the spec has it).
 pub(crate) fn with_emotes(content: &mut RoomMessageEventContent, emotes: &HashMap<String, String>) {
@@ -65,7 +61,8 @@ pub(crate) fn with_emotes(content: &mut RoomMessageEventContent, emotes: &HashMa
     }
     let mut html = match &t.formatted {
         Some(f) if f.format == MessageFormat::Html => f.body.clone(),
-        _ => escape_html(&t.body),
+        // a message that had no formatting of its own
+        _ => escape_html(&t.body).replace('\n', "<br>"),
     };
     for (code, url) in used {
         let code = escape_html(code);

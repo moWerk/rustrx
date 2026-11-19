@@ -210,18 +210,23 @@ impl Core {
     pub(crate) async fn mark_thread_unread(room: &Room, own: &UserId, root: &str, thread: &mut Value,
                                            known: &mut HashMap<String, bool>) {
         let Some(latest) = thread["latest_id"].as_str().map(str::to_owned) else { return };
-        let key = format!("{root} {latest}");
-        let unread = match known.get(&key) {
-            Some(u) => *u,
-            None => {
-                let u = Self::thread_unread(room, own, root, &latest,
-                                            thread["latest_ts"].as_u64().unwrap_or(0),
-                                            thread["latest_own"].as_bool().unwrap_or(false)).await;
-                known.insert(key, u);
-                u
-            }
-        };
+        let unread = Self::cached_thread_unread(room, own, root, &latest,
+                                                thread["latest_ts"].as_u64().unwrap_or(0),
+                                                thread["latest_own"].as_bool().unwrap_or(false), known).await;
         thread["unread"] = Value::Bool(unread);
+    }
+
+    /// `thread_unread`, remembered per thread and latest reply in `known`
+    /// (the room's thread lines and the thread list each keep their own).
+    pub(crate) async fn cached_thread_unread(room: &Room, own: &UserId, root: &str, latest: &str, latest_ts: u64,
+                                             latest_own: bool, known: &mut HashMap<String, bool>) -> bool {
+        let key = format!("{root} {latest}");
+        if let Some(u) = known.get(&key) {
+            return *u;
+        }
+        let u = Self::thread_unread(room, own, root, latest, latest_ts, latest_own).await;
+        known.insert(key, u);
+        u
     }
 
     pub(crate) async fn thread_unread(room: &Room, own: &UserId, root: &str, latest: &str, latest_ts: u64, latest_own: bool) -> bool {
@@ -441,8 +446,8 @@ impl Core {
         let mut config = AttachmentConfig::default();
         // a file the app may not read (a memory card outside its sandbox)
         // or an empty one goes out as nothing anyone can open: said here
-        let len = std::fs::File::open(&path)
-            .and_then(|f| f.metadata())
+        let len = async { tokio::fs::File::open(&path).await?.metadata().await }
+            .await
             .with_context(|| format!("cannot read {}", path.display()))?
             .len();
         if len == 0 {
@@ -467,7 +472,7 @@ impl Core {
             }));
         }
         if let (Some(tp), Some(w), Some(h)) = (thumb_path, dim(thumb_w), dim(thumb_h)) {
-            if let Ok(data) = std::fs::read(&tp) {
+            if let Ok(data) = tokio::fs::read(&tp).await {
                 let size = UInt::try_from(data.len() as u64).unwrap_or_default();
                 config.thumbnail = Some(Thumbnail {
                     data,
@@ -477,7 +482,7 @@ impl Core {
                     size,
                 });
             }
-            let _ = std::fs::remove_file(&tp);
+            let _ = tokio::fs::remove_file(&tp).await;
         }
         if let Some(caption) = caption {
             config.caption = Some(TextMessageEventContent::markdown(caption));
@@ -789,9 +794,16 @@ impl Core {
         let dir = self.data_dir.join(MEDIA_DIR).join(EMOTE_DIR);
         let safe: String = mxc.trim_start_matches("mxc://").chars()
             .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
-        let cached = std::fs::read_dir(&dir).ok().and_then(|entries| {
-            entries.flatten().map(|e| e.path()).find(|p| p.file_stem().map_or(false, |s| s == safe.as_str()))
-        });
+        // the cached file has one of the extensions sniff_extension gives:
+        // looked up by name, without listing the folder per emoji
+        let mut cached = None;
+        for ext in MEDIA_EXTENSIONS {
+            let p = dir.join(format!("{safe}.{ext}"));
+            if tokio::fs::try_exists(&p).await.unwrap_or(false) {
+                cached = Some(p);
+                break;
+            }
+        }
         let path = match cached {
             Some(p) => p,
             None => {
@@ -828,6 +840,10 @@ impl Core {
         Ok(())
     }
 }
+
+/// Every extension sniff_extension gives (a custom emoji without a known
+/// type is saved as png).
+const MEDIA_EXTENSIONS: [&str; 7] = ["png", "jpg", "gif", "webp", "mp4", "webm", "ogg"];
 
 /// The file type from its first bytes, for the types the UI shows or plays.
 fn sniff_extension(bytes: &[u8]) -> Option<&'static str> {
@@ -954,7 +970,7 @@ fn with_mentions(content: &mut RoomMessageEventContent, body: &str, mentions: &[
     if mentions.is_empty() && !room {
         return;
     }
-    let escape = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
+    let escape = crate::serialize::escape_html;
     let mut ids = Vec::new();
     let link = |formatted: &mut Option<FormattedBody>, ids: &mut Vec<OwnedUserId>| {
         let mut html = formatted.take().map(|f| f.body).unwrap_or_else(|| escape(body).replace('\n', "<br>"));
@@ -986,8 +1002,8 @@ fn with_spoilers(content: &mut RoomMessageEventContent, body: &str) {
     if !body.contains("||") {
         return;
     }
-    let escape = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
-    let mark = |formatted: &mut Option<FormattedBody>| {
+    let escape = crate::serialize::escape_html;
+    let mark =|formatted: &mut Option<FormattedBody>| {
         let html = formatted.as_ref().map(|f| f.body.clone()).unwrap_or_else(|| escape(body).replace('\n', "<br>"));
         if let Some(out) = spoilers_in_html(&html) {
             *formatted = Some(FormattedBody::html(out));

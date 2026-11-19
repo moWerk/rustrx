@@ -111,17 +111,10 @@ impl Core {
                     for item in items.iter_mut() {
                         let (Some(root), Some(latest)) = (item["root"]["event_id"].as_str().map(str::to_owned),
                                                          item["latest"]["event_id"].as_str().map(str::to_owned)) else { continue };
-                        let key = format!("{root} {latest}");
-                        let unread = match known.get(&key) {
-                            Some(u) => *u,
-                            None => {
-                                let u = Self::thread_unread(&room, &own, &root, &latest,
-                                                            item["latest"]["ts"].as_u64().unwrap_or(0),
-                                                            item["latest"]["is_own"].as_bool().unwrap_or(false)).await;
-                                known.insert(key, u);
-                                u
-                            }
-                        };
+                        let unread = Self::cached_thread_unread(&room, &own, &root, &latest,
+                                                                item["latest"]["ts"].as_u64().unwrap_or(0),
+                                                                item["latest"]["is_own"].as_bool().unwrap_or(false),
+                                                                &mut known).await;
                         item["unread"] = Value::Bool(unread);
                     }
                     crate::instance().emit(json!({"ev": "thread_list", "room_id": rid.as_str(), "threads": items, "loading": loading}));

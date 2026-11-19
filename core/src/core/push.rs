@@ -10,8 +10,6 @@ use matrix_sdk::ruma::events::{AnySyncMessageLikeEvent, AnySyncTimelineEvent};
 use matrix_sdk::ruma::push::{HttpPusherData, PushFormat};
 use matrix_sdk_ui::notification_client::{NotificationClient, NotificationEvent, NotificationProcessSetup, NotificationStatus};
 
-/// The pusher's app id on every homeserver: never to change once pushers exist.
-
 /// A process started by the distributor for a push: no sync, no room list,
 /// only the pushed message (RUSTRX_PUSH_WAKE, set by its D-Bus service file).
 pub(crate) fn push_wake() -> bool {

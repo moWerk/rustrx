@@ -302,7 +302,6 @@ pub(crate) fn voip_type_allowed(kind: &str) -> bool {
     VOIP_TYPES.contains(&kind)
 }
 
-/// A non-empty string, or nothing (the UI sends "" for "no reply" and the like).
 /// A person mentioned in a message: the name as written in its body.
 #[derive(Deserialize, Debug, Clone)]
 pub(crate) struct MentionArg {
@@ -320,6 +319,7 @@ pub(crate) fn parse(v: serde_json::Value) -> Result<Command, String> {
     serde_json::from_value::<Command>(v).map_err(|e| e.to_string())
 }
 
+/// A non-empty string, or nothing (the UI sends "" for "no reply" and the like).
 pub(crate) fn given(s: &Option<String>) -> Option<&str> {
     s.as_deref().map(str::trim).filter(|s| !s.is_empty())
 }

@@ -356,10 +356,16 @@ impl Core {
         }
         let client = self.client().await?;
         let sizes = client.get_store_sizes().await?;
+        // the walk is blocking file work: off the runtime's two workers
+        let dir = self.data_dir.clone();
+        let (store, media) = tokio::task::spawn_blocking(move || {
+            (dir_size(&dir.join(STORE_DIR)), dir_size(&dir.join(MEDIA_DIR)) + dir_size(&dir.join(AVATAR_DIR)))
+        })
+        .await?;
         self.emit(json!({
             "ev": "storage",
-            "store": dir_size(&self.data_dir.join(STORE_DIR)),
-            "media_files": dir_size(&self.data_dir.join(MEDIA_DIR)) + dir_size(&self.data_dir.join(AVATAR_DIR)),
+            "store": store,
+            "media_files": media,
             "crypto": sizes.crypto_store,
             "state": sizes.state_store,
             "event_cache": sizes.event_cache_store,

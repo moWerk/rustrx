@@ -12,7 +12,9 @@ pub(crate) const PROTO: u32 = 2;
 // Names
 
 /// The app's id towards the homeserver (the pusher) and Element Call (the
-/// widget's client id): the D-Bus interface name, as in src/Keys.h.
+/// widget's client id): the D-Bus interface name, as in src/Keys.h. It is
+/// the pusher's app id on every homeserver: never to change once pushers
+/// exist.
 pub(crate) const APP_ID: &str = "net.mowerk.harbour_rustrx";
 /// The hosted Element Call, at its room route: the bare address is its
 /// own start page ("Name of call") and ignores the widget's room. Its

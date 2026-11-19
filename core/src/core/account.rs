@@ -140,10 +140,10 @@ impl Core {
     /// One's own picture from a file (prepared by the UI as for a room).
     pub(crate) async fn set_own_avatar(&self, path: &str) -> Result<()> {
         let client = self.client().await?;
-        let data = std::fs::read(path)?;
+        let data = tokio::fs::read(path).await?;
         let mime = mime_guess::from_path(path).first_or(mime::IMAGE_JPEG);
         client.account().upload_avatar(&mime, data).await?;
-        std::fs::remove_file(path).ok();
+        tokio::fs::remove_file(path).await.ok();
         // the new picture to the settings page
         self.profile().await
     }

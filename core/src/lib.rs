@@ -220,11 +220,41 @@ mod tests {
     /// A core of the test's own, never logged in, its events collected. Not
     /// the process-wide CORE: tests run in parallel and in any order.
     fn test_core() -> (&'static core::Core, &'static Sink) {
+        test_core_in(std::env::temp_dir().join("rustrx-tests-never-written"))
+    }
+
+    fn test_core_in(dir: std::path::PathBuf) -> (&'static core::Core, &'static Sink) {
         let sink: &'static Sink = Box::leak(Box::new(Mutex::new(Vec::new())));
         let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().unwrap();
         let emitter = Emitter { cb: collect, ctx: Ctx(sink as *const Sink as *mut c_void) };
-        let dir = std::env::temp_dir().join("rustrx-tests-never-written");
         (Box::leak(Box::new(core::Core::new(rt, dir, emitter))), sink)
+    }
+
+    fn wait_for_event(sink: &Sink) -> Vec<Value> {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while sink.lock().unwrap().is_empty() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        events(sink)
+    }
+
+    /// A custom emoji in the cache is answered from it by its name (no
+    /// folder listing, no network: this core is not logged in), whatever
+    /// type it was saved as.
+    /// Planted-bug: leave "gif" out of MEDIA_EXTENSIONS: the cached gif is
+    /// not found and the fetch fails with "not logged in".
+    #[test]
+    fn a_cached_emote_is_found_by_name() {
+        let dir = std::env::temp_dir().join(format!("rustrx-emote-test-{}", std::process::id()));
+        let emotes = dir.join(consts::MEDIA_DIR).join(consts::EMOTE_DIR);
+        std::fs::create_dir_all(&emotes).unwrap();
+        let file = emotes.join("example_org_AbC123.gif");
+        std::fs::write(&file, b"GIF89a").unwrap();
+        let (core, sink) = test_core_in(dir.clone());
+        assert_eq!(send(core, r#"{"cmd":"fetch_emote","mxc":"mxc://example.org/AbC123"}"#), 0);
+        let got = wait_for_event(sink);
+        assert_eq!(got, vec![json!({"ev": "emote", "mxc": "mxc://example.org/AbC123", "path": file.to_string_lossy()})]);
+        std::fs::remove_dir_all(dir).ok();
     }
 
     fn events(sink: &Sink) -> Vec<Value> {

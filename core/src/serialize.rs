@@ -17,6 +17,12 @@ use matrix_sdk_ui::timeline::{
 };
 use serde_json::{json, Map, Value};
 
+/// Text made safe inside HTML and its attributes (&, <, >, "); line
+/// breaks stay, the caller turns them into <br> where it wants them.
+pub(crate) fn escape_html(text: &str) -> String {
+    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+}
+
 fn ms(t: matrix_sdk::ruma::MilliSecondsSinceUnixEpoch) -> u64 {
     u64::from(t.0)
 }
