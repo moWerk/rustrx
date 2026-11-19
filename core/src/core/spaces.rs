@@ -98,6 +98,12 @@ impl Core {
     pub(crate) async fn space_open(&'static self, space_id: &str) -> Result<()> {
         let id = OwnedRoomId::try_from(space_id)?;
         self.space_close(space_id).await;
+        let seq = {
+            let mut st = self.state.lock().await;
+            let n = st.space_seqs.entry(space_id.to_owned()).or_insert(0);
+            *n += 1;
+            *n
+        };
         let service = self.space_service().await?;
         let list = service.space_room_list(id.clone()).await;
         let task = self.rt.spawn(async move {
@@ -126,14 +132,22 @@ impl Core {
                 emit(rooms, false);
             }
         });
-        if let Some(old) = self.state.lock().await.space_lists.insert(space_id.to_owned(), task) {
+        let mut st = self.state.lock().await;
+        // closed (or opened again) while the list was being made
+        if st.space_seqs.get(space_id) != Some(&seq) {
+            task.abort();
+            return Ok(());
+        }
+        if let Some(old) = st.space_lists.insert(space_id.to_owned(), task) {
             old.abort();
         }
         Ok(())
     }
 
     pub(crate) async fn space_close(&self, space_id: &str) {
-        if let Some(task) = self.state.lock().await.space_lists.remove(space_id) {
+        let mut st = self.state.lock().await;
+        *st.space_seqs.entry(space_id.to_owned()).or_insert(0) += 1;
+        if let Some(task) = st.space_lists.remove(space_id) {
             task.abort();
         }
     }

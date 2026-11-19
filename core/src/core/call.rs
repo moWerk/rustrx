@@ -227,6 +227,11 @@ impl Core {
     pub(crate) async fn call_start(&'static self, room_id: &str, voice: bool, skip_lobby: bool) -> Result<()> {
         let room = self.room(room_id).await?;
         self.call_end().await;
+        let seq = {
+            let mut st = self.state.lock().await;
+            st.call_seq += 1;
+            st.call_seq
+        };
         // a membership of this device left over from a call that did not
         // end cleanly (a crash, a killed app) goes first
         Self::leave_own_memberships(&room).await;
@@ -308,9 +313,19 @@ impl Core {
                 }
             }
         });
-        if let Some(old) = self.state.lock().await.call.replace(CallSession { handle, tasks: vec![run, forward], room: rid_room }) {
+        let mut st = self.state.lock().await;
+        if st.call_seq != seq {
+            // hung up while it was starting
+            drop(st);
+            run.abort();
+            forward.abort();
+            Self::leave_own_memberships(&rid_room).await;
+            return Ok(());
+        }
+        if let Some(old) = st.call.replace(CallSession { handle, tasks: vec![run, forward], room: rid_room }) {
             old.stop();
         }
+        drop(st);
         tracing::info!(room = %rid, ?intent_name, ?encryption_name, skip_lobby, "call widget started");
         self.emit(json!({"ev": "call_url", "room_id": rid.as_str(), "url": url.as_str()}));
         Ok(())
@@ -327,7 +342,11 @@ impl Core {
     }
 
     pub(crate) async fn call_end(&self) {
-        let call = self.state.lock().await.call.take();
+        let call = {
+            let mut st = self.state.lock().await;
+            st.call_seq += 1;
+            st.call.take()
+        };
         if let Some(call) = call {
             let room = call.room.clone();
             call.stop();

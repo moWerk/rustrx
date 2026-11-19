@@ -282,6 +282,11 @@ impl Core {
     }
 
     pub(crate) async fn open_room(&'static self, room_id: &str) -> Result<()> {
+        let seq = {
+            let mut st = self.state.lock().await;
+            st.open_seq += 1;
+            st.open_seq
+        };
         let room = self.room(room_id).await?;
         let client = self.client().await?;
         // the room's draft, from the encrypted store: "draft"
@@ -300,8 +305,12 @@ impl Core {
         // every message, thread replies too (marked by their thread_root);
         // the thread's page shows a thread alone, its root a summary
         let timeline = Self::build_timeline(&room, TimelineFocus::Live { hide_threaded_events: false }, true).await?;
-        let task = self.rt.spawn(self.timeline_task(room.clone(), timeline.clone(), own));
         let mut st = self.state.lock().await;
+        if st.open_seq != seq {
+            // a close or another open came while this one was building
+            return Ok(());
+        }
+        let task = self.rt.spawn(self.timeline_task(room.clone(), timeline.clone(), own));
         if let Some(previous) = st.open.take() {
             previous.task.abort();
         }
@@ -334,7 +343,11 @@ impl Core {
     }
 
     pub(crate) async fn close_room(&self) {
-        let open = self.state.lock().await.open.take();
+        let open = {
+            let mut st = self.state.lock().await;
+            st.open_seq += 1;
+            st.open.take()
+        };
         if let Some(open) = open {
             open.task.abort();
         }

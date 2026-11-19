@@ -33,7 +33,15 @@ impl Core {
                     }
                 }
             });
-            self.state.lock().await.sync_task = Some(task);
+            // as below: a session that ended meanwhile does not get a sync
+            // that nothing would stop (it reported errors into the next login)
+            let mut st = self.state.lock().await;
+            if st.generation != generation {
+                drop(st);
+                task.abort();
+                return Ok(());
+            }
+            st.sync_task = Some(task);
         } else {
             // Offline mode: after a network failure the service probes the
             // server and resumes by itself. Without it an error is final and
@@ -93,7 +101,13 @@ impl Core {
             st.login_tasks.push(state_task);
         }
         let enc = self.rt.spawn(self.encryption_task(client));
-        self.state.lock().await.login_tasks.push(enc);
+        let mut st = self.state.lock().await;
+        if st.generation != generation {
+            drop(st);
+            enc.abort();
+            return Ok(());
+        }
+        st.login_tasks.push(enc);
         Ok(())
     }
 

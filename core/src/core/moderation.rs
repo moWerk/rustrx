@@ -452,7 +452,9 @@ impl Core {
         let total = events.len();
         let reason = reason.map(str::to_owned);
         let (rid, uid) = (room.room_id().to_owned(), user.clone());
-        tokio::spawn(async move {
+        // a login's task: a logout stops it (up to 100 removals at a pace
+        // ran on with the old client otherwise)
+        self.spawn_login_task(async move {
             let mut done = 0;
             for id in events {
                 if let Err(e) = room.redact(&id, reason.as_deref(), None).await {
@@ -465,7 +467,8 @@ impl Core {
             if total == 0 {
                 self.emit(json!({"ev": "redact_progress", "room_id": rid.as_str(), "user_id": uid.as_str(), "done": 0, "total": 0, "finished": true}));
             }
-        });
+        })
+        .await;
         Ok(())
     }
 }

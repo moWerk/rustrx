@@ -104,8 +104,17 @@ struct State {
     /// open whose build took long sees that a close came meanwhile
     thread_seq: u64,
     thread_list_seq: u64,
+    /// the same for the room's page: a late open does not install its
+    /// timeline over a newer open or after a close
+    open_seq: u64,
     /// open space pages: the task that sends each one's rooms
     space_lists: HashMap<String, JoinHandle<()>>,
+    /// per space, bumped by every open and close: a late open does not
+    /// install its list after the page was closed
+    space_seqs: HashMap<String, u64>,
+    /// the same for Element Call: a hang-up while the call was starting
+    /// stops it instead of it starting after the hang-up
+    call_seq: u64,
     /// which login this is: bumped by every login and every teardown, so
     /// work begun for one (a download, a logout's server call) can tell
     /// that another has begun since

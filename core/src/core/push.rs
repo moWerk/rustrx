@@ -91,7 +91,16 @@ impl Core {
         let t = std::time::Instant::now();
         let sliding = !matches!(client.sliding_sync_version(), Version::None);
         let (room_name, sender_name, body, is_dm, noisy) = if sliding {
-            let nc = NotificationClient::new(client.clone(), NotificationProcessSetup::MultipleProcesses).await?;
+            // In the app (or the stand-in) the sync service runs in this
+            // process: the notification client works with it, not beside
+            // it (two encryption syncs over one crypto store otherwise).
+            // Only the process a push woke has none: there the SDK's
+            // cross-process lock guards the store.
+            let setup = match self.state.lock().await.sync_service.clone() {
+                Some(sync_service) => NotificationProcessSetup::SingleProcess { sync_service },
+                None => NotificationProcessSetup::MultipleProcesses,
+            };
+            let nc = NotificationClient::new(client.clone(), setup).await?;
             match nc.get_notification(&room_id, &event_id).await? {
                 NotificationStatus::Event(item) => {
                     let body = match &item.event {
