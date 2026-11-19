@@ -83,7 +83,7 @@ public:
 
     // tests: a tone instead of the microphone, and the far end's level and
     // packet counts in the log and in status(); for the next call only
-    void setTestTone(bool on) { m_testTone = on; }
+    void setTestTone(bool on, int hz = 440) { m_testTone = on; m_toneHz = hz; }
     // echo cancelling (Speex) on the microphone; on unless a test turns it off
     void setEchoCancelling(bool on) { m_aec = on; }
     QVariantMap status() const;
@@ -166,6 +166,7 @@ private:
     bool m_muted = false;
     bool m_speaker = false;
     bool m_testTone = false;
+    int m_toneHz = 440;
     qint64 m_connectedAt = 0;
     QString m_endReason;
     QVariantList m_localCandidates;   // waiting to go out in one event

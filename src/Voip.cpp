@@ -420,7 +420,7 @@ bool Voip::startPipeline()
 {
     stopPipeline();
     const QString source = m_testTone
-            ? QStringLiteral("audiotestsrc is-live=true wave=sine freq=440 volume=0.3")
+            ? QStringLiteral("audiotestsrc is-live=true wave=sine freq=%1 volume=0.3").arg(m_toneHz)
             : QStringLiteral("pulsesrc stream-properties=\"props,media.role=(string)phone\"");
     // with echo cancelling, the microphone goes through this process
     // (capture -> Speex -> aec) and on into the encoder

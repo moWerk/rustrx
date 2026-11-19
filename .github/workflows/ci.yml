@@ -12,7 +12,7 @@ jobs:
   static:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Tools
         run: |
           sudo apt-get update -q
@@ -23,11 +23,16 @@ jobs:
   cpp:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Tools
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q qtbase5-dev qt5-qmake g++ make locales
+          # calls (tests/cpp/voip): GStreamer's webrtcbin with libnice,
+          # Opus and the echo canceller, as Sailfish OS ships them
+          sudo apt-get install -y -q qtbase5-dev qt5-qmake g++ make locales \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev \
+            libspeexdsp-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad gstreamer1.0-nice
           sudo locale-gen de_DE.UTF-8
       - name: C++ unit and golden tests
         run: QMAKE=/usr/lib/qt5/bin/qmake tests/cpp/run.sh

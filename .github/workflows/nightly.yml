@@ -17,7 +17,7 @@ jobs:
       run:
         working-directory: core
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # the toolchain of the releases (core/build-aarch64.sh); the tests run
       # for the runner's x86_64, the releases are cross-built for aarch64
       - uses: dtolnay/rust-toolchain@master

@@ -24,8 +24,11 @@ public:
     {
         a.setOwnUserId(QStringLiteral("@a:example.org"));
         b.setOwnUserId(QStringLiteral("@b:example.org"));
-        a.setTestTone(true);
-        b.setTestTone(true);
+        // two different tones: with the same one on both sides, each echo
+        // canceller learns the far end as its own echo and takes it out
+        // after a few seconds (the audit measured -54 dB at 10 s)
+        a.setTestTone(true, 440);
+        b.setTestTone(true, 660);
         connect(&a, &Voip::command, this, [this](const QVariantMap &c) { route(&a, &b, "@a:example.org", "a", c); });
         connect(&b, &Voip::command, this, [this](const QVariantMap &c) { route(&b, &a, "@b:example.org", "b", c); });
     }
@@ -71,7 +74,8 @@ private slots:
     // are dropped instead of kept (remote_candidates stays 0).
     // Planted-bug: no select_answer from the caller (sent list check).
     // Planted-bug: candidates go out before the core sent the invite or
-    // answer (the order check).
+    // answer (the order check). Planted-bug: the same tone on both sides
+    // (the late level check fails: the echo canceller takes it out).
     void aCallCarriesAudioBothWays()
     {
         Wire w;
@@ -91,6 +95,11 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(w.b.status().value("remote_level_db").toDouble() > -40, 10000);
         QTRY_VERIFY_WITH_TIMEOUT(w.a.status().value("packets_in").toInt() > 20, 10000);
         QTRY_VERIFY_WITH_TIMEOUT(w.b.status().value("packets_in").toInt() > 20, 10000);
+        // and it lasts: still there after the echo cancellers had time to
+        // adapt (a canceller eating the far end fails here)
+        QTest::qWait(8000);
+        QVERIFY2(w.a.status().value("remote_level_db").toDouble() > -40, qPrintable(w.a.status().value("remote_level_db").toString()));
+        QVERIFY2(w.b.status().value("remote_level_db").toDouble() > -40, qPrintable(w.b.status().value("remote_level_db").toString()));
         QVERIFY(w.sent.indexOf(QStringLiteral("a:m.call.candidates")) > w.sent.indexOf(QStringLiteral("a:sent:m.call.invite")));
         QVERIFY(w.sent.indexOf(QStringLiteral("b:m.call.candidates")) > w.sent.indexOf(QStringLiteral("b:sent:m.call.answer")));
         QVERIFY(w.a.status().value("remote_candidates").toInt() > 0);
