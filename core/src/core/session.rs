@@ -561,8 +561,12 @@ impl Core {
     /// At the process's end: the login's tasks and the sync stop and the
     /// client goes, so nothing writes to the store once the bus name (the
     /// store's lock) is released. Blocks the caller up to `limit`.
+    /// The timeout is made inside the runtime: built on the caller's thread
+    /// (Qt's main thread, no runtime there) its timer panicked, the panic
+    /// could not leave the extern "C" fn, and every quit since 0.4.7 ended
+    /// in abort() before any of this ran.
     pub(crate) fn shutdown(&'static self, limit: Duration) {
-        let done = self.rt.block_on(tokio::time::timeout(limit, async {
+        let done = self.rt.block_on(async { tokio::time::timeout(limit, async {
             let teardown = self.state.lock().await.take_login();
             // the tokens as they are now: a refresh that ended while this
             // process was leaving may not have reached session.json yet
@@ -580,7 +584,8 @@ impl Core {
                     tracing::warn!("shutdown: stores not closed: {e}");
                 }
             }
-        }));
+        })
+        .await });
         if done.is_err() {
             tracing::warn!("shutdown: not finished in time");
         }

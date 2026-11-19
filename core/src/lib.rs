@@ -61,8 +61,14 @@ pub extern "C" fn rustrx_stop() {
 /// on the store: the next Rustrx opens it as soon as the name is gone.
 #[no_mangle]
 pub extern "C" fn rustrx_shutdown(timeout_ms: u32) {
-    if let Some(core) = CORE.get() {
-        core.shutdown(std::time::Duration::from_millis(timeout_ms.into()));
+    // a panic cannot leave an extern "C" fn: caught, the process ends normally
+    let done = std::panic::catch_unwind(|| {
+        if let Some(core) = CORE.get() {
+            core.shutdown(std::time::Duration::from_millis(timeout_ms.into()));
+        }
+    });
+    if done.is_err() {
+        eprintln!("rustrx: shutdown panicked");
     }
 }
 
@@ -154,8 +160,11 @@ pub extern "C" fn rustrx_start(data_dir: *const c_char, cb: EventCallback, ctx: 
         Ok(rt) => rt,
         Err(_) => return 3,
     };
-    // a panicking task would otherwise vanish: the sandbox drops stderr
+    // a panicking task would otherwise vanish: into the debug log, and to
+    // stderr (the journal), which also reaches it when the Qt loop that
+    // writes the debug log has ended (a panic at exit was invisible there)
     std::panic::set_hook(Box::new(|info| {
+        eprintln!("rustrx: panic: {info}");
         tracing::error!("panic: {info}");
     }));
     let core = core::Core::new(rt, dir.into(), Emitter { cb, ctx: Ctx(ctx) });
@@ -224,6 +233,18 @@ mod tests {
 
     fn send(core: &'static core::Core, text: &str) -> i32 {
         command(core, &CString::new(text).unwrap())
+    }
+
+    /// Shutting down from a thread outside the runtime, as Qt's main thread
+    /// calls it at the process's end, finishes instead of panicking.
+    /// Planted-bug: `block_on(tokio::time::timeout(..))` (the timer made
+    /// outside the runtime: "there is no reactor running"), as in 0.4.7 to
+    /// 0.5.0, where every quit aborted.
+    #[test]
+    fn shutdown_outside_the_runtime_finishes() {
+        let (core, _sink) = test_core();
+        let done = std::thread::spawn(move || core.shutdown(Duration::from_millis(500))).join();
+        assert!(done.is_ok(), "shutdown panicked");
     }
 
     /// Before rustrx_start every command, even a null pointer, is refused
