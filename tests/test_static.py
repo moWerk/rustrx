@@ -615,3 +615,39 @@ def test_qml_that_uses_tunables_imports_them():
     ReferenceError on the phone, qmllint does not see it)."""
     missing = [p.name for p in QML if "Tunables." in code(p) and not re.search(r"^import Rustrx 1\.0", read(p.relative_to(ROOT).as_posix()), re.M)]
     assert not missing, missing
+
+
+def test_pulse_restarts_when_the_call_rule_changes(tmp_path):
+    """The spec's %pre and %post, run with sh against a stand-in /etc and
+    /run: PulseAudio (which reads the policy rules at start) is restarted
+    when the call rule first arrives or its content changed, and never on
+    an update that leaves it as it was, nor where the owner kept an edited
+    one (rpm writes .rpmnew then). Audit P-RPM. Planted-bug: the old
+    scripts (a restart only on the first install)."""
+    import subprocess
+    spec = read("rpm/harbour-rustrx.spec")
+    pre = re.search(r"^%pre\n(.*?)\n\n", spec, re.S | re.M).group(1)
+    post = re.search(r"^%post\n(.*?)\n\n", spec, re.S | re.M).group(1)
+    (tmp_path / "etc/pulse/xpolicy.conf.d").mkdir(parents=True)
+    (tmp_path / "run").mkdir()
+    rule = tmp_path / "etc/pulse/xpolicy.conf.d/harbour-rustrx-xpolicy.conf"
+    assert "systemctl-user try-restart pulseaudio.service >/dev/null 2>&1" in post
+
+    def script(s):
+        s = s.replace("/etc/pulse", f"{tmp_path}/etc/pulse").replace("/run/", f"{tmp_path}/run/")
+        return s.replace("systemctl-user try-restart pulseaudio.service >/dev/null 2>&1",
+                         "echo try-restart pulseaudio.service")
+
+    def install(content):
+        out = subprocess.run(["sh", "-c", script(pre)], capture_output=True, text=True).stdout
+        if content is not None:
+            rule.write_text(content)
+        out += subprocess.run(["sh", "-c", script(post)], capture_output=True, text=True).stdout
+        assert not list((tmp_path / "run").iterdir())   # the markers go
+        return "try-restart pulseaudio.service" in out
+
+    assert install("rule 1")
+    assert not install("rule 1")
+    assert install("rule 2")
+    assert not install("rule 2")
+    assert not install(None)

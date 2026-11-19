@@ -91,15 +91,26 @@ desktop-file-install --delete-original \
     --dir %{buildroot}%{_datadir}/applications \
     %{buildroot}%{_datadir}/applications/*.desktop
 
-# The audio policy reads its rules when PulseAudio starts: restarted once,
-# when the call rule first arrives (not at every update: it cuts whatever
-# plays for a moment)
+# The audio policy reads its rules when PulseAudio starts: restarted when
+# the call rule first arrives or its content changed, never on an update
+# that leaves it as it was (a restart cuts whatever plays for a moment).
+# %pre keeps the installed rule in /run, %post compares it with the new.
 %pre
-[ -e /etc/pulse/xpolicy.conf.d/harbour-rustrx-xpolicy.conf ] || touch /run/harbour-rustrx-xpolicy-new || :
+rule=/etc/pulse/xpolicy.conf.d/harbour-rustrx-xpolicy.conf
+rm -f /run/harbour-rustrx-xpolicy-new /run/harbour-rustrx-xpolicy-old || :
+if [ -e $rule ]; then
+    cp -p $rule /run/harbour-rustrx-xpolicy-old || touch /run/harbour-rustrx-xpolicy-new || :
+else
+    touch /run/harbour-rustrx-xpolicy-new || :
+fi
 
 %post
-if [ -e /run/harbour-rustrx-xpolicy-new ]; then
-    rm -f /run/harbour-rustrx-xpolicy-new
+rule=/etc/pulse/xpolicy.conf.d/harbour-rustrx-xpolicy.conf
+restart=
+[ -e /run/harbour-rustrx-xpolicy-new ] && restart=1
+[ -e /run/harbour-rustrx-xpolicy-old ] && ! cmp -s /run/harbour-rustrx-xpolicy-old $rule && restart=1
+rm -f /run/harbour-rustrx-xpolicy-new /run/harbour-rustrx-xpolicy-old || :
+if [ -n "$restart" ]; then
     systemctl-user try-restart pulseaudio.service >/dev/null 2>&1 || :
 fi
 
