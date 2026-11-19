@@ -24,6 +24,7 @@
 #include "Twemoji.h"
 #include "UnifiedPush.h"
 #include "Voip.h"
+#include "CallAudio.h"
 #include "Keys.h"
 #include "rustrx_core.h"
 #include <sailfishapp.h>
@@ -91,6 +92,8 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     connect(m_push, &UnifiedPush::command, this, &Rustrx::command);
     m_voip = new Voip(this);
     connect(m_voip, &Voip::command, this, &Rustrx::command);
+    auto *callAudio = new CallAudio(this);
+    connect(m_voip, &Voip::audioNeeded, callAudio, &CallAudio::setActive);
     // the stand-in rings but never runs a call: whatever hands over to the
     // app (a tap, Answer) takes the ringing call along
     connect(m_voip, &Voip::changed, this, [this]() {

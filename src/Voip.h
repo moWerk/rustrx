@@ -100,6 +100,8 @@ signals:
     void command(const QVariantMap &cmd);
     // an invite arrived: ring (the UI shows the call and a notification)
     void incoming(const QString &roomId, const QString &roomName, const QString &peerName);
+    // the call wants the phone's call audio (from placing to the end)
+    void audioNeeded(bool on);
 
 private slots:
     // from GStreamer's threads, queued onto this one

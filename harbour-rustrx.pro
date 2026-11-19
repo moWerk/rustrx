@@ -10,6 +10,8 @@ QT += dbus multimedia network
 # calls: GStreamer's webrtcbin (Voip.cpp)
 CONFIG += link_pkgconfig
 PKGCONFIG += gstreamer-1.0 gstreamer-sdp-1.0 gstreamer-webrtc-1.0
+# a call's audio as a call (the audio policy, CallAudio.cpp)
+PKGCONFIG += libresourceqt5
 
 CONFIG += sailfishapp sailfishapp_i18n sailfishapp_i18n_idbased sailfishapp_i18n_unfinished
 
@@ -27,7 +29,8 @@ SOURCES += src/main.cpp \
     src/DebugLog.cpp \
     src/FrameStats.cpp \
     src/KeyboardSlide.cpp \
-    src/Voip.cpp
+    src/Voip.cpp \
+    src/CallAudio.cpp
 
 HEADERS += src/Rustrx.h \
     src/Handover.h \
@@ -44,6 +47,7 @@ HEADERS += src/Rustrx.h \
     src/FrameStats.h \
     src/KeyboardSlide.h \
     src/Voip.h \
+    src/CallAudio.h \
     src/LocalOnly.h \
     src/Exif.h \
     src/Mp4.h \

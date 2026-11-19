@@ -123,7 +123,9 @@ void Voip::setState(const QString &state)
     if (state == m_state)
         return;
     qInfo().noquote() << "voip: state" << m_state << "->" << state;
+    const bool needed = state == QLatin1String("outgoing") || state == QLatin1String("connecting") || state == QLatin1String("connected");
     m_state = state;
+    emit audioNeeded(needed);
     emit changed();
 }
 
@@ -401,7 +403,7 @@ bool Voip::startPipeline()
     stopPipeline();
     const QString source = m_testTone
             ? QStringLiteral("audiotestsrc is-live=true wave=sine freq=440 volume=0.3")
-            : QStringLiteral("pulsesrc stream-properties=\"props,media.role=(string)phone\"");
+            : QStringLiteral("pulsesrc stream-properties=\"props,media.role=(string)phone,media.name=(string)rustrx-call\"");
     const QString desc = QStringLiteral(
             "webrtcbin name=w bundle-policy=max-bundle latency=%1 "
             "%2 ! audioconvert ! audioresample ! volume name=mic ! queue ! opusenc bitrate=%3 ! "
@@ -599,7 +601,7 @@ void Voip::onPadAdded(GstElement *, GstPad *pad, void *self)
         return;
     const QString sink = v->m_testTone
             ? QStringLiteral("fakesink sync=false")
-            : QStringLiteral("pulsesink stream-properties=\"props,media.role=(string)phone\"");
+            : QStringLiteral("pulsesink stream-properties=\"props,media.role=(string)phone,media.name=(string)rustrx-call\"");
     const QString desc = QStringLiteral(
             "queue ! rtpopusdepay ! opusdec ! audioconvert ! audioresample ! "
             "level interval=%1 post-messages=true ! %2").arg(qint64(Keys::kVoipLevelMs) * 1000000).arg(sink);
