@@ -40,9 +40,9 @@
    "id": "S2",
    "severity": "medium",
    "area": "files (timeline.rs get_media, Handover.cpp)",
-   "status": "PARTLY FIXED 9d530c1: symlinked Downloads/Rustrx refused, copies created new; handover file only within 2 min. OPEN: validate handover fields themselves",
+   "status": "FIXED 9d530c1 (links refused, 2 min), 98be1a6 (every handover field validated, the file dropped otherwise)",
    "summary": "An app with the Downloads permission plus a Matrix sender could plant files in Rustrx's private folders through a link, among them handover.json, which was trusted on read (answer a call, share session.json).",
-   "test": ""
+   "test": "tst_handover"
   },
   {
    "id": "S3",
@@ -56,9 +56,9 @@
    "id": "S4",
    "severity": "low",
    "area": "dev hook (Rustrx.cpp)",
-   "status": "OPEN (queue): allowlist instead of denylist",
+   "status": "FIXED a7c344b: allowlist of the test tooling's requests (src/DevHook.h)",
    "summary": "The dev hook's refused list misses send_file with any path, get_media dest_dir, voip place.",
-   "test": ""
+   "test": "tst_devhook; test_static test_dev_hook_takes_only_the_test_commands"
   },
   {
    "id": "S5",
@@ -80,9 +80,9 @@
    "id": "S7",
    "severity": "low",
    "area": "share (ShareAdaptor.cpp)",
-   "status": "OPEN: copy path shares into the cache at share time",
+   "status": "FIXED 57a78a7: copied into the cache at share time (O_NOFOLLOW, regular files, own-files check on the opened file); the copy is sent",
    "summary": "A shared path is checked at share time but sent later (link swap).",
-   "test": ""
+   "test": "tst_sharecopy"
   },
   {
    "id": "S8",
@@ -264,9 +264,9 @@
    "id": "B7",
    "severity": "medium",
    "area": "CallRoute.cpp",
-   "status": "OPEN (queue)",
+   "status": "FIXED 5bf0e88: every PulseAudio step on its own thread, 3 s limit, bounded wait on destruction. Not seen on a phone yet",
    "summary": "PulseAudio calls block the GUI thread without a timeout.",
-   "test": ""
+   "test": "tst_callroute aHungPulseAudioHoldsNothingUp, destroyedWhileAStepHangs, thisMachinesSoundServer"
   },
   {
    "id": "B8",
@@ -296,7 +296,7 @@
    "id": "B13",
    "severity": "low",
    "area": "store key",
-   "status": "OPEN",
+   "status": "FIXED 654b973: wiped in Rustrx.cpp and the secrets plugin (src/Wipe.h). Copies inside sailfish-secrets and the core remain",
    "summary": "Key material not wiped from memory.",
    "test": ""
   },
@@ -488,9 +488,9 @@
    "id": "T4",
    "severity": "medium",
    "area": "Voip tests",
-   "status": "PARTLY: busy, DM, lifetime, peer binding added; mute, per-call reset, AEC pairing, CallRoute port choice OPEN",
+   "status": "FIXED 5bf0e88 (CallRoute choices), 2e9cf7c (mute, per-call reset, AEC pairing)",
    "summary": "New call logic without tests.",
-   "test": ""
+   "test": "tst_callroute theCardWithACommunicationMode, thePortTheCallIsHeardOn, whereTheSinkGoesBack; tst_voip muteSilencesTheFarEnd, eachCallStartsAfresh, theFarEndWaitsAt120msAtMost, eachMicrophoneFrameTakesOneFarFrame"
   },
   {
    "id": "T5",
@@ -528,9 +528,9 @@
    "id": "P-RPM",
    "severity": "low",
    "area": "spec scripts",
-   "status": "OPEN",
+   "status": "FIXED 1902c3a: restart when the rule's content changed (cmp against a copy kept in /run by %pre)",
    "summary": "The pulse restart runs only when the rule first arrives; a later change to it needs a reboot.",
-   "test": ""
+   "test": "test_static test_pulse_restarts_when_the_call_rule_changes"
   },
   {
    "id": "BG",

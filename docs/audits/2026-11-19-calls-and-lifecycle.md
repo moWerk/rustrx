@@ -80,3 +80,14 @@ Of these, K2, K8 and S10 were done later the same day, with K10 to K16
   call page over the room list, the list after hanging up.
 - The stand-in's ring stops once the call is answered in the app (V9).
 - A push handled by the stand-in decrypts (K5's new setup).
+
+## Later the same day
+
+From the queue: PulseAudio's steps moved off the GUI thread with a time
+limit (B7), the dev hook became an allowlist (S4), shared paths are
+copied at share time (S7), the handover file's fields are validated
+(S2), the store key is wiped after use (B13), the PulseAudio restart
+follows a changed call rule (P-RPM), and the call tests T4 left open
+were written (CallRoute's choices, mute, the per-call reset, the echo
+canceller's frame pairing). Each test was proven against a planted bug;
+none of it has been on a phone yet.
