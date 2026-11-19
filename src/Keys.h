@@ -100,6 +100,18 @@ static const char kEnvPushWake[] = "RUSTRX_PUSH_WAKE";
 static const char kHandoverFile[] = "handover.json";
 // the handover file counts only this soon after the stand-in wrote it
 static const qint64 kHandoverMaxAgeMs = 120000;
+// what the handover file may hold (Handover::accept): the whole file, an id
+// (the spec's 255 bytes), a call version, a name, a link, a text or an
+// SDP offer, the shared files; a ring may end at most the longest ring
+// from now, plus this for the clock between the two processes
+static const int kHandoverMaxBytes = 4 << 20;
+static const int kHandoverMaxIdBytes = 255;
+static const int kHandoverMaxVersionChars = 16;
+static const int kHandoverMaxNameBytes = 1024;
+static const int kHandoverMaxUriBytes = 4096;
+static const int kHandoverMaxTextBytes = 1 << 20;
+static const int kHandoverMaxFiles = 1000;
+static const qint64 kHandoverClockSlackMs = 5000;
 static const char kBackgroundFlag[] = "background";
 // in the data folder: push state, the dev command flag, the debug logs
 static const char kPushStateFile[] = "push.json";

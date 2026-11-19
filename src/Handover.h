@@ -53,6 +53,11 @@ public:
     bool handOver();
     // what the stand-in passed on: the room, link or share to show
     void takeHandover();
+    // the handover file's content taken up when every field is as
+    // handOver() writes it (a room id, a matrix link, shared files in our
+    // cache's shared folder sharedDir, a ringing call); false, and nothing
+    // taken, on anything else (audit S2)
+    bool accept(const QByteArray &json, const QString &sharedDir);
 
     // the file the stand-in's unit looks for (in the sandbox's own config folder)
     static QString backgroundFlagPath();
