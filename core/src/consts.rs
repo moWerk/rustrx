@@ -119,3 +119,6 @@ pub(crate) const OWN_AVATAR_FILE: &str = "_own.img";
 pub(crate) const REDACT_RECENT_SCAN: u32 = 200;
 pub(crate) const REDACT_RECENT_MAX: usize = 100;
 pub(crate) const REDACT_RECENT_PACE_MS: u64 = 300;
+/// A room setting this device sent is shown over the room's own state
+/// until the sync brings it, at most this long (moderation.rs, Sent).
+pub(crate) const SENT_OVERLAY_MAX: Duration = Duration::from_secs(120);

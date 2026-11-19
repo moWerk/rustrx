@@ -336,23 +336,33 @@ impl Core {
         if let Some(room) = room_id.and_then(|r| RoomId::parse(r).ok()).and_then(|r| client.get_room(&r)) {
             info["room_id"] = json!(room.room_id().as_str());
             if let Ok(Some(member)) = room.get_member_no_sync(&user).await {
+                // the levels as this device last set them, where the sync
+                // has not brought that yet (moderation.rs): a changed role
+                // shows at once
+                let levels = self.effective_levels(&room).await.ok();
+                let level_of = |u: &UserId, synced: UserPowerLevel| levels.as_ref().map_or(synced, |l| l.for_user(u));
+                let theirs = level_of(&user, member.power_level());
                 info["name"] = json!(member.name());
                 info["membership"] = json!(member.membership().to_string());
-                info["power"] = json!(power(member.power_level()));
-                info["role"] = json!(super::moderation::role_of(member.power_level()));
+                info["power"] = json!(power(theirs));
+                info["role"] = json!(super::moderation::role_of(theirs));
                 if let Some(own) = client.user_id() {
                     if let Ok(Some(me)) = room.get_member_no_sync(own).await {
+                        let mine = level_of(own, me.power_level());
                         // the server also wants our power above theirs
-                        let above = power(me.power_level()) > power(member.power_level());
-                        info["can_kick"] = json!(me.can_kick() && above);
-                        info["can_ban"] = json!(me.can_ban() && above);
+                        let above = power(mine) > power(theirs);
+                        let (may_kick, may_ban) = match &levels {
+                            Some(l) => (l.user_can_kick(own), l.user_can_ban(own)),
+                            None => (me.can_kick(), me.can_ban()),
+                        };
+                        info["can_kick"] = json!(may_kick && above);
+                        info["can_ban"] = json!(may_ban && above);
                         // their role from ours: only below our own level, and
                         // ourselves only downwards (it cannot be undone)
-                        let levels = room.power_levels().await.ok();
                         info["can_set_level"] = json!(levels.as_ref().is_some_and(|l| l.user_can_send_state(own, matrix_sdk::ruma::events::StateEventType::RoomPowerLevels))
                             && (above || client.user_id() == Some(&*user))
-                            && !matches!(member.power_level(), UserPowerLevel::Infinite));
-                        info["own_level"] = json!(power(me.power_level()));
+                            && !matches!(theirs, UserPowerLevel::Infinite));
+                        info["own_level"] = json!(power(mine));
                         info["can_mute"] = json!(levels.as_ref().is_some_and(|l| l.user_can_send_state(own, matrix_sdk::ruma::events::StateEventType::RoomPowerLevels)) && above);
                         info["events_default"] = json!(levels.as_ref().map(|l| i64::from(l.events_default)));
                     }

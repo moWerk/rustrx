@@ -77,21 +77,191 @@ pub(crate) fn acl_host(server: &str) -> &str {
     server.rsplit_once(':').map_or(server, |(host, _)| host)
 }
 
+/// A room state event this device sent, laid over the room's state until
+/// the sync shows that state moved on. The SDK builds a change on the
+/// room's local state, which the sync updates only later: two quick
+/// changes reverted each other, and the reply showed the old value.
+#[derive(Debug)]
+pub(crate) struct Sent<T> {
+    value: T,
+    /// the room's state events under which `value` still holds: the one
+    /// before the first write, and each of ours sent since but the last
+    stale: Vec<Option<OwnedEventId>>,
+    /// our last event: once the room's state is it, the room has caught up
+    last: OwnedEventId,
+    at: std::time::Instant,
+}
+
+impl<T: Clone> Sent<T> {
+    /// The value to build on and to show while the room's state is still
+    /// at `local` (its event id) from before our last write; None once
+    /// the room caught up or moved on (another's change), or after
+    /// SENT_OVERLAY_MAX, and the slot is cleared.
+    pub(crate) fn current(slot: &mut Option<Sent<T>>, local: Option<&EventId>) -> Option<T> {
+        let holds = slot.as_ref().is_some_and(|s| {
+            s.at.elapsed() < SENT_OVERLAY_MAX && s.stale.iter().any(|id| id.as_deref() == local)
+        });
+        if !holds {
+            *slot = None;
+        }
+        slot.as_ref().map(|s| s.value.clone())
+    }
+
+    /// After a write that `current` was asked for under the same lock:
+    /// `local` the room's state event then, `sent` ours.
+    pub(crate) fn record(slot: &mut Option<Sent<T>>, local: Option<OwnedEventId>, sent: OwnedEventId, value: T) {
+        let stale = match slot.take() {
+            Some(s) => {
+                let mut stale = s.stale;
+                stale.push(Some(s.last));
+                stale
+            }
+            None => vec![local],
+        };
+        *slot = Some(Sent { value, stale, last: sent, at: std::time::Instant::now() });
+    }
+}
+
+/// What this device last sent to one room's settings (State::room_writes);
+/// its lock serializes the changes to that room.
+#[derive(Default)]
+pub(crate) struct RoomWrites {
+    power_levels: Option<Sent<RoomPowerLevels>>,
+    history: Option<Sent<HistoryVisibility>>,
+    guests: Option<Sent<bool>>,
+    acl: Option<Sent<RoomServerAclEventContent>>,
+    aliases: Option<Sent<(Option<OwnedRoomAliasId>, Vec<OwnedRoomAliasId>)>>,
+    pinned: Option<Sent<Vec<OwnedEventId>>>,
+}
+
+/// One level of the room's permissions: a field ("invite", "ban",
+/// "users_default", "notify_room", ...) or an event type ("m.room.name").
+fn set_permission(levels: &mut RoomPowerLevels, key: &str, value: Int) -> Result<()> {
+    match key {
+        "users_default" => levels.users_default = value,
+        "events_default" => levels.events_default = value,
+        "state_default" => levels.state_default = value,
+        "invite" => levels.invite = value,
+        "kick" => levels.kick = value,
+        "ban" => levels.ban = value,
+        "redact" => levels.redact = value,
+        "notify_room" => levels.notifications.room = value,
+        t if LEVEL_EVENTS.contains(&t) => {
+            levels.events.insert(TimelineEventType::from(t), value);
+        }
+        other => bail!("no such permission {other}"),
+    }
+    Ok(())
+}
+
+/// An event pinned (at the end) or unpinned; false when nothing changes.
+fn set_pinned(list: &mut Vec<OwnedEventId>, event: &EventId, pinned: bool) -> bool {
+    let at = list.iter().position(|e| e == event);
+    match (pinned, at) {
+        (true, None) => list.push(event.to_owned()),
+        (false, Some(i)) => {
+            list.remove(i);
+        }
+        _ => return false,
+    }
+    true
+}
+
+/// The id of the room's current state event of this type (empty key).
+async fn state_event_id(room: &Room, kind: StateEventType) -> Option<OwnedEventId> {
+    match room.get_state_event(kind, "").await.ok()?? {
+        matrix_sdk::deserialized_responses::RawAnySyncOrStrippedState::Sync(raw) => {
+            raw_value(&raw).get("event_id").and_then(Value::as_str).and_then(|e| EventId::parse(e).ok())
+        }
+        _ => None,
+    }
+}
+
 /// Whether a server may take part under an access list.
 pub(crate) fn acl_allows(allow: &[String], deny: &[String], server: &str) -> bool {
     allow.iter().any(|p| acl_matches(p, server)) && !deny.iter().any(|p| acl_matches(p, server))
 }
 
 impl Core {
+    /// The lock and the sent values of one room's settings.
+    pub(crate) async fn room_writes(&self, room: &RoomId) -> Arc<Mutex<RoomWrites>> {
+        self.state.lock().await.room_writes.entry(room.to_owned()).or_default().clone()
+    }
+
+    /// The room's power levels as this device last set them while the
+    /// sync has not brought them, else the room's own.
+    pub(crate) async fn effective_levels(&self, room: &Room) -> Result<RoomPowerLevels> {
+        let lock = self.room_writes(room.room_id()).await;
+        let mut w = lock.lock().await;
+        let local = state_event_id(room, StateEventType::RoomPowerLevels).await;
+        match Sent::current(&mut w.power_levels, local.as_deref()) {
+            Some(levels) => Ok(levels),
+            None => Ok(room.power_levels().await?),
+        }
+    }
+
+    /// A change of the room's power levels, one at a time per room and on
+    /// top of the last one sent. `change` returns false for nothing to send.
+    pub(crate) async fn write_levels(&self, room: &Room, change: impl FnOnce(&mut RoomPowerLevels) -> Result<bool>) -> Result<bool> {
+        let lock = self.room_writes(room.room_id()).await;
+        let mut w = lock.lock().await;
+        let local = state_event_id(room, StateEventType::RoomPowerLevels).await;
+        let mut levels = match Sent::current(&mut w.power_levels, local.as_deref()) {
+            Some(levels) => levels,
+            None => room.power_levels().await?,
+        };
+        if !change(&mut levels)? {
+            return Ok(false);
+        }
+        let sent = room.send_state_event(RoomPowerLevelsEventContent::try_from(levels.clone())?).await?;
+        Sent::record(&mut w.power_levels, local, sent.event_id, levels);
+        Ok(true)
+    }
+
     /// Everything the room's info page needs to offer the right controls:
     /// what we may change (from the room's power levels), the settings as
     /// they are, the levels, the access list, pins. "room_settings".
     pub(crate) async fn room_settings(&self, room_id: &str) -> Result<()> {
         let room = self.room(room_id).await?;
         let me = room.own_user_id().to_owned();
-        let levels = room.power_levels().await.ok();
+        // what this device sent last, where the sync has not brought it yet
+        // (the reply to a change shows the change)
+        let (levels, history, guests, acl, aliases, pinned) = {
+            let lock = self.room_writes(room.room_id()).await;
+            let mut w = lock.lock().await;
+            let id = |kind: StateEventType| state_event_id(&room, kind);
+            let levels = match Sent::current(&mut w.power_levels, id(StateEventType::RoomPowerLevels).await.as_deref()) {
+                Some(l) => Some(l),
+                None => room.power_levels().await.ok(),
+            };
+            let history = Sent::current(&mut w.history, id(StateEventType::RoomHistoryVisibility).await.as_deref())
+                .unwrap_or_else(|| room.history_visibility_or_default());
+            let guests = Sent::current(&mut w.guests, id(StateEventType::RoomGuestAccess).await.as_deref())
+                .unwrap_or_else(|| room.guest_access() == GuestAccess::CanJoin);
+            let acl = match Sent::current(&mut w.acl, id(StateEventType::RoomServerAcl).await.as_deref()) {
+                Some(c) => Some(c),
+                None => room
+                    .get_state_event_static::<RoomServerAclEventContent>()
+                    .await
+                    .ok()
+                    .flatten()
+                    .and_then(|raw| raw.deserialize().ok())
+                    .and_then(|ev| match ev {
+                        matrix_sdk::deserialized_responses::SyncOrStrippedState::Sync(s) => s.as_original().map(|o| o.content.clone()),
+                        _ => None,
+                    }),
+            };
+            let aliases = Sent::current(&mut w.aliases, id(StateEventType::RoomCanonicalAlias).await.as_deref())
+                .unwrap_or_else(|| (room.canonical_alias(), room.alt_aliases()));
+            let pinned = Sent::current(&mut w.pinned, id(StateEventType::RoomPinnedEvents).await.as_deref())
+                .unwrap_or_else(|| room.pinned_event_ids().unwrap_or_default());
+            (levels, history, guests, acl, aliases, pinned)
+        };
         let can_state = |t: StateEventType| levels.as_ref().is_some_and(|l| l.user_can_send_state(&me, t));
-        let own = room.get_user_power_level(&me).await.unwrap_or(UserPowerLevel::Int(Int::from(0u8)));
+        let own = match &levels {
+            Some(l) => l.for_user(&me),
+            None => room.get_user_power_level(&me).await.unwrap_or(UserPowerLevel::Int(Int::from(0u8))),
+        };
         let may = json!({
             "name": can_state(StateEventType::RoomName),
             "topic": can_state(StateEventType::RoomTopic),
@@ -128,17 +298,7 @@ impl Core {
                 "events": events,
             })
         });
-        let acl = room
-            .get_state_event_static::<RoomServerAclEventContent>()
-            .await
-            .ok()
-            .flatten()
-            .and_then(|raw| raw.deserialize().ok())
-            .and_then(|ev| match ev {
-                matrix_sdk::deserialized_responses::SyncOrStrippedState::Sync(s) => s.as_original().map(|o| o.content.clone()),
-                _ => None,
-            })
-            .map(|c| json!({"allow": c.allow, "deny": c.deny, "allow_ip_literals": c.allow_ip_literals}));
+        let acl = acl.map(|c| json!({"allow": c.allow, "deny": c.deny, "allow_ip_literals": c.allow_ip_literals}));
         // the versions a room can be upgraded to: the server's default, and
         // the stable ones it offers (only for those who may upgrade)
         let (version_default, versions) = if may["upgrade"].as_bool() == Some(true) {
@@ -159,7 +319,7 @@ impl Core {
         };
         // the directory lives on the server, not in the room's state
         let public = room.privacy_settings().get_room_visibility().await.ok().map(|v| v == Visibility::Public);
-        let history = match room.history_visibility_or_default() {
+        let history = match history {
             HistoryVisibility::WorldReadable => "world_readable",
             HistoryVisibility::Invited => "invited",
             HistoryVisibility::Joined => "joined",
@@ -176,14 +336,14 @@ impl Core {
             "may": may,
             "levels": level_map,
             "history_visibility": history,
-            "guests": room.guest_access() == GuestAccess::CanJoin,
+            "guests": guests,
             "encrypted": room.encryption_state().is_encrypted(),
             "directory_public": public,
-            "canonical_alias": room.canonical_alias().map(|a| a.to_string()),
-            "alt_aliases": room.alt_aliases().iter().map(|a| a.to_string()).collect::<Vec<_>>(),
+            "canonical_alias": aliases.0.map(|a| a.to_string()),
+            "alt_aliases": aliases.1.iter().map(|a| a.to_string()).collect::<Vec<_>>(),
             "server_acl": acl,
             "own_server": acl_host(me.server_name().as_str()),
-            "pinned": room.pinned_event_ids().unwrap_or_default().iter().map(|e| e.to_string()).collect::<Vec<_>>(),
+            "pinned": pinned.iter().map(|e| e.to_string()).collect::<Vec<_>>(),
             "creators": room.creators().unwrap_or_default().iter().map(|u| u.to_string()).collect::<Vec<_>>(),
         }));
         Ok(())
@@ -194,7 +354,17 @@ impl Core {
     pub(crate) async fn set_user_level(&self, room_id: &str, user_id: &str, level: i64) -> Result<()> {
         let room = self.room(room_id).await?;
         let user = UserId::parse(user_id.trim())?;
-        room.update_power_levels(vec![(&user, int(level)?)]).await?;
+        let value = int(level)?;
+        // as the SDK's update_power_levels, on top of the last change sent
+        self.write_levels(&room, |levels| {
+            if value == levels.users_default {
+                levels.users.remove(&user);
+            } else {
+                levels.users.insert(user.clone(), value);
+            }
+            Ok(true)
+        })
+        .await?;
         self.user_info(user_id, Some(room_id)).await?;
         self.room_settings(room_id).await
     }
@@ -203,27 +373,17 @@ impl Core {
     /// "users_default", "notify_room", ...) or an event type ("m.room.name").
     pub(crate) async fn set_level(&self, room_id: &str, key: &str, level: i64) -> Result<()> {
         let room = self.room(room_id).await?;
-        let mut levels: RoomPowerLevels = room.power_levels().await?;
         let value = int(level)?;
-        match key {
-            "users_default" => levels.users_default = value,
-            "events_default" => levels.events_default = value,
-            "state_default" => levels.state_default = value,
-            "invite" => levels.invite = value,
-            "kick" => levels.kick = value,
-            "ban" => levels.ban = value,
-            "redact" => levels.redact = value,
-            "notify_room" => levels.notifications.room = value,
-            t if LEVEL_EVENTS.contains(&t) => {
-                levels.events.insert(TimelineEventType::from(t), value);
-            }
-            other => bail!("no such permission {other}"),
-        }
-        room.send_state_event(RoomPowerLevelsEventContent::try_from(levels)?).await?;
+        self.write_levels(&room, |levels| {
+            set_permission(levels, key, value)?;
+            Ok(true)
+        })
+        .await?;
         self.room_settings(room_id).await
     }
 
     pub(crate) async fn set_history_visibility(&self, room_id: &str, value: &str) -> Result<()> {
+        use matrix_sdk::ruma::events::room::history_visibility::RoomHistoryVisibilityEventContent;
         let room = self.room(room_id).await?;
         let v = match value {
             "world_readable" => HistoryVisibility::WorldReadable,
@@ -232,14 +392,26 @@ impl Core {
             "joined" => HistoryVisibility::Joined,
             other => bail!("no such history visibility {other}"),
         };
-        room.privacy_settings().update_room_history_visibility(v).await?;
+        let lock = self.room_writes(room.room_id()).await;
+        let mut w = lock.lock().await;
+        let local = state_event_id(&room, StateEventType::RoomHistoryVisibility).await;
+        Sent::current(&mut w.history, local.as_deref());
+        let sent = room.send_state_event(RoomHistoryVisibilityEventContent::new(v.clone())).await?;
+        Sent::record(&mut w.history, local, sent.event_id, v);
+        drop(w);
         self.room_settings(room_id).await
     }
 
     pub(crate) async fn set_guest_access(&self, room_id: &str, allowed: bool) -> Result<()> {
         let room = self.room(room_id).await?;
         let access = if allowed { GuestAccess::CanJoin } else { GuestAccess::Forbidden };
-        room.send_state_event(RoomGuestAccessEventContent::new(access)).await?;
+        let lock = self.room_writes(room.room_id()).await;
+        let mut w = lock.lock().await;
+        let local = state_event_id(&room, StateEventType::RoomGuestAccess).await;
+        Sent::current(&mut w.guests, local.as_deref());
+        let sent = room.send_state_event(RoomGuestAccessEventContent::new(access)).await?;
+        Sent::record(&mut w.guests, local, sent.event_id, allowed);
+        drop(w);
         self.room_settings(room_id).await
     }
 
@@ -261,10 +433,20 @@ impl Core {
     /// The room's main address and its other addresses (each must point to
     /// the room on its server already: add_alias).
     pub(crate) async fn set_aliases(&self, room_id: &str, canonical: Option<&str>, alt: &[String]) -> Result<()> {
+        use matrix_sdk::ruma::events::room::canonical_alias::RoomCanonicalAliasEventContent;
         let room = self.room(room_id).await?;
         let canonical = canonical.map(|a| OwnedRoomAliasId::try_from(a.trim())).transpose()?;
         let alt = alt.iter().map(|a| OwnedRoomAliasId::try_from(a.trim())).collect::<Result<Vec<_>, _>>()?;
-        room.privacy_settings().update_canonical_alias(canonical, alt).await?;
+        let lock = self.room_writes(room.room_id()).await;
+        let mut w = lock.lock().await;
+        let local = state_event_id(&room, StateEventType::RoomCanonicalAlias).await;
+        Sent::current(&mut w.aliases, local.as_deref());
+        let mut content = RoomCanonicalAliasEventContent::new();
+        content.alias = canonical.clone();
+        content.alt_aliases = alt.clone();
+        let sent = room.send_state_event(content).await?;
+        Sent::record(&mut w.aliases, local, sent.event_id, (canonical, alt));
+        drop(w);
         self.room_settings(room_id).await
     }
 
@@ -297,7 +479,14 @@ impl Core {
         if !acl_allows(&allow, &deny, &own) {
             bail!("the list would shut out your own server {own}");
         }
-        room.send_state_event(RoomServerAclEventContent::new(allow_ip_literals, allow, deny)).await?;
+        let content = RoomServerAclEventContent::new(allow_ip_literals, allow, deny);
+        let lock = self.room_writes(room.room_id()).await;
+        let mut w = lock.lock().await;
+        let local = state_event_id(&room, StateEventType::RoomServerAcl).await;
+        Sent::current(&mut w.acl, local.as_deref());
+        let sent = room.send_state_event(content.clone()).await?;
+        Sent::record(&mut w.acl, local, sent.event_id, content);
+        drop(w);
         self.room_settings(room_id).await
     }
 
@@ -313,13 +502,25 @@ impl Core {
 
     /// A message pinned above the chat, or no longer.
     pub(crate) async fn pin(&self, room_id: &str, event_id: &str, pinned: bool) -> Result<()> {
+        use matrix_sdk::ruma::events::room::pinned_events::RoomPinnedEventsEventContent;
         let room = self.room(room_id).await?;
         let event = EventId::parse(event_id.trim())?;
-        if pinned {
-            room.pin_event(&event).await?;
-        } else {
-            room.unpin_event(&event).await?;
+        // as the SDK's pin_event and unpin_event, on top of the last change
+        let lock = self.room_writes(room.room_id()).await;
+        let mut w = lock.lock().await;
+        let local = state_event_id(&room, StateEventType::RoomPinnedEvents).await;
+        let mut list = match Sent::current(&mut w.pinned, local.as_deref()) {
+            Some(list) => list,
+            None => match room.pinned_event_ids() {
+                Some(list) => list,
+                None => room.load_pinned_events().await?.unwrap_or_default(),
+            },
+        };
+        if set_pinned(&mut list, &event, pinned) {
+            let sent = room.send_state_event(RoomPinnedEventsEventContent::new(list.clone())).await?;
+            Sent::record(&mut w.pinned, local, sent.event_id, list);
         }
+        drop(w);
         self.room_settings(room_id).await
     }
 
@@ -522,6 +723,90 @@ mod tests {
         sorted.sort();
         assert_eq!(o, sorted);
         assert!(o.iter().all(|x| x.len() <= 50));
+    }
+
+    /// A room as the sync shows it: its state event's id and content.
+    struct Synced {
+        id: Option<OwnedEventId>,
+        levels: RoomPowerLevels,
+    }
+
+    fn event(id: &str) -> OwnedEventId {
+        OwnedEventId::try_from(id).unwrap()
+    }
+
+    /// One change as `write_levels` makes it, the server's answer `sent`:
+    /// returns what was sent.
+    fn change(slot: &mut Option<Sent<RoomPowerLevels>>, room: &Synced, key: &str, level: i64, sent: &str) -> RoomPowerLevels {
+        let mut levels = Sent::current(slot, room.id.as_deref()).unwrap_or_else(|| room.levels.clone());
+        set_permission(&mut levels, key, int(level).unwrap()).unwrap();
+        Sent::record(slot, room.id.clone(), event(sent), levels.clone());
+        levels
+    }
+
+    /// What room_settings shows.
+    fn shown(slot: &mut Option<Sent<RoomPowerLevels>>, room: &Synced) -> RoomPowerLevels {
+        Sent::current(slot, room.id.as_deref()).unwrap_or_else(|| room.levels.clone())
+    }
+
+    /// Two quick changes: the second is built on the first, not on the
+    /// room's state from before both, and what is shown is the newest
+    /// sent until the sync brings it; then the room's own state again,
+    /// also when someone else changed it meanwhile.
+    /// Planted-bugs: in Sent::current, never hold (`let holds = false`):
+    /// the second change reverts the first; in Sent::record, forget the
+    /// earlier sends (`let stale = vec![local]`): once the first change
+    /// is synced the second one's value vanishes from the reply.
+    #[test]
+    fn quick_changes_build_on_each_other() {
+        use matrix_sdk::ruma::events::room::power_levels::RoomPowerLevelsSource;
+        use matrix_sdk::ruma::room_version_rules::AuthorizationRules;
+        let start = RoomPowerLevels::new(RoomPowerLevelsSource::None, &AuthorizationRules::V1, Vec::<matrix_sdk::ruma::OwnedUserId>::new());
+        let (kick0, ban0) = (i64::from(start.kick), i64::from(start.ban));
+        assert_eq!((kick0, ban0), (50, 50));
+        let mut room = Synced { id: Some(event("$a:x")), levels: start.clone() };
+        let mut slot = None;
+
+        change(&mut slot, &room, "kick", 0, "$e1:x");
+        let second = change(&mut slot, &room, "ban", 100, "$e2:x");
+        assert_eq!((i64::from(second.kick), i64::from(second.ban)), (0, 100), "the second change undid the first");
+        let s = shown(&mut slot, &room);
+        assert_eq!((i64::from(s.kick), i64::from(s.ban)), (0, 100));
+
+        // the sync brings our first change: the second is still shown
+        let mut first = start.clone();
+        first.kick = int(0).unwrap();
+        room = Synced { id: Some(event("$e1:x")), levels: first };
+        let s = shown(&mut slot, &room);
+        assert_eq!((i64::from(s.kick), i64::from(s.ban)), (0, 100), "the reply lost the second change");
+
+        // then the second: the room's own state, the overlay gone
+        room = Synced { id: Some(event("$e2:x")), levels: second };
+        let s = shown(&mut slot, &room);
+        assert_eq!((i64::from(s.kick), i64::from(s.ban)), (0, 100));
+        assert!(slot.is_none());
+
+        // someone else's change after ours: theirs wins
+        change(&mut slot, &room, "invite", 100, "$e3:x");
+        let mut theirs = start.clone();
+        theirs.invite = int(10).unwrap();
+        room = Synced { id: Some(event("$other:x")), levels: theirs };
+        assert_eq!(i64::from(shown(&mut slot, &room).invite), 10);
+        assert!(slot.is_none());
+    }
+
+    /// Pinning on top of an earlier pin keeps it; unpinning what is not
+    /// pinned, or pinning twice, sends nothing.
+    /// Planted-bug: `set_pinned` replaces the list (`*list = vec![..]`).
+    #[test]
+    fn pins_build_on_the_list() {
+        let mut list = vec![event("$a:x")];
+        assert!(set_pinned(&mut list, &event("$b:x"), true));
+        assert!(!set_pinned(&mut list, &event("$b:x"), true));
+        assert_eq!(list, vec![event("$a:x"), event("$b:x")]);
+        assert!(set_pinned(&mut list, &event("$a:x"), false));
+        assert!(!set_pinned(&mut list, &event("$a:x"), false));
+        assert_eq!(list, vec![event("$b:x")]);
     }
 
     /// Planted-bug: map `Infinite` to "admin" (room creators of v12 rooms

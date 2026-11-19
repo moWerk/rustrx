@@ -115,6 +115,9 @@ struct State {
     /// the same for Element Call: a hang-up while the call was starting
     /// stops it instead of it starting after the hang-up
     call_seq: u64,
+    /// per room: the lock that serializes its setting changes, and what
+    /// was sent until the sync shows it (moderation.rs)
+    room_writes: HashMap<OwnedRoomId, Arc<Mutex<moderation::RoomWrites>>>,
     /// which login this is: bumped by every login and every teardown, so
     /// work begun for one (a download, a logout's server call) can tell
     /// that another has begun since
@@ -151,6 +154,7 @@ impl State {
             tasks.push(task);
         }
         self.space_service = None;
+        self.room_writes.clear();
         tasks.extend(self.space_lists.drain().map(|(_, task)| task));
         Teardown { client: self.client.take(), service: self.sync_service.take(), tasks }
     }
