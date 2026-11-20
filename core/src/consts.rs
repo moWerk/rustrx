@@ -37,6 +37,11 @@ pub(crate) const MARK_READ_RETRIES: [Duration; 3] =
     [Duration::from_secs(2), Duration::from_secs(5), Duration::from_secs(15)];
 /// A single sign-on waits this long for the browser to come back.
 pub(crate) const SSO_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+/// After a QR code was scanned, the other device answers within seconds;
+/// past this its server most likely keeps the answer from arriving (a
+/// proxy that compresses the rendezvous weakens its ETag, and the answer
+/// is refused with 412: tchncs.de, 2026-11-20)
+pub(crate) const QR_CHANNEL_TIMEOUT: Duration = Duration::from_secs(60);
 /// A token refresh the server refused is asked again after these waits
 /// before the session counts as ended (the first at once).
 pub(crate) const SESSION_GONE_WAITS: [Duration; 3] =

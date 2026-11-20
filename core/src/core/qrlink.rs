@@ -48,6 +48,7 @@ impl Core {
                 return Ok(());
             }
         };
+        tracing::info!(logged_in, intent = ?code.intent(), "qr: a code was scanned");
         match (logged_in, code.intent()) {
             (true, QrCodeIntent::Login) => self.grant_scanned(code).await,
             (false, QrCodeIntent::Reciprocate) => self.login_scanned(code).await,
@@ -82,6 +83,7 @@ impl Core {
                 QrCodeIntentData::Msc4388 { base_url, .. } => base_url.to_string(),
                 QrCodeIntentData::Msc4108 { .. } => bail!("the code names no server"),
             };
+            self.emit(json!({"ev": "qr_login", "state": "connecting"}));
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
             let registration = device_code_registration()?;
             let oauth = client.oauth();
@@ -91,6 +93,9 @@ impl Core {
             tokio::pin!(done);
             let deadline = tokio::time::sleep(SSO_TIMEOUT);
             tokio::pin!(deadline);
+            let no_answer = tokio::time::sleep(QR_CHANNEL_TIMEOUT);
+            tokio::pin!(no_answer);
+            let mut answered = false;
             loop {
                 tokio::select! {
                     r = &mut done => {
@@ -99,6 +104,7 @@ impl Core {
                     }
                     Some(p) = progress.next() => match p {
                         LoginProgress::EstablishingSecureChannel(QrProgress { check_code }) => {
+                            answered = true;
                             self.emit(json!({"ev": "qr_login", "state": "check", "check_code": format!("{check_code:02}")}));
                         }
                         LoginProgress::WaitingForToken { user_code } => {
@@ -109,6 +115,10 @@ impl Core {
                         _ => {}
                     },
                     _ = &mut cancelled => bail!("login cancelled"),
+                    _ = &mut no_answer, if !answered => {
+                        tracing::info!("qr: no answer from the other device");
+                        bail!("the other device did not answer within a minute. Its server may keep QR logins from working (a proxy that compresses the rendezvous)")
+                    }
                     _ = &mut deadline => bail!("no login from the other device within {} minutes", SSO_TIMEOUT.as_secs() / 60),
                 }
             }
@@ -132,9 +142,10 @@ impl Core {
         let Some(_busy) = self.begin_login() else { return self.grant_busy() };
         let client = self.client().await?;
         let oauth = client.oauth();
+        self.emit(json!({"ev": "qr_grant", "state": "connecting"}));
         let grant = oauth.grant_login_with_qr_code().scan(&code);
         let progress = grant.subscribe_to_progress();
-        self.run_grant(grant.into_future(), progress, |QrProgress { check_code }| async move {
+        self.run_grant(grant.into_future(), progress, true, |QrProgress { check_code }| async move {
             self.emit(json!({"ev": "qr_grant", "state": "check", "check_code": format!("{check_code:02}")}));
         })
         .await
@@ -150,7 +161,7 @@ impl Core {
         let grant = oauth.grant_login_with_qr_code().generate();
         let progress = grant.subscribe_to_progress();
         let result = self
-            .run_grant(grant.into_future(), progress, |p| async move {
+            .run_grant(grant.into_future(), progress, false, |p| async move {
                 match p {
                     GeneratedQrProgress::QrReady(data) => match qr_modules(&data) {
                         Ok(mut ev) => {
@@ -179,11 +190,13 @@ impl Core {
     /// The part both ways of letting a device in share: the secure channel
     /// (`channel` handles its progress), the account service's consent page
     /// in the browser, the keys going over. Ends in "done" or "error";
-    /// login_cancel ends it early.
+    /// login_cancel ends it early. `scanned`: this device scanned, so the
+    /// other one answers at once or not at all (QR_CHANNEL_TIMEOUT).
     async fn run_grant<Q, F, Fut>(
         &'static self,
         done: impl std::future::Future<Output = Result<(), matrix_sdk::authentication::oauth::qrcode::QRCodeGrantLoginError>>,
         progress: impl futures_util::Stream<Item = GrantLoginProgress<Q>>,
+        scanned: bool,
         channel: F,
     ) -> Result<()>
     where
@@ -194,11 +207,17 @@ impl Core {
         tokio::pin!(cancelled, done, progress);
         let deadline = tokio::time::sleep(SSO_TIMEOUT);
         tokio::pin!(deadline);
+        let no_answer = tokio::time::sleep(QR_CHANNEL_TIMEOUT);
+        tokio::pin!(no_answer);
+        let mut answered = !scanned;
         let result: Result<()> = loop {
             tokio::select! {
                 r = &mut done => break r.map_err(|e| anyhow!("{e}")),
                 Some(p) = progress.next() => match p {
-                    GrantLoginProgress::EstablishingSecureChannel(q) => channel(q).await,
+                    GrantLoginProgress::EstablishingSecureChannel(q) => {
+                        answered = true;
+                        channel(q).await
+                    }
                     GrantLoginProgress::WaitingForAuth { verification_uri, continuation_sender } => {
                         // the account service asks in the browser whether
                         // the new device may in; the grant goes on meanwhile
@@ -212,6 +231,10 @@ impl Core {
                     GrantLoginProgress::Done | GrantLoginProgress::Starting => {}
                 },
                 _ = &mut cancelled => break Err(anyhow!("cancelled")),
+                _ = &mut no_answer, if !answered => {
+                    tracing::info!("qr: no answer from the new device");
+                    break Err(anyhow!("the new device did not answer within a minute. Its server may keep QR logins from working (a proxy that compresses the rendezvous)"));
+                }
                 _ = &mut deadline => break Err(anyhow!("the new device did not finish within {} minutes", SSO_TIMEOUT.as_secs() / 60)),
             }
         };

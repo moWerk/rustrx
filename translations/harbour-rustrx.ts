@@ -3042,5 +3042,9 @@
         <source>Reading the code…</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-qr-connecting">
+        <source>Connecting to the other device…</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

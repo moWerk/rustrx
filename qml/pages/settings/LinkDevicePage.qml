@@ -26,7 +26,8 @@ import "../../components"
 Page {
     id: page
 
-    // idle (the choice), qr, scanned, check, consent, syncing, done, error
+    // idle (the choice), qr, scanned, connecting, check, consent, syncing,
+    // done, error
     property string state_: "idle"
     property int modulesWide
     property string modules
@@ -82,6 +83,8 @@ Page {
                           : page.state_ === "scanned"
                             //% "Type the two digits the new device shows."
                             ? qsTrId("rustrx-la-link-digits")
+                            : page.state_ === "connecting"
+                              ? qsTrId("rustrx-la-qr-connecting")
                             : page.state_ === "check"
                               //% "Type these two digits on the new device."
                               ? qsTrId("rustrx-la-link-check")

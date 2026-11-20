@@ -157,7 +157,10 @@ ApplicationWindow {
             // the session is there, its key did not come: the start page asks again
             if (current !== "start")
                 pageStack.replaceAbove(null, Qt.resolvedUrl("pages/StartPage.qml"))
-        } else if (current !== "login") {
+        } else if (current !== "login" && !pageStack.find(function (p) { return p.objectName === "login" })) {
+            // a page above the login page is part of the login (the QR
+            // scanner, the QR login, the browser's wait): left alone, or a
+            // state change in the middle of it threw the user out
             console.log("route: logged out on page", current, "reason", rustrx.logoutReason)
             pageStack.replaceAbove(null, Qt.resolvedUrl("pages/LoginPage.qml"))
         }

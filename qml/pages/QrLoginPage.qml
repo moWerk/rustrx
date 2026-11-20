@@ -78,6 +78,9 @@ Page {
                         : page.state_ === "scanned"
                           //% "Type the two digits the other device shows."
                           ? qsTrId("rustrx-la-qr-digits")
+                          : page.state_ === "connecting"
+                            //% "Connecting to the other device…"
+                            ? qsTrId("rustrx-la-qr-connecting")
                           : page.state_ === "check"
                             //% "Type these two digits on the other device."
                             ? qsTrId("rustrx-la-qr-check")
