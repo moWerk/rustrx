@@ -559,6 +559,10 @@ ApplicationWindow {
                 pageStack.push(Qt.resolvedUrl("pages/SettingsPage.qml"), { startTab: request.tab || "" })
             } else if (request.ui === "back") {
                 if (pageStack.depth > 1) pageStack.pop()
+            } else if (request.ui === "show_account") {
+                app.showAccount(request.account)
+            } else if (request.ui === "add_account") {
+                rustrx.addAccount()
             } else if (request.ui === "verify_notice") {
                 // as after a new login: the same waits and checks
                 app.activate()

@@ -620,6 +620,9 @@ QString Rustrx::dev(const QString &json)
     } else if (req.contains("ui")) {
         emit devUi(req);
         out["ok"] = true;
+    } else if (req.contains("login")) {
+        loginPassword(req.value("user").toString(), req.value("password").toString(), req.value("homeserver").toString());
+        out["ok"] = true;
     } else {
         out["error"] = QStringLiteral("unknown request");
     }
