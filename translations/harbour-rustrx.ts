@@ -2933,7 +2933,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-he-later">
-        <source>Verify</source>
+        <source>Later</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-he-verify-accept">
