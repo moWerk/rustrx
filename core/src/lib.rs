@@ -207,6 +207,37 @@ pub extern "C" fn rustrx_command_to(index: i32, json: *const c_char) -> i32 {
     command(core, unsafe { CStr::from_ptr(json) })
 }
 
+/// Reads a QR code in a greyscale picture (`width` x `height` bytes, one
+/// per pixel, rows `stride` bytes apart) into `out`: its length, 0 for no
+/// code, -1 for bad arguments, -2 for a code longer than `cap`. Needs no
+/// core; the camera page calls it for each picture it takes.
+#[no_mangle]
+pub extern "C" fn rustrx_decode_qr(grey: *const u8, width: i32, height: i32, stride: i32, out: *mut u8, cap: i32) -> i32 {
+    if grey.is_null() || out.is_null() || width <= 0 || height <= 0 || stride < width || cap <= 0 {
+        return -1;
+    }
+    let (w, h, stride) = (width as usize, height as usize, stride as usize);
+    let pixels = unsafe { std::slice::from_raw_parts(grey, stride * (h - 1) + w) };
+    match decode_qr(pixels, w, h, stride) {
+        None => 0,
+        Some(data) if data.len() > cap as usize => -2,
+        Some(data) => {
+            unsafe { std::ptr::copy_nonoverlapping(data.as_ptr(), out, data.len()) };
+            data.len() as i32
+        }
+    }
+}
+
+/// The bytes of the first QR code that decodes, as they are (a login code
+/// is binary, not text).
+fn decode_qr(pixels: &[u8], w: usize, h: usize, stride: usize) -> Option<Vec<u8>> {
+    let mut image = rqrr::PreparedImage::prepare_from_greyscale(w, h, |x, y| pixels[y * stride + x]);
+    image.detect_grids().into_iter().find_map(|grid| {
+        let mut data = Vec::new();
+        grid.decode_to(&mut data).ok().map(|_| data)
+    })
+}
+
 /// rustrx_command past its pointer checks; apart so tests reach it without
 /// the process-wide core.
 fn command(core: &'static core::Core, json: &CStr) -> i32 {
@@ -223,6 +254,32 @@ fn command(core: &'static core::Core, json: &CStr) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A binary code, drawn as the login page draws one, reads back byte
+    /// for byte: the scanner and the QR login speak the same bytes.
+    #[test]
+    fn qr_reads_back() {
+        let data: Vec<u8> = (0..=255u8).chain(b"MATRIX".iter().copied()).collect();
+        let code = qrcode::QrCode::new(&data).unwrap();
+        let (n, cell, quiet) = (code.width(), 4, 16);
+        let side = n * cell + 2 * quiet;
+        let colors = code.to_colors();
+        let pixels: Vec<u8> = (0..side * side)
+            .map(|i| {
+                let (x, y) = (i % side, i / side);
+                if x < quiet || y < quiet || x >= quiet + n * cell || y >= quiet + n * cell {
+                    return 255;
+                }
+                if colors[(y - quiet) / cell * n + (x - quiet) / cell] == qrcode::Color::Dark { 0 } else { 255 }
+            })
+            .collect();
+        assert_eq!(decode_qr(&pixels, side, side, side), Some(data.clone()));
+        let mut out = vec![0u8; 1024];
+        let len = rustrx_decode_qr(pixels.as_ptr(), side as i32, side as i32, side as i32, out.as_mut_ptr(), out.len() as i32);
+        assert_eq!(&out[..len as usize], &data[..]);
+        assert_eq!(rustrx_decode_qr(pixels.as_ptr(), side as i32, side as i32, side as i32, out.as_mut_ptr(), 4), -2);
+        assert_eq!(decode_qr(&vec![255; 100 * 100], 100, 100, 100), None);
+    }
     use serde_json::{json, Value};
     use std::sync::Mutex;
     use std::time::{Duration, Instant};

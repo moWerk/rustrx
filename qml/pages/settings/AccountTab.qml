@@ -356,6 +356,13 @@ SilicaFlickable {
             onClicked: pageStack.push(Qt.resolvedUrl("DevicesPage.qml"))
         }
 
+        // another phone or computer in with this account, by QR code
+        LinkRow {
+            //% "Link a new device"
+            text: qsTrId("rustrx-he-link-device")
+            onClicked: pageStack.push(Qt.resolvedUrl("LinkDevicePage.qml"))
+        }
+
         //% "Debug log"
         SectionHeader { id: debugHeader; text: qsTrId("rustrx-se-debug-log") }
 

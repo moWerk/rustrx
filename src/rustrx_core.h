@@ -18,6 +18,8 @@ int rustrx_start(const char *data_dir, rustrx_event_callback cb, void *ctx);
 int rustrx_command(const char *json);
 /* to the core rustrx_start numbered `index` */
 int rustrx_command_to(int index, const char *json);
+/* a QR code in a greyscale picture into out: its length, 0 for none, <0 for errors */
+int rustrx_decode_qr(const unsigned char *grey, int width, int height, int stride, unsigned char *out, int cap);
 /* no event reaches the callback after this; call before its receiver dies */
 void rustrx_stop(void);
 /* stop syncing and let go of every core's store, at most timeout_ms; before the

@@ -139,6 +139,10 @@ QtObject {
     // after a new login, the offer to verify waits this long after the last
     // change of the encryption state (it settles over the first syncs)
     readonly property int verifyNoticeDelayMs: 3000
+    // the QR scanner reads a picture of the viewfinder this often, at most
+    // this wide (wider ones cost time on the UI thread and read no better)
+    readonly property int qrScanMs: 350
+    readonly property int qrScanWidth: 720
     // draft save and server probe after the last keystroke
     readonly property int typingDebounceMs: 800
     // search as you type; shorter than typingDebounceMs

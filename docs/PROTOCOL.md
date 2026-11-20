@@ -39,7 +39,9 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `login_oauth` | `user?`, `homeserver?`, `signup?` (make an account first) | `open_url` (the account service's page), then `logged_in` or `login_error` (also after 10 minutes) |
 | `login_qr` | `user?`, `homeserver?` | `qr_login` (`state`: `qr` with `width` and `modules` ("1" dark, row by row), `scanned`, `waiting` with `user_code`, `syncing`, `done`), then `logged_in` or `login_error` |
 | `qr_check_code` | `code` (the two digits the other device shows) | |
-| `login_cancel` | | `login_error` of the waiting `login_sso` or `login_oauth` |
+| `qr_scanned` | `data` (base64 of the bytes the camera read, `rustrx_decode_qr`) | logged out: `qr_login` (`state`: `check` with `check_code` to type on the other device, `waiting`, `syncing`, `done`), then `logged_in` or `login_error`; logged in: `qr_grant` (`check` with `check_code`, then as `grant_qr` from `consent`); a code of the other kind or none: `qr_login`/`qr_grant` `refused` with `reason` (`not_login`, `logged_in_code`, `new_device_code`) |
+| `grant_qr` | | `qr_grant` (`state`: `qr` with `width` and `modules`, `scanned` (type the new device's two digits: `qr_check_code`), `consent` (with `open_url`: the account service asks in the browser), `syncing`, `done`, `error` with `message`) |
+| `login_cancel` | | `login_error` of the waiting `login_sso`, `login_oauth` or a scanned QR login; `qr_grant` `error` of a waiting grant |
 | `restore` | | `ready` (as at start); the saved session opened again after the store key arrived late (`rustrx_set_store_key` first); ignored while logged in |
 | `logout` | | `logged_out` |
 

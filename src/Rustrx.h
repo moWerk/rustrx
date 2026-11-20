@@ -293,6 +293,9 @@ public:
     Q_INVOKABLE void loginOauth(const QString &user, const QString &homeserver, bool signup);
     // with a QR code a logged-in device scans (qrLogin carries the progress)
     Q_INVOKABLE void loginQr(const QString &user, const QString &homeserver);
+    // a picture of the camera page (grabToImage's result): a QR code in it
+    // goes to the shown account (qr_scanned) and true comes back
+    Q_INVOKABLE bool readQr(QObject *grab);
     Q_INVOKABLE void probeServer(const QString &user, const QString &homeserver);
     Q_INVOKABLE void openRoom(const QString &roomId);
     Q_INVOKABLE void closeRoom();
@@ -425,6 +428,10 @@ signals:
     // a QR login's progress: state qr (width, modules), scanned, waiting
     // (user_code), syncing, done
     void qrLogin(const QVariantMap &progress);
+    // letting a new device in by QR code: state qr (width, modules),
+    // scanned, check (check_code), consent, syncing, done, refused
+    // (reason), error (message)
+    void qrGrant(const QVariantMap &progress);
     void replyRequested(const QString &roomId, const QString &text, int account);
     void reactRequested(const QString &roomId, const QString &eventId, const QString &key, int account);
     // a room's notifications went to none (read here or in another client)

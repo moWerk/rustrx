@@ -403,13 +403,25 @@ Page {
 
             Item { width: 1; height: Theme.paddingLarge }
 
+            // the code a logged-in device shows names the server, so this
+            // needs no address typed first
+            PageButton {
+                //% "Scan a QR code"
+                text: qsTrId("rustrx-bt-qr-scan")
+                enabled: !rustrx.loggingIn
+                onClicked: {
+                    errorText = ""
+                    pageStack.push(Qt.resolvedUrl("QrScanPage.qml"), { grant: false })
+                }
+            }
+
             Label {
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * x
                 wrapMode: Text.Wrap
                 color: Theme.secondaryColor
                 font.pixelSize: Theme.fontSizeExtraSmall
-                //% "Signing in by scanning a QR code shown by Element on another device is planned for a later version."
+                //% "A device that is logged in shows the code: Rustrx under Settings, Account, Link a new device; Element under Link new device. This phone then comes in verified."
                 text: qsTrId("rustrx-la-qr-note")
             }
 

@@ -46,6 +46,7 @@
 #include <QMetaObject>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QQuickItemGrabResult>
 #include <QStandardPaths>
 #include <QTimer>
 
@@ -689,6 +690,25 @@ void Rustrx::loginQr(const QString &user, const QString &homeserver)
     command({{"cmd", "login_qr"}, {"user", user}, {"homeserver", homeserver}});
 }
 
+bool Rustrx::readQr(QObject *grab)
+{
+    auto *result = qobject_cast<QQuickItemGrabResult *>(grab);
+    if (!result)
+        return false;
+    const QImage image = result->image().convertToFormat(QImage::Format_Grayscale8);
+    if (image.isNull())
+        return false;
+    // a login code is some 150 bytes; room to spare for other codes
+    QByteArray data(4096, Qt::Uninitialized);
+    const int len = rustrx_decode_qr(image.constBits(), image.width(), image.height(), image.bytesPerLine(),
+                                     reinterpret_cast<uchar *>(data.data()), data.size());
+    if (len <= 0)
+        return false;
+    data.truncate(len);
+    command({{"cmd", "qr_scanned"}, {"data", QString::fromLatin1(data.toBase64())}});
+    return true;
+}
+
 void Rustrx::probeServer(const QString &user, const QString &homeserver)
 {
     command({{"cmd", "probe_server"}, {"user", user}, {"homeserver", homeserver}});
@@ -925,7 +945,14 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     } else if (type == QLatin1String("joined")) {
         emit joined(ev.value("room_id").toString());
     } else if (type == QLatin1String("qr_login")) {
+        // a scanned code took this login on: the login page waits for it
+        if (ev.value("state").toString() == QLatin1String("check") && !m_cur->loggingIn) {
+            m_cur->loggingIn = true;
+            emit stateChanged();
+        }
         emit qrLogin(ev);
+    } else if (type == QLatin1String("qr_grant")) {
+        emit qrGrant(ev);
     } else if (type == QLatin1String("user_info")) {
         emit userInfo(ev);
     } else if (type == QLatin1String("ignored_users")) {

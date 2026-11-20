@@ -19,9 +19,11 @@ import Sailfish.Silica 1.0
 import "../components"
 
 // Logging in with a QR code: this phone shows the code, a device that is
-// logged in already (Element: "Link new device") scans it and shows two
-// digits, which go into the field here. That device hands over the keys,
-// so this one comes in verified. The login page started it (loginQr).
+// logged in already (Rustrx: "Link a new device", Element: "Link new
+// device") scans it and shows two digits, which go into the field here.
+// Or (scanned) this phone read the code of the logged-in device
+// (QrScanPage) and shows two digits for it. That device hands over the
+// keys, so this one comes in verified. The login page started it.
 Page {
     id: page
 
@@ -29,15 +31,23 @@ Page {
     property int width_
     property string modules
     property string userCode
+    property string checkCode
     property string error
+    // this phone scanned; the first answer came with the scan
+    property bool scanned
+    property var initial
+
+    function take(progress) {
+        page.state_ = progress.state
+        if (progress.state === "qr") { page.width_ = progress.width; page.modules = progress.modules }
+        if (progress.state === "waiting") page.userCode = progress.user_code || ""
+        if (progress.state === "check") page.checkCode = progress.check_code || ""
+    }
+    Component.onCompleted: if (initial) take(initial)
 
     Connections {
         target: rustrx
-        onQrLogin: {
-            page.state_ = progress.state
-            if (progress.state === "qr") { page.width_ = progress.width; page.modules = progress.modules; qr.requestPaint() }
-            if (progress.state === "waiting") page.userCode = progress.user_code || ""
-        }
+        onQrLogin: page.take(progress)
         onLoginError: page.error = message
         // logged in: the window's route() takes the stack over
     }
@@ -63,11 +73,14 @@ Page {
                 color: page.error.length ? Theme.errorColor : Theme.highlightColor
                 text: page.error.length ? page.error
                       : page.state_ === "qr"
-                        //% "On a device that is logged in, open Element and choose to link a new device, then scan this code."
+                        //% "On a device that is logged in, choose to link a new device (Rustrx: Settings, Account, Link a new device), then scan this code."
                         ? qsTrId("rustrx-la-qr-scan")
                         : page.state_ === "scanned"
                           //% "Type the two digits the other device shows."
                           ? qsTrId("rustrx-la-qr-digits")
+                          : page.state_ === "check"
+                            //% "Type these two digits on the other device."
+                            ? qsTrId("rustrx-la-qr-check")
                           : page.state_ === "waiting"
                             //% "Confirm the login on the other device."
                             ? qsTrId("rustrx-la-qr-confirm")
@@ -78,30 +91,12 @@ Page {
                               : qsTrId("rustrx-la-qr-starting")
             }
 
-            // the code: dark modules on white, with the quiet zone around
-            Rectangle {
+            QrCode {
                 visible: page.state_ === "qr" && page.width_ > 0
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: Math.min(page.width, page.height) - 2 * Theme.horizontalPageMargin
-                height: width
-                color: "white"
-                Canvas {
-                    id: qr
-                    anchors.fill: parent
-                    anchors.margins: parent.width / (page.width_ + 8) * 4
-                    onPaint: {
-                        var ctx = getContext("2d")
-                        ctx.fillStyle = "white"
-                        ctx.fillRect(0, 0, width, height)
-                        if (!page.width_) return
-                        var cell = width / page.width_
-                        ctx.fillStyle = "black"
-                        for (var y = 0; y < page.width_; y++)
-                            for (var x = 0; x < page.width_; x++)
-                                if (page.modules.charAt(y * page.width_ + x) === "1")
-                                    ctx.fillRect(Math.floor(x * cell), Math.floor(y * cell), Math.ceil(cell), Math.ceil(cell))
-                    }
-                }
+                modulesWide: page.width_
+                modules: page.modules
             }
 
             TextField {
@@ -119,6 +114,14 @@ Page {
                     rustrx.command({ cmd: "qr_check_code", code: parseInt(text, 10) })
                     page.state_ = "sent"
                 }
+            }
+
+            Label {
+                visible: page.state_ === "check" && page.checkCode.length > 0
+                anchors.horizontalCenter: parent.horizontalCenter
+                font.pixelSize: Theme.fontSizeHuge
+                color: Theme.highlightColor
+                text: page.checkCode
             }
 
             Label {
