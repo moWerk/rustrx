@@ -16,7 +16,7 @@
 // One kind per request, each with the keys it may carry:
 //   {"quit": true}                       a clean exit before an install
 //   {"state": true}, {"rooms": true}     what the app shows, read only
-//   {"ui": activate|open_room|settings|back, "room_id", "tab"}
+//   {"ui": activate|open_room|settings|back|verify_notice, "room_id", "tab"}
 //   {"voip": place|answer|hangup|status, "room_id", "invitee", "tone", "aec", "speaker"}
 //   {"cmd": call_start, "room_id", "voice", "skip_lobby"}, {"cmd": refresh_rooms}
 namespace DevHook {
@@ -29,7 +29,7 @@ inline QString refusal(const QVariantMap &req)
         { "quit", {}, {} },
         { "state", {}, {} },
         { "rooms", {}, {} },
-        { "ui", { "activate", "open_room", "settings", "back" }, { "room_id", "tab" } },
+        { "ui", { "activate", "open_room", "settings", "back", "verify_notice" }, { "room_id", "tab" } },
         { "voip", { "place", "answer", "hangup", "status" }, { "room_id", "invitee", "tone", "aec", "speaker" } },
     };
     // core commands, each with its own keys

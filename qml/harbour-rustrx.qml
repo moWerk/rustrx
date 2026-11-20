@@ -132,7 +132,7 @@ ApplicationWindow {
         if (pageStack.busy) { routeRetry.restart(); return }
         var current = pageStack.currentPage ? pageStack.currentPage.objectName : ""
         // the prototype notice is up: it is answered first, then this runs again
-        if (current === "prototypeNotice" || current === "secretsNotice") return
+        if (current === "prototypeNotice" || current === "secretsNotice" || current === "verifyNotice") return
         if (rustrx.loggedIn) {
             // read before the main page comes in: becoming active, it forgets the room
             var last = !reopenTried && reopenLast ? lastRoom : ""
@@ -264,6 +264,32 @@ ApplicationWindow {
             })
         }
     }
+    // a login here made this phone a new device: once its encryption state
+    // has settled unverified or without the recovery key, the offer to
+    // verify, after the other notices and never over a call
+    property bool verifyNoticeDone
+    // the dev hook's stand-in for a new login
+    property bool verifyNoticeTest
+    Timer {
+        id: verifyNotice
+        interval: Tunables.verifyNoticeDelayMs
+        onTriggered: {
+            if (app.verifyNoticeDone || !rustrx.loggedIn || !(rustrx.newLogin || app.verifyNoticeTest)) return
+            if (rustrx.verificationState !== "unverified" && rustrx.recoveryState !== "incomplete") return
+            if (pageStack.busy || app.prototypeNoticeUp || !cfg.prototypeNoticeSeen || app.secretsNoticeUp
+                    || (rustrx.storeState === "no_secrets" && !cfg.secretsNoticeSeen)
+                    || rustrx.voip.state !== "idle"
+                    || !pageStack.find(function (p) { return p.objectName === "main" })) {
+                interval = Tunables.retryIntervalMs
+                restart()
+                return
+            }
+            interval = Tunables.verifyNoticeDelayMs
+            app.verifyNoticeDone = true
+            app.verifyNoticeTest = false
+            pageStack.push(Qt.resolvedUrl("pages/VerifyNotice.qml"))
+        }
+    }
     Timer {
         id: pendingRoomRetry
         interval: Tunables.pendingRoomPollMs
@@ -295,7 +321,11 @@ ApplicationWindow {
 
     Connections {
         target: rustrx
-        onStateChanged: route()
+        onStateChanged: {
+            if (!rustrx.loggedIn) app.verifyNoticeDone = false
+            route()
+        }
+        onEncryptionChanged: if (rustrx.newLogin && !app.verifyNoticeDone) verifyNotice.restart()
         onBrowserUrl: openExternal(url)
         onVerification: {
             // an incoming request opens its page; one we started has its page already
@@ -527,6 +557,12 @@ ApplicationWindow {
                 pageStack.push(Qt.resolvedUrl("pages/SettingsPage.qml"), { startTab: request.tab || "" })
             } else if (request.ui === "back") {
                 if (pageStack.depth > 1) pageStack.pop()
+            } else if (request.ui === "verify_notice") {
+                // as after a new login: the same waits and checks
+                app.activate()
+                app.verifyNoticeTest = true
+                app.verifyNoticeDone = false
+                verifyNotice.restart()
             }
         }
     }

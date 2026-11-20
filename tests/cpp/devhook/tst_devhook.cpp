@@ -33,6 +33,7 @@ private slots:
                  "{\"ui\":\"open_room\",\"room_id\":\"!r:example.org\"}",
                  "{\"ui\":\"settings\",\"tab\":\"account\"}",
                  "{\"ui\":\"back\"}",
+                 "{\"ui\":\"verify_notice\"}",
                  "{\"cmd\":\"call_start\",\"room_id\":\"!r:example.org\",\"skip_lobby\":true}",
                  "{\"cmd\":\"refresh_rooms\"}",
                  "{\"voip\":\"place\",\"room_id\":\"!r:example.org\",\"invitee\":\"@b:example.org\",\"tone\":true}",

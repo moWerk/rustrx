@@ -531,6 +531,9 @@ QString Rustrx::dev(const QString &json)
         out["logged_in"] = m_loggedIn;
         out["sync"] = m_syncState;
         out["open_room"] = m_openRoomId;
+        out["verification"] = m_verificationState;
+        out["recovery"] = m_recoveryState;
+        out["new_login"] = m_newLogin;
         out["active"] = qGuiApp && qGuiApp->applicationState() == Qt::ApplicationActive;
     } else if (req.contains("ui")) {
         emit devUi(req);
@@ -787,6 +790,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         m_restoring = false;
         m_ready = true;
         m_loggedIn = true;
+        // only a login started here makes a new device; a restore does not
+        m_newLogin = m_loggingIn;
         m_loggingIn = false;
         m_userId = ev.value("user_id").toString();
         m_voip->setOwnUserId(m_userId);
@@ -821,6 +826,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     } else if (type == QLatin1String("logged_out")) {
         m_loggedIn = false;
         m_loggingIn = false;
+        m_newLogin = false;
         m_push->loggedOut();
         m_pendingPushes.clear();
         m_logoutReason = ev.value("reason").toString();

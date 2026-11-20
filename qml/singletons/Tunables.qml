@@ -134,6 +134,9 @@ QtObject {
     readonly property int retryMaxTries: 40
     // the first start's prototype notice, once the stack is still
     readonly property int noticeDelayMs: 600
+    // after a new login, the offer to verify waits this long after the last
+    // change of the encryption state (it settles over the first syncs)
+    readonly property int verifyNoticeDelayMs: 3000
     // draft save and server probe after the last keystroke
     readonly property int typingDebounceMs: 800
     // search as you type; shorter than typingDebounceMs
