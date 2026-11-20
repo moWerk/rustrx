@@ -285,11 +285,12 @@ Page {
                     width: page.width
                     height: Theme.itemSizeSmall
                     onClicked: {
-                        // the key first: closing empties the model, which
-                        // takes this row and its modelData away
-                        var key = modelData.key
+                        // the switch first: closing empties the model, which
+                        // destroys this row, and with it the context the
+                        // rest of this handler would look names up in
+                        // ("app is not defined" on the phone)
+                        app.showAccount(modelData.key)
                         page.accountsOpen = false
-                        app.showAccount(key)
                     }
                     OwnAvatar {
                         id: rowAvatar
