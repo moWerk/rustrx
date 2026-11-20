@@ -2956,5 +2956,17 @@
         <source>Logging in made this phone a new device of your account. Until it is verified, it cannot read your older encrypted messages, and your contacts see a device they cannot trust yet.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-account-logged-out">
+        <source>Logged out, tap to log in again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-add-account">
+        <source>Log in to another account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-show-account">
+        <source>Show %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>
