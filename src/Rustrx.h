@@ -47,6 +47,10 @@ struct Account {
     QString dir;
     // the tabs' room lists, unread totals, requests to join
     RoomLists *lists = nullptr;
+    // its push registration (UnifiedPush), in its own folder
+    UnifiedPush *push = nullptr;
+    // pushes that came before its session was back (the woken process)
+    QList<QVariantMap> pendingPushes;
     bool ready = false;
     bool loggedIn = false;
     bool loggingIn = false;
@@ -126,8 +130,9 @@ class Rustrx : public QObject
     // unread chats in the accounts not shown (the account button's dot)
     Q_PROPERTY(int otherUnread READ otherUnread NOTIFY accountsChanged)
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
-    // push through UnifiedPush (Foghorn), the stand-in's lighter successor
-    Q_PROPERTY(UnifiedPush *push READ push CONSTANT)
+    // push through UnifiedPush (Foghorn), the stand-in's lighter successor;
+    // the shown account's (each account registers its own)
+    Q_PROPERTY(UnifiedPush *push READ push NOTIFY shownAccountChanged)
     // classic 1:1 calls (m.call.*, WebRTC through GStreamer)
     Q_PROPERTY(Voip *voip READ voip CONSTANT)
     // the open thread's messages (root and replies), beside the room's
@@ -256,7 +261,11 @@ public:
     void setStandIn(bool on) { m_handover.setStandIn(on); }
     // a process the distributor started for one push (no window, no sync)
     void setPushWake(bool on) { m_handover.setPushWake(on); }
-    UnifiedPush *push() const { return m_push; }
+    UnifiedPush *push() const { return m_cur->push; }
+    // the first account's, which exports the connector
+    UnifiedPush *firstPush() const { return m_push; }
+    // push on or off, for every account (Settings, "when Rustrx is closed")
+    Q_INVOKABLE void setPushEnabled(bool on);
     Voip *voip() const { return m_voip; }
     // the file the stand-in's unit looks for (in the sandbox's own config folder)
     static QString backgroundFlagPath() { return Handover::backgroundFlagPath(); }
@@ -344,9 +353,11 @@ signals:
     // starting a call opened the room's calls to everyone (permissions)
     void callsAllowed(const QString &roomId);
     void knockRequestsChanged();
-    // a pushed message, fetched (the woken process shows it)
+    // a pushed message, fetched (the woken process shows it); account: whose
     void pushNotification(const QString &roomId, const QString &eventId, const QString &roomName, const QString &senderName,
-                          const QString &body, bool isDm, bool noisy);
+                          const QString &body, bool isDm, bool noisy, int account);
+    // a push came, for any account (the woken process stays a while)
+    void pushed();
     // a room's threads (thread_list): { root, latest, count }
     void threadList(const QString &roomId, const QVariantList &threads, bool loading);
     // a space's rooms (from space_open), loading while pages come
@@ -535,7 +546,7 @@ private:
     QSettings m_settings;
     // the stand-in's and push-woken process's requests, the handover file
     Handover m_handover;
-    QList<QVariantMap> m_pendingPushes;
+    // the first account's push
     UnifiedPush *m_push;
     Voip *m_voip;
     CallRoute *m_callRoute;

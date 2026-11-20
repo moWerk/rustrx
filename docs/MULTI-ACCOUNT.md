@@ -23,12 +23,15 @@ account. As many accounts as anyone wants.
   `markAccountRoomRead`, `replyFromAccountNotification`, `reactFromAccountNotification`
   with the account's number first. The older actions stay for account 0 (lines posted by an
   older Rustrx). The handover from the stand-in carries the account with the room.
-- **Push** (UnifiedPush) stays account 0's for now; further accounts notify through the
-  running app or the stand-in (background mode), which runs every account's core.
+- **Push** (UnifiedPush): every account registers with the distributor under its own token
+  and sets its own pusher; `push.json` lives in its folder. The one connector hands each
+  call to the instance whose token it carries, and the woken process fetches the message
+  with that account's core. The switch ("when Rustrx is closed") is one for all accounts;
+  the stand-in stays away only while every account's push works.
 - **Calls** (classic): the account a call rings on owns the call; the app switches to it
   when the call is answered. No switching while a call runs.
 
 ## Not yet
 
-- Push registration for accounts beyond the first.
 - Ordering accounts, a name per account.
+- The requests-to-join notification opens the shown account's list.

@@ -96,7 +96,7 @@ Item {
         onInviteGone: service.closeInvite(account, roomId)
         onCallRing: service.ringCall(account, roomId, roomName, senderName, ring, eventId, expiresMs)
         onNewKnock: service.notifyKnock(roomName, isSpace, name, reason)
-        onPushNotification: service.notifyPush(roomId, eventId, roomName, senderName, body, isDm)
+        onPushNotification: service.notifyPush(account, roomId, eventId, roomName, senderName, body, isDm)
         onKnockRequestsChanged: if (rustrx.knockRequests.length === 0) knockNote.close()
         onCallAnswered: service.stopRinging(roomId)
         onUnreadChanged: if (rustrx.standIn) console.log("stand-in: unread", rustrx.unreadTotal, "in", rustrx.unreadChats)
@@ -184,10 +184,9 @@ Item {
         var picked = String(cfg.notifyEmoji || "").split(/\s+/).filter(function (e) { return e.length > 0 }).slice(0, 3)
         return picked.length ? picked : ["👍", "😀", "👎"]
     }
-    // each names its account (as text: the arguments arrive as written);
-    // push answers only for the first account (docs/MULTI-ACCOUNT.md)
+    // each names its account (as text: the arguments arrive as written)
     function roomActions(account, roomId, eventId) {
-        var viaPush = rustrx.push.enabled && account === 0
+        var viaPush = rustrx.push.enabled
         var a = String(account)
         var actions = [ action("default", "openAccountRoom", [ a, roomId ]) ]
         if (cfg.notifyReply) {
@@ -372,14 +371,13 @@ Item {
 
     // a pushed message (a process woken for it): the room's line, as a
     // message seen by the sync would make it; text as Settings has it
-    // push is the first account's
-    function notifyPush(roomId, eventId, roomName, senderName, body, isDm) {
-        console.log("notify: push")
-        var n = roomNote(0, roomId)
-        var pending = (roomPending[noteKey(0, roomId)] || 0) + 1
-        roomPending[noteKey(0, roomId)] = pending
+    function notifyPush(account, roomId, eventId, roomName, senderName, body, isDm) {
+        console.log("notify: push, account", account)
+        var n = roomNote(account, roomId)
+        var pending = (roomPending[noteKey(account, roomId)] || 0) + 1
+        roomPending[noteKey(account, roomId)] = pending
         var who = senderName && !isDm && chatDetails ? senderName + ": " : ""
-        n.remoteActions = roomActions(0, roomId, eventId)
+        n.remoteActions = roomActions(account, roomId, eventId)
         n.summary = chatDetails ? roomName : "Rustrx"
         n.previewSummary = n.summary
         n.body = body && notifyText ? who + body : qsTrId("rustrx-no-new-messages", pending)

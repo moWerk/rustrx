@@ -147,9 +147,8 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     connect(m_media, &Media::errorOccurred, this, &Rustrx::errorOccurred);
     connect(m_media, &Media::emoteReady, this, &Rustrx::emoteReady);
     connect(m_media, &Media::settingsChanged, this, &Rustrx::settingsChanged);
-    // push is the first account's (docs/MULTI-ACCOUNT.md)
+    // the first account's push; startAccount wires it and makes the others'
     m_push = new UnifiedPush(dataDir, this);
-    connect(m_push, &UnifiedPush::command, this, [this](const QVariantMap &cmd) { commandTo(0, cmd); });
     m_voip = new Voip(this);
     // a call's events go to the account it is on
     connect(m_voip, &Voip::command, this, [this](const QVariantMap &cmd) { commandTo(m_voipKey, cmd); });
@@ -179,18 +178,6 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
             m_handover.setPendingVoip(m_voip->ringing());
             m_handover.setPendingAccount(m_voipKey);
         }
-    });
-    // a push: the woken process fetches the message; a running app or
-    // stand-in has it from its sync anyway
-    connect(m_push, &UnifiedPush::pushed, this, [this](const QString &roomId, const QString &eventId) {
-        if (!m_handover.pushWake())
-            return;
-        const QVariantMap cmd{ { "cmd", "push_handle" }, { "room_id", roomId }, { "event_id", eventId } };
-        // the session may still be on its way: after it
-        if (m_accounts.value(0) && m_accounts.first()->loggedIn)
-            commandTo(0, cmd);
-        else
-            m_pendingPushes << cmd;
     });
     connect(m_thread, &TimelineModel::emoteWanted, this, [this](const QString &mxc) {
         command({ { "cmd", "fetch_emote" }, { "mxc", mxc } });
@@ -1045,11 +1032,14 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
             emit encryptionChanged();
         }
         emit accountsChanged();
+        a->push->loggedIn();
+        // not for one push: the woken process is gone in seconds
+        if (!m_handover.pushWake())
+            a->push->checkPusher();
+        for (const QVariantMap &cmd : a->pendingPushes)
+            commandTo(a->key, cmd);
+        a->pendingPushes.clear();
         if (a->key == 0) {
-            m_push->loggedIn();
-            // not for one push: the woken process is gone in seconds
-            if (!m_handover.pushWake())
-                m_push->checkPusher();
             // drafts from before 0.4.7 sat in the plain settings file: into the
             // store with them, once
             m_settings.beginGroup(QLatin1String(Keys::kDrafts));
@@ -1060,9 +1050,6 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
             m_settings.remove(QLatin1String(Keys::kDrafts));
             // and the thread counts the UI kept itself until 0.4.7
             m_settings.remove(QLatin1String(Keys::kThreadsSeen));
-            for (const QVariantMap &cmd : m_pendingPushes)
-                commandTo(0, cmd);
-            m_pendingPushes.clear();
         }
     } else if (type == QLatin1String("login_error")
                || (type == QLatin1String("error") && isLoginCommand(ev.value("cmd").toString()))) {
@@ -1080,10 +1067,8 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
         a->loggedIn = false;
         a->loggingIn = false;
         a->newLogin = false;
-        if (a->key == 0) {
-            m_push->loggedOut();
-            m_pendingPushes.clear();
-        }
+        a->push->loggedOut();
+        a->pendingPushes.clear();
         a->logoutReason = ev.value("reason").toString();
         a->keptUser = ev.value("user_id").toString();
         a->userId.clear();
@@ -1186,15 +1171,13 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
         else
             m_voip->handleSent(ev);
     } else if (type == QLatin1String("pusher_checked")) {
-        if (a->key == 0)
-            m_push->pusherChecked(ev.value("endpoint").toString(), ev.value("present").toBool());
+        a->push->pusherChecked(ev.value("endpoint").toString(), ev.value("present").toBool());
     } else if (type == QLatin1String("pusher_set")) {
-        if (a->key == 0)
-            m_push->pusherSet(ev.value("endpoint").toString());
+        a->push->pusherSet(ev.value("endpoint").toString());
     } else if (type == QLatin1String("push_notification")) {
         emit pushNotification(ev.value("room_id").toString(), ev.value("event_id").toString(), ev.value("room_name").toString(),
                               ev.value("sender_name").toString(), ev.value("body").toString(),
-                              ev.value("is_dm").toBool(), ev.value("noisy").toBool());
+                              ev.value("is_dm").toBool(), ev.value("noisy").toBool(), a->key);
     }
 }
 
@@ -1229,6 +1212,24 @@ Account *Rustrx::startAccount(int key, const QString &dir)
         emit invited(roomId, roomName, inviter, direct, known, a->key);
     });
     connect(lists, &RoomLists::inviteGone, this, [this, a](const QString &roomId) { emit inviteGone(roomId, a->key); });
+    // its own push registration, switched as the first account's is
+    a->push = key ? new UnifiedPush(dir, this) : m_push;
+    if (key)
+        a->push->setEnabled(m_push->enabled());
+    connect(a->push, &UnifiedPush::command, this, [this, a](const QVariantMap &cmd) { commandTo(a->key, cmd); });
+    // a push: the woken process fetches the message; a running app or
+    // stand-in has it from its sync anyway
+    connect(a->push, &UnifiedPush::pushed, this, [this, a](const QString &roomId, const QString &eventId) {
+        emit pushed();
+        if (!m_handover.pushWake())
+            return;
+        const QVariantMap cmd{ { "cmd", "push_handle" }, { "room_id", roomId }, { "event_id", eventId } };
+        // the session may still be on its way: after it
+        if (a->loggedIn)
+            commandTo(a->key, cmd);
+        else
+            a->pendingPushes << cmd;
+    });
     m_accounts << a;
     // the core's events name this account (eventCallback reads a->key)
     a->core = rustrx_start(dir.toUtf8().constData(), &Rustrx::eventCallback, a);
@@ -1264,6 +1265,12 @@ QVariantList Rustrx::accounts() const
         };
     }
     return out;
+}
+
+void Rustrx::setPushEnabled(bool on)
+{
+    for (Account *a : m_accounts)
+        a->push->setEnabled(on);
 }
 
 bool Rustrx::accountLoggedIn(int key) const

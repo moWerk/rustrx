@@ -93,7 +93,7 @@ ApplicationWindow {
     function applyClosedMode() {
         var m = closedMode.length ? closedMode : (rustrx.push.available ? "push" : "background")
         if (m === "push" && !rustrx.push.available) m = "background"
-        rustrx.push.enabled = m === "push"
+        rustrx.setPushEnabled(m === "push")
         rustrx.background = m === "background"
     }
     // favourites with new messages glow in the lists (highlightFavs).
