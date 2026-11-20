@@ -68,6 +68,7 @@ Page {
         if (status === PageStatus.Deactivating) {
             dropLooseFilter()
             sortOpen = false
+            accountsOpen = false
         }
         if (debugOpenRoom.value.length || debugMarkRead.value.length || debugNavigate.value.length) debugTimer.start()
     }
@@ -145,6 +146,16 @@ Page {
 
     // the filter menu under the tabs; it closes whenever this page is left
     property bool sortOpen
+    // the accounts under the tabs, opened by the account button
+    property bool accountsOpen
+    onSortOpenChanged: if (sortOpen) accountsOpen = false
+    onAccountsOpenChanged: if (accountsOpen) sortOpen = false
+    // the shown account's line in rustrx.accounts (none while it logs in)
+    readonly property var shownAccount: {
+        var all = rustrx.accounts
+        for (var i = 0; i < all.length; i++) if (all[i].shown) return all[i]
+        return ({})
+    }
 
     // the room search of the filter menu (see the search row there)
     property string filterText
@@ -201,6 +212,34 @@ Page {
                         titleFontSize: tabModel.count >= Tunables.crowdedTabCount ? Math.round(Theme.fontSizeMedium * Tunables.crowdedTabScale) : Theme.fontSizeLarge
                     }
                 }
+                // at the left, mirroring the filter icon: the shown account's
+                    // picture; a dot while another account has unread chats
+                MouseArea {
+                    id: accountButton
+                    anchors { left: parent.left; verticalCenter: parent.verticalCenter; verticalCenterOffset: tabBar.topMargin / 2 }
+                    width: Theme.itemSizeSmall
+                    height: Theme.itemSizeSmall
+                    onClicked: page.accountsOpen = !page.accountsOpen
+                    OwnAvatar {
+                        id: accountAvatar
+                        anchors.centerIn: parent
+                        width: Math.round(Theme.iconSizeSmall * filterButton.scale_)
+                        height: width
+                        path: page.shownAccount.avatar || ""
+                        version: page.shownAccount.avatar_v || 0
+                        name: page.shownAccount.name || ""
+                        letterSize: Math.round(Theme.fontSizeExtraSmall * filterButton.scale_)
+                        opacity: accountButton.pressed || page.accountsOpen ? Theme.opacityHigh : 1
+                    }
+                    Rectangle {
+                        visible: rustrx.otherUnread > 0
+                        anchors { right: accountAvatar.right; top: accountAvatar.top; margins: -width / 3 }
+                        width: Theme.paddingMedium
+                        height: width
+                        radius: width / 2
+                        color: Theme.highlightColor
+                    }
+                }
                 MouseArea {
                     id: filterButton
                     // centred on the tabs' row: the bar adds a top margin for a
@@ -234,6 +273,82 @@ Page {
                         }
                     }
                 }
+            }
+
+            // the accounts: a tap shows one; the last line logs in to one more
+            Repeater {
+                model: page.accountsOpen ? rustrx.accounts : []
+                BackgroundItem {
+                    id: accountRow
+                    width: page.width
+                    height: Theme.itemSizeSmall
+                    onClicked: {
+                        page.accountsOpen = false
+                        app.showAccount(modelData.key)
+                    }
+                    OwnAvatar {
+                        id: rowAvatar
+                        anchors { left: parent.left; leftMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                        width: Theme.iconSizeMedium
+                        height: width
+                        path: modelData.avatar || ""
+                        version: modelData.avatar_v || 0
+                        name: modelData.name || ""
+                        userId: modelData.user_id
+                        letterSize: Theme.fontSizeSmall
+                    }
+                    Column {
+                        anchors { left: rowAvatar.right; leftMargin: Theme.paddingMedium; right: unreadLabel.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }
+                        Label {
+                            width: parent.width
+                            truncationMode: TruncationMode.Fade
+                            text: modelData.name || modelData.user_id
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: modelData.shown || accountRow.highlighted ? Theme.highlightColor : Theme.primaryColor
+                        }
+                        Label {
+                            width: parent.width
+                            truncationMode: TruncationMode.Fade
+                            text: modelData.logged_in ? modelData.user_id
+                                                      //: an account whose session the server ended
+                                                      //% "Logged out, tap to log in again"
+                                                      : qsTrId("rustrx-la-account-logged-out")
+                            font.pixelSize: Theme.fontSizeExtraSmall
+                            color: Theme.secondaryColor
+                        }
+                    }
+                    Label {
+                        id: unreadLabel
+                        anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                        visible: modelData.unread > 0
+                        text: modelData.unread
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: Theme.highlightColor
+                    }
+                }
+            }
+            BackgroundItem {
+                visible: page.accountsOpen
+                width: page.width
+                height: visible ? Theme.itemSizeExtraSmall : 0
+                onClicked: {
+                    page.accountsOpen = false
+                    rustrx.addAccount()
+                }
+                Label {
+                    anchors { left: parent.left; leftMargin: Theme.horizontalPageMargin; right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                    //% "Log in to another account"
+                    text: qsTrId("rustrx-me-add-account")
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
+                }
+            }
+            Separator {
+                visible: page.accountsOpen
+                x: Theme.horizontalPageMargin
+                width: page.width - 2 * x
+                color: Theme.secondaryColor
+                horizontalAlignment: Qt.AlignLeft
             }
 
             // one of three orders (a radio: the current one filled), then two

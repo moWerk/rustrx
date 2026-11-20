@@ -84,6 +84,7 @@ ApplicationWindow {
     // start in the chat that was open when the app was closed
     property alias reopenLast: cfg.reopenLast
     property alias lastRoom: cfg.lastRoom
+    property alias lastRoomAccount: cfg.lastRoomAccount
     property alias portraitOnly: cfg.portraitOnly
 
     // the choice made real; unchosen, push where a distributor is installed,
@@ -135,7 +136,7 @@ ApplicationWindow {
         if (current === "prototypeNotice" || current === "secretsNotice" || current === "verifyNotice") return
         if (rustrx.loggedIn) {
             // read before the main page comes in: becoming active, it forgets the room
-            var last = !reopenTried && reopenLast ? lastRoom : ""
+            var last = !reopenTried && reopenLast && lastRoomAccount === rustrx.accountKey ? lastRoom : ""
             reopenTried = true
             if (current === "login" || current === "start")
                 pageStack.replaceAbove(null, Qt.resolvedUrl("pages/MainPage.qml"))
@@ -321,6 +322,7 @@ ApplicationWindow {
 
     Connections {
         target: rustrx
+        onShowAccountRequested: app.showAccount(key)
         onStateChanged: {
             if (!rustrx.loggedIn) app.verifyNoticeDone = false
             route()
@@ -357,7 +359,7 @@ ApplicationWindow {
         onOpenRoomRequested: {
             if (!rustrx.takePendingRoom().length) return
             app.activate()
-            service.closeNotification(roomId)
+            service.closeNotification(rustrx.accountKey, roomId)
             app.showRoom(roomId)
             // Answer on a call while its room is open already: join now
             // (a room opened anew starts it itself, RoomPage)
@@ -636,8 +638,35 @@ ApplicationWindow {
     }
     Timer { id: knocksRetry; interval: Tunables.retryIntervalMs; onTriggered: app.showKnocks() }
 
+    // another account in front: the shown account's pages go first (they
+    // send their last receipt and draft to their own account as they
+    // leave), then the switch. keepPage: the page asking stays (Settings
+    // switch there and show the other account's settings)
+    property bool switchingAccount
+    function showAccount(key, keepPage) {
+        if (key === rustrx.accountKey) return
+        switchingAccount = true
+        var main = pageStack.find(function (p) { return p.objectName === "main" })
+        if (main && !keepPage) pageStack.pop(main, PageStackAction.Immediate)
+        accountSwitch.key = key
+        accountSwitch.restart()
+    }
+    Timer {
+        id: accountSwitch
+        property int key
+        // after the pages that went are gone
+        interval: Tunables.accountSwitchMs
+        onTriggered: {
+            if (pageStack.busy) { restart(); return }
+            rustrx.switchAccount(key)
+            app.switchingAccount = false
+        }
+    }
+
     function showRoom(roomId) {
         if (rustrx.openRoomId === roomId) return
+        // its account is still coming to the front
+        if (switchingAccount) { pendingRoom = roomId; pendingRoomRetry.restart(); return }
         var main = pageStack.find(function (p) { return p.objectName === "main" })
         if (!main || !rustrx.roomInfo(roomId).name) { pendingRoom = roomId; pendingRoomRetry.restart(); return }
         pendingRoom = ""

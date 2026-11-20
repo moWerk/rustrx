@@ -48,6 +48,8 @@ static const char kInvitesNotified[] = "invitesNotified";
 // the store), threadsSeen/<root id without $> (the receipts tell now)
 static const char kDrafts[] = "drafts";
 static const char kThreadsSeen[] = "threadsSeen";
+// the account shown when the app was left (Account::key)
+static const char kShownAccount[] = "accounts/shown";
 // per tab: tabs/<kind>/<key>, else the key itself as the shared value
 static const char kTabs[] = "tabs";
 static const char kSortOrder[] = "sortOrder";

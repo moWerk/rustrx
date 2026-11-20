@@ -22,13 +22,29 @@ import "../../components"
 
 // Settings, Account: who one is, how safe the account is (a ring, and every
 // missing safeguard in words with its fix), the ways to the encryption and
-// the devices, and the debug log. Log out is in the pulley menu.
+// the devices, and the debug log. The pulley switches to another account
+// (Settings then show its settings) or logs in to one more.
 SilicaFlickable {
     id: tab
 
     property Item settings
 
     contentHeight: column.height
+
+    PullDownMenu {
+        //% "Log in to another account"
+        MenuItem { text: qsTrId("rustrx-me-add-account"); onClicked: rustrx.addAccount() }
+        Repeater {
+            model: rustrx.accounts
+            MenuItem {
+                visible: !modelData.shown
+                //: the pulley: show that account (%1 its name or address)
+                //% "Show %1"
+                text: qsTrId("rustrx-me-show-account").arg(modelData.name || modelData.user_id)
+                onClicked: app.showAccount(modelData.key, true)
+            }
+        }
+    }
 
     // whether what Rustrx stores on the phone is encrypted: "encrypted",
     // "unencrypted", "no_secrets", or "" while not known
@@ -40,6 +56,10 @@ SilicaFlickable {
     Component.onCompleted: rustrx.command({ cmd: "devices" })
     Connections {
         target: rustrx
+        onShownAccountChanged: {
+            tab.unverifiedDevices = -1
+            rustrx.command({ cmd: "devices" })
+        }
         onDevices: {
             var told = false, n = 0
             for (var i = 0; i < devices.length; i++) {

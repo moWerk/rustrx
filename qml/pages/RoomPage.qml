@@ -83,6 +83,7 @@ Page {
         if (status === PageStatus.Deactivating) sendReceipt()
         if (status === PageStatus.Active) {
             app.lastRoom = roomId
+            app.lastRoomAccount = rustrx.accountKey
             // back from a room opened above this one: its own messages again
             // (that page closes its room as it goes only while still the open one)
             if (!inTimeline) {

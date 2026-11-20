@@ -38,8 +38,9 @@ class RoomLists : public QObject
     Q_OBJECT
 
 public:
-    // settings: Rustrx's, which outlives every use here
-    RoomLists(QSettings *settings, QObject *parent = nullptr);
+    // settings: Rustrx's, which outlives every use here; prefix: where this
+    // account's own keys go in it ("" for the first account, as always)
+    RoomLists(QSettings *settings, const QString &prefix = QString(), QObject *parent = nullptr);
 
     RoomModel *rooms() const { return m_rooms; }
     RoomModel *people() const { return m_people; }
@@ -75,6 +76,9 @@ public:
     // clearUnread, which Rustrx calls after its own reset)
     void clear();
     void clearUnread();
+    // shown again after another account: the tabs' settings, which all
+    // accounts share, may have changed meanwhile
+    void reloadSettings();
 
 signals:
     void settingsChanged();
@@ -98,6 +102,8 @@ private:
     void sortRooms(QVariantList &rooms, const QString &kind) const;
 
     QSettings *m_settings;
+    // this account's own keys: the invitations already notified
+    QString m_invitesKey;
     QVariantList m_lastRooms;   // as the core sent them, for a new order
     QString m_roomFilter;
     QString m_currentTab = QStringLiteral("rooms");

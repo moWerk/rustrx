@@ -156,6 +156,16 @@ Page {
 
     Connections {
         target: rustrx
+        // another account shown from the Account tab's pulley: its settings
+        onShownAccountChanged: {
+            displayName = ""
+            ownAvatar = ""
+            recoveryResult = ""
+            shownKey = ""
+            resetApprovalUrl = ""
+            rustrx.command({ cmd: "profile" })
+            rustrx.command({ cmd: "storage_info" })
+        }
         onStorageInfo: page.storage = info
         onProfile: {
             displayName = profile.display_name || ""

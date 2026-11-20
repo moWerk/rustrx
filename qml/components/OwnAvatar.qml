@@ -25,6 +25,8 @@ Item {
     property string path
     property real version
     property string name
+    // whose (its first letter without a name); the shown account's by default
+    property string userId: rustrx.userId
     property int letterSize: Theme.fontSizeLarge
 
     Rectangle {
@@ -34,7 +36,7 @@ Item {
         color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
         Label {
             anchors.centerIn: parent
-            text: (avatar.name || rustrx.userId.slice(1) || "?").charAt(0).toUpperCase()
+            text: (avatar.name || avatar.userId.slice(1) || "?").charAt(0).toUpperCase()
             font.pixelSize: avatar.letterSize
             color: Theme.primaryColor
         }

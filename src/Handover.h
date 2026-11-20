@@ -35,6 +35,9 @@ public:
     void setPushWake(bool on) { m_pushWake = on; }
 
     void setPendingRoom(const QString &roomId) { m_pendingRoom = roomId; }
+    // whose room, call or ringing call it is (Account::key)
+    void setPendingAccount(int key) { m_pendingAccount = key; }
+    int takePendingAccount();
     void setPendingCall(const QString &roomId) { m_pendingCall = roomId; }
     void setPendingKnocks(bool on) { m_pendingKnocks = on; }
     void setPendingUri(const QString &uri) { m_pendingUri = uri; }
@@ -72,6 +75,7 @@ private:
     bool m_standIn = false;
     bool m_pushWake = false;
     QString m_pendingRoom;
+    int m_pendingAccount = 0;
     QString m_pendingCall;
     bool m_pendingKnocks = false;
     QString m_pendingUri;
