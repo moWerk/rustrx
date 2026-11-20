@@ -99,7 +99,10 @@ Page {
 
     Camera {
         id: camera
-        captureMode: Camera.CaptureViewfinder
+        // still image, though it never takes one: any other mode makes Qt
+        // ask Sailfish's resource policy for the video recording set, with
+        // audio playback and recording, which pauses the music (jp26)
+        captureMode: Camera.CaptureStillImage
         focus {
             focusMode: Camera.FocusContinuous
             focusPointMode: Camera.FocusPointAuto
