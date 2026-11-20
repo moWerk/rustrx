@@ -749,9 +749,14 @@ impl Core {
                 .ip_address(LocalServerIpAddress::Localhostv4)
                 .spawn()
                 .await?;
+            // registered without the port: loopback ports are free for every
+            // login (RFC 8252 §7.3), and some services refuse one with a port
+            // ("invalid_client_metadata"); the browser still comes back to it
+            let mut registered = redirect.clone();
+            registered.set_port(None).map_err(|_| anyhow!("redirect {redirect} has no port to drop"))?;
             let mut meta = ClientMetadata::new(
                 ApplicationType::Native,
-                vec![OAuthGrantType::AuthorizationCode { redirect_uris: vec![redirect.clone()] }],
+                vec![OAuthGrantType::AuthorizationCode { redirect_uris: vec![registered] }],
                 Localized::new(Url::parse(CLIENT_URI)?, []),
             );
             meta.client_name = Some(Localized::new(DEVICE_NAME.to_owned(), []));
