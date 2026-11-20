@@ -1,3 +1,8 @@
+* Fri Nov 20 2026 moWerk <mo@mowerk.net> - 0.6.1
+- Fixed: the browser login on account services that refuse a redirect
+  address with a port ("invalid_client_metadata", e.g. continuwuity with
+  casdoor). Rustrx registers 127.0.0.1 without its port now.
+
 * Thu Nov 19 2026 moWerk <mo@mowerk.net> - 0.6.0
 - New: classic 1:1 calls (m.call.*) with Element and nheko from a direct
   chat's pulley, encrypted in encrypted chats (DTLS-SRTP over GStreamer,
