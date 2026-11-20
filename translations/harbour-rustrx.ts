@@ -2932,5 +2932,29 @@
         <source>Sailfish Secrets did not give Rustrx the key to its messages, for example because its question was not answered. You are still logged in; nothing is lost.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-he-later">
+        <source>Later</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-verify-accept">
+        <source>Verify</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-verify-phone">
+        <source>Verify this phone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-verify-phone-how">
+        <source>Confirm it on another device you are logged in on, or enter your recovery key.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-verify-phone-later">
+        <source>Later: the line on top of the room list leads there too.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-verify-phone-why">
+        <source>Logging in made this phone a new device of your account. Until it is verified, it cannot read your older encrypted messages, and your contacts see a device they cannot trust yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>
