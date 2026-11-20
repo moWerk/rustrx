@@ -25,6 +25,10 @@ import "../components"
 Page {
     id: page
     objectName: "login"
+    // above the room list, with another account logged in: back leads to
+    // that account (app.loginLeft); otherwise the only page
+    property bool stacked
+    Component.onDestruction: if (stacked) app.loginLeft()
 
     property var server: ({ probed: false, password: true, sso: false, idps: [], sliding: false, name: "" })
     property string errorText

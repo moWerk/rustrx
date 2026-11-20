@@ -162,7 +162,17 @@ ApplicationWindow {
             // scanner, the QR login, the browser's wait): left alone, or a
             // state change in the middle of it threw the user out
             console.log("route: logged out on page", current, "reason", rustrx.logoutReason)
-            pageStack.replaceAbove(null, Qt.resolvedUrl("pages/LoginPage.qml"))
+            // another account is logged in (one more is being added, or a
+            // logged-out one was picked): the login page goes above the
+            // list, and back leads to that account again (the author's
+            // wish). With none, the login page is all there is
+            var main = pageStack.find(function (p) { return p.objectName === "main" })
+            if (main && otherLoggedIn() >= 0) {
+                pageStack.pop(main, PageStackAction.Immediate)
+                pageStack.push(Qt.resolvedUrl("pages/LoginPage.qml"), { stacked: true })
+            } else {
+                pageStack.replaceAbove(null, Qt.resolvedUrl("pages/LoginPage.qml"))
+            }
         }
         if (!cfg.prototypeNoticeSeen) prototypeNotice.restart()
         if (rustrx.loggedIn && rustrx.storeState === "no_secrets" && !cfg.secretsNoticeSeen) secretsNotice.restart()
@@ -650,9 +660,31 @@ ApplicationWindow {
     // leave), then the switch. keepPage: the page asking stays (Settings
     // switch there and show the other account's settings)
     property bool switchingAccount
+    // the account shown before the last switch: where back from a login
+    // page that was stacked above the list leads
+    property int previousAccount: -1
+    // a logged-in account other than the shown one, the one shown before
+    // preferred; -1 for none
+    function otherLoggedIn() {
+        var all = rustrx.accounts
+        var other = -1
+        for (var i = 0; i < all.length; i++) {
+            if (!all[i].logged_in || all[i].key === rustrx.accountKey) continue
+            if (all[i].key === previousAccount) return previousAccount
+            if (other < 0) other = all[i].key
+        }
+        return other
+    }
+    // a stacked login page left by back, not logged in: the account before
+    function loginLeft() {
+        if (switchingAccount || rustrx.loggedIn) return
+        var key = otherLoggedIn()
+        if (key >= 0) showAccount(key)
+    }
     function showAccount(key, keepPage) {
         if (key === rustrx.accountKey) return
         switchingAccount = true
+        previousAccount = rustrx.accountKey
         var main = pageStack.find(function (p) { return p.objectName === "main" })
         if (main && !keepPage) pageStack.pop(main, PageStackAction.Immediate)
         accountSwitch.key = key
