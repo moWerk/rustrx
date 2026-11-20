@@ -208,6 +208,7 @@ mod knock;
 mod moderation;
 mod packs;
 mod push;
+mod qrlink;
 mod rooms;
 mod session;
 mod session_file;

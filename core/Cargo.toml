@@ -1,6 +1,6 @@
 [package]
 name = "rustrx-core"
-version = "0.6.2"
+version = "0.7.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "Matrix core for Rustrx, a SailfishOS client: matrix-rust-sdk behind a small C ABI"
@@ -28,6 +28,8 @@ anyhow = "1"
 # the QR code of a QR login, drawn by the UI (already in the tree through
 # matrix-sdk's qrcode feature)
 qrcode = { version = "0.14", default-features = false }
+# reads the QR code the camera sees, for logging in or linking a device
+rqrr = { version = "0.11", default-features = false }
 # seals session.json with the store's key (in the tree through matrix-sdk's
 # sqlite store; the version in Cargo.lock)
 matrix-sdk-store-encryption = "=0.19.1"

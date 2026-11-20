@@ -20,6 +20,7 @@
 #include "Handover.h"
 
 #include <QElapsedTimer>
+#include <QHash>
 #include <QMetaMethod>
 #include <QObject>
 #include <QSettings>
@@ -34,6 +35,46 @@ class UnifiedPush;
 class Voip;
 class CallRoute;
 class CallState;
+
+// One account: its core (librustrx's number for it), its folder and the
+// state its events bring. Every account's core runs; the app shows one.
+struct Account {
+    // rustrx_start's number for its core
+    int core = -1;
+    // its folder, and its name for the notifications and the settings:
+    // 0 the data folder itself, n its accounts/n
+    int key = 0;
+    QString dir;
+    // the tabs' room lists, unread totals, requests to join
+    RoomLists *lists = nullptr;
+    // its push registration (UnifiedPush), in its own folder
+    UnifiedPush *push = nullptr;
+    // pushes that came before its session was back (the woken process)
+    QList<QVariantMap> pendingPushes;
+    bool ready = false;
+    bool loggedIn = false;
+    bool loggingIn = false;
+    // logged in from the login page in this run (not a restored session)
+    bool newLogin = false;
+    bool restoreFailed = false;
+    bool restoring = false;
+    // no room list of this login yet
+    bool firstRooms = true;
+    QString userId;
+    QString homeserver;
+    QString syncState = QStringLiteral("idle");
+    QString logoutReason;
+    QString keptUser;
+    QString verificationState = QStringLiteral("unknown");
+    QString recoveryState = QStringLiteral("unknown");
+    QString storeState;
+    // the own name and picture (the account button and list)
+    QString displayName;
+    QString avatarPath;
+    qint64 avatarVersion = 0;
+    // unsent text per room, as the store has it
+    QHash<QString, QString> drafts;
+};
 
 // The bridge to librustrx: commands go out as JSON, events come back on
 // tokio threads and are re-posted onto the GUI thread before anything here
@@ -70,18 +111,28 @@ class Rustrx : public QObject
     Q_PROPERTY(QString openRoomId READ openRoomId NOTIFY openRoomChanged)
     Q_PROPERTY(int unreadTotal READ unreadTotal NOTIFY unreadChanged)
     Q_PROPERTY(int unreadChats READ unreadChats NOTIFY unreadChanged)
-    Q_PROPERTY(RoomModel *rooms READ rooms CONSTANT)
-    Q_PROPERTY(RoomModel *people READ people CONSTANT)
-    Q_PROPERTY(RoomModel *favourites READ favourites CONSTANT)
+    // the shown account's lists: they change with the account
+    Q_PROPERTY(RoomModel *rooms READ rooms NOTIFY shownAccountChanged)
+    Q_PROPERTY(RoomModel *people READ people NOTIFY shownAccountChanged)
+    Q_PROPERTY(RoomModel *favourites READ favourites NOTIFY shownAccountChanged)
     // everything in one list, for those who do not want rooms and people apart
-    Q_PROPERTY(RoomModel *all READ all CONSTANT)
+    Q_PROPERTY(RoomModel *all READ all NOTIFY shownAccountChanged)
     // the joined spaces (invitations to spaces stay with the rooms' invitations)
-    Q_PROPERTY(RoomModel *spaces READ spaces CONSTANT)
+    Q_PROPERTY(RoomModel *spaces READ spaces NOTIFY shownAccountChanged)
     // every joined room and chat, whatever the filter: what sharing offers
-    Q_PROPERTY(RoomModel *targets READ targets CONSTANT)
+    Q_PROPERTY(RoomModel *targets READ targets NOTIFY shownAccountChanged)
+    // every account with a login (or one the server ended), in the order
+    // they were added: { key, user_id, name, avatar, avatar_v, logged_in,
+    // shown, unread }
+    Q_PROPERTY(QVariantList accounts READ accounts NOTIFY accountsChanged)
+    // the shown account's key (Account::key)
+    Q_PROPERTY(int accountKey READ accountKey NOTIFY shownAccountChanged)
+    // unread chats in the accounts not shown (the account button's dot)
+    Q_PROPERTY(int otherUnread READ otherUnread NOTIFY accountsChanged)
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
-    // push through UnifiedPush (Foghorn), the stand-in's lighter successor
-    Q_PROPERTY(UnifiedPush *push READ push CONSTANT)
+    // push through UnifiedPush (Foghorn), the stand-in's lighter successor;
+    // the shown account's (each account registers its own)
+    Q_PROPERTY(UnifiedPush *push READ push NOTIFY shownAccountChanged)
     // classic 1:1 calls (m.call.*, WebRTC through GStreamer)
     Q_PROPERTY(Voip *voip READ voip CONSTANT)
     // the open thread's messages (root and replies), beside the room's
@@ -126,25 +177,43 @@ public:
     explicit Rustrx(const QString &dataDir, QObject *parent = nullptr);
     ~Rustrx();
 
-    bool ready() const { return m_ready; }
-    bool roomsLoaded() const { return !m_firstRooms; }
-    bool loggedIn() const { return m_loggedIn; }
-    bool loggingIn() const { return m_loggingIn; }
-    bool newLogin() const { return m_newLogin; }
-    QString userId() const { return m_userId; }
-    QString homeserver() const { return m_homeserver; }
-    QString syncState() const { return m_syncState; }
-    QString logoutReason() const { return m_logoutReason; }
-    QString keptUser() const { return m_keptUser; }
-    bool restoreFailed() const { return m_restoreFailed; }
-    bool restoring() const { return m_restoring; }
+    bool ready() const { return m_cur->ready; }
+    bool roomsLoaded() const { return !m_cur->firstRooms; }
+    bool loggedIn() const { return m_cur->loggedIn; }
+    bool loggingIn() const { return m_cur->loggingIn; }
+    bool newLogin() const { return m_cur->newLogin; }
+    QString userId() const { return m_cur->userId; }
+    QString homeserver() const { return m_cur->homeserver; }
+    QString syncState() const { return m_cur->syncState; }
+    QString logoutReason() const { return m_cur->logoutReason; }
+    QString keptUser() const { return m_cur->keptUser; }
+    bool restoreFailed() const { return m_cur->restoreFailed; }
+    bool restoring() const { return m_cur->restoring; }
+    QVariantList accounts() const;
+    int accountKey() const { return m_cur->key; }
+    int otherUnread() const;
+    // show another account (its key); not away from a running call's account
+    Q_INVOKABLE bool switchAccount(int key);
+    // one more account: the login page for it (an account without a login
+    // is used again before a new folder is made)
+    Q_INVOKABLE void addAccount();
+    // a command for that account (notifications act on theirs)
+    Q_INVOKABLE void commandTo(int key, const QVariantMap &cmd);
+    // a room of that account, as roomInfo has it for the shown one
+    Q_INVOKABLE QVariantMap roomInfoIn(int key, const QString &roomId) const;
+    Q_INVOKABLE bool accountLoggedIn(int key) const;
+    // the account the classic call rings or runs on
+    Q_INVOKABLE int voipAccount() const { return m_voipKey; }
+    // a classic call from the shown account: it is that account's call
+    // from its first event on
+    Q_INVOKABLE void placeCall(const QString &roomId, const QString &invitee, const QString &name);
     bool callDark() const;
     Q_INVOKABLE void retryRestore();
     // the proximity sensor during a call (see CallState)
     Q_INVOKABLE void setCallNear(bool near);
-    QString verificationState() const { return m_verificationState; }
-    QString recoveryState() const { return m_recoveryState; }
-    QString storeState() const { return m_storeState; }
+    QString verificationState() const { return m_cur->verificationState; }
+    QString recoveryState() const { return m_cur->recoveryState; }
+    QString storeState() const { return m_cur->storeState; }
     QString openRoomId() const { return m_openRoomId; }
     int unreadTotal() const;
     int unreadChats() const;
@@ -195,7 +264,11 @@ public:
     void setStandIn(bool on) { m_handover.setStandIn(on); }
     // a process the distributor started for one push (no window, no sync)
     void setPushWake(bool on) { m_handover.setPushWake(on); }
-    UnifiedPush *push() const { return m_push; }
+    UnifiedPush *push() const { return m_cur->push; }
+    // the first account's, which exports the connector
+    UnifiedPush *firstPush() const { return m_push; }
+    // push on or off, for every account (Settings, "when Rustrx is closed")
+    Q_INVOKABLE void setPushEnabled(bool on);
     Voip *voip() const { return m_voip; }
     // the file the stand-in's unit looks for (in the sandbox's own config folder)
     static QString backgroundFlagPath() { return Handover::backgroundFlagPath(); }
@@ -220,6 +293,9 @@ public:
     Q_INVOKABLE void loginOauth(const QString &user, const QString &homeserver, bool signup);
     // with a QR code a logged-in device scans (qrLogin carries the progress)
     Q_INVOKABLE void loginQr(const QString &user, const QString &homeserver);
+    // a picture of the camera page (grabToImage's result): a QR code in it
+    // goes to the shown account (qr_scanned) and true comes back
+    Q_INVOKABLE bool readQr(QObject *grab);
     Q_INVOKABLE void probeServer(const QString &user, const QString &homeserver);
     Q_INVOKABLE void openRoom(const QString &roomId);
     Q_INVOKABLE void closeRoom();
@@ -256,7 +332,8 @@ public:
     Q_INVOKABLE QString draft(const QString &roomId) const;
     Q_INVOKABLE void setDraft(const QString &roomId, const QString &text);
     Q_INVOKABLE void closeWindow() { emit closeRequested(); }
-    Q_INVOKABLE QString takePendingRoom() { return m_handover.takePendingRoom(); }
+    // the room a notification asked for; its account is shown first
+    Q_INVOKABLE QString takePendingRoom();
     Q_INVOKABLE QString takePendingCall() { return m_handover.takePendingCall(); }
     Q_INVOKABLE bool takePendingKnocks() { return m_handover.takePendingKnocks(); }
     // a link or a share that arrived before QML was loaded
@@ -274,16 +351,19 @@ signals:
     void emoteAdded(const QString &shortcode);
     // someone calls (ring) or a group call starts (not ring); expiresMs: how
     // long it may ring
+    // account: the key of the account it rings on
     void callRing(const QString &roomId, const QString &roomName, const QString &senderName,
-                  bool ring, const QString &eventId, int expiresMs);
+                  bool ring, const QString &eventId, int expiresMs, int account);
     // answered or declined: the ringing notification goes
     void callAnswered(const QString &roomId);
     // starting a call opened the room's calls to everyone (permissions)
     void callsAllowed(const QString &roomId);
     void knockRequestsChanged();
-    // a pushed message, fetched (the woken process shows it)
+    // a pushed message, fetched (the woken process shows it); account: whose
     void pushNotification(const QString &roomId, const QString &eventId, const QString &roomName, const QString &senderName,
-                          const QString &body, bool isDm, bool noisy);
+                          const QString &body, bool isDm, bool noisy, int account);
+    // a push came, for any account (the woken process stays a while)
+    void pushed();
     // a room's threads (thread_list): { root, latest, count }
     void threadList(const QString &roomId, const QVariantList &threads, bool loading);
     // a space's rooms (from space_open), loading while pages come
@@ -296,7 +376,7 @@ signals:
     void roomLink(const QString &roomId, const QString &link);
     // a request to join that was not notified yet
     void newKnock(const QString &roomId, const QString &roomName, bool isSpace,
-                  const QString &name, const QString &reason);
+                  const QString &name, const QString &reason, int account);
     // the requests' notification was tapped
     void knocksRequested();
     void roomsLoadedChanged();
@@ -337,9 +417,10 @@ signals:
     // a room's draft from the store, as the room opens
     void draftLoaded(const QString &roomId, const QString &text);
     void mediaExported(const QString &eventId, const QString &path);
-    // count: the room's notifications now
-    void newMessages(const QString &roomId, const QString &roomName, int count);
-    void markReadRequested(const QString &roomId);
+    // count: the room's notifications now; account: whose room (every
+    // account's lists notify, the shown one's and the others')
+    void newMessages(const QString &roomId, const QString &roomName, int count, int account);
+    void markReadRequested(const QString &roomId, int account);
     // the users this account ignores: {user_id, name}
     void ignoredUsers(const QVariantList &users);
     // one person for their page (user_info)
@@ -347,14 +428,25 @@ signals:
     // a QR login's progress: state qr (width, modules), scanned, waiting
     // (user_code), syncing, done
     void qrLogin(const QVariantMap &progress);
-    void replyRequested(const QString &roomId, const QString &text);
-    void reactRequested(const QString &roomId, const QString &eventId, const QString &key);
+    // letting a new device in by QR code: state qr (width, modules),
+    // scanned, check (check_code), consent, syncing, done, refused
+    // (reason), error (message)
+    void qrGrant(const QVariantMap &progress);
+    void replyRequested(const QString &roomId, const QString &text, int account);
+    void reactRequested(const QString &roomId, const QString &eventId, const QString &key, int account);
     // a room's notifications went to none (read here or in another client)
-    void roomRead(const QString &roomId);
+    void roomRead(const QString &roomId, int account);
     // an invitation not notified before (also one that came while closed)
-    void invited(const QString &roomId, const QString &roomName, const QString &inviter, bool direct, bool known);
+    void invited(const QString &roomId, const QString &roomName, const QString &inviter, bool direct, bool known, int account);
     // an invitation that is no longer one (joined, declined, elsewhere)
-    void inviteGone(const QString &roomId);
+    void inviteGone(const QString &roomId, int account);
+    // the accounts or their unread counts changed
+    void accountsChanged();
+    // another account is shown: its lists replace the others
+    void shownAccountChanged();
+    // a notification or a logout wants that account shown: the window
+    // closes the other account's pages first, then calls switchAccount
+    void showAccountRequested(int key);
     // who is typing in the open room, the own user left out
     void typing(const QString &roomId, const QStringList &names);
     // "all", "mentions", "mute" or "default" (the account's rule)
@@ -386,6 +478,10 @@ public slots:
     // D-Bus net.mowerk.harbour_rustrx.openRoom, the notifications' action
     // kept until QML takes it: a cold start delivers the call before QML is loaded
     Q_SCRIPTABLE void openRoomFromNotification(const QString &roomId);
+    // the same for a room of the account `account` (Account::key, as text:
+    // a notification's arguments come as they were written); the app shows
+    // that account first
+    Q_SCRIPTABLE void openAccountRoom(const QString &account, const QString &roomId);
     // a second launch: true when this is the stand-in, which leaves at once,
     // and the caller waits for the name to go and becomes the app
     Q_SCRIPTABLE bool activate();
@@ -394,17 +490,23 @@ public slots:
     // an incoming call's notification: Answer opens the room and joins
     // the call (the room starts it once it is open: takePendingCall)
     Q_SCRIPTABLE void answerCall(const QString &roomId);
+    Q_SCRIPTABLE void answerAccountCall(const QString &account, const QString &roomId);
     // the requests' notification: open the app on the list of requests
     Q_SCRIPTABLE void openKnocks();
     // a room notification's "Mark as read" (Service.qml sends the receipt,
     // as the privacy setting has it, once logged in)
     Q_SCRIPTABLE void markRoomRead(const QString &roomId);
+    Q_SCRIPTABLE void markAccountRoomRead(const QString &account, const QString &roomId);
     // a room notification's reply field (lipstick adds the typed text as
     // the last argument) and its emoji buttons
     Q_SCRIPTABLE void replyFromNotification(const QString &roomId, const QString &text);
     Q_SCRIPTABLE void reactFromNotification(const QString &roomId, const QString &eventId, const QString &key);
+    Q_SCRIPTABLE void replyFromAccountNotification(const QString &account, const QString &roomId, const QString &text);
+    Q_SCRIPTABLE void reactFromAccountNotification(const QString &account, const QString &roomId,
+                                                   const QString &eventId, const QString &key);
     // Decline: the caller's clients are told (MSC4310)
     Q_SCRIPTABLE void declineCall(const QString &roomId, const QString &eventId);
+    Q_SCRIPTABLE void declineAccountCall(const QString &account, const QString &roomId, const QString &eventId);
     // the stand-in's notification: Quit (after QML has closed that notification)
     Q_SCRIPTABLE void quit();
     // D-Bus net.mowerk.harbour_rustrx.openUrl, the desktop file's handler for
@@ -426,44 +528,45 @@ private slots:
 
 private:
     static void eventCallback(void *ctx, const char *json);
+    // a core for the account in `dir` (key: see Account), its lists wired
+    Account *startAccount(int key, const QString &dir);
+    Account *account(int key) const;
+    // what every account's events change; the UI hears of it only for the shown one
+    void handleAccountEvent(Account *a, const QString &type, const QVariantMap &ev);
+    // the stand-in leaves when no account is logged in any more
+    void leaveIfNobodyLoggedIn();
+    // asks the window to show that account (nothing in a process without one)
+    void requestShow(int key);
+    // everything QML reads changed: after a switch
+    void emitAllChanged();
+    QString m_dataDir;
+    QList<Account *> m_accounts;
+    // the account shown; never null
+    Account *m_cur = nullptr;
+    // the account the classic call is on (its events and commands)
+    int m_voipKey = 0;
+    // a call handed over by the stand-in, until its account is logged in
+    QVariantMap m_pendingVoip;
     // handleEvent, looked up once for the queued calls from the core's threads
     QMetaMethod m_handleEvent;
 
-    bool m_ready = false;
-    bool m_loggedIn = false;
-    bool m_loggingIn = false;
-    bool m_newLogin = false;
-    QString m_userId;
-    QString m_homeserver;
-    QString m_syncState = QStringLiteral("idle");
-    QString m_logoutReason;
-    QString m_keptUser;
-    bool m_restoreFailed = false;
-    bool m_restoring = false;
     bool handStoreKeyOn();
-    QString m_verificationState = QStringLiteral("unknown");
-    QString m_recoveryState = QStringLiteral("unknown");
-    QString m_storeState;
     QString m_openRoomId;
-    // before m_lists and m_media, which use it
+    // before the lists and m_media, which use it
     QSettings m_settings;
-    QHash<QString, QString> m_drafts;
     // the stand-in's and push-woken process's requests, the handover file
     Handover m_handover;
-    QList<QVariantMap> m_pendingPushes;
+    // the first account's push
     UnifiedPush *m_push;
     Voip *m_voip;
     CallRoute *m_callRoute;
     CallState *m_callState;
-    // the tabs' room lists, their settings, unread totals and requests to join
-    RoomLists *m_lists;
     // sending files and pictures, avatars, media downloads, emote pictures
     Media *m_media;
     TimelineModel *m_timeline;
     TimelineModel *m_thread;
     QString m_threadRoot;
     QElapsedTimer m_since;   // start-up timing in the journal
-    bool m_firstRooms = true;
 };
 
 #endif

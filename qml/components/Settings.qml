@@ -73,6 +73,8 @@ ConfigurationGroup {
     // every page upright, whatever the phone's rotation (pictures and videos still turn)
     property bool portraitOnly: false
     property string lastRoom: ""
+    // whose it is (the account's key)
+    property int lastRoomAccount: 0
 
     // the emoji used, as JSON {emoji: count}
     property string emojiCounts: "{}"

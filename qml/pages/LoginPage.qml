@@ -77,9 +77,24 @@ Page {
     // browser does not open on every device, then it is opened or copied by hand
     property string ssoUrl
 
+    // the other accounts with a login: logging in to one more can be given
+    // up, back to one of them
+    readonly property var otherAccounts: rustrx.accounts.filter(function (a) { return !a.shown && a.logged_in })
+
     SilicaFlickable {
         anchors.fill: parent
         contentHeight: column.height
+
+        PullDownMenu {
+            visible: page.otherAccounts.length > 0
+            Repeater {
+                model: page.otherAccounts
+                MenuItem {
+                    text: qsTrId("rustrx-me-show-account").arg(modelData.name || modelData.user_id)
+                    onClicked: app.showAccount(modelData.key)
+                }
+            }
+        }
 
         Column {
             id: column
@@ -388,13 +403,25 @@ Page {
 
             Item { width: 1; height: Theme.paddingLarge }
 
+            // the code a logged-in device shows names the server, so this
+            // needs no address typed first
+            PageButton {
+                //% "Scan a QR code"
+                text: qsTrId("rustrx-bt-qr-scan")
+                enabled: !rustrx.loggingIn
+                onClicked: {
+                    errorText = ""
+                    pageStack.push(Qt.resolvedUrl("QrScanPage.qml"), { grant: false })
+                }
+            }
+
             Label {
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * x
                 wrapMode: Text.Wrap
                 color: Theme.secondaryColor
                 font.pixelSize: Theme.fontSizeExtraSmall
-                //% "Signing in by scanning a QR code shown by Element on another device is planned for a later version."
+                //% "A device that is logged in shows the code: Rustrx under Settings, Account, Link a new device; Element under Link new device. This phone then comes in verified."
                 text: qsTrId("rustrx-la-qr-note")
             }
 

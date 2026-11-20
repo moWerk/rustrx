@@ -24,8 +24,16 @@ pub(crate) enum Command {
     /// With a QR code another, logged-in device scans: "qr_login" progress,
     /// then logged_in or login_error.
     LoginQr { user: Option<String>, homeserver: Option<String> },
-    /// The two digits the other device shows during a QR login.
+    /// The two digits the other device shows during a QR login or while
+    /// letting a device in.
     QrCheckCode { code: u8 },
+    /// A QR code the camera read (base64 of its bytes): logged out, a
+    /// logged-in device's code to log in with ("qr_login" progress); logged
+    /// in, a new device's code to let in ("qr_grant").
+    QrScanned { data: String },
+    /// Letting a new device in by the code this one shows: "qr_grant"
+    /// progress (qr, scanned, consent, syncing, done, error).
+    GrantQr,
     /// A browser or QR login still waiting ends ("login_error").
     LoginCancel,
     /// Opens the saved session again after a start that could not (the
@@ -336,7 +344,7 @@ mod tests {
     /// Every command the core accepts, in the enum's order. Adding a command
     /// is a reviewed act: update this list and docs/PROTOCOL.md.
     const COMMANDS: &[&str] = &[
-        "probe_server", "login_password", "login_sso", "login_oauth", "login_qr", "qr_check_code", "login_cancel", "restore", "logout",
+        "probe_server", "login_password", "login_sso", "login_oauth", "login_qr", "qr_check_code", "qr_scanned", "grant_qr", "login_cancel", "restore", "logout",
         "open_room", "close_room", "paginate_back", "send_text", "send_sticker",
         "open_thread", "close_thread", "save_draft", "retry_send", "thread_list", "close_thread_list", "mark_thread_read",
         "push_set", "push_remove", "push_check", "push_handle", "send_file", "react", "redact", "edit",
@@ -363,7 +371,7 @@ mod tests {
 
     /// How many fields the commands require, all together. Like COMMANDS, a
     /// change here is a change of the contract.
-    const REQUIRED_FIELDS: usize = 154;
+    const REQUIRED_FIELDS: usize = 155;
 
 
     /// The names serde knows, from its own error for an unknown tag

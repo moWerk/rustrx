@@ -49,6 +49,19 @@ static QString statePath(const QString &dataDir)
     return dataDir + QLatin1Char('/') + QLatin1String(Keys::kPushStateFile);
 }
 
+// every instance, for the connector to find the one a call is for
+static QList<UnifiedPush *> s_instances;
+
+QStringList UnifiedPush::accountDirs(const QString &dataDir)
+{
+    QStringList dirs{ dataDir };
+    QDir more(dataDir + QLatin1String("/accounts"));
+    for (const QString &name : more.entryList(QDir::Dirs | QDir::NoDotAndDotDot))
+        if (name.toInt() > 0 && QFile::exists(more.filePath(name + QLatin1String("/session.json"))))
+            dirs << more.filePath(name);
+    return dirs;
+}
+
 bool UnifiedPush::enabledOnDisk(const QString &dataDir)
 {
     return readState(statePath(dataDir)).value("enabled", true).toBool();
@@ -56,17 +69,58 @@ bool UnifiedPush::enabledOnDisk(const QString &dataDir)
 
 bool UnifiedPush::activeOnDisk(const QString &dataDir)
 {
-    const QVariantMap s = readState(statePath(dataDir));
-    return s.value("enabled", true).toBool() && s.value("pusherSet").toBool()
-            && !s.value("endpoint").toString().isEmpty();
+    for (const QString &dir : accountDirs(dataDir)) {
+        const QVariantMap s = readState(statePath(dir));
+        if (!s.value("enabled", true).toBool() || !s.value("pusherSet").toBool()
+                || s.value("endpoint").toString().isEmpty())
+            return false;
+    }
+    return true;
 }
 
 UnifiedPush::UnifiedPush(const QString &dataDir, QObject *parent)
     : QObject(parent)
     , m_path(statePath(dataDir))
 {
+    s_instances << this;
     load();
     findDistributor();
+}
+
+UnifiedPush::~UnifiedPush()
+{
+    s_instances.removeAll(this);
+}
+
+UnifiedPush *UnifiedPush::instanceFor(const QVariantMap &args)
+{
+    for (UnifiedPush *p : s_instances)
+        if (p->fromDistributor(args))
+            return p;
+    return nullptr;
+}
+
+QVariantMap UnifiedPush::dispatchMessage(const QVariantMap &args)
+{
+    if (UnifiedPush *p = instanceFor(args))
+        return p->message(args);
+    // the distributor wants its id back even when the push is not ours
+    QVariantMap answer;
+    if (args.contains("id"))
+        answer.insert("id", args.value("id"));
+    return answer;
+}
+
+QVariantMap UnifiedPush::dispatchNewEndpoint(const QVariantMap &args)
+{
+    UnifiedPush *p = instanceFor(args);
+    return p ? p->newEndpoint(args) : QVariantMap();
+}
+
+QVariantMap UnifiedPush::dispatchUnregistered(const QVariantMap &args)
+{
+    UnifiedPush *p = instanceFor(args);
+    return p ? p->unregistered(args) : QVariantMap();
 }
 
 void UnifiedPush::load()
@@ -137,7 +191,7 @@ bool UnifiedPush::exportConnector()
 {
     QDBusConnection bus = QDBusConnection::sessionBus();
     auto *object = new QObject(this);
-    new UnifiedPushConnector(object, this);
+    new UnifiedPushConnector(object);
     if (!bus.registerObject(QString::fromLatin1(Keys::kConnectorPath), object)) {
         qWarning() << "push: connector object not registered";
         return false;
@@ -156,7 +210,9 @@ void UnifiedPush::setEnabled(bool on)
     m_state.insert("enabled", on);
     save();
     if (on) {
-        loggedIn();
+        // an account not logged in registers at its login
+        if (m_loggedIn)
+            loggedIn();
     } else {
         // off: the homeserver stops pushing, the distributor forgets us
         const QString endpoint = m_state.value("endpoint").toString();

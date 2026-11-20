@@ -24,7 +24,7 @@ impl Core {
     /// The guard for a login that may start; when another runs, this one
     /// is refused with "login_error" (two at once wrote one store from two
     /// clients, and the later after_login replaced the first's client)
-    fn login_or_refuse(&'static self) -> Option<LoginGuard> {
+    pub(crate) fn login_or_refuse(&'static self) -> Option<LoginGuard> {
         let guard = self.begin_login();
         if guard.is_none() {
             tracing::info!("login: another login is running, refused");
@@ -351,7 +351,7 @@ impl Core {
 
     /// What a session that ended on the server's side leaves for the next
     /// login: who it was and on which device ("relogin.json").
-    fn relogin_path(&self) -> PathBuf {
+    pub(crate) fn relogin_path(&self) -> PathBuf {
         self.data_dir.join(RELOGIN_FILE)
     }
 
@@ -543,9 +543,9 @@ impl Core {
             tracing::info!("sso: client built, asking for the sign-on page");
             let mut builder = client
                 .matrix_auth()
-                .login_sso(|url| async move {
+                .login_sso(move |url| async move {
                     tracing::info!("sso: sign-on page ready, waiting for the browser");
-                    crate::instance().emit(json!({"ev": "open_url", "url": url}));
+                    self.emit(json!({"ev": "open_url", "url": url}));
                     Ok(())
                 })
                 .initial_device_display_name(DEVICE_NAME)
@@ -643,9 +643,6 @@ impl Core {
     /// waiting, syncing, done).
     pub(crate) async fn login_qr(&'static self, user: Option<String>, homeserver: Option<String>) -> Result<()> {
         use matrix_sdk::authentication::oauth::qrcode::{GeneratedQrProgress, LoginProgress};
-        use matrix_sdk::authentication::oauth::registration::{ApplicationType, ClientMetadata, Localized, OAuthGrantType};
-        use matrix_sdk::authentication::oauth::ClientRegistrationData;
-        use matrix_sdk::reqwest::Url;
         use std::future::IntoFuture;
         let Some(_login) = self.login_or_refuse() else { return Ok(()) };
         if self.state.lock().await.client.is_some() {
@@ -656,13 +653,7 @@ impl Core {
         let result: Result<Client> = async {
             let server = Self::server_of(user.as_deref(), &homeserver)?;
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
-            let mut meta = ClientMetadata::new(
-                ApplicationType::Native,
-                vec![OAuthGrantType::DeviceCode],
-                Localized::new(Url::parse(CLIENT_URI)?, []),
-            );
-            meta.client_name = Some(Localized::new(DEVICE_NAME.to_owned(), []));
-            let registration = ClientRegistrationData::new(matrix_sdk::ruma::serde::Raw::new(&meta)?);
+            let registration = super::qrlink::device_code_registration()?;
             let oauth = client.oauth();
             let login = oauth.login_with_qr_code(Some(&registration)).generate();
             let mut progress = login.subscribe_to_progress();
@@ -678,10 +669,10 @@ impl Core {
                     }
                     Some(p) = progress.next() => match p {
                         LoginProgress::EstablishingSecureChannel(GeneratedQrProgress::QrReady(data)) => {
-                            let code = qrcode::QrCode::new(data.to_bytes())?;
-                            let modules: String = code.to_colors().iter()
-                                .map(|c| if *c == qrcode::Color::Dark { '1' } else { '0' }).collect();
-                            self.emit(json!({"ev": "qr_login", "state": "qr", "width": code.width(), "modules": modules}));
+                            let mut ev = super::qrlink::qr_modules(&data)?;
+                            ev["ev"] = json!("qr_login");
+                            ev["state"] = json!("qr");
+                            self.emit(ev);
                         }
                         LoginProgress::EstablishingSecureChannel(GeneratedQrProgress::QrScanned(sender)) => {
                             *self.qr_check.lock().await = Some(sender);

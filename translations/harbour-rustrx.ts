@@ -245,7 +245,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-qr-note">
-        <source>Signing in by scanning a QR code shown by Element on another device is planned for a later version.</source>
+        <source>A device that is logged in shows the code: Rustrx under Settings, Account, Link a new device; Element under Link new device. This phone then comes in verified.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-he-rooms">
@@ -2197,7 +2197,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-qr-scan">
-        <source>On a device that is logged in, open Element and choose to link a new device, then scan this code.</source>
+        <source>On a device that is logged in, choose to link a new device (Rustrx: Settings, Account, Link a new device), then scan this code.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-qr-digits">
@@ -2954,6 +2954,92 @@
     </message>
     <message id="rustrx-la-verify-phone-why">
         <source>Logging in made this phone a new device of your account. Until it is verified, it cannot read your older encrypted messages, and your contacts see a device they cannot trust yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-account-logged-out">
+        <source>Logged out, tap to log in again</source>
+        <extracomment>an account whose session the server ended</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-add-account">
+        <source>Log in to another account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-show-account">
+        <source>Show %1</source>
+        <extracomment>the pulley: show that account (%1 its name or address)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-link-scan">
+        <source>Scan the new device&apos;s code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-link-show">
+        <source>Show a QR code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-qr-scan">
+        <source>Scan a QR code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-link-device">
+        <source>Link a new device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-link-check">
+        <source>Type these two digits on the new device.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-link-consent">
+        <source>Confirm the new device in the browser, then come back here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-link-digits">
+        <source>Type the two digits the new device shows.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-link-done">
+        <source>The new device is logged in and verified.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-link-intro">
+        <source>Log in to %1 on another phone or computer, in Rustrx or Element. This phone hands over the keys, so the new device comes in verified.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-link-show">
+        <source>On the new device, choose to log in with a QR code and scan this one.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-link-syncing">
+        <source>Handing over the keys…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-check">
+        <source>Type these two digits on the other device.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-scan-grant">
+        <source>Point the camera at the QR code the new device shows.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-scan-logged-in">
+        <source>This code is from a device that is logged in already. Scan the code the new device shows.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-scan-login">
+        <source>Point the camera at the QR code of a device that is logged in. In Rustrx it is under Settings, Account, Link a new device.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-scan-new-device">
+        <source>This code is from a device that wants to log in. Scan the code a logged-in device shows.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-scan-not-login">
+        <source>This is not a Matrix login code.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-scan-reading">
+        <source>Reading the code…</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

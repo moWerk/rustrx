@@ -50,53 +50,66 @@ Item {
         // front of you (dodoradio: a chat open, the others went silent; on
         // the cover, the open one did). The stand-in has no window, and
         // without one Qt reports it active
+        // every account's rooms notify (account: whose); not the shown
+        // account's room in front of you
         onNewMessages: {
             if (!rustrx.standIn && Qt.application.state === Qt.ApplicationActive
-                    && roomId === rustrx.openRoomId) return
-            service.notify(roomId, roomName, count)
+                    && account === rustrx.accountKey && roomId === rustrx.openRoomId) return
+            service.notify(account, roomId, roomName, count)
         }
         // read here or in another client: the banner and its line go
-        onRoomRead: service.closeNotification(roomId)
+        onRoomRead: service.closeNotification(account, roomId)
         // the notification's "Mark as read": it goes at once, the receipt
         // follows when logged in (a process woken for it logs in first)
         onMarkReadRequested: {
-            service.closeNotification(roomId)
-            service.markRead(roomId)
+            service.closeNotification(account, roomId)
+            service.markRead(roomId, undefined, undefined, account)
         }
         // its reply field and emoji buttons: answered means read
         onReplyRequested: {
-            service.closeNotification(roomId)
-            service.whenLoggedIn({ cmd: "send_text", room_id: roomId, body: text })
-            service.markRead(roomId)
+            service.closeNotification(account, roomId)
+            service.whenLoggedIn(account, { cmd: "send_text", room_id: roomId, body: text })
+            service.markRead(roomId, undefined, undefined, account)
         }
         onReactRequested: {
-            service.closeNotification(roomId)
+            service.closeNotification(account, roomId)
             service.countEmoji(key)
-            service.whenLoggedIn({ cmd: "react", room_id: roomId, event_id: eventId, key: key })
-            service.markRead(roomId)
+            service.whenLoggedIn(account, { cmd: "react", room_id: roomId, event_id: eventId, key: key })
+            service.markRead(roomId, undefined, undefined, account)
         }
         // the core sets offline at every login; online only when asked
-        onStateChanged: if (rustrx.loggedIn) {
+        onAccountsChanged: {
             service.flushPending()
-            if (cfg.showOnline) rustrx.command({ cmd: "set_presence", online: true })
+            var all = rustrx.accounts
+            var now = {}
+            for (var i = 0; i < all.length; i++) {
+                if (!all[i].logged_in) continue
+                now[all[i].key] = true
+                if (!service.presenceSet[all[i].key] && cfg.showOnline)
+                    rustrx.commandTo(all[i].key, { cmd: "set_presence", online: true })
+            }
+            // one logged out and in again is set again
+            service.presenceSet = now
         }
         // from someone we share no room with: no banner, if so set
-        onInvited: if (known || cfg.strangerInvites) service.notifyInvite(roomId, roomName, inviter, direct)
-        onInviteGone: service.closeInvite(roomId)
-        onCallRing: service.ringCall(roomId, roomName, senderName, ring, eventId, expiresMs)
+        onInvited: if (known || cfg.strangerInvites) service.notifyInvite(account, roomId, roomName, inviter, direct)
+        onInviteGone: service.closeInvite(account, roomId)
+        onCallRing: service.ringCall(account, roomId, roomName, senderName, ring, eventId, expiresMs)
         onNewKnock: service.notifyKnock(roomName, isSpace, name, reason)
-        onPushNotification: service.notifyPush(roomId, eventId, roomName, senderName, body, isDm)
+        onPushNotification: service.notifyPush(account, roomId, eventId, roomName, senderName, body, isDm)
         onKnockRequestsChanged: if (rustrx.knockRequests.length === 0) knockNote.close()
         onCallAnswered: service.stopRinging(roomId)
         onUnreadChanged: if (rustrx.standIn) console.log("stand-in: unread", rustrx.unreadTotal, "in", rustrx.unreadChats)
-        onOpenRoomChanged: if (rustrx.openRoomId.length) { service.closeNotification(rustrx.openRoomId); service.stopRinging(rustrx.openRoomId) }
+        onOpenRoomChanged: if (rustrx.openRoomId.length) { service.closeNotification(rustrx.accountKey, rustrx.openRoomId); service.stopRinging(rustrx.openRoomId) }
         onQuitRequested: standInNote.close()
     }
+    // the accounts whose presence was set since they logged in here
+    property var presenceSet: ({})
     // a classic call (Voip) rings like an Element Call ring; Answer and
     // Decline reach it through the same notification actions
     Connections {
         target: rustrx.voip
-        onIncoming: service.ringCall(roomId, roomName, peerName, true, "", Tunables.voipRingMs)
+        onIncoming: service.ringCall(rustrx.voipAccount(), roomId, roomName, peerName, true, "", Tunables.voipRingMs)
         onChanged: if (rustrx.voip.state !== "incoming") service.stopRinging(rustrx.voip.roomId)
     }
 
@@ -119,24 +132,26 @@ Item {
 
     // commands from a notification's buttons: a process woken for one
     // (push wake) logs in first, so they wait for it
+    // account: whose (Account key); none means the shown account
     property var pendingCommands: []
-    function whenLoggedIn(cmd) {
-        if (rustrx.loggedIn) rustrx.command(cmd)
-        else pendingCommands.push(cmd)
+    function whenLoggedIn(account, cmd) {
+        if (account === undefined) account = rustrx.accountKey
+        if (rustrx.accountLoggedIn(account)) rustrx.commandTo(account, cmd)
+        else pendingCommands.push({ account: account, cmd: cmd })
     }
     function flushPending() {
-        var cmds = pendingCommands
+        var waiting = pendingCommands
         pendingCommands = []
-        for (var i = 0; i < cmds.length; i++) rustrx.command(cmds[i])
+        for (var i = 0; i < waiting.length; i++) whenLoggedIn(waiting[i].account, waiting[i].cmd)
     }
     // shown: false leaves the unread line where it is (the room page moves
     // it when the room is left); eventId: read up to this message only,
-    // else the whole room
-    function markRead(roomId, shown, eventId) {
+    // else the whole room; account: whose room (the shown account's if none)
+    function markRead(roomId, shown, eventId, account) {
         // the privacy switch: a private receipt moves only our own marker
         var c = { cmd: "mark_read", room_id: roomId, "private": !cfg.sendReceipts, marker: shown !== false }
         if (eventId) c.event_id = eventId
-        whenLoggedIn(c)
+        whenLoggedIn(account, c)
     }
 
     // the emoji used most (five; the defaults fill up until five have been
@@ -169,34 +184,38 @@ Item {
         var picked = String(cfg.notifyEmoji || "").split(/\s+/).filter(function (e) { return e.length > 0 }).slice(0, 3)
         return picked.length ? picked : ["👍", "😀", "👎"]
     }
-    function roomActions(roomId, eventId) {
+    // each names its account (as text: the arguments arrive as written)
+    function roomActions(account, roomId, eventId) {
         var viaPush = rustrx.push.enabled
-        var actions = [ action("default", "openRoomFromNotification", [ roomId ]) ]
+        var a = String(account)
+        var actions = [ action("default", "openAccountRoom", [ a, roomId ]) ]
         if (cfg.notifyReply) {
             //% "Reply"
-            var reply = action("reply", "replyFromNotification", [ roomId ], qsTrId("rustrx-me-notification-reply"), viaPush)
+            var reply = action("reply", "replyFromAccountNotification", [ a, roomId ], qsTrId("rustrx-me-notification-reply"), viaPush)
             reply["type"] = "input"
             actions.push(reply)
         }
         //% "Mark as read"
-        actions.push(action("mark_read", "markRoomRead", [ roomId ], qsTrId("rustrx-me-notification-read"), viaPush))
+        actions.push(action("mark_read", "markAccountRoomRead", [ a, roomId ], qsTrId("rustrx-me-notification-read"), viaPush))
         if (cfg.notifyReactions && eventId && eventId.length) {
             var emoji = notificationEmoji
             for (var i = 0; i < emoji.length; i++)
-                actions.push(action("react" + i, "reactFromNotification", [ roomId, eventId, emoji[i] ], emoji[i], viaPush))
+                actions.push(action("react" + i, "reactFromAccountNotification", [ a, roomId, eventId, emoji[i] ], emoji[i], viaPush))
         }
         return actions
     }
 
-    // one notification per room, updated in place: the events view keeps a
-    // line per room, the banner shows the latest message
+    // one notification per room and account, updated in place: the events
+    // view keeps a line per room, the banner shows the latest message
     property var roomNotifications: ({})
     property var roomPending: ({})
-    function roomNote(roomId) {
-        var n = roomNotifications[roomId]
+    function noteKey(account, roomId) { return account + "/" + roomId }
+    function roomNote(account, roomId) {
+        var k = noteKey(account, roomId)
+        var n = roomNotifications[k]
         if (!n) {
-            n = notificationComponent.createObject(service, { roomId: roomId })
-            roomNotifications[roomId] = n
+            n = notificationComponent.createObject(service, { roomId: roomId, account: account })
+            roomNotifications[k] = n
         }
         // a line taken over from an earlier process keeps the category it
         // was posted with (before 0.4.8 x-nemo.messaging.im, no vibration)
@@ -205,14 +224,14 @@ Item {
     }
     // count: the room's own notification count, as the server and the SDK
     // have it (a push before it, counted here, is replaced by it)
-    function notify(roomId, roomName, count) {
-        console.log("notify:", count)
-        var n = roomNote(roomId)
-        var info = rustrx.roomInfo(roomId)
+    function notify(account, roomId, roomName, count) {
+        console.log("notify:", count, "account", account)
+        var n = roomNote(account, roomId)
+        var info = rustrx.roomInfoIn(account, roomId)
         var last = (info.preview_sender && chatDetails ? info.preview_sender + ": " : "") + (info.preview || "")
         var pending = count
-        roomPending[roomId] = pending
-        n.remoteActions = roomActions(roomId, info.latest_event_id || "")
+        roomPending[noteKey(account, roomId)] = pending
+        n.remoteActions = roomActions(account, roomId, info.latest_event_id || "")
         n.summary = chatDetails ? roomName : "Rustrx"
         n.previewSummary = n.summary
         //: notification body, %n new messages
@@ -224,9 +243,9 @@ Item {
     }
     // an invitation: a banner, also while Rustrx is in front (they are easy
     // to miss in the list); a tap opens it, where it is accepted or declined
-    function notifyInvite(roomId, roomName, inviter, direct) {
-        console.log("notify: invitation")
-        var n = roomNote(roomId)
+    function notifyInvite(account, roomId, roomName, inviter, direct) {
+        console.log("notify: invitation, account", account)
+        var n = roomNote(account, roomId)
         var who = inviter.length ? inviter : roomName
         //: notification title for an invitation
         //% "Invitation"
@@ -248,14 +267,22 @@ Item {
     }
     // an invitation answered some other way: its banner goes, also one an
     // earlier Rustrx process posted (the app and the stand-in take turns)
-    function closeInvite(roomId) {
-        closeNotification(roomId)
+    function closeInvite(account, roomId) {
+        closeNotification(account, roomId)
         var all = standInNote.notifications()
         for (var i = 0; i < all.length; i++) {
             var actions = all[i].remoteActions
-            if (actions && actions.length && actions[0].arguments && actions[0].arguments[0] === roomId)
+            if (actions && actions.length && noteKeyOf(actions[0]) === noteKey(account, roomId))
                 all[i].close()
         }
+    }
+    // the room and account an earlier process's line is for, by its tap's
+    // action (before 0.7 it named no account: the first one); "" for others
+    function noteKeyOf(first) {
+        var args = first.arguments || []
+        if (first.method === "openAccountRoom" && args.length === 2) return noteKey(args[0], args[1])
+        if (first.method === "openRoomFromNotification" && args.length === 1) return noteKey(0, args[0])
+        return ""
     }
 
     // an incoming call: a notification that rings with the system's VoIP
@@ -263,9 +290,9 @@ Item {
     // Decline; it goes when it expires, is answered or declined, the call
     // ends, or the room is opened. A group call's start only notifies.
     property var ringing: ({})
-    function ringCall(roomId, roomName, senderName, ring, eventId, expiresMs) {
+    function ringCall(account, roomId, roomName, senderName, ring, eventId, expiresMs) {
         stopRinging(roomId)
-        var n = ringComponent.createObject(service, { roomId: roomId, eventId: eventId, ring: ring })
+        var n = ringComponent.createObject(service, { roomId: roomId, eventId: eventId, ring: ring, account: account })
         // who calls and from where stays inside Rustrx when chat names do (Privacy)
         n.summary = !chatDetails
                 //: notification title when chat names stay inside Rustrx
@@ -306,9 +333,11 @@ Item {
     Connections {
         target: rustrx.all
         onDataChanged: {
-            for (var id in service.ringing)
-                if (!rustrx.roomInfo(id).in_call && service.ringing[id].seenCall) service.stopRinging(id)
-                else if (rustrx.roomInfo(id).in_call) service.ringing[id].seenCall = true
+            for (var id in service.ringing) {
+                var info = rustrx.roomInfoIn(service.ringing[id].account, id)
+                if (!info.in_call && service.ringing[id].seenCall) service.stopRinging(id)
+                else if (info.in_call) service.ringing[id].seenCall = true
+            }
         }
     }
 
@@ -319,6 +348,7 @@ Item {
             property string roomId
             property string eventId
             property bool ring
+            property int account
             // the room's state showed the call running once; its end then ends the ring
             property bool seenCall
             property Timer expiry: Timer { onTriggered: service.stopRinging(ringNote.roomId) }
@@ -330,24 +360,24 @@ Item {
             urgency: ring ? Notification.Critical : Notification.Normal
             isTransient: false
             remoteActions: [
-                service.action("default", "openRoomFromNotification", [ roomId ]),
+                service.action("default", "openAccountRoom", [ String(account), roomId ]),
                 //% "Answer"
-                service.action("answer", "answerCall", [ roomId ], qsTrId("rustrx-me-call-answer")),
+                service.action("answer", "answerAccountCall", [ String(account), roomId ], qsTrId("rustrx-me-call-answer")),
                 //% "Decline"
-                service.action("decline", "declineCall", [ roomId, eventId ], qsTrId("rustrx-me-call-decline"))
+                service.action("decline", "declineAccountCall", [ String(account), roomId, eventId ], qsTrId("rustrx-me-call-decline"))
             ]
         }
     }
 
     // a pushed message (a process woken for it): the room's line, as a
     // message seen by the sync would make it; text as Settings has it
-    function notifyPush(roomId, eventId, roomName, senderName, body, isDm) {
-        console.log("notify: push")
-        var n = roomNote(roomId)
-        var pending = (roomPending[roomId] || 0) + 1
-        roomPending[roomId] = pending
+    function notifyPush(account, roomId, eventId, roomName, senderName, body, isDm) {
+        console.log("notify: push, account", account)
+        var n = roomNote(account, roomId)
+        var pending = (roomPending[noteKey(account, roomId)] || 0) + 1
+        roomPending[noteKey(account, roomId)] = pending
         var who = senderName && !isDm && chatDetails ? senderName + ": " : ""
-        n.remoteActions = roomActions(roomId, eventId)
+        n.remoteActions = roomActions(account, roomId, eventId)
         n.summary = chatDetails ? roomName : "Rustrx"
         n.previewSummary = n.summary
         n.body = body && notifyText ? who + body : qsTrId("rustrx-no-new-messages", pending)
@@ -385,12 +415,13 @@ Item {
         remoteActions: [ service.action("default", "openKnocks") ]
     }
 
-    function closeNotification(roomId) {
-        delete roomPending[roomId]
-        var n = roomNotifications[roomId]
+    function closeNotification(account, roomId) {
+        var k = noteKey(account, roomId)
+        delete roomPending[k]
+        var n = roomNotifications[k]
         if (!n) return
         n.close()
-        delete roomNotifications[roomId]
+        delete roomNotifications[k]
         // ours are made here; one adopted from an earlier process is not
         if (n.roomId !== undefined) n.destroy()
     }
@@ -399,6 +430,7 @@ Item {
         id: notificationComponent
         Notification {
             property string roomId
+            property int account
             appName: "Rustrx"
             appIcon: "harbour-rustrx"
             // our own (notificationcategories/): x-nemo.messaging.im's
@@ -407,8 +439,8 @@ Item {
             // way to set the hint itself)
             category: "x-harbour-rustrx.message"
             urgency: Notification.Normal
-            remoteActions: service.roomActions(roomId, "")
-            onClosed: delete service.roomPending[roomId]
+            remoteActions: service.roomActions(account, roomId, "")
+            onClosed: delete service.roomPending[service.noteKey(account, roomId)]
         }
     }
 
@@ -417,7 +449,7 @@ Item {
     // awake for a short while, so new messages arrive and notify.
     BackgroundJob {
         id: wakeJob
-        enabled: rustrx.background && rustrx.loggedIn
+        enabled: rustrx.background && rustrx.accounts.some(function (a) { return a.logged_in })
         frequency: BackgroundJob.FiveMinutes
         onTriggered: { console.log("background: woken"); wakeHold.restart() }
     }
@@ -448,9 +480,9 @@ Item {
         var old = standInNote.notifications()
         for (var i = 0; i < old.length; i++) {
             var first = old[i].remoteActions.length ? old[i].remoteActions[0] : {}
-            if (first.method === "openRoomFromNotification" && first.arguments && first.arguments.length
-                    && !roomNotifications[first.arguments[0]])
-                roomNotifications[first.arguments[0]] = old[i]
+            var k = noteKeyOf(first)
+            if (k.length && !roomNotifications[k])
+                roomNotifications[k] = old[i]
             else
                 old[i].close()
         }

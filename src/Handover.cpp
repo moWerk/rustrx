@@ -41,6 +41,13 @@ void Handover::setPendingShare(const QStringList &files, const QString &text)
     m_pendingShare = QVariantMap{{"files", files}, {"text", text}};
 }
 
+int Handover::takePendingAccount()
+{
+    const int a = m_pendingAccount;
+    m_pendingAccount = 0;
+    return a;
+}
+
 QString Handover::takePendingRoom()
 {
     const QString r = m_pendingRoom;
@@ -105,6 +112,7 @@ bool Handover::handOver()
         return false;
     QJsonObject o;
     o.insert("room", m_pendingRoom);
+    o.insert("account", m_pendingAccount);
     o.insert("call", m_pendingCall);
     o.insert("knocks", m_pendingKnocks);
     o.insert("uri", m_pendingUri);
@@ -266,12 +274,18 @@ bool Handover::accept(const QByteArray &json, const QString &sharedDir)
         return false;
     const QJsonObject o = doc.object();
     // every field as handOver() writes it; each one checked, all or nothing
-    if (!onlyKeys(o, { "room", "call", "knocks", "uri", "share", "voip" }) || o.size() != 6)
+    // "account" since 0.7; without it (an older stand-in's file) the first
+    const bool hasAccount = o.contains("account");
+    if (!onlyKeys(o, { "room", "account", "call", "knocks", "uri", "share", "voip" }) || o.size() != (hasAccount ? 7 : 6))
+        return false;
+    const double account = hasAccount ? o.value("account").toDouble(-1) : 0;
+    if (account < 0 || account > 9999 || account != int(account))
         return false;
     if (!isRoomOrNone(o.value("room")) || !isRoomOrNone(o.value("call")) || !o.value("knocks").isBool()
             || !isUri(o.value("uri")) || !isShare(o.value("share"), sharedDir) || !isRinging(o.value("voip")))
         return false;
     m_pendingRoom = o.value("room").toString();
+    m_pendingAccount = int(account);
     m_pendingCall = o.value("call").toString();
     m_pendingKnocks = o.value("knocks").toBool();
     m_pendingUri = o.value("uri").toString();

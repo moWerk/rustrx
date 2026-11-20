@@ -35,9 +35,10 @@ static int badgeCount(const QVariantMap &room)
     return n > 0 ? n : room.value("unread").toInt();
 }
 
-RoomLists::RoomLists(QSettings *settings, QObject *parent)
+RoomLists::RoomLists(QSettings *settings, const QString &prefix, QObject *parent)
     : QObject(parent)
     , m_settings(settings)
+    , m_invitesKey(prefix + QLatin1String(Keys::kInvitesNotified))
     , m_rooms(new RoomModel(this))
     , m_people(new RoomModel(this))
     , m_favourites(new RoomModel(this))
@@ -45,7 +46,13 @@ RoomLists::RoomLists(QSettings *settings, QObject *parent)
     , m_spaces(new RoomModel(this))
     , m_targets(new RoomModel(this))
 {
-    m_invitesNotified = m_settings->value(QLatin1String(Keys::kInvitesNotified)).toStringList();
+    m_invitesNotified = m_settings->value(m_invitesKey).toStringList();
+}
+
+void RoomLists::reloadSettings()
+{
+    m_tabCache.clear();
+    distributeRooms(m_lastRooms);
 }
 
 void RoomLists::setRoomFilter(const QString &text)
@@ -340,7 +347,7 @@ void RoomLists::distributeRooms(const QVariantList &rooms)
                 emit inviteGone(id);
         if (open != notified) {
             m_invitesNotified = open;
-            m_settings->setValue(QLatin1String(Keys::kInvitesNotified), open);
+            m_settings->setValue(m_invitesKey, open);
         }
     }
     sortRooms(groups, QStringLiteral("rooms"));
@@ -383,7 +390,7 @@ void RoomLists::clear()
     m_invitesNotified.clear();
     for (const QString &id : notified)
         emit inviteGone(id);
-    m_settings->remove(QStringLiteral("invitesNotified"));
+    m_settings->remove(m_invitesKey);
 }
 
 void RoomLists::clearUnread()

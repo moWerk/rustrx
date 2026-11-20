@@ -46,10 +46,17 @@ class UnifiedPush : public QObject
 
 public:
     static const char *const kConnectorName;
+    // one per account, each in its account's folder with its own token;
+    // the one connector hands each call to the instance it is for
     explicit UnifiedPush(const QString &dataDir, QObject *parent = nullptr);
+    ~UnifiedPush();
 
-    // push.json says push is on and working: the stand-in is not needed
+    // every account's folder with a login: the data folder, accounts/<n>
+    static QStringList accountDirs(const QString &dataDir);
+    // push.json says push is on and working, for every account: the
+    // stand-in is not needed
     static bool activeOnDisk(const QString &dataDir);
+    // push is switched on (the same switch for all accounts)
     static bool enabledOnDisk(const QString &dataDir);
 
     bool available() const { return !m_distributor.isEmpty(); }
@@ -72,7 +79,10 @@ public:
     void checkPusher();
     void pusherChecked(const QString &endpoint, bool present);
 
-    // from the D-Bus connector
+    // from the D-Bus connector, to the instance whose token the call carries
+    static QVariantMap dispatchMessage(const QVariantMap &args);
+    static QVariantMap dispatchNewEndpoint(const QVariantMap &args);
+    static QVariantMap dispatchUnregistered(const QVariantMap &args);
     QVariantMap message(const QVariantMap &args);
     QVariantMap newEndpoint(const QVariantMap &args);
     QVariantMap unregistered(const QVariantMap &args);
@@ -93,6 +103,7 @@ private:
     void setPusherIfNeeded();
     void setStatus(const QString &s);
     bool fromDistributor(const QVariantMap &args) const;
+    static UnifiedPush *instanceFor(const QVariantMap &args);
 
     QString m_path;
     QVariantMap m_state;   // enabled, token, endpoint, oldEndpoint, gateway, pusherSet
@@ -109,13 +120,11 @@ class UnifiedPushConnector : public QDBusAbstractAdaptor
     // the connector interface; Q_CLASSINFO takes a literal only
     Q_CLASSINFO("D-Bus Interface", "org.unifiedpush.Connector2")
 public:
-    UnifiedPushConnector(QObject *object, UnifiedPush *push) : QDBusAbstractAdaptor(object), m_push(push) {}
+    explicit UnifiedPushConnector(QObject *object) : QDBusAbstractAdaptor(object) {}
 public slots:
-    QVariantMap Message(const QVariantMap &args) { return m_push->message(args); }
-    QVariantMap NewEndpoint(const QVariantMap &args) { return m_push->newEndpoint(args); }
-    QVariantMap Unregistered(const QVariantMap &args) { return m_push->unregistered(args); }
-private:
-    UnifiedPush *m_push;
+    QVariantMap Message(const QVariantMap &args) { return UnifiedPush::dispatchMessage(args); }
+    QVariantMap NewEndpoint(const QVariantMap &args) { return UnifiedPush::dispatchNewEndpoint(args); }
+    QVariantMap Unregistered(const QVariantMap &args) { return UnifiedPush::dispatchUnregistered(args); }
 };
 
 #endif

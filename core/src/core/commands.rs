@@ -58,6 +58,8 @@ impl Core {
             LoginOauth { user, homeserver, signup } => self.login_oauth(user, homeserver, signup.unwrap_or(false)).await,
             LoginQr { user, homeserver } => self.login_qr(user, homeserver).await,
             QrCheckCode { code } => self.qr_check_code(code).await,
+            QrScanned { data } => self.qr_scanned(&data).await,
+            GrantQr => self.grant_qr().await,
             LoginCancel => {
                 self.login_cancel();
                 Ok(())

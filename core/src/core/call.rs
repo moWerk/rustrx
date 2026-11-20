@@ -72,7 +72,7 @@ impl Core {
     /// expires, the call ends, or it is answered or declined. The initial
     /// sync's old ones are past their lifetime and stay quiet.
     pub(crate) fn install_call_handlers(&'static self, client: &Client) {
-        client.add_event_handler(|raw: Raw<AnySyncMessageLikeEvent>, room: Room| async move {
+        client.add_event_handler(move |raw: Raw<AnySyncMessageLikeEvent>, room: Room| async move {
             let Ok(Some(kind)) = raw.get_field::<String>("type") else { return };
             if !RING_TYPES.contains(&kind.as_str()) {
                 return;
@@ -100,7 +100,7 @@ impl Core {
             };
             let room_name = room_name(&room);
             tracing::info!(room = %room.room_id(), ring, age, "call: incoming");
-            crate::instance().emit(json!({
+            self.emit(json!({
                 "ev": "call_ring", "room_id": room.room_id().as_str(), "room_name": room_name,
                 "sender": sender, "sender_name": sender_name, "ring": ring,
                 "event_id": event_id, "expires_ms": lifetime - age,
@@ -111,7 +111,7 @@ impl Core {
         // own too; the call's state machine there needs our echo (and
         // another device of ours answering) to tell its party from ours.
         // Handlers get the decrypted event in an encrypted room.
-        client.add_event_handler(|raw: Raw<AnySyncMessageLikeEvent>, room: Room| async move {
+        client.add_event_handler(move |raw: Raw<AnySyncMessageLikeEvent>, room: Room| async move {
             let Ok(Some(kind)) = raw.get_field::<String>("type") else { return };
             if !crate::protocol::voip_type_allowed(&kind) {
                 return;
@@ -131,7 +131,7 @@ impl Core {
             // every member's phone otherwise)
             let is_dm = room.is_direct().await.unwrap_or(false);
             tracing::info!(room = %room.room_id(), %kind, %call_id, own, age, is_dm, "voip: event");
-            crate::instance().emit(json!({
+            self.emit(json!({
                 "ev": "voip", "room_id": room.room_id().as_str(), "room_name": room_name(&room),
                 "type": kind, "sender": sender, "sender_name": sender_name, "own": own,
                 "content": content, "event_id": event_id, "age_ms": age, "is_dm": is_dm,

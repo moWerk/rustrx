@@ -1,8 +1,26 @@
-* Fri Nov 20 2026 moWerk <mo@mowerk.net> - 0.6.2
+* Fri Nov 20 2026 moWerk <mo@mowerk.net> - 0.7.0
+- New: several accounts, as many as you like. The shown account's picture
+  sits left of the tabs; a tap lists the accounts with their unread chats
+  and "Log in to another account", a tap on one shows it. Settings,
+  Account: the pulley shows another account or logs in to one more.
+- Every account syncs and notifies at once, with Rustrx open, in the
+  background and through push (each account has its own push); a tap on
+  a notification shows its account. A dot on the account picture while
+  another account has unread chats.
+- Each account keeps its own folder, store and keys; the first account
+  stays where it always was, nothing moves.
+- New: Link a new device (Settings, Account). This phone shows a QR code
+  the new device scans, or scans the new device's code; the new device
+  comes in verified, its keys handed over. Works with Rustrx and Element
+  on the other side, on servers with an account service (MAS).
+- New: the login page scans a QR code of a logged-in device, so another
+  account is added without typing.
 - New: after a login, Rustrx offers once to verify the phone, when the
   new device is unverified or lacks the recovery key (Verify or Later).
 - New: a failed login offers to share the debug log right there; before,
   it could only be shared from Settings, after logging in.
+- Fixed: restoring with the recovery key failed with "missing field
+  recovery_key" since 0.4.7 (the author's find).
 
 * Fri Nov 20 2026 moWerk <mo@mowerk.net> - 0.6.1
 - Fixed: the browser login on account services that refuse a redirect

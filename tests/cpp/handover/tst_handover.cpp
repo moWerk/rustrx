@@ -88,6 +88,27 @@ private slots:
         QVERIFY(accepts(quiet, longest));
     }
 
+    // Since 0.7 the room's account comes along; an older stand-in's file
+    // without it is the first account's.
+    // Planted-bug: take the account before checking it (a negative or
+    // fractional one passes); ignore it (the room opens in account 0).
+    void theAccountComesAlong()
+    {
+        Handover h;
+        QVERIFY(accepts(h, with(good(), "account", 3)));
+        QCOMPARE(h.takePendingAccount(), 3);
+        QCOMPARE(h.takePendingRoom(), QStringLiteral("!room:example.org"));
+        Handover old;
+        old.setPendingAccount(5);
+        QVERIFY(accepts(old, good()));
+        QCOMPARE(old.takePendingAccount(), 0);
+        for (const QJsonValue &bad : { QJsonValue(-1), QJsonValue(1.5), QJsonValue("1"), QJsonValue(100000) }) {
+            Handover n;
+            QVERIFY2(!accepts(n, with(good(), "account", bad)), qPrintable(QJsonDocument(QJsonArray{ bad }).toJson()));
+            QVERIFY(n.takePendingRoom().isEmpty());
+        }
+    }
+
     // Planted-bug: share paths not checked (a planted file shares the
     // session). Planted-bug: ids not checked (a call answered in a room
     // id that is not one). Planted-bug: the link not checked. Planted-bug:

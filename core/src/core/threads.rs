@@ -57,7 +57,7 @@ impl Core {
                     let _ = back.paginate_backwards(THREAD_FILL).await;
                 });
             };
-            Self::stream_timeline(&room, &tl, &own, emit, page_in, crate::instance().threads_read.subscribe()).await;
+            Self::stream_timeline(&room, &tl, &own, emit, page_in, self.threads_read.subscribe()).await;
         });
         tracing::info!(room = %room_id, %root, "thread: open");
         // a close or another open during the build: this one is not wanted
@@ -117,7 +117,7 @@ impl Core {
                                                                 &mut known).await;
                         item["unread"] = Value::Bool(unread);
                     }
-                    crate::instance().emit(json!({"ev": "thread_list", "room_id": rid.as_str(), "threads": items, "loading": loading}));
+                    self.emit(json!({"ev": "thread_list", "room_id": rid.as_str(), "threads": items, "loading": loading}));
                     known
                 }
             };

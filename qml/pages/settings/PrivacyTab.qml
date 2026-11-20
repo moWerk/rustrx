@@ -106,7 +106,10 @@ SilicaFlickable {
             automaticCheck: false
             onClicked: {
                 app.showOnline = !app.showOnline
-                service.whenLoggedIn({ cmd: "set_presence", online: app.showOnline })
+                // every account: one switch for all of them
+                var all = rustrx.accounts
+                for (var i = 0; i < all.length; i++)
+                    if (all[i].logged_in) rustrx.commandTo(all[i].key, { cmd: "set_presence", online: app.showOnline })
             }
         }
 

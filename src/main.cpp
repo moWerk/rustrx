@@ -170,7 +170,7 @@ int main(int argc, char *argv[])
     rustrx.setStandIn(standIn);
     rustrx.setPushWake(pushWake);
     // the connector (pushes reach whichever Rustrx process runs)
-    rustrx.push()->exportConnector();
+    rustrx.firstPush()->exportConnector();
     if (!standIn)
         rustrx.takeHandover();
     // before the window, so it outlives the QML that uses it
@@ -193,7 +193,7 @@ int main(int argc, char *argv[])
         idle.setSingleShot(true);
         idle.setInterval(Keys::kPushIdleMs);
         QObject::connect(&idle, &QTimer::timeout, app.data(), &QCoreApplication::quit);
-        QObject::connect(rustrx.push(), &UnifiedPush::pushed, &idle, [&idle]() { idle.start(); });
+        QObject::connect(&rustrx, &Rustrx::pushed, &idle, [&idle]() { idle.start(); });
         // woken by a notification's button instead: as long again for it
         QObject::connect(&rustrx, &Rustrx::markReadRequested, &idle, [&idle]() { idle.start(); });
         QObject::connect(&rustrx, &Rustrx::replyRequested, &idle, [&idle]() { idle.start(); });

@@ -114,7 +114,7 @@ Page {
                 //% "Call"
                 text: qsTrId("rustrx-me-voip-call")
                 onClicked: {
-                    rustrx.voip.place(roomId, info.dm_user, info.name || info.dm_user)
+                    rustrx.placeCall(roomId, info.dm_user, info.name || info.dm_user)
                     app.showVoip()
                 }
             }
