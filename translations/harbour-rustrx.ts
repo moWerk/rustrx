@@ -2958,6 +2958,7 @@
     </message>
     <message id="rustrx-la-account-logged-out">
         <source>Logged out, tap to log in again</source>
+        <extracomment>an account whose session the server ended</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-me-add-account">
@@ -2966,6 +2967,7 @@
     </message>
     <message id="rustrx-me-show-account">
         <source>Show %1</source>
+        <extracomment>the pulley: show that account (%1 its name or address)</extracomment>
         <translation type="unfinished"></translation>
     </message>
 </context>
