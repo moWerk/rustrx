@@ -1301,9 +1301,10 @@ bool Rustrx::switchAccount(int key)
         return false;
     if (a == m_cur)
         return true;
-    // a call stays with the account it is on, and that one stays shown
-    if (m_voip->state() != QLatin1String("idle")) {
-        qInfo() << "accounts: no switch during a call";
+    // a call keeps its account in front: away from it only once it is
+    // over; to it always (answering one that rings on another account)
+    if (m_voip->state() != QLatin1String("idle") && key != m_voipKey) {
+        qInfo() << "accounts: no switch away from a call's account";
         return false;
     }
     qInfo() << "accounts: showing" << key;

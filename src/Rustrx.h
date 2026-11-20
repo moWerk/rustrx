@@ -192,7 +192,7 @@ public:
     QVariantList accounts() const;
     int accountKey() const { return m_cur->key; }
     int otherUnread() const;
-    // show another account (its key); not during a call
+    // show another account (its key); not away from a running call's account
     Q_INVOKABLE bool switchAccount(int key);
     // one more account: the login page for it (an account without a login
     // is used again before a new folder is made)
