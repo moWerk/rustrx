@@ -68,7 +68,7 @@ impl Core {
                         })
                         .collect();
                     tracing::info!(room = %room.room_id(), open = list.len(), "knock: requests");
-                    crate::instance().emit(json!({
+                    self.emit(json!({
                         "ev": "knock_requests", "room_id": room.room_id().as_str(), "room_name": name,
                         "is_space": room.is_space(), "requests": list,
                     }));

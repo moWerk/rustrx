@@ -62,9 +62,13 @@ pub extern "C" fn rustrx_stop() {
 #[no_mangle]
 pub extern "C" fn rustrx_shutdown(timeout_ms: u32) {
     // a panic cannot leave an extern "C" fn: caught, the process ends normally
+    // every account's core at once, each on a thread of its own: all of
+    // them within the one limit
     let done = std::panic::catch_unwind(|| {
-        if let Some(core) = CORE.get() {
-            core.shutdown(std::time::Duration::from_millis(timeout_ms.into()));
+        let limit = std::time::Duration::from_millis(timeout_ms.into());
+        let stops: Vec<_> = cores().into_iter().map(|core| std::thread::spawn(move || core.shutdown(limit))).collect();
+        for stop in stops {
+            let _ = stop.join();
         }
     });
     if done.is_err() {
@@ -72,7 +76,18 @@ pub extern "C" fn rustrx_shutdown(timeout_ms: u32) {
     }
 }
 
-static CORE: OnceLock<core::Core> = OnceLock::new();
+/// One core per account, in the order they were started; a core lives as
+/// long as the process (its number is its index here).
+static CORES: std::sync::Mutex<Vec<&'static core::Core>> = std::sync::Mutex::new(Vec::new());
+
+fn cores() -> Vec<&'static core::Core> {
+    CORES.lock().map(|c| c.clone()).unwrap_or_default()
+}
+
+fn core_at(index: i32) -> Option<&'static core::Core> {
+    let index = usize::try_from(index).ok()?;
+    CORES.lock().ok()?.get(index).copied()
+}
 
 /// Collects formatted log lines and emits each as `{"ev":"log",...}`.
 #[derive(Default)]
@@ -84,7 +99,8 @@ impl std::io::Write for LogWriter {
         while let Some(pos) = self.0.iter().position(|&b| b == b'\n') {
             let line: Vec<u8> = self.0.drain(..=pos).collect();
             let text = String::from_utf8_lossy(&line).trim_end().to_owned();
-            if let Some(core) = CORE.get() {
+            // the process's one log, through the first account's core
+            if let Some(core) = core_at(0) {
                 core.emit(serde_json::json!({"ev": "log", "line": text}));
             } else {
                 eprintln!("{text}");
@@ -95,10 +111,6 @@ impl std::io::Write for LogWriter {
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }
-}
-
-pub(crate) fn instance() -> &'static core::Core {
-    CORE.get().expect("rustrx_start was called")
 }
 
 /// The key for the local store from sailfish-secrets (the app sets it before
@@ -133,17 +145,16 @@ pub extern "C" fn rustrx_version() -> *const c_char {
 /// Start the core. `data_dir` holds the session, the store and cached media.
 /// Returns 0, or 1 when already started, 2 on a bad argument, 3 when the
 /// runtime could not be created.
+/// Start a core on its account's data folder. Returns its number (0 for the
+/// first, then 1, 2, ...), or below 0: -2 no folder, -3 no runtime.
 #[no_mangle]
 pub extern "C" fn rustrx_start(data_dir: *const c_char, cb: EventCallback, ctx: *mut c_void) -> i32 {
-    if CORE.get().is_some() {
-        return 1;
-    }
     if data_dir.is_null() {
-        return 2;
+        return -2;
     }
     let dir = unsafe { CStr::from_ptr(data_dir) }.to_string_lossy().into_owned();
     // The sandbox drops stderr, so log lines travel as events and the UI
-    // hands them to the journal.
+    // hands them to the journal. Once per process.
     let filter = tracing_subscriber::EnvFilter::try_from_env("RUSTRX_LOG")
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,rustrx=info,matrix_sdk_crypto::backups=error"));
     let _ = tracing_subscriber::fmt()
@@ -159,7 +170,7 @@ pub extern "C" fn rustrx_start(data_dir: *const c_char, cb: EventCallback, ctx: 
         .build()
     {
         Ok(rt) => rt,
-        Err(_) => return 3,
+        Err(_) => return -3,
     };
     // a panicking task would otherwise vanish: into the debug log, and to
     // stderr (the journal), which also reaches it when the Qt loop that
@@ -168,18 +179,28 @@ pub extern "C" fn rustrx_start(data_dir: *const c_char, cb: EventCallback, ctx: 
         eprintln!("rustrx: panic: {info}");
         tracing::error!("panic: {info}");
     }));
-    let core = core::Core::new(rt, dir.into(), Emitter { cb, ctx: Ctx(ctx) });
-    if CORE.set(core).is_err() {
-        return 1;
-    }
-    instance().boot();
-    0
+    let core: &'static core::Core = Box::leak(Box::new(core::Core::new(rt, dir.into(), Emitter { cb, ctx: Ctx(ctx) })));
+    let index = {
+        let Ok(mut all) = CORES.lock() else { return -3 };
+        all.push(core);
+        all.len() as i32 - 1
+    };
+    core.boot();
+    index
 }
 
-/// Queue one command. Returns 0, 2 for unparsable JSON, 4 before start.
+/// Queue one command for the first account. Returns 0, 2 for unparsable
+/// JSON, 4 before start.
 #[no_mangle]
 pub extern "C" fn rustrx_command(json: *const c_char) -> i32 {
-    let Some(core) = CORE.get() else { return 4 };
+    rustrx_command_to(0, json)
+}
+
+/// Queue one command for the account `index` (rustrx_start's number).
+/// Returns 0, 2 for unparsable JSON, 4 for no such core.
+#[no_mangle]
+pub extern "C" fn rustrx_command_to(index: i32, json: *const c_char) -> i32 {
+    let Some(core) = core_at(index) else { return 4 };
     if json.is_null() {
         return 2;
     }
@@ -343,12 +364,52 @@ mod tests {
 
     /// Before rustrx_start every command, even a null pointer, is refused
     /// with 4 and nothing panics (no test here starts the global core).
-    /// Planted-bug: check `json.is_null()` before `CORE.get()`.
+    /// Planted-bug: check `json.is_null()` before `core_at`.
     #[test]
     fn commands_before_start_are_refused() {
         let c = CString::new(r#"{"cmd":"logout"}"#).unwrap();
         assert_eq!(rustrx_command(c.as_ptr()), 4);
         assert_eq!(rustrx_command(std::ptr::null()), 4);
+        assert_eq!(rustrx_command_to(3, c.as_ptr()), 4);
+        assert_eq!(rustrx_command_to(-1, c.as_ptr()), 4);
+    }
+
+    /// Two accounts in one process: each core starts on its own folder,
+    /// says "ready" to its own receiver only, and a command for one is
+    /// answered by that one alone.
+    /// Planted-bug: give the second core the first one's receiver (its
+    /// events then land in the first sink and the counts differ).
+    #[test]
+    fn two_accounts_keep_apart() {
+        let base = std::env::temp_dir().join(format!("rustrx-two-accounts-{}", std::process::id()));
+        let (a, sink_a) = test_core_in(base.join("a"));
+        let (b, sink_b) = test_core_in(base.join("accounts").join("1"));
+        a.boot();
+        b.boot();
+        let ready = |sink: &Sink| {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                let n = events(sink).iter().filter(|e| e["ev"] == "ready").count();
+                if n > 0 || Instant::now() > deadline {
+                    return n;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        };
+        assert_eq!(ready(sink_a), 1);
+        assert_eq!(ready(sink_b), 1);
+        assert!(base.join("a").join(consts::MEDIA_DIR).is_dir() && base.join("accounts/1").join(consts::MEDIA_DIR).is_dir());
+        let before_a = events(sink_a).len();
+        assert_eq!(send(b, r#"{"cmd":"open_room","room_id":"!nowhere:example.org"}"#), 0);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !events(sink_b).iter().any(|e| e["ev"] == "error") && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(events(sink_b).iter().any(|e| e["ev"] == "error"), "{:?}", events(sink_b));
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(events(sink_a).len(), before_a, "{:?}", events(sink_a));
+        assert_eq!(events(sink_a).iter().filter(|e| e["ev"] == "ready").count(), 1);
+        std::fs::remove_dir_all(base).ok();
     }
 
     /// Text that is not JSON is answered with 2 and no event; deep nesting

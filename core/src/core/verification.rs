@@ -7,23 +7,23 @@ use super::*;
 impl Core {
     /// Incoming verification requests, to-device and in-room.
     pub(crate) fn install_handlers(&'static self, client: &Client) {
-        client.add_event_handler(|ev: ToDeviceKeyVerificationRequestEvent, client: Client| async move {
+        client.add_event_handler(move |ev: ToDeviceKeyVerificationRequestEvent, client: Client| async move {
             // spawned: a handler that awaits the whole flow would hold up the sync
             if let Some(req) = client
                 .encryption()
                 .get_verification_request(&ev.sender, ev.content.transaction_id.as_str())
                 .await
             {
-                let core = crate::instance();
+                let core = self;
                 core.spawn_login_task(core.watch_request(req)).await;
             }
         });
-        client.add_event_handler(|ev: OriginalSyncRoomMessageEvent, client: Client| async move {
+        client.add_event_handler(move |ev: OriginalSyncRoomMessageEvent, client: Client| async move {
             if let MessageType::VerificationRequest(_) = &ev.content.msgtype {
                 if let Some(req) =
                     client.encryption().get_verification_request(&ev.sender, ev.event_id.as_str()).await
                 {
-                    let core = crate::instance();
+                    let core = self;
                     core.spawn_login_task(core.watch_request(req)).await;
                 }
             }

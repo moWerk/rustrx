@@ -109,7 +109,7 @@ impl Core {
         let task = self.rt.spawn(async move {
             let (_, mut updates) = list.subscribe_to_room_updates().await;
             let emit = |rooms: Vec<Value>, loading: bool| {
-                crate::instance().emit(json!({"ev": "space_rooms", "space_id": id.as_str(), "rooms": rooms, "loading": loading}));
+                self.emit(json!({"ev": "space_rooms", "space_id": id.as_str(), "rooms": rooms, "loading": loading}));
             };
             // every page, as it comes
             loop {

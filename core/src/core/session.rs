@@ -543,9 +543,9 @@ impl Core {
             tracing::info!("sso: client built, asking for the sign-on page");
             let mut builder = client
                 .matrix_auth()
-                .login_sso(|url| async move {
+                .login_sso(move |url| async move {
                     tracing::info!("sso: sign-on page ready, waiting for the browser");
-                    crate::instance().emit(json!({"ev": "open_url", "url": url}));
+                    self.emit(json!({"ev": "open_url", "url": url}));
                     Ok(())
                 })
                 .initial_device_display_name(DEVICE_NAME)
