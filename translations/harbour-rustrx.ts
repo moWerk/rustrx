@@ -3058,5 +3058,13 @@
         <source>Valid for %1 s</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-bt-qr-continue">
+        <source>Continue</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-done">
+        <source>All set. This phone is logged in and verified, and it has your keys, so your encrypted messages can be read here.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

@@ -135,6 +135,8 @@ ApplicationWindow {
         // the prototype notice is up: it is answered first, then this runs again
         if (current === "prototypeNotice" || current === "secretsNotice" || current === "verifyNotice") return
         if (rustrx.loggedIn) {
+            // a QR login says it is done and waits for its Continue
+            if (current === "qrLoginDone") return
             // read before the main page comes in: becoming active, it forgets the room
             var last = !reopenTried && reopenLast && lastRoomAccount === rustrx.accountKey ? lastRoom : ""
             reopenTried = true

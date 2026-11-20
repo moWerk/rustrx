@@ -83,11 +83,20 @@ Page {
                 title: qsTrId("rustrx-he-link-device")
             }
 
+            // done: the large green check, the security ring's green
+            Image {
+                visible: page.state_ === "done"
+                anchors.horizontalCenter: parent.horizontalCenter
+                sourceSize.width: Theme.iconSizeExtraLarge * 1.5
+                sourceSize.height: Theme.iconSizeExtraLarge * 1.5
+                source: "image://theme/icon-l-acknowledge?" + Tunables.securityComplete
+            }
+
             Label {
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * x
                 wrapMode: Text.Wrap
-                color: page.state_ === "error" ? Theme.errorColor : Theme.highlightColor
+                color: page.state_ === "error" ? Theme.errorColor : page.state_ === "done" ? Tunables.securityComplete : Theme.highlightColor
                 text: page.state_ === "error" ? page.error
                       : page.state_ === "idle"
                         //% "Log in to %1 on another phone or computer, in Rustrx or Element. This phone hands over the keys, so the new device comes in verified."

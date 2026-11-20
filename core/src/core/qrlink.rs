@@ -135,6 +135,9 @@ impl Core {
                 tokio::select! {
                     r = &mut done => {
                         r.map_err(|e| anyhow!("{e}"))?;
+                        // the keys are in and the device is verified; the
+                        // SDK's own Done comes with the end and was lost
+                        self.qr_step(json!({"ev": "qr_login", "state": "done"}));
                         break;
                     }
                     Some(p) = progress.next() => match p {

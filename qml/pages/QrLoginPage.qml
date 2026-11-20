@@ -27,6 +27,9 @@ import "../components"
 // keys, so this one comes in verified. The login page started it.
 Page {
     id: page
+    // done: the window's route() leaves the page for its Continue
+    objectName: state_ === "done" && !continued ? "qrLoginDone" : ""
+    property bool continued
 
     property string state_: "starting"
     property int width_
@@ -82,11 +85,21 @@ Page {
                 title: qsTrId("rustrx-he-qr-login")
             }
 
+            // done: the large green check, the security ring's green
+            Image {
+                visible: page.state_ === "done"
+                anchors.horizontalCenter: parent.horizontalCenter
+                sourceSize.width: Theme.iconSizeExtraLarge * 1.5
+                sourceSize.height: Theme.iconSizeExtraLarge * 1.5
+                source: "image://theme/icon-l-acknowledge?" + Tunables.securityComplete
+            }
+
             Label {
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * x
                 wrapMode: Text.Wrap
-                color: page.error.length ? Theme.errorColor : Theme.highlightColor
+                // done in the green of the account's complete safeguards
+                color: page.error.length ? Theme.errorColor : page.state_ === "done" ? Tunables.securityComplete : Theme.highlightColor
                 text: page.error.length ? page.error
                       : page.state_ === "qr"
                         //% "On a device that is logged in, choose to link a new device (Rustrx: Settings, Account, Link a new device), then scan this code."
@@ -103,9 +116,12 @@ Page {
                           : page.state_ === "waiting"
                             //% "Confirm the login on the other device."
                             ? qsTrId("rustrx-la-qr-confirm")
-                            : page.state_ === "syncing" || page.state_ === "done"
+                            : page.state_ === "syncing"
                               //% "Logged in. Bringing over the keys…"
                               ? qsTrId("rustrx-la-qr-syncing")
+                              : page.state_ === "done"
+                                //% "All set. This phone is logged in and verified, and it has your keys, so your encrypted messages can be read here."
+                                ? qsTrId("rustrx-la-qr-done")
                               //% "Asking the server…"
                               : qsTrId("rustrx-la-qr-starting")
             }
@@ -162,6 +178,13 @@ Page {
                 font.pixelSize: Theme.fontSizeHuge
                 color: Theme.highlightColor
                 text: page.userCode
+            }
+
+            PageButton {
+                visible: page.state_ === "done"
+                //% "Continue"
+                text: qsTrId("rustrx-bt-qr-continue")
+                onClicked: { page.continued = true; app.route() }
             }
 
             PageButton {
