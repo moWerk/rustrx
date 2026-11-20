@@ -451,6 +451,38 @@ def test_every_field_is_documented():
     assert not missing
 
 
+def test_sent_fields_are_the_protocol_fields():
+    """Every field the QML and the C++ send with a command is one the
+    command has, and none it needs is left out. The audit I15 rename of
+    recovery_recover's key to recovery_key reached the core but not the
+    Encryption page, so a typed recovery key failed with 'missing field'
+    (the author's find, 0.7). Planted-bug: send key again there."""
+    fields = protocol_fields()
+    optional = {}
+    src = read("core/src/protocol.rs")
+    body = src[src.index("pub(crate) enum Command"):]
+    body = re.sub(r"//[^\n]*", "", body[:body.index("\n}\n")])
+    for m in re.finditer(r"^    ([A-Z][A-Za-z]+)\s*\{(.*?)\},", body, re.M | re.S):
+        optional[snake(m.group(1))] = set(re.findall(r"(\w+)\s*:\s*Option<", m.group(2)))
+    bad = []
+    for p in QML_JS + CPP:
+        text = code(p)
+        sends = [(m.group(1), set(re.findall(r"(\w+)\s*:", m.group(0))) - {"cmd"})
+                 for m in re.finditer(r'\{[^{}]*\bcmd\s*:\s*"([a-z_]+)"[^{}]*\}', text)]
+        sends += [(m.group(1), set(re.findall(r'\{\s*"(\w+)"', m.group(2))))
+                  for m in re.finditer(r'\{\s*\{\s*"cmd"\s*,\s*"([a-z_]+)"\s*\}((?:\s*,\s*\{\s*"\w+"[^{}]*\})*)\s*\}', text)]
+        for cmd, sent in sends:
+            if cmd not in fields:
+                continue
+            have = set(fields[cmd])
+            required = have - optional.get(cmd, set())
+            bad += [f"{p.name}: {cmd}.{f} unknown" for f in sorted(sent - have)]
+            # a bare { cmd: ... } gets its fields further on (UserPage's moderate)
+            if sent:
+                bad += [f"{p.name}: {cmd}.{f} missing" for f in sorted(required - sent)]
+    assert not bad
+
+
 def test_dconf_path_in_one_place():
     """The dconf folder is written once, in names.js; Settings and the
     debug switches (DebugValue) build their keys from it (audit I16).

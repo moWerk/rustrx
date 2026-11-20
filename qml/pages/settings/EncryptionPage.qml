@@ -101,7 +101,7 @@ Page {
                 EnterKey.onClicked: {
                     //% "Restoring…"
                     settings.recoveryResult = qsTrId("rustrx-la-restoring")
-                    rustrx.command({ cmd: "recovery_recover", key: text })
+                    rustrx.command({ cmd: "recovery_recover", recovery_key: text })
                     focus = false
                 }
             }
@@ -113,7 +113,7 @@ Page {
                 text: qsTrId("rustrx-bt-restore")
                 onClicked: {
                     settings.recoveryResult = qsTrId("rustrx-la-restoring")
-                    rustrx.command({ cmd: "recovery_recover", key: keyField.text })
+                    rustrx.command({ cmd: "recovery_recover", recovery_key: keyField.text })
                 }
             }
 
