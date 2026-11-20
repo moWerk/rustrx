@@ -1,3 +1,9 @@
+* Fri Nov 20 2026 moWerk <mo@mowerk.net> - 0.6.2
+- New: after a login, Rustrx offers once to verify the phone, when the
+  new device is unverified or lacks the recovery key (Verify or Later).
+- New: a failed login offers to share the debug log right there; before,
+  it could only be shared from Settings, after logging in.
+
 * Fri Nov 20 2026 moWerk <mo@mowerk.net> - 0.6.1
 - Fixed: the browser login on account services that refuse a redirect
   address with a port ("invalid_client_metadata", e.g. continuwuity with
