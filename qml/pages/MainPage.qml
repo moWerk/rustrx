@@ -277,7 +277,9 @@ Page {
                 }
             }
 
-            // the accounts: a tap shows one; the last line logs in to one more
+            // the accounts: a tap shows one. Logging in to one more is the
+            // Account page's pulley only: a line for it here was tapped by
+            // mistake for an account (the author's find)
             Repeater {
                 model: page.accountsOpen ? rustrx.accounts : []
                 BackgroundItem {
@@ -331,22 +333,6 @@ Page {
                         font.pixelSize: Theme.fontSizeSmall
                         color: Theme.highlightColor
                     }
-                }
-            }
-            BackgroundItem {
-                visible: page.accountsOpen
-                width: page.width
-                height: visible ? Theme.itemSizeExtraSmall : 0
-                onClicked: {
-                    page.accountsOpen = false
-                    rustrx.addAccount()
-                }
-                Label {
-                    anchors { left: parent.left; leftMargin: Theme.horizontalPageMargin; right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
-                    //% "Log in to another account"
-                    text: qsTrId("rustrx-me-add-account")
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
                 }
             }
             Separator {

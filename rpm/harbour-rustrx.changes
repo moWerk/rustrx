@@ -1,8 +1,8 @@
 * Fri Nov 20 2026 moWerk <mo@mowerk.net> - 0.7.0
 - New: several accounts, as many as you like. The shown account's picture
-  sits left of the tabs; a tap lists the accounts with their unread chats
-  and "Log in to another account", a tap on one shows it. Settings,
-  Account: the pulley shows another account or logs in to one more.
+  sits left of the tabs; a tap lists the accounts with their unread chats,
+  a tap on one shows it. Settings, Account: the pulley shows another
+  account or logs in to one more.
 - Every account syncs and notifies at once, with Rustrx open, in the
   background and through push (each account has its own push); a tap on
   a notification shows its account. A dot on the account picture while

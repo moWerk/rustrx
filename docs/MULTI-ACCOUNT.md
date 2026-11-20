@@ -2,7 +2,9 @@
 
 The author's picture (2026-11-18 and 2026-11-20): a small avatar of the account shown now, left
 of the main page's tabs and the size of the filter icon, switches the whole app to another
-account. The Account tab of Settings switches too, and holds "Log in to another account".
+account. The Account tab of Settings switches too, and its pulley alone holds "Log in to
+another account" (a line for it in the avatar's list was tapped by mistake, the author's
+find).
 Notifications and unread counts come for every account at once; a tap on one shows its
 account. As many accounts as anyone wants.
 
