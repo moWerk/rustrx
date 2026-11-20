@@ -34,6 +34,26 @@ pub(crate) fn device_code_registration() -> Result<matrix_sdk::authentication::o
 }
 
 impl Core {
+    /// A QR login makes a new device with a new key every time, so the
+    /// store of this folder can never be used again: a QR login that got
+    /// as far as the store and then failed left its device behind, and the
+    /// next one was refused ("the account in the store doesn't match the
+    /// account in the constructor", jp26). A store kept for a relogin
+    /// (messages and keys of a session the server ended) is not thrown
+    /// away; that login needs the password or the browser.
+    pub(crate) fn fresh_store_for_qr(&self) -> Result<()> {
+        if self.relogin_path().exists() {
+            bail!("this account's messages and keys are still on this phone; log in with the password or in the browser to keep them");
+        }
+        let dir = self.data_dir.join(STORE_DIR);
+        if std::fs::read_dir(&dir).map(|mut d| d.next().is_some()).unwrap_or(false) {
+            tracing::info!("qr: the store of an earlier login attempt goes");
+            std::fs::remove_dir_all(&dir)?;
+        }
+        std::fs::remove_file(self.data_dir.join(DEVICE_ID_FILE)).ok();
+        Ok(())
+    }
+
     /// A QR step for the UI ("qr_login" or "qr_grant"), and for the log:
     /// the steps' timing is what a failed QR login is read from (the
     /// rendezvous lives a minute)
@@ -98,6 +118,7 @@ impl Core {
                 QrCodeIntentData::Msc4108 { .. } => bail!("the code names no server"),
             };
             self.qr_step(json!({"ev": "qr_login", "state": "connecting"}));
+            self.fresh_store_for_qr()?;
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
             let registration = device_code_registration()?;
             let oauth = client.oauth();

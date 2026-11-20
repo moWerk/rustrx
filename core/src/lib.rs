@@ -302,6 +302,29 @@ mod tests {
         test_core_in(std::env::temp_dir().join("rustrx-tests-never-written"))
     }
 
+    /// A QR login starts from an empty store: a device left by a failed
+    /// attempt made the next one fail ("the account in the store doesn't
+    /// match", jp26), but a store kept for a relogin stays and the QR login
+    /// is refused. Planted-bug: drop the remove_dir_all in
+    /// fresh_store_for_qr.
+    #[test]
+    fn qr_login_starts_from_an_empty_store() {
+        let dir = std::env::temp_dir().join(format!("rustrx-qr-store-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(dir.join("store")).unwrap();
+        std::fs::write(dir.join("store").join("matrix-sdk-crypto.sqlite3"), b"left by an earlier attempt").unwrap();
+        let (core, _) = test_core_in(dir.clone());
+        core.fresh_store_for_qr().unwrap();
+        assert!(!dir.join("store").exists() || std::fs::read_dir(dir.join("store")).unwrap().next().is_none());
+
+        std::fs::create_dir_all(dir.join("store")).unwrap();
+        std::fs::write(dir.join("store").join("matrix-sdk-crypto.sqlite3"), b"kept for a relogin").unwrap();
+        std::fs::write(dir.join("relogin.json"), b"{}").unwrap();
+        assert!(core.fresh_store_for_qr().is_err());
+        assert!(dir.join("store").join("matrix-sdk-crypto.sqlite3").exists());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     fn test_core_in(dir: std::path::PathBuf) -> (&'static core::Core, &'static Sink) {
         let sink: &'static Sink = Box::leak(Box::new(Mutex::new(Vec::new())));
         let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().unwrap();

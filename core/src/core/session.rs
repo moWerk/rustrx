@@ -652,6 +652,7 @@ impl Core {
         tokio::pin!(cancelled);
         let result: Result<Client> = async {
             let server = Self::server_of(user.as_deref(), &homeserver)?;
+            self.fresh_store_for_qr()?;
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
             let registration = super::qrlink::device_code_registration()?;
             let oauth = client.oauth();
