@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Rustrx 1.0
 import Sailfish.Silica 1.0
+import Sailfish.Share 1.0
 import "../components"
 
 // Everything on one page: the fields keep their content, errors appear
@@ -66,6 +67,8 @@ Page {
     // without leaving the field first
     Timer { id: probeLater; interval: Tunables.typingDebounceMs; onTriggered: page.probe() }
     function probeSoon() {
+        // the kept user's name goes in while the page is built, before both fields are there
+        if (!userField || !serverField) return
         var id = /^@[^:\s]+:[^.\s]+\.[^\s]+$/.test(userField.text.trim())
         if (id || serverField.text.trim().indexOf(".") > 0) probeLater.restart()
     }
@@ -196,6 +199,34 @@ Page {
                 wrapMode: Text.Wrap
                 color: Theme.errorColor
                 font.pixelSize: Theme.fontSizeSmall
+            }
+
+            // a login that fails: the log from right here, since Settings
+            // (where it is shared otherwise) needs a login first
+            PageButton {
+                visible: errorText.length > 0 && rustrx.debugLog
+                text: qsTrId("rustrx-bt-share-log")
+                onClicked: {
+                    var path = rustrx.shareableLog()
+                    if (path === "")
+                        return
+                    logShare.resources = ["file://" + path]
+                    logShare.trigger()
+                }
+            }
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                visible: errorText.length > 0 && rustrx.debugLog
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                text: qsTrId("rustrx-la-share-log-hint")
+            }
+            ShareAction {
+                id: logShare
+                mimeType: "text/plain"
+                title: qsTrId("rustrx-he-share-log")
             }
 
             Label {
