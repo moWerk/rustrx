@@ -138,7 +138,9 @@ ApplicationWindow {
             // read before the main page comes in: becoming active, it forgets the room
             var last = !reopenTried && reopenLast && lastRoomAccount === rustrx.accountKey ? lastRoom : ""
             reopenTried = true
-            if (current === "login" || current === "start")
+            // the login's own pages (the QR login above the login page)
+            // go with it; they stayed with their last text before (jp26)
+            if (current === "login" || current === "start" || pageStack.find(function (p) { return p.objectName === "login" }))
                 pageStack.replaceAbove(null, Qt.resolvedUrl("pages/MainPage.qml"))
             // started by a notification's tap: its room, once the list knows it
             var asked = rustrx.takePendingRoom()
