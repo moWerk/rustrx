@@ -449,7 +449,7 @@ Item {
     // awake for a short while, so new messages arrive and notify.
     BackgroundJob {
         id: wakeJob
-        enabled: rustrx.background && rustrx.accounts.length > 0
+        enabled: rustrx.background && rustrx.accounts.some(function (a) { return a.logged_in })
         frequency: BackgroundJob.FiveMinutes
         onTriggered: { console.log("background: woken"); wakeHold.restart() }
     }

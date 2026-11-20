@@ -578,7 +578,7 @@ QString Rustrx::dev(const QString &json)
         if (req.contains("speaker"))
             m_voip->setSpeaker(req.value("speaker").toBool());
         if (what == QLatin1String("place"))
-            m_voip->place(req.value("room_id").toString(), req.value("invitee").toString(), req.value("invitee").toString());
+            placeCall(req.value("room_id").toString(), req.value("invitee").toString(), req.value("invitee").toString());
         else if (what == QLatin1String("answer"))
             m_voip->answer();
         else if (what == QLatin1String("hangup"))
@@ -1265,6 +1265,15 @@ QVariantList Rustrx::accounts() const
         };
     }
     return out;
+}
+
+void Rustrx::placeCall(const QString &roomId, const QString &invitee, const QString &name)
+{
+    if (m_voip->state() == QLatin1String("idle")) {
+        m_voipKey = m_cur->key;
+        m_voip->setOwnUserId(m_cur->userId);
+    }
+    m_voip->place(roomId, invitee, name);
 }
 
 void Rustrx::setPushEnabled(bool on)

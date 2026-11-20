@@ -204,6 +204,9 @@ public:
     Q_INVOKABLE bool accountLoggedIn(int key) const;
     // the account the classic call rings or runs on
     Q_INVOKABLE int voipAccount() const { return m_voipKey; }
+    // a classic call from the shown account: it is that account's call
+    // from its first event on
+    Q_INVOKABLE void placeCall(const QString &roomId, const QString &invitee, const QString &name);
     bool callDark() const;
     Q_INVOKABLE void retryRestore();
     // the proximity sensor during a call (see CallState)
