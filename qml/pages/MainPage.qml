@@ -221,7 +221,12 @@ Page {
                     anchors { left: parent.left; verticalCenter: parent.verticalCenter; verticalCenterOffset: tabBar.topMargin / 2 }
                     width: Theme.itemSizeSmall
                     height: Theme.itemSizeSmall
-                    onClicked: page.accountsOpen = !page.accountsOpen
+                    // one account: nothing to switch to, so straight to its
+                    // settings (the author's wish); several: the list
+                    onClicked: {
+                        if (rustrx.accounts.length > 1) page.accountsOpen = !page.accountsOpen
+                        else pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { startTab: "account" })
+                    }
                     OwnAvatar {
                         id: accountAvatar
                         anchors.centerIn: parent
