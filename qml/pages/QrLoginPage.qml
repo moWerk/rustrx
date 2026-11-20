@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 import "../components"
 
@@ -36,10 +37,25 @@ Page {
     // this phone scanned; the first answer came with the scan
     property bool scanned
     property var initial
+    readonly property int modulesWide: width_
+    // the code's minute (Tunables.qrValidSeconds), counted from when it came
+    property int secondsLeft
+    property real shownAt
+    Timer {
+        running: page.state_ === "qr" && page.secondsLeft > 0
+        interval: 1000
+        repeat: true
+        onTriggered: page.secondsLeft = Math.max(0, Tunables.qrValidSeconds - Math.floor((Date.now() - page.shownAt) / 1000))
+    }
 
     function take(progress) {
         page.state_ = progress.state
-        if (progress.state === "qr") { page.width_ = progress.width; page.modules = progress.modules }
+        if (progress.state === "qr") {
+            page.width_ = progress.width
+            page.modules = progress.modules
+            page.shownAt = Date.now()
+            page.secondsLeft = Tunables.qrValidSeconds
+        }
         if (progress.state === "waiting") page.userCode = progress.user_code || ""
         if (progress.state === "check") page.checkCode = progress.check_code || ""
     }
@@ -100,6 +116,19 @@ Page {
                 width: Math.min(page.width, page.height) - 2 * Theme.horizontalPageMargin
                 modulesWide: page.width_
                 modules: page.modules
+            }
+
+            // the rendezvous behind the code lives a minute from now on
+            Label {
+                visible: page.state_ === "qr" && page.modulesWide > 0
+                anchors.horizontalCenter: parent.horizontalCenter
+                color: page.secondsLeft > 0 ? Theme.secondaryHighlightColor : Theme.errorColor
+                font.pixelSize: Theme.fontSizeSmall
+                text: page.secondsLeft > 0
+                      //% "Valid for %1 s"
+                      ? qsTrId("rustrx-la-qr-valid").arg(page.secondsLeft)
+                      //% "This code has expired."
+                      : qsTrId("rustrx-la-qr-expired")
             }
 
             TextField {

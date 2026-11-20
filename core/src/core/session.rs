@@ -672,17 +672,17 @@ impl Core {
                             let mut ev = super::qrlink::qr_modules(&data)?;
                             ev["ev"] = json!("qr_login");
                             ev["state"] = json!("qr");
-                            self.emit(ev);
+                            self.qr_step(ev);
                         }
                         LoginProgress::EstablishingSecureChannel(GeneratedQrProgress::QrScanned(sender)) => {
                             *self.qr_check.lock().await = Some(sender);
-                            self.emit(json!({"ev": "qr_login", "state": "scanned"}));
+                            self.qr_step(json!({"ev": "qr_login", "state": "scanned"}));
                         }
                         LoginProgress::WaitingForToken { user_code } => {
-                            self.emit(json!({"ev": "qr_login", "state": "waiting", "user_code": user_code}));
+                            self.qr_step(json!({"ev": "qr_login", "state": "waiting", "user_code": user_code}));
                         }
-                        LoginProgress::SyncingSecrets => self.emit(json!({"ev": "qr_login", "state": "syncing"})),
-                        LoginProgress::Done => self.emit(json!({"ev": "qr_login", "state": "done"})),
+                        LoginProgress::SyncingSecrets => self.qr_step(json!({"ev": "qr_login", "state": "syncing"})),
+                        LoginProgress::Done => self.qr_step(json!({"ev": "qr_login", "state": "done"})),
                         _ => {}
                     },
                     _ = &mut cancelled => bail!("login cancelled"),

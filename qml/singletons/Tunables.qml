@@ -141,6 +141,11 @@ QtObject {
     readonly property int verifyNoticeDelayMs: 3000
     // the QR scanner reads a picture of the viewfinder this often, at most
     // this wide (wider ones cost time on the UI thread and read no better)
+    // a QR login's rendezvous lives this long from the moment the code is
+    // shown (Synapse's MSC4108 sessions: 60 s, not extended by use, not
+    // configurable); the scan, the digits and the browser's confirmation
+    // all have to fit
+    readonly property int qrValidSeconds: 60
     readonly property int qrScanMs: 350
     readonly property int qrScanWidth: 720
     // draft save and server probe after the last keystroke

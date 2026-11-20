@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Rustrx 1.0
 import Sailfish.Silica 1.0
 import "../../components"
 
@@ -34,6 +35,15 @@ Page {
     property string checkCode
     property string error
     readonly property bool busy: state_ !== "idle" && state_ !== "done" && state_ !== "error"
+    // the code's minute (Tunables.qrValidSeconds), counted from when it came
+    property int secondsLeft
+    property real shownAt
+    Timer {
+        running: page.state_ === "qr" && page.secondsLeft > 0
+        interval: 1000
+        repeat: true
+        onTriggered: page.secondsLeft = Math.max(0, Tunables.qrValidSeconds - Math.floor((Date.now() - page.shownAt) / 1000))
+    }
 
     function start() {
         error = ""
@@ -47,7 +57,12 @@ Page {
         target: rustrx
         onQrGrant: {
             if (progress.state === "refused") return   // the scanner says so
-            if (progress.state === "qr") { page.modulesWide = progress.width; page.modules = progress.modules }
+            if (progress.state === "qr") {
+                page.modulesWide = progress.width
+                page.modules = progress.modules
+                page.shownAt = Date.now()
+                page.secondsLeft = Tunables.qrValidSeconds
+            }
             if (progress.state === "check") page.checkCode = progress.check_code || ""
             if (progress.state === "error") page.error = progress.message || ""
             page.state_ = progress.state
@@ -100,6 +115,17 @@ Page {
                                     : qsTrId("rustrx-la-qr-starting")
             }
 
+            Label {
+                visible: !page.busy
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                color: Theme.secondaryHighlightColor
+                font.pixelSize: Theme.fontSizeSmall
+                //% "Open the scanner on the new device first: from the moment the code is shown, the scan, the two digits and the confirmation in the browser have one minute together."
+                text: qsTrId("rustrx-la-link-first")
+            }
+
             PageButton {
                 visible: !page.busy
                 //% "Show a QR code"
@@ -124,6 +150,19 @@ Page {
                 width: Math.min(page.width, page.height) - 2 * Theme.horizontalPageMargin
                 modulesWide: page.modulesWide
                 modules: page.modules
+            }
+
+            // the rendezvous behind the code lives a minute from now on
+            Label {
+                visible: page.state_ === "qr" && page.modulesWide > 0
+                anchors.horizontalCenter: parent.horizontalCenter
+                color: page.secondsLeft > 0 ? Theme.secondaryHighlightColor : Theme.errorColor
+                font.pixelSize: Theme.fontSizeSmall
+                text: page.secondsLeft > 0
+                      //% "Valid for %1 s"
+                      ? qsTrId("rustrx-la-qr-valid").arg(page.secondsLeft)
+                      //% "This code has expired."
+                      : qsTrId("rustrx-la-qr-expired")
             }
 
             TextField {

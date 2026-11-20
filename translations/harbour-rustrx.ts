@@ -3046,5 +3046,17 @@
         <source>Connecting to the other device…</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-link-first">
+        <source>Open the scanner on the new device first: from the moment the code is shown, the scan, the two digits and the confirmation in the browser have one minute together.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-expired">
+        <source>This code has expired.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-valid">
+        <source>Valid for %1 s</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

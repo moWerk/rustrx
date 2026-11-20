@@ -34,6 +34,20 @@ pub(crate) fn device_code_registration() -> Result<matrix_sdk::authentication::o
 }
 
 impl Core {
+    /// A QR step for the UI ("qr_login" or "qr_grant"), and for the log:
+    /// the steps' timing is what a failed QR login is read from (the
+    /// rendezvous lives a minute)
+    pub(crate) fn qr_step(&self, ev: serde_json::Value) {
+        tracing::info!(
+            kind = ev["ev"].as_str(),
+            state = ev["state"].as_str(),
+            reason = ev["reason"].as_str(),
+            message = ev["message"].as_str(),
+            "qr: step"
+        );
+        self.emit(ev);
+    }
+
     /// A code the camera read (base64 of its bytes). Logged in, it is a
     /// new device's code, which this one lets in ("qr_grant"); logged out,
     /// a logged-in device's code to log in with ("qr_login"). A code of
@@ -83,7 +97,7 @@ impl Core {
                 QrCodeIntentData::Msc4388 { base_url, .. } => base_url.to_string(),
                 QrCodeIntentData::Msc4108 { .. } => bail!("the code names no server"),
             };
-            self.emit(json!({"ev": "qr_login", "state": "connecting"}));
+            self.qr_step(json!({"ev": "qr_login", "state": "connecting"}));
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
             let registration = device_code_registration()?;
             let oauth = client.oauth();
@@ -105,13 +119,13 @@ impl Core {
                     Some(p) = progress.next() => match p {
                         LoginProgress::EstablishingSecureChannel(QrProgress { check_code }) => {
                             answered = true;
-                            self.emit(json!({"ev": "qr_login", "state": "check", "check_code": format!("{check_code:02}")}));
+                            self.qr_step(json!({"ev": "qr_login", "state": "check", "check_code": format!("{check_code:02}")}));
                         }
                         LoginProgress::WaitingForToken { user_code } => {
-                            self.emit(json!({"ev": "qr_login", "state": "waiting", "user_code": user_code}));
+                            self.qr_step(json!({"ev": "qr_login", "state": "waiting", "user_code": user_code}));
                         }
-                        LoginProgress::SyncingSecrets => self.emit(json!({"ev": "qr_login", "state": "syncing"})),
-                        LoginProgress::Done => self.emit(json!({"ev": "qr_login", "state": "done"})),
+                        LoginProgress::SyncingSecrets => self.qr_step(json!({"ev": "qr_login", "state": "syncing"})),
+                        LoginProgress::Done => self.qr_step(json!({"ev": "qr_login", "state": "done"})),
                         _ => {}
                     },
                     _ = &mut cancelled => bail!("login cancelled"),
@@ -142,11 +156,11 @@ impl Core {
         let Some(_busy) = self.begin_login() else { return self.grant_busy() };
         let client = self.client().await?;
         let oauth = client.oauth();
-        self.emit(json!({"ev": "qr_grant", "state": "connecting"}));
+        self.qr_step(json!({"ev": "qr_grant", "state": "connecting"}));
         let grant = oauth.grant_login_with_qr_code().scan(&code);
         let progress = grant.subscribe_to_progress();
         self.run_grant(grant.into_future(), progress, true, |QrProgress { check_code }| async move {
-            self.emit(json!({"ev": "qr_grant", "state": "check", "check_code": format!("{check_code:02}")}));
+            self.qr_step(json!({"ev": "qr_grant", "state": "check", "check_code": format!("{check_code:02}")}));
         })
         .await
     }
@@ -167,13 +181,13 @@ impl Core {
                         Ok(mut ev) => {
                             ev["ev"] = json!("qr_grant");
                             ev["state"] = json!("qr");
-                            self.emit(ev);
+                            self.qr_step(ev);
                         }
                         Err(e) => tracing::warn!("qr: cannot draw the code: {e}"),
                     },
                     GeneratedQrProgress::QrScanned(sender) => {
                         *self.qr_check.lock().await = Some(sender);
-                        self.emit(json!({"ev": "qr_grant", "state": "scanned"}));
+                        self.qr_step(json!({"ev": "qr_grant", "state": "scanned"}));
                     }
                 }
             })
@@ -183,7 +197,7 @@ impl Core {
     }
 
     fn grant_busy(&self) -> Result<()> {
-        self.emit(json!({"ev": "qr_grant", "state": "error", "message": "another login is still running"}));
+        self.qr_step(json!({"ev": "qr_grant", "state": "error", "message": "another login is still running"}));
         Ok(())
     }
 
@@ -221,13 +235,13 @@ impl Core {
                     GrantLoginProgress::WaitingForAuth { verification_uri, continuation_sender } => {
                         // the account service asks in the browser whether
                         // the new device may in; the grant goes on meanwhile
-                        self.emit(json!({"ev": "qr_grant", "state": "consent"}));
+                        self.qr_step(json!({"ev": "qr_grant", "state": "consent"}));
                         self.emit(json!({"ev": "open_url", "url": verification_uri.as_str()}));
                         if let Err(e) = continuation_sender.confirm().await {
                             break Err(anyhow!("{e}"));
                         }
                     }
-                    GrantLoginProgress::SyncingSecrets => self.emit(json!({"ev": "qr_grant", "state": "syncing"})),
+                    GrantLoginProgress::SyncingSecrets => self.qr_step(json!({"ev": "qr_grant", "state": "syncing"})),
                     GrantLoginProgress::Done | GrantLoginProgress::Starting => {}
                 },
                 _ = &mut cancelled => break Err(anyhow!("cancelled")),
@@ -241,11 +255,11 @@ impl Core {
         match result {
             Ok(()) => {
                 tracing::info!("qr: a new device was let in");
-                self.emit(json!({"ev": "qr_grant", "state": "done"}));
+                self.qr_step(json!({"ev": "qr_grant", "state": "done"}));
             }
             Err(e) => {
                 tracing::info!("qr: letting a device in failed: {e:#}");
-                self.emit(json!({"ev": "qr_grant", "state": "error", "message": format!("{e:#}")}));
+                self.qr_step(json!({"ev": "qr_grant", "state": "error", "message": format!("{e:#}")}));
             }
         }
         Ok(())
