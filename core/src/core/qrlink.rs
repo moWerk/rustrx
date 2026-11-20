@@ -34,6 +34,31 @@ pub(crate) fn device_code_registration() -> Result<matrix_sdk::authentication::o
 }
 
 impl Core {
+    /// What the account's server offers for letting a new device in by QR
+    /// code, reported once per login and start ("server_features"):
+    /// `device_login`, the account service logs devices in by a code
+    /// (needed to let one in either way); `qr_rendezvous`, the server
+    /// keeps the rendezvous (needed to show a code). Settings show "Link a
+    /// new device" by it; matrix.org has the first only, most servers
+    /// neither.
+    pub(crate) fn report_server_features(&'static self, client: Client) {
+        self.rt.spawn(async move {
+            let device_login = client
+                .oauth()
+                .server_metadata()
+                .await
+                .map(|m| m.device_authorization_endpoint.is_some())
+                .unwrap_or(false);
+            let qr_rendezvous = client
+                .unstable_features()
+                .await
+                .map(|f| f.iter().any(|x| x.as_str() == "org.matrix.msc4108"))
+                .unwrap_or(false);
+            tracing::info!(device_login, qr_rendezvous, "server features");
+            self.emit(json!({"ev": "server_features", "device_login": device_login, "qr_rendezvous": qr_rendezvous}));
+        });
+    }
+
     /// A QR login makes a new device with a new key every time, so the
     /// store of this folder can never be used again: a QR login that got
     /// as far as the store and then failed left its device behind, and the

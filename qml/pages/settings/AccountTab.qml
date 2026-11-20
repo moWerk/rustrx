@@ -356,8 +356,11 @@ SilicaFlickable {
             onClicked: pageStack.push(Qt.resolvedUrl("DevicesPage.qml"))
         }
 
-        // another phone or computer in with this account, by QR code
+        // another phone or computer in with this account, by QR code; only
+        // where the server can (its account service logs devices in by a
+        // code: not on most servers, matrix.org without the rendezvous)
         LinkRow {
+            visible: rustrx.deviceLogin
             //% "Link a new device"
             text: qsTrId("rustrx-he-link-device")
             onClicked: pageStack.push(Qt.resolvedUrl("LinkDevicePage.qml"))

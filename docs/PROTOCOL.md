@@ -185,6 +185,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `login_error` | `message` |
 | `server_info` | `server`, `homeserver`, `password`, `sso`, `idps`, `sliding_sync`, `signup_url?`, `account_service`, `qr_login` |
 | `qr_login` | `state` (`qr`: `width`, `modules`; `scanned`; `waiting`: `user_code`; `syncing`; `done`) |
+| `qr_grant` | `state` (`qr`: `width`, `modules`; `scanned`; `connecting`; `check`: `check_code`; `consent`; `syncing`; `done`; `refused`: `reason`; `error`: `message`) |
+| `server_features` | `device_login` (the account service logs devices in by a code), `qr_rendezvous` (the server keeps the QR rendezvous); once after every `logged_in` |
 | `open_url` | `url` (SSO: to open in the browser) |
 | `sync_state` | `state` (`idle`, `running`, `offline`, `error`, `terminated`), `message?` |
 | `rooms` | `rooms`: room objects, invitations first, then by activity |

@@ -56,6 +56,9 @@ struct Account {
     bool loggingIn = false;
     // logged in from the login page in this run (not a restored session)
     bool newLogin = false;
+    // what the server offers for QR linking (server_features)
+    bool deviceLogin = false;
+    bool qrRendezvous = false;
     bool restoreFailed = false;
     bool restoring = false;
     // no room list of this login yet
@@ -92,6 +95,10 @@ class Rustrx : public QObject
     // logged in from the login page in this run (not a restored session):
     // a new device of the account, which the UI offers to verify once
     Q_PROPERTY(bool newLogin READ newLogin NOTIFY stateChanged)
+    // the shown account's server lets new devices in by QR code (Link a new
+    // device), and keeps the rendezvous for a code shown here
+    Q_PROPERTY(bool deviceLogin READ deviceLogin NOTIFY stateChanged)
+    Q_PROPERTY(bool qrRendezvous READ qrRendezvous NOTIFY stateChanged)
     Q_PROPERTY(QString userId READ userId NOTIFY stateChanged)
     Q_PROPERTY(QString homeserver READ homeserver NOTIFY stateChanged)
     Q_PROPERTY(QString logoutReason READ logoutReason NOTIFY stateChanged)
@@ -182,6 +189,8 @@ public:
     bool loggedIn() const { return m_cur->loggedIn; }
     bool loggingIn() const { return m_cur->loggingIn; }
     bool newLogin() const { return m_cur->newLogin; }
+    bool deviceLogin() const { return m_cur->deviceLogin; }
+    bool qrRendezvous() const { return m_cur->qrRendezvous; }
     QString userId() const { return m_cur->userId; }
     QString homeserver() const { return m_cur->homeserver; }
     QString syncState() const { return m_cur->syncState; }

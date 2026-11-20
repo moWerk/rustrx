@@ -125,7 +125,7 @@ Page {
             }
 
             Label {
-                visible: !page.busy
+                visible: !page.busy && rustrx.qrRendezvous
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * x
                 wrapMode: Text.Wrap
@@ -135,8 +135,10 @@ Page {
                 text: qsTrId("rustrx-la-link-first")
             }
 
+            // showing a code needs the server's rendezvous; scanning the new
+            // device's code does not (its rendezvous is on its side)
             PageButton {
-                visible: !page.busy
+                visible: !page.busy && rustrx.qrRendezvous
                 //% "Show a QR code"
                 text: qsTrId("rustrx-bt-link-show")
                 onClicked: page.start()
