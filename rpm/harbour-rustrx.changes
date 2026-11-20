@@ -21,6 +21,9 @@
   it could only be shared from Settings, after logging in.
 - Fixed: restoring with the recovery key failed with "missing field
   recovery_key" since 0.4.7 (the author's find).
+- Fixed: emoji verification started from the other device (Element's
+  "Start" after the request was accepted here) waited forever; Rustrx
+  now agrees to it (the author's find).
 
 * Fri Nov 20 2026 moWerk <mo@mowerk.net> - 0.6.1
 - Fixed: the browser login on account services that refuse a redirect

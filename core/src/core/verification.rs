@@ -4,6 +4,18 @@
 
 use super::*;
 
+/// A request's state for the log, without its contents.
+fn request_state_name(state: &VerificationRequestState) -> &'static str {
+    match state {
+        VerificationRequestState::Created { .. } => "created",
+        VerificationRequestState::Requested { .. } => "requested",
+        VerificationRequestState::Ready { .. } => "ready",
+        VerificationRequestState::Transitioned { .. } => "transitioned",
+        VerificationRequestState::Done => "done",
+        VerificationRequestState::Cancelled(_) => "cancelled",
+    }
+}
+
 impl Core {
     /// Incoming verification requests, to-device and in-room.
     pub(crate) fn install_handlers(&'static self, client: &Client) {
@@ -58,6 +70,7 @@ impl Core {
         let mut current = Some(req.state());
         loop {
             let Some(state) = current.take() else { break };
+            tracing::info!(%flow, we_started = req.we_started(), state = request_state_name(&state), "verification");
             let done = match &state {
                 VerificationRequestState::Created { .. } => {
                     self.emit(Self::request_json(&req, "created", json!({})));
@@ -137,6 +150,15 @@ impl Core {
                     tracing::info!(%flow, emojis = emojis.len(), "sas keys exchanged");
                     self.emit(json!({"ev": "sas", "flow_id": flow, "state": "keys_exchanged",
                                      "emojis": emojis, "decimals": decimals}));
+                }
+                // the other side started the comparison (Element's "Start" after
+                // the request was accepted here): agree to it, or both wait.
+                // Only the emojis that follow decide; nothing is trusted yet
+                SasState::Started { .. } if !sas.we_started() => {
+                    tracing::info!(%flow, "sas started by the other side, accepting");
+                    if let Err(e) = sas.accept().await {
+                        self.error("verification_accept", &anyhow!("{e}"));
+                    }
                 }
                 SasState::Confirmed => {
                     self.emit(json!({"ev": "sas", "flow_id": flow, "state": "confirmed"}));
