@@ -214,7 +214,8 @@ Page {
                     }
                 }
                 // at the left, mirroring the filter icon: the shown account's
-                    // picture; a dot while another account has unread chats
+                // picture, a fifth larger than the icon; a dot while another
+                // account has unread chats
                 MouseArea {
                     id: accountButton
                     anchors { left: parent.left; verticalCenter: parent.verticalCenter; verticalCenterOffset: tabBar.topMargin / 2 }
@@ -224,12 +225,12 @@ Page {
                     OwnAvatar {
                         id: accountAvatar
                         anchors.centerIn: parent
-                        width: Math.round(Theme.iconSizeSmall * filterButton.scale_)
+                        width: Math.round(Theme.iconSizeSmall * 1.2 * filterButton.scale_)
                         height: width
                         path: page.shownAccount.avatar || ""
                         version: page.shownAccount.avatar_v || 0
                         name: page.shownAccount.name || ""
-                        letterSize: Math.round(Theme.fontSizeExtraSmall * filterButton.scale_)
+                        letterSize: Math.round(Theme.fontSizeExtraSmall * 1.2 * filterButton.scale_)
                         opacity: accountButton.pressed || page.accountsOpen ? Theme.opacityHigh : 1
                     }
                     Rectangle {
@@ -284,8 +285,11 @@ Page {
                     width: page.width
                     height: Theme.itemSizeSmall
                     onClicked: {
+                        // the key first: closing empties the model, which
+                        // takes this row and its modelData away
+                        var key = modelData.key
                         page.accountsOpen = false
-                        app.showAccount(modelData.key)
+                        app.showAccount(key)
                     }
                     OwnAvatar {
                         id: rowAvatar
