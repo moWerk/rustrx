@@ -25,6 +25,10 @@ Page {
     id: page
 
     property string lastTerm
+    // what is typed: the field lives in the list's header, out of reach of
+    // ids from here (the timer's field.text was a ReferenceError, so typing
+    // alone never searched; only the enter key did)
+    property string typed
     property bool searching
     property string pending   // id being joined or started, for the busy label
 
@@ -80,7 +84,7 @@ Page {
     Timer {
         id: debounce
         interval: Tunables.searchDebounceMs
-        onTriggered: page.search(field.text)
+        onTriggered: page.search(page.typed)
     }
 
     SilicaListView {
@@ -116,7 +120,7 @@ Page {
                 placeholderText: qsTrId("rustrx-la-search-placeholder")
                 EnterKey.iconSource: "image://theme/icon-m-enter-accept"
                 EnterKey.onClicked: { debounce.stop(); page.search(text) }
-                onTextChanged: debounce.restart()
+                onTextChanged: { page.typed = text; debounce.restart() }
                 Component.onCompleted: forceActiveFocus()
             }
 
