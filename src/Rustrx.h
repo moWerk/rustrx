@@ -47,6 +47,8 @@ struct Account {
     QString dir;
     // the tabs' room lists, unread totals, requests to join
     RoomLists *lists = nullptr;
+    // the core's last `rooms`, for the merged view
+    QVariantList lastRooms;
     // its push registration (UnifiedPush), in its own folder
     UnifiedPush *push = nullptr;
     // pushes that came before its session was back (the woken process)
@@ -136,6 +138,11 @@ class Rustrx : public QObject
     Q_PROPERTY(int accountKey READ accountKey NOTIFY shownAccountChanged)
     // unread chats in the accounts not shown (the account button's dot)
     Q_PROPERTY(int otherUnread READ otherUnread NOTIFY accountsChanged)
+    // all accounts in one list: the tabs show every account's rooms, each
+    // opened in its own account (off by default); colourAccounts marks the
+    // rows with their account's colour while it is on (on by default)
+    Q_PROPERTY(bool mergedView READ mergedView WRITE setMergedView NOTIFY mergedViewChanged)
+    Q_PROPERTY(bool colourAccounts READ colourAccounts WRITE setColourAccounts NOTIFY mergedViewChanged)
     Q_PROPERTY(TimelineModel *timeline READ timeline CONSTANT)
     // push through UnifiedPush (Foghorn), the stand-in's lighter successor;
     // the shown account's (each account registers its own)
@@ -201,6 +208,10 @@ public:
     QVariantList accounts() const;
     int accountKey() const { return m_cur->key; }
     int otherUnread() const;
+    bool mergedView() const { return m_mergedView; }
+    void setMergedView(bool on);
+    bool colourAccounts() const { return m_colourAccounts; }
+    void setColourAccounts(bool on);
     // show another account (its key); not away from a running call's account
     Q_INVOKABLE bool switchAccount(int key);
     // one more account: the login page for it (an account without a login
@@ -453,6 +464,7 @@ signals:
     void accountsChanged();
     // another account is shown: its lists replace the others
     void shownAccountChanged();
+    void mergedViewChanged();
     // a notification or a logout wants that account shown: the window
     // closes the other account's pages first, then calls switchAccount
     void showAccountRequested(int key);
@@ -552,6 +564,14 @@ private:
     QList<Account *> m_accounts;
     // the account shown; never null
     Account *m_cur = nullptr;
+    // the merged view's list (display only) and its switches
+    RoomLists *m_merged = nullptr;
+    bool m_mergedView = false;
+    bool m_colourAccounts = true;
+    // the lists the tabs show: the merged one while it is on
+    RoomLists *shownLists() const;
+    // the merged list fed anew from every logged-in account's rooms
+    void refreshMerged();
     // the account the classic call is on (its events and commands)
     int m_voipKey = 0;
     // a call handed over by the stand-in, until its account is logged in

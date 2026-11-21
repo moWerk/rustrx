@@ -336,6 +336,68 @@ private slots:
         }
         qInfo("%s: %d lists, %d sorts, all as before", qPrintable(locale), lists, sorts);
     }
+
+    // The merged view: two accounts' rooms in one list, in the core's
+    // order across both (invitations first, then the last activity), each
+    // row with its account and uid; a room in both accounts is two rows.
+    // Planted-bug: mergeAccounts keeps the accounts one after the other
+    // (no sort), or keys a row by its room id alone.
+    void mergedAccountsInterleave()
+    {
+        const QVariantList first {
+            room("!shared", { { "ts", 500 } }),
+            room("!a1", { { "ts", 300 } }),
+        };
+        const QVariantList second {
+            room("!b-invite", { { "state", "invited" }, { "ts", 1 } }),
+            room("!b1", { { "ts", 400 } }),
+            room("!shared", { { "ts", 100 } }),
+        };
+        const QVariantList merged = RoomLists::mergeAccounts({ { 0, first }, { 2, second } });
+        QStringList uids;
+        for (const QVariant &v : merged)
+            uids << v.toMap().value("uid").toString();
+        QCOMPARE(uids, QStringList({ "2/!b-invite", "0/!shared", "2/!b1", "0/!a1", "2/!shared" }));
+        QCOMPARE(merged.at(1).toMap().value("account").toInt(), 0);
+        QCOMPARE(merged.at(4).toMap().value("account").toInt(), 2);
+
+        // through a display-only list: both rows of the shared room show
+        Lists l(dir("merged"), { QString(), QVariant(), QVariant() });
+        l.lists->setDisplayOnly(true);
+        l.lists->setRooms(merged);
+        RoomModel *m = l.lists->all();
+        int shared = 0;
+        for (int i = 0; i < m->rowCount(); ++i)
+            if (m->get(i).value("room_id").toString() == QLatin1String("!shared"))
+                ++shared;
+        QCOMPARE(shared, 2);
+    }
+
+    // The merged list only shows: an account's own list notifies new
+    // messages and invitations, the merged one must not (they would come
+    // twice) and must not write the invitations already notified.
+    // Planted-bug: drop the m_displayOnly checks in distributeRooms.
+    void mergedListNotifiesNothing()
+    {
+        Lists l(dir("quiet"), { QString(), QVariant(), QVariant() });
+        l.lists->setDisplayOnly(true);
+        int messages = 0, invitations = 0;
+        QObject::connect(l.lists.get(), &RoomLists::newMessages, [&]() { ++messages; });
+        QObject::connect(l.lists.get(), &RoomLists::invited, [&]() { ++invitations; });
+        l.lists->setRooms(RoomLists::mergeAccounts({ { 0, { room("!r", { { "notifications", 0 } }) } } }));
+        l.lists->setRooms(RoomLists::mergeAccounts({ { 0, { room("!r", { { "notifications", 3 } }),
+                                                            room("!inv", { { "state", "invited" } }) } } }));
+        QCOMPARE(messages, 0);
+        QCOMPARE(invitations, 0);
+        QVERIFY(l.settings.allKeys().filter("invitesNotified").isEmpty());
+        // an account's own list does notify (the test's own check)
+        Lists own(dir("loud"), { QString(), QVariant(), QVariant() });
+        int ownMessages = 0;
+        QObject::connect(own.lists.get(), &RoomLists::newMessages, [&]() { ++ownMessages; });
+        own.lists->setRooms({ room("!r", { { "notifications", 0 } }) });
+        own.lists->setRooms({ room("!r", { { "notifications", 3 } }) });
+        QCOMPARE(ownMessages, 1);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestRoomSort)

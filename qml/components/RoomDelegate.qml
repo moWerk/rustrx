@@ -35,6 +35,15 @@ ListItem {
     // the picture: 10 % smaller than the large icon size
     readonly property int avatarSize: Math.round(Theme.iconSizeLarge * Tunables.avatarScale)
 
+    // the room's account in the merged view (all accounts in one list), else
+    // -1: the shown account's own list
+    readonly property int account: model.account !== undefined && model.account !== null ? model.account : -1
+    readonly property bool otherAccount: account >= 0 && account !== rustrx.accountKey
+    // a command for the room's own account
+    function send(c) {
+        if (account >= 0) rustrx.commandTo(account, c)
+        else rustrx.command(c)
+    }
     readonly property bool invited: model.state === "invited"
     readonly property bool hasUnread: model.notifications > 0 || model.unread > 0
     // a favourite with something unread glows (Settings): a band across the
@@ -65,8 +74,35 @@ ListItem {
         }
     }
 
+    // the account's colour (merged view, "Colour-coded accounts"): a leaf at
+    // the picture's corner, or a bar along the row's edge; one of the two is
+    // kept after a round on the phone (app.chipPlacement, a debug switch)
+    Rectangle {
+        visible: app.accountChips && item.account >= 0 && app.chipPlacement === "bar"
+        x: 0
+        width: Math.round(Theme.paddingSmall * 0.75)
+        height: parent.height
+        color: app.accountColour(item.account)
+    }
+    AccountChip {
+        visible: app.accountChips && item.account >= 0 && app.chipPlacement !== "bar"
+        z: 2
+        width: Math.round(item.avatarSize * 0.34)
+        height: width
+        x: avatar.x + avatar.width - width * 0.75
+        y: avatar.y + avatar.height - height * 0.75
+        colour: app.accountColour(item.account)
+    }
+
     onClicked: {
         if (invited) { openMenu(); return }
+        // a room of another account (merged view): that account comes to the
+        // front, then the room (or its successor) opens there
+        if (otherAccount) {
+            ListView.view.currentIndex = index
+            app.openIn(account, model.replaced_by && model.replaced_by.length ? model.replaced_by : model.room_id)
+            return
+        }
         // an upgraded room: on to its successor (joined if need be)
         if (model.replaced_by && model.replaced_by.length) {
             if (rustrx.roomInfo(model.replaced_by).name) app.showRoom(model.replaced_by)
@@ -397,17 +433,18 @@ ListItem {
                 visible: invited
                 //% "Accept invitation"
                 text: qsTrId("rustrx-me-accept")
-                onClicked: rustrx.command({ cmd: "join_room", room_id: model.room_id })
+                onClicked: item.send({ cmd: "join_room", room_id: model.room_id })
             }
             MenuItem {
                 visible: invited
                 //% "Decline"
                 text: qsTrId("rustrx-me-decline")
                 onClicked: {
-                    var id = model.room_id, core = rustrx
+                    var id = model.room_id, core = rustrx, acc = item.account
                     //% "Declining"
                     item.remorseAction(qsTrId("rustrx-re-declining"), function () {
-                        core.command({ cmd: "leave_room", room_id: id })
+                        if (acc >= 0) core.commandTo(acc, { cmd: "leave_room", room_id: id })
+                        else core.command({ cmd: "leave_room", room_id: id })
                     })
                 }
             }
@@ -417,13 +454,13 @@ ListItem {
                 text: model.is_fav ? qsTrId("rustrx-me-unfavourite")
                 //% "Add to Favs"
                                    : qsTrId("rustrx-me-favourite")
-                onClicked: rustrx.command({ cmd: "set_favourite", room_id: model.room_id, value: !model.is_fav })
+                onClicked: item.send({ cmd: "set_favourite", room_id: model.room_id, value: !model.is_fav })
             }
             MenuItem {
                 visible: !invited && hasUnread
                 //% "Mark as read"
                 text: qsTrId("rustrx-me-mark-read")
-                onClicked: app.markRead(model.room_id)
+                onClicked: app.markRead(model.room_id, undefined, undefined, item.account >= 0 ? item.account : undefined)
             }
             MenuItem {
                 visible: !invited
@@ -431,10 +468,11 @@ ListItem {
                 text: qsTrId("rustrx-me-leave")
                 onClicked: {
                     // the callback runs after the menu is gone; keep what it needs
-                    var id = model.room_id, core = rustrx
+                    var id = model.room_id, core = rustrx, acc = item.account
                     //% "Leaving"
                     item.remorseAction(qsTrId("rustrx-re-leaving"), function () {
-                        core.command({ cmd: "leave_room", room_id: id })
+                        if (acc >= 0) core.commandTo(acc, { cmd: "leave_room", room_id: id })
+                        else core.command({ cmd: "leave_room", room_id: id })
                     })
                 }
             }

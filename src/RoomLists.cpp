@@ -253,6 +253,47 @@ void RoomLists::setRooms(const QVariantList &rooms)
     distributeRooms(rooms);
 }
 
+QVariantList RoomLists::mergeAccounts(const QList<QPair<int, QVariantList>> &accounts)
+{
+    QVariantList merged;
+    for (const auto &account : accounts) {
+        for (const QVariant &v : account.second) {
+            QVariantMap r = v.toMap();
+            r.insert(QStringLiteral("account"), account.first);
+            r.insert(QStringLiteral("uid"), QString::number(account.first) + QLatin1Char('/') + r.value("room_id").toString());
+            merged.append(r);
+        }
+    }
+    // the core's own order (serialize.rs sorted_rooms), across accounts
+    struct Key {
+        bool invited;
+        qint64 ts;
+        QString uid;
+    };
+    QVector<Key> keys;
+    keys.reserve(merged.size());
+    for (const QVariant &v : merged) {
+        const QVariantMap r = v.toMap();
+        keys.append({ isInvited(r), r.value("ts").toLongLong(), r.value("uid").toString() });
+    }
+    QVector<int> index(merged.size());
+    for (int i = 0; i < index.size(); ++i)
+        index[i] = i;
+    std::stable_sort(index.begin(), index.end(), [&](int ia, int ib) {
+        const Key &a = keys.at(ia), &b = keys.at(ib);
+        if (a.invited != b.invited)
+            return a.invited;
+        if (a.ts != b.ts)
+            return a.ts > b.ts;
+        return a.uid < b.uid;
+    });
+    QVariantList sorted;
+    sorted.reserve(merged.size());
+    for (int i : index)
+        sorted.append(merged.at(i));
+    return sorted;
+}
+
 void RoomLists::distributeRooms(const QVariantList &rooms)
 {
     if (&rooms != &m_lastRooms)
@@ -312,6 +353,8 @@ void RoomLists::distributeRooms(const QVariantList &rooms)
             f.insert("section", QString());
             favs.append(f);
         }
+        if (m_displayOnly)
+            continue;
         // notifications while running: a room gained notifications (count:
         // the room's own, not a sum of ours); the open room too, as Rustrx
         // may be on the cover (Service.qml leaves out the room in front);
@@ -327,7 +370,7 @@ void RoomLists::distributeRooms(const QVariantList &rooms)
     // every invitation once, with a banner: the ones already notified are
     // kept in the settings (pruned to the open ones), so a restart does not
     // repeat them and one that came while Rustrx was closed still shows
-    {
+    if (!m_displayOnly) {
         const QStringList notified = m_invitesNotified;
         QStringList open;
         for (const QVariant &v : rooms) {
@@ -385,6 +428,8 @@ void RoomLists::clear()
     emit knockRequestsChanged();
     m_notificationCounts.clear();
     m_roomsById.clear();
+    if (m_displayOnly)
+        return;
     // that account's invitation banners go; the next account starts afresh
     const QStringList notified = m_invitesNotified;
     m_invitesNotified.clear();

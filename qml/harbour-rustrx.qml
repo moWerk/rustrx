@@ -120,8 +120,30 @@ ApplicationWindow {
     property bool reopenTried
 
     // the receipt as the privacy switch has it (Service.qml, one place)
-    function markRead(roomId, shown, eventId) {
-        service.markRead(roomId, shown, eventId)
+    function markRead(roomId, shown, eventId, account) {
+        service.markRead(roomId, shown, eventId, account)
+    }
+
+    // an account's colour in the merged view (Tunables.accountColours)
+    function accountColour(key) {
+        var c = Tunables.accountColours
+        return c[((key % c.length) + c.length) % c.length]
+    }
+    // the merged view marks rows and accounts with their colour: it is on,
+    // its colours are, and there is more than one account to tell apart
+    // where the merged view shows a room's account colour: "corner" (a leaf
+    // at the picture) or "bar" (the row's edge); a debug switch until one is
+    // chosen on the phone
+    DebugValue { id: debugChipPlacement; name: "debugChipPlacement"; defaultValue: "corner" }
+    readonly property string chipPlacement: debugChipPlacement.value || "corner"
+    readonly property bool accountChips: rustrx.mergedView && rustrx.colourAccounts && rustrx.accounts.length > 1
+
+    // a room (or space) of the merged view: its account comes to the front
+    // first, then the room opens there, as a notification's tap does it
+    function openIn(account, roomId) {
+        if (account === undefined || account < 0 || account === rustrx.accountKey) { showRoom(roomId); return }
+        showAccount(account)
+        showRoom(roomId)
     }
 
     // flow ids of verifications that already have a page
@@ -717,6 +739,10 @@ ApplicationWindow {
         // an invitation is answered in the list: its tab, where it sits on top
         var info = rustrx.roomInfo(roomId)
         if (info.state === "invited") { main.showTab(info.is_dm ? 1 : 0); return }
+        if (info.is_space) {
+            pageStack.push(Qt.resolvedUrl("pages/SpacePage.qml"), { spaceId: roomId, spaceName: info.name || "" }, PageStackAction.Immediate)
+            return
+        }
         pageStack.push(Qt.resolvedUrl("pages/RoomPage.qml"),
                        { roomId: roomId, roomName: rustrx.roomInfo(roomId).name || "" }, PageStackAction.Immediate)
         // a call's page went with the pop: back on top of the room

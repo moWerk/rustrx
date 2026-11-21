@@ -50,6 +50,9 @@ static const char kDrafts[] = "drafts";
 static const char kThreadsSeen[] = "threadsSeen";
 // the account shown when the app was left (Account::key)
 static const char kShownAccount[] = "accounts/shown";
+// all accounts in one list (off by default), and their colours on it (on)
+static const char kMergedView[] = "accounts/merged";
+static const char kColourAccounts[] = "accounts/colours";
 // per tab: tabs/<kind>/<key>, else the key itself as the shared value
 static const char kTabs[] = "tabs";
 static const char kSortOrder[] = "sortOrder";

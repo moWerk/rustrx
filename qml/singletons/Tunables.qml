@@ -146,6 +146,10 @@ QtObject {
     // configurable); the scan, the digits and the browser's confirmation
     // all have to fit
     readonly property int qrValidSeconds: 60
+    // the accounts' colours in the merged view, by account key (keys stay
+    // with an account for its life): mid tones that read on light and dark
+    // ambiences alike
+    readonly property var accountColours: ["#3fa7d6", "#e0457b", "#f2a541", "#59c3a7", "#a77ce8", "#e8743b", "#8fbf3f", "#d65db1"]
     readonly property int qrScanMs: 350
     readonly property int qrScanWidth: 720
     // draft save and server probe after the last keystroke

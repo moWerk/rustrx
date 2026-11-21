@@ -239,7 +239,8 @@ Page {
                         opacity: accountButton.pressed || page.accountsOpen ? Theme.opacityHigh : 1
                     }
                     Rectangle {
-                        visible: rustrx.otherUnread > 0
+                        // not in the merged view: every account's chats are in the list
+                        visible: rustrx.otherUnread > 0 && !rustrx.mergedView
                         anchors { right: accountAvatar.right; top: accountAvatar.top; margins: -width / 3 }
                         width: Theme.paddingMedium
                         height: width
@@ -309,6 +310,15 @@ Page {
                         name: modelData.name || ""
                         userId: modelData.user_id
                         letterSize: Theme.fontSizeSmall
+                    }
+                    // the account's colour, as its rooms have it in the merged view
+                    AccountChip {
+                        visible: app.accountChips
+                        width: Math.round(rowAvatar.width * 0.34)
+                        height: width
+                        x: rowAvatar.x + rowAvatar.width - width * 0.75
+                        y: rowAvatar.y + rowAvatar.height - height * 0.75
+                        colour: app.accountColour(modelData.key)
                     }
                     Column {
                         anchors { left: rowAvatar.right; leftMargin: Theme.paddingMedium; right: unreadLabel.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }

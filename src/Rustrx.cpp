@@ -198,6 +198,14 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     // the first account in the data folder as always, the others in
     // accounts/<n>; a folder without a session is left from a logout or a
     // login given up, and goes
+    // the merged view's list: every account's rooms, display only
+    m_mergedView = m_settings.value(QLatin1String(Keys::kMergedView), false).toBool();
+    m_colourAccounts = m_settings.value(QLatin1String(Keys::kColourAccounts), true).toBool();
+    m_merged = new RoomLists(&m_settings, QStringLiteral("merged/"), this);
+    m_merged->setDisplayOnly(true);
+    connect(m_merged, &RoomLists::settingsChanged, this, [this]() { if (m_mergedView) emit settingsChanged(); });
+    connect(m_merged, &RoomLists::roomFilterChanged, this, [this]() { if (m_mergedView) emit roomFilterChanged(); });
+    connect(m_merged, &RoomLists::unreadChanged, this, [this]() { if (m_mergedView) emit unreadChanged(); });
     m_cur = startAccount(0, dataDir);
     QDir more(dataDir + QLatin1String("/accounts"));
     QList<int> keys;
@@ -493,27 +501,74 @@ int Rustrx::clearLog()
 }
 
 // the room lists' state, kept in each account's RoomLists
-int Rustrx::unreadTotal() const { return m_cur->lists->unreadTotal(); }
-int Rustrx::unreadChats() const { return m_cur->lists->unreadChats(); }
-RoomModel *Rustrx::rooms() const { return m_cur->lists->rooms(); }
-RoomModel *Rustrx::people() const { return m_cur->lists->people(); }
-RoomModel *Rustrx::favourites() const { return m_cur->lists->favourites(); }
-RoomModel *Rustrx::all() const { return m_cur->lists->all(); }
-RoomModel *Rustrx::spaces() const { return m_cur->lists->spaces(); }
+// The tabs show the merged list while it is on; what is looked up by a
+// room's id (roomInfo, the first unread room, sharing's targets, the
+// requests to join) stays with the shown account, which opening a room of
+// the merged list switches to first.
+RoomLists *Rustrx::shownLists() const
+{
+    return m_mergedView ? m_merged : m_cur->lists;
+}
+
+void Rustrx::refreshMerged()
+{
+    if (!m_mergedView)
+        return;
+    QList<QPair<int, QVariantList>> all;
+    for (const Account *a : m_accounts)
+        if (a->loggedIn)
+            all.append({ a->key, a->lastRooms });
+    m_merged->setRooms(RoomLists::mergeAccounts(all));
+}
+
+void Rustrx::setMergedView(bool on)
+{
+    if (on == m_mergedView)
+        return;
+    m_mergedView = on;
+    m_settings.setValue(QLatin1String(Keys::kMergedView), on);
+    qInfo() << "accounts: merged view" << on;
+    refreshMerged();
+    // the tabs' settings are shared, each list caches them: the one that
+    // comes in reads them again
+    shownLists()->reloadSettings();
+    emit mergedViewChanged();
+    emit shownAccountChanged();
+    emit unreadChanged();
+    emit settingsChanged();
+    emit roomFilterChanged();
+}
+
+void Rustrx::setColourAccounts(bool on)
+{
+    if (on == m_colourAccounts)
+        return;
+    m_colourAccounts = on;
+    m_settings.setValue(QLatin1String(Keys::kColourAccounts), on);
+    emit mergedViewChanged();
+}
+
+int Rustrx::unreadTotal() const { return shownLists()->unreadTotal(); }
+int Rustrx::unreadChats() const { return shownLists()->unreadChats(); }
+RoomModel *Rustrx::rooms() const { return shownLists()->rooms(); }
+RoomModel *Rustrx::people() const { return shownLists()->people(); }
+RoomModel *Rustrx::favourites() const { return shownLists()->favourites(); }
+RoomModel *Rustrx::all() const { return shownLists()->all(); }
+RoomModel *Rustrx::spaces() const { return shownLists()->spaces(); }
 RoomModel *Rustrx::targets() const { return m_cur->lists->targets(); }
 QVariantList Rustrx::knockRequests() const { return m_cur->lists->knockRequests(); }
-QString Rustrx::currentTab() const { return m_cur->lists->currentTab(); }
-void Rustrx::setCurrentTab(const QString &kind) { m_cur->lists->setCurrentTab(kind); }
-QString Rustrx::sortOrder() const { return m_cur->lists->sortOrder(); }
-void Rustrx::setSortOrder(const QString &order) { m_cur->lists->setSortOrder(order); }
-bool Rustrx::favsOnTop() const { return m_cur->lists->favsOnTop(); }
-void Rustrx::setFavsOnTop(bool on) { m_cur->lists->setFavsOnTop(on); }
-bool Rustrx::lowLast() const { return m_cur->lists->lowLast(); }
-void Rustrx::setLowLast(bool on) { m_cur->lists->setLowLast(on); }
-bool Rustrx::hideMuted() const { return m_cur->lists->hideMuted(); }
-void Rustrx::setHideMuted(bool on) { m_cur->lists->setHideMuted(on); }
-QString Rustrx::roomFilter() const { return m_cur->lists->roomFilter(); }
-void Rustrx::setRoomFilter(const QString &text) { m_cur->lists->setRoomFilter(text); }
+QString Rustrx::currentTab() const { return shownLists()->currentTab(); }
+void Rustrx::setCurrentTab(const QString &kind) { shownLists()->setCurrentTab(kind); }
+QString Rustrx::sortOrder() const { return shownLists()->sortOrder(); }
+void Rustrx::setSortOrder(const QString &order) { shownLists()->setSortOrder(order); }
+bool Rustrx::favsOnTop() const { return shownLists()->favsOnTop(); }
+void Rustrx::setFavsOnTop(bool on) { shownLists()->setFavsOnTop(on); }
+bool Rustrx::lowLast() const { return shownLists()->lowLast(); }
+void Rustrx::setLowLast(bool on) { shownLists()->setLowLast(on); }
+bool Rustrx::hideMuted() const { return shownLists()->hideMuted(); }
+void Rustrx::setHideMuted(bool on) { shownLists()->setHideMuted(on); }
+QString Rustrx::roomFilter() const { return shownLists()->roomFilter(); }
+void Rustrx::setRoomFilter(const QString &text) { shownLists()->setRoomFilter(text); }
 QVariantMap Rustrx::roomInfo(const QString &roomId) const { return m_cur->lists->roomInfo(roomId); }
 QString Rustrx::firstUnreadRoom() const { return m_cur->lists->firstUnreadRoom(); }
 
@@ -1115,6 +1170,8 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
         a->drafts.clear();
         // the lists, the requests to join, the invitation banners
         a->lists->clear();
+        a->lastRooms.clear();
+        refreshMerged();
         if (shown) {
             m_openRoomId.clear();
             m_timeline->clear();
@@ -1156,7 +1213,9 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
     } else if (type == QLatin1String("rooms")) {
         const bool first = a->firstRooms;
         a->firstRooms = false;
-        a->lists->setRooms(ev.value("rooms").toList());
+        a->lastRooms = ev.value("rooms").toList();
+        a->lists->setRooms(a->lastRooms);
+        refreshMerged();
         if (first && shown)
             emit roomsLoadedChanged();
     } else if (type == QLatin1String("knock_requests")) {
@@ -1355,7 +1414,7 @@ bool Rustrx::switchAccount(int key)
     m_timeline->clearEmotes();
     m_thread->clearEmotes();
     m_cur = a;
-    a->lists->reloadSettings();
+    shownLists()->reloadSettings();
     m_settings.setValue(QLatin1String(Keys::kShownAccount), key);
     emitAllChanged();
     return true;

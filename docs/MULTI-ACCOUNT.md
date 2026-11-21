@@ -33,7 +33,26 @@ account. As many accounts as anyone wants.
 - **Calls** (classic): the account a call rings on owns the call; the app switches to it
   when the call is answered. No switching while a call runs.
 
+## All accounts in one list (the merged view)
+
+dodoradio's idea; off by default, under Settings, App, with several accounts. One more
+`RoomLists`, display only (`setDisplayOnly`: no notifications, no invitation bookkeeping), fed
+by `Rustrx::refreshMerged` with every logged-in account's last `rooms`, each room tagged with
+its `account` and a `uid` ("<account>/<room_id>"), in the core's order across accounts
+(`RoomLists::mergeAccounts`). While it is on, the tabs, unread totals, filter and tab settings
+come from it; what is looked up by a room's id (`roomInfo`, sharing's targets, the requests to
+join) stays with the shown account. A row of another account opens in its account
+(`app.openIn`: the account to the front, then the room, as a notification's tap does); its
+actions go to its account (`commandTo`). A room in two accounts is two rows.
+
+"Colour-coded accounts" (on while the merged view is): each account's colour by its key
+(`Tunables.accountColours`), as a leaf in the Sailfish shape (`AccountChip`) on its rooms and in
+the avatar's list. The debug value `debugChipPlacement` ("corner", "bar") tries a bar along the
+row's edge instead.
+
 ## Not yet
 
 - Ordering accounts, a name per account.
 - The requests-to-join notification opens the shown account's list.
+- In the merged view: the requests to join and sharing's targets are the shown account's; new
+  chats and rooms are made in the shown account without saying which at the top.

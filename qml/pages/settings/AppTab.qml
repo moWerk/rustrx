@@ -255,6 +255,30 @@ SilicaFlickable {
             onClicked: app.separateSpaces = !app.separateSpaces
         }
 
+        // several accounts: their rooms in one list (dodoradio's idea), each
+        // marked with its account's colour unless that is switched off
+        TextSwitch {
+            visible: rustrx.accounts.length > 1
+            //% "All accounts in one list"
+            text: qsTrId("rustrx-la-merged-view")
+            //% "The tabs show the rooms and people of every account together. A room opens in its own account."
+            description: qsTrId("rustrx-la-merged-view-hint")
+            checked: rustrx.mergedView
+            automaticCheck: false
+            onClicked: rustrx.mergedView = !rustrx.mergedView
+        }
+
+        TextSwitch {
+            visible: rustrx.accounts.length > 1 && rustrx.mergedView
+            //% "Colour-coded accounts"
+            text: qsTrId("rustrx-la-colour-accounts")
+            //% "Each account gets a colour, and its rooms carry it."
+            description: qsTrId("rustrx-la-colour-accounts-hint")
+            checked: rustrx.colourAccounts
+            automaticCheck: false
+            onClicked: rustrx.colourAccounts = !rustrx.colourAccounts
+        }
+
         //% "General"
         SectionHeader { text: qsTrId("rustrx-se-general") }
 

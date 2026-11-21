@@ -19,6 +19,14 @@
 
 #include <QSet>
 
+// A row's key: its uid in the merged view (the same room can be there for
+// two accounts), its room id otherwise.
+static QString rowKey(const QVariantMap &room)
+{
+    const QString uid = room.value(QStringLiteral("uid")).toString();
+    return uid.isEmpty() ? room.value(QStringLiteral("room_id")).toString() : uid;
+}
+
 RoomModel::RoomModel(QObject *parent)
     : QAbstractListModel(parent)
 {
@@ -27,7 +35,7 @@ RoomModel::RoomModel(QObject *parent)
                             "avatar_path", "avatar_v", "has_avatar", "preview", "preview_sender",
                             "muted", "own_read", "replaced_by", "in_call", "inviter_known",
                             "is_space", "join_rule", "can_join_rules", "can_manage_children", "children", "parents",
-                            "name_html", "preview_html" };
+                            "account", "uid", "name_html", "preview_html" };
     int role = Qt::UserRole + 1;
     for (const char *n : names) {
         m_roles.insert(role, QByteArray(n));
@@ -50,9 +58,9 @@ QVariant RoomModel::data(const QModelIndex &index, int role) const
         return QVariant();
     const QVariantMap room = m_rooms.at(index.row()).toMap();
     if (role == m_nameHtmlRole)
-        return m_html.value(room.value(QStringLiteral("room_id")).toString()).name;
+        return m_html.value(rowKey(room)).name;
     if (role == m_previewHtmlRole)
-        return m_html.value(room.value(QStringLiteral("room_id")).toString()).preview;
+        return m_html.value(rowKey(room)).preview;
     return room.value(m_keys.value(role));
 }
 
@@ -118,7 +126,7 @@ void RoomModel::rerender(bool name)
 {
     for (const QVariant &v : m_rooms) {
         const QVariantMap room = v.toMap();
-        Html &h = m_html[room.value(QStringLiteral("room_id")).toString()];
+        Html &h = m_html[rowKey(room)];
         if (name)
             h.name = nameHtml(room);
         else
@@ -159,7 +167,7 @@ void RoomModel::setPreviewMultiLine(bool multi)
 // under the finger. Anything else: reset.
 static QString roomIdOf(const QVariant &v)
 {
-    return v.toMap().value("room_id").toString();
+    return rowKey(v.toMap());
 }
 
 // Removes, inserts and moves instead of a reset, so the list view keeps its

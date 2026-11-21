@@ -3066,5 +3066,21 @@
         <source>All set. This phone is logged in and verified, and it has your keys, so your encrypted messages can be read here.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-colour-accounts">
+        <source>Colour-coded accounts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-colour-accounts-hint">
+        <source>Each account gets a colour, and its rooms carry it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-merged-view">
+        <source>All accounts in one list</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-merged-view-hint">
+        <source>The tabs show the rooms and people of every account together. A room opens in its own account.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

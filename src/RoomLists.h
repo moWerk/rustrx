@@ -23,6 +23,7 @@
 #include <QSet>
 #include <QStringList>
 #include <QVariant>
+#include <QPair>
 #include <QVariantList>
 #include <QVariantMap>
 
@@ -70,6 +71,14 @@ public:
 
     // the core's `rooms` event
     void setRooms(const QVariantList &rooms);
+    // for the merged view (all accounts in one list): sorts, filters and
+    // counts only; no notifications, no invitation bookkeeping, no settings
+    // written but the tabs' own
+    void setDisplayOnly(bool on) { m_displayOnly = on; }
+    // every account's rooms in one list for the merged view, each tagged
+    // with its account and a uid ("<account>/<room_id>"), in the core's
+    // order (invitations first, then the last activity, then the uid)
+    static QVariantList mergeAccounts(const QList<QPair<int, QVariantList>> &accounts);
     // the core's `knock_requests` event
     void setKnockRequests(const QVariantMap &ev);
     // logged out: the lists, requests and banners go (the unread totals in
@@ -102,6 +111,7 @@ private:
     void sortRooms(QVariantList &rooms, const QString &kind) const;
 
     QSettings *m_settings;
+    bool m_displayOnly = false;
     // this account's own keys: the invitations already notified
     QString m_invitesKey;
     QVariantList m_lastRooms;   // as the core sent them, for a new order
