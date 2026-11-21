@@ -1037,10 +1037,6 @@
         <source>The poll has ended</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-se-general">
-        <source>General</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-la-storage-store">
         <source>Messages and keys</source>
         <translation type="unfinished"></translation>
@@ -3088,6 +3084,26 @@
     </message>
     <message id="rustrx-la-classic-sync-hint">
         <source>For servers whose fast sync leaves rooms out (Beeper shows only some). Slower to start; the account reconnects when you switch.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-behaviour">
+        <source>Behaviour</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-connection">
+        <source>Connection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-keys-devices">
+        <source>Keys and devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-security-status">
+        <source>Security status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-storage">
+        <source>Storage</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

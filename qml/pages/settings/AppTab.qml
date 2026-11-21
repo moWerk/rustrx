@@ -279,8 +279,8 @@ SilicaFlickable {
             onClicked: rustrx.colourAccounts = !rustrx.colourAccounts
         }
 
-        //% "General"
-        SectionHeader { text: qsTrId("rustrx-se-general") }
+        //% "Behaviour"
+        SectionHeader { text: qsTrId("rustrx-se-behaviour") }
 
         TextSwitch {
             //% "Reopen the last chat"
@@ -313,6 +313,8 @@ SilicaFlickable {
         }
 
         // what Rustrx keeps on this phone
+        //% "Storage"
+        SectionHeader { text: qsTrId("rustrx-se-storage") }
         DetailItem {
             //% "Messages and keys"
             label: qsTrId("rustrx-la-storage-store")

@@ -256,7 +256,9 @@ SilicaFlickable {
             onClicked: settings.logOut()
         }
 
-        Item { width: 1; height: Theme.paddingLarge }
+        // the ring, its safeguards and the notes: how safe the messages are
+        //% "Security status"
+        SectionHeader { text: qsTrId("rustrx-se-security-status") }
 
         // the verdict first: what follows details it
         Label {
@@ -340,7 +342,9 @@ SilicaFlickable {
             }
         }
 
-        Item { width: 1; height: Theme.paddingMedium }
+        // the keys, where they are, and bringing a new device in
+        //% "Keys and devices"
+        SectionHeader { text: qsTrId("rustrx-se-keys-devices") }
 
         // the recovery key, its backup, a reset and the room keys file
         LinkRow {
@@ -356,6 +360,20 @@ SilicaFlickable {
             onClicked: pageStack.push(Qt.resolvedUrl("DevicesPage.qml"))
         }
 
+        // another phone or computer in with this account, by QR code; only
+        // where the server can (its account service logs devices in by a
+        // code: not on most servers, matrix.org without the rendezvous)
+        LinkRow {
+            visible: rustrx.deviceLogin
+            //% "Link a new device"
+            text: qsTrId("rustrx-he-link-device")
+            onClicked: pageStack.push(Qt.resolvedUrl("LinkDevicePage.qml"))
+        }
+
+        // how the account talks to its server
+        //% "Connection"
+        SectionHeader { text: qsTrId("rustrx-se-connection") }
+
         // the classic sync for a server whose sliding sync sends only part of
         // the rooms (Beeper: one; dodoradio's find); cannot be told from
         // outside, so a switch. The account's session restarts with it
@@ -367,16 +385,6 @@ SilicaFlickable {
             checked: rustrx.classicSync
             automaticCheck: false
             onClicked: rustrx.setClassicSync(!rustrx.classicSync)
-        }
-
-        // another phone or computer in with this account, by QR code; only
-        // where the server can (its account service logs devices in by a
-        // code: not on most servers, matrix.org without the rendezvous)
-        LinkRow {
-            visible: rustrx.deviceLogin
-            //% "Link a new device"
-            text: qsTrId("rustrx-he-link-device")
-            onClicked: pageStack.push(Qt.resolvedUrl("LinkDevicePage.qml"))
         }
 
         //% "Debug log"
