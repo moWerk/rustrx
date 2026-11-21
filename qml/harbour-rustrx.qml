@@ -591,7 +591,7 @@ ApplicationWindow {
         if (m) {
             id = (m[1] === "r" ? "#" : m[1] === "u" ? "@" : "!") + decodeURIComponent(m[2].split("/")[0])
         } else {
-            m = /^https?:\/\/matrix\.to\/#\/([^?]+)/.exec(uri)
+            m = /^https?:\/\/(?:www\.)?matrix\.to\/#\/([^?]+)/.exec(uri)
             if (!m) return false
             id = decodeURIComponent(m[1].split("/")[0])
         }

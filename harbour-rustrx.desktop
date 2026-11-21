@@ -7,9 +7,12 @@ Name=Rustrx
 Comment=A Matrix client
 # one instance: a second launch raises the running window
 X-Nemo-Single-Instance=yes
-# matrix: links (matrix:r/room:server, matrix:u/person:server) come over D-Bus,
-# so the sandbox's check of the command line does not refuse them
-MimeType=x-scheme-handler/matrix;
+# matrix: links (matrix:r/room:server, matrix:u/person:server) and
+# https://matrix.to links come over D-Bus, so the sandbox's check of the
+# command line does not refuse them; x-url-handler names the exact web host
+# (the browser offered Xmatic and Sailtrix for a matrix.to link, not Rustrx;
+# davodego)
+MimeType=x-scheme-handler/matrix;x-url-handler/matrix.to;x-url-handler/www.matrix.to;
 X-Maemo-Service=net.mowerk.harbour-rustrx
 X-Maemo-Object-Path=/net/mowerk/harbour_rustrx
 X-Maemo-Method=net.mowerk.harbour_rustrx.openUrl
