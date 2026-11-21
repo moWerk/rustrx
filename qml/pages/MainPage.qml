@@ -195,7 +195,10 @@ Page {
         // order below them
         header: Item {
             width: parent ? parent.width : page.width
-            height: headerColumn.height
+            // as tall as the tab bar alone: the open menus hang below it over
+            // the rooms instead of pushing them down (the header's height is
+            // what the TabView keeps free above the lists)
+            height: tabBar.height
             // the open menus lie over the first rooms: a pane of the
             // ambience's dimmer colour, see-through a little, so the rooms
             // behind still show (the author's wish: glass, or 90 %)
