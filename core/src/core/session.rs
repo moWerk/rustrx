@@ -794,6 +794,26 @@ impl Core {
         }
     }
 
+    /// The classic /sync for this account instead of sliding sync, or back
+    /// to asking the server (`classic` false). For servers that advertise
+    /// sliding sync and send only part of the rooms through it (Beeper: one
+    /// room, dodoradio's log); that cannot be told from outside, so it is a
+    /// switch. The session stops and is restored from the same store with
+    /// the other flavour: no logout, the rooms come again ("logged_in",
+    /// then "rooms").
+    pub(crate) async fn set_classic_sync(&'static self, classic: bool) -> Result<()> {
+        let Some(mut saved) = self.load_session()? else { bail!("not logged in") };
+        tracing::info!(classic, "sync: switching the flavour, restoring the session");
+        let teardown = self.state.lock().await.take_login();
+        teardown.stop().await;
+        saved.sliding_sync = if classic { Some(false) } else { None };
+        self.write_session(&saved)?;
+        if !self.restore().await? {
+            bail!("the session could not be restored");
+        }
+        Ok(())
+    }
+
     pub(crate) async fn logout(&'static self) -> Result<()> {
         // a call in progress is left while the client can still say so;
         // the teardown below only stops it, and the room would show this

@@ -43,6 +43,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `grant_qr` | | `qr_grant` (`state`: `qr` with `width` and `modules`, `scanned` (type the new device's two digits: `qr_check_code`), `consent` (with `open_url`: the account service asks in the browser), `syncing`, `done`, `error` with `message`) |
 | `login_cancel` | | `login_error` of the waiting `login_sso`, `login_oauth` or a scanned QR login; `qr_grant` `error` of a waiting grant |
 | `restore` | | `ready` (as at start); the saved session opened again after the store key arrived late (`rustrx_set_store_key` first); ignored while logged in |
+| `set_classic_sync` | `classic` (true: the classic /sync; false: the server's choice, sliding sync where advertised) | the session stops and is restored with it: `logged_in` (its `sliding_sync`), then `rooms`; for servers whose sliding sync sends only part of the rooms |
 | `logout` | | `logged_out` |
 
 ### The open room

@@ -3082,5 +3082,13 @@
         <source>The tabs show the rooms and people of every account together. A room opens in its own account.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-classic-sync">
+        <source>Classic sync</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-classic-sync-hint">
+        <source>For servers whose fast sync leaves rooms out (Beeper shows only some). Slower to start; the account reconnects when you switch.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

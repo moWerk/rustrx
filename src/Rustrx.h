@@ -58,6 +58,8 @@ struct Account {
     bool loggingIn = false;
     // logged in from the login page in this run (not a restored session)
     bool newLogin = false;
+    // the classic /sync, not sliding sync (logged_in's sliding_sync)
+    bool classicSync = false;
     // what the server offers for QR linking (server_features)
     bool deviceLogin = false;
     bool qrRendezvous = false;
@@ -99,6 +101,9 @@ class Rustrx : public QObject
     Q_PROPERTY(bool newLogin READ newLogin NOTIFY stateChanged)
     // the shown account's server lets new devices in by QR code (Link a new
     // device), and keeps the rendezvous for a code shown here
+    // the shown account syncs the classic way (/sync): its server has no
+    // sliding sync, or it is switched off for it (setClassicSync)
+    Q_PROPERTY(bool classicSync READ classicSync NOTIFY stateChanged)
     Q_PROPERTY(bool deviceLogin READ deviceLogin NOTIFY stateChanged)
     Q_PROPERTY(bool qrRendezvous READ qrRendezvous NOTIFY stateChanged)
     Q_PROPERTY(QString userId READ userId NOTIFY stateChanged)
@@ -197,6 +202,10 @@ public:
     bool loggingIn() const { return m_cur->loggingIn; }
     bool newLogin() const { return m_cur->newLogin; }
     bool deviceLogin() const { return m_cur->deviceLogin; }
+    bool classicSync() const { return m_cur->classicSync; }
+    // the shown account to the classic sync (or back to the server's
+    // choice); its session restarts
+    Q_INVOKABLE void setClassicSync(bool classic);
     bool qrRendezvous() const { return m_cur->qrRendezvous; }
     QString userId() const { return m_cur->userId; }
     QString homeserver() const { return m_cur->homeserver; }

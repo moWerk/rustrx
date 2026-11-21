@@ -745,6 +745,14 @@ void Rustrx::loginQr(const QString &user, const QString &homeserver)
     command({{"cmd", "login_qr"}, {"user", user}, {"homeserver", homeserver}});
 }
 
+void Rustrx::setClassicSync(bool classic)
+{
+    if (classic == m_cur->classicSync)
+        return;
+    qInfo() << "accounts: classic sync" << classic << "for account" << m_cur->key;
+    command({{"cmd", "set_classic_sync"}, {"classic", classic}});
+}
+
 bool Rustrx::readQr(QObject *grab)
 {
     auto *result = qobject_cast<QQuickItemGrabResult *>(grab);
@@ -1077,6 +1085,7 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
         if (shown)
             emit stateChanged();
     } else if (type == QLatin1String("logged_in")) {
+        a->classicSync = !ev.value("sliding_sync").toBool();
         a->logoutReason.clear();
         a->restoreFailed = false;
         a->restoring = false;

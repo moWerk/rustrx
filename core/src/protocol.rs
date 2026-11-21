@@ -40,6 +40,9 @@ pub(crate) enum Command {
     /// store's key came later, from Secrets' prompt): "ready" as at start.
     /// Ignored while logged in.
     Restore,
+    /// The classic /sync instead of sliding sync for this account, or back
+    /// to the server's choice; the session restarts ("logged_in", "rooms").
+    SetClassicSync { classic: bool },
     Logout,
 
     // --- the open room ---
@@ -344,7 +347,7 @@ mod tests {
     /// Every command the core accepts, in the enum's order. Adding a command
     /// is a reviewed act: update this list and docs/PROTOCOL.md.
     const COMMANDS: &[&str] = &[
-        "probe_server", "login_password", "login_sso", "login_oauth", "login_qr", "qr_check_code", "qr_scanned", "grant_qr", "login_cancel", "restore", "logout",
+        "probe_server", "login_password", "login_sso", "login_oauth", "login_qr", "qr_check_code", "qr_scanned", "grant_qr", "login_cancel", "restore", "set_classic_sync", "logout",
         "open_room", "close_room", "paginate_back", "send_text", "send_sticker",
         "open_thread", "close_thread", "save_draft", "retry_send", "thread_list", "close_thread_list", "mark_thread_read",
         "push_set", "push_remove", "push_check", "push_handle", "send_file", "react", "redact", "edit",
@@ -371,7 +374,7 @@ mod tests {
 
     /// How many fields the commands require, all together. Like COMMANDS, a
     /// change here is a change of the contract.
-    const REQUIRED_FIELDS: usize = 155;
+    const REQUIRED_FIELDS: usize = 156;
 
 
     /// The names serde knows, from its own error for an unknown tag

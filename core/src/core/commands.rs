@@ -70,6 +70,7 @@ impl Core {
                 }
                 Ok(())
             }
+            SetClassicSync { classic } => self.set_classic_sync(classic).await,
             Logout => self.logout().await,
 
             // --- the open room (timeline.rs, threads.rs, push.rs, packs.rs) ---

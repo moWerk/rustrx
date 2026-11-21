@@ -24,6 +24,9 @@
   new device is unverified or lacks the recovery key (Verify or Later).
 - New: a failed login offers to share the debug log right there; before,
   it could only be shared from Settings, after logging in.
+- New: Settings, Account: Classic sync, for servers whose fast (sliding)
+  sync leaves rooms out (Beeper showed one room; dodoradio's find and
+  idea). The account reconnects with the classic /sync, no new login.
 - Fixed: restoring with the recovery key failed with "missing field
   recovery_key" since 0.4.7 (the author's find).
 - Fixed: emoji verification started from the other device (Element's

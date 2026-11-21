@@ -356,6 +356,19 @@ SilicaFlickable {
             onClicked: pageStack.push(Qt.resolvedUrl("DevicesPage.qml"))
         }
 
+        // the classic sync for a server whose sliding sync sends only part of
+        // the rooms (Beeper: one; dodoradio's find); cannot be told from
+        // outside, so a switch. The account's session restarts with it
+        TextSwitch {
+            //% "Classic sync"
+            text: qsTrId("rustrx-la-classic-sync")
+            //% "For servers whose fast sync leaves rooms out (Beeper shows only some). Slower to start; the account reconnects when you switch."
+            description: qsTrId("rustrx-la-classic-sync-hint")
+            checked: rustrx.classicSync
+            automaticCheck: false
+            onClicked: rustrx.setClassicSync(!rustrx.classicSync)
+        }
+
         // another phone or computer in with this account, by QR code; only
         // where the server can (its account service logs devices in by a
         // code: not on most servers, matrix.org without the rendezvous)
