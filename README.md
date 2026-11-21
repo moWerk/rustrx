@@ -33,7 +33,9 @@ nheko, end-to-end encrypted, on the earpiece (and Element Call since 0.4.4), thr
 stickers. Since 0.7 it holds as many accounts as you like, each notifying on
 its own, and shows them apart or all in one list.
 
-![Rustrx 0.4.9 on the Pro¹-X: Settings as four tabs, Account with its security ring all green and "Log out now", Privacy in short groups (online status, location removed from photos, chat names outside Rustrx, invitations from strangers), App with the avatar corners slider and a choice box opened by press and drag, About with the thanks to everyone who reported or suggested](screenshots/rustrx-0.4.9.jpg)
+![Rustrx 0.7.0 on the Pro¹-X: the account menu with three accounts above all accounts' rooms in one list, each row with its account's colour as a bar at its edge; Link a new device showing its QR code with "Valid for 56 s"; the account service's "Access granted" page in the browser after the new phone was let in](screenshots/rustrx-0.7.0-accounts-qr.jpg)
+
+![Rustrx 0.7.0 Settings: the Account tab's pulley with "Log in to another account" and the other accounts above the security ring, all green; the App tab with "All accounts in one list" and "Colour-coded accounts"; the Account tab with Classic sync and Link a new device](screenshots/rustrx-0.7.0-settings.jpg)
 
 ## What it does
 
