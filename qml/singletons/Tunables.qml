@@ -63,6 +63,9 @@ QtObject {
     readonly property real cardOpacity: 0.3
     // emoji picker background, opacity of highlightDimmerColor
     readonly property real panelOpacity: 0.9
+    // the pane behind the main page's open menus: the rooms behind show
+    // just a little (the author's pick on the phone)
+    readonly property real menuPaneOpacity: 0.95
     // emoji picker height before the keyboard's is known, of the page's height
     readonly property real emojiPanelPortrait: 0.36
     readonly property real emojiPanelLandscape: 0.5

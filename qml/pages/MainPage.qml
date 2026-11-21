@@ -211,7 +211,7 @@ Page {
                 y: tabBar.height
                 width: parent.width
                 height: headerColumn.height - y
-                color: Theme.rgba(Theme.highlightDimmerColor, Tunables.panelOpacity)
+                color: Theme.rgba(Theme.highlightDimmerColor, Tunables.menuPaneOpacity)
                 // a tap between the menu's rows stays on the pane, not on a
                 // room behind it
                 MouseArea { anchors.fill: parent }
