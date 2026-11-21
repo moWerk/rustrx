@@ -277,8 +277,18 @@ impl Core {
     /// A room's permalink with the servers that reach it (via), for sharing.
     pub(crate) async fn room_link(&'static self, room_id: &str) -> Result<()> {
         let room = self.room(room_id).await?;
-        let link = room.matrix_to_permalink().await?;
-        self.emit(json!({"ev": "room_link", "room_id": room_id, "link": link.to_string()}));
+        let mut link = room.matrix_to_permalink().await?.to_string();
+        // a room ID without a server (room version 12) needs a server to ask
+        // there; the SDK's link named none for a room of few members, and
+        // nobody on another server could join from it (the author's
+        // testing room): our own server at least
+        if !link.contains("via=") && room.canonical_alias().is_none() {
+            if let Some(own) = room.client().user_id().map(|u| u.server_name().to_owned()) {
+                link.push_str(if link.contains('?') { "&via=" } else { "?via=" });
+                link.push_str(own.as_str());
+            }
+        }
+        self.emit(json!({"ev": "room_link", "room_id": room_id, "link": link}));
         Ok(())
     }
 }

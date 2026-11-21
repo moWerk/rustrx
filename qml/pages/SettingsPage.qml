@@ -18,7 +18,6 @@ import QtQuick 2.6
 import Rustrx 1.0
 import Sailfish.Silica 1.0
 import Sailfish.Silica.private 1.0
-import Sailfish.Pickers 1.0
 
 // Settings in four tabs, in the tab view Jolla uses for its own Settings:
 // Account, Privacy, App, About (pages/settings/). Each tab gets this page as
@@ -79,7 +78,12 @@ Page {
         pageStack.push(Qt.resolvedUrl("settings/EncryptionPage.qml"), { settings: page })
     }
 
-    function pickPicture() { pageStack.push(ownPicturePicker) }
+    // a new own picture, taken or picked (AccountTab's PictureChoice)
+    function setPicture(path) {
+        rustrx.setOwnAvatar(path)
+        //% "Setting your picture"
+        Notices.show(qsTrId("rustrx-no-own-picture"), Notice.Short)
+    }
 
     // with the recovery key on this phone, a short undo; without it the
     // dialog says what is lost first, and offers to set the key up
@@ -163,20 +167,6 @@ Page {
         ListElement { kind: "privacy"; file: "PrivacyTab.qml" }
         ListElement { kind: "app"; file: "AppTab.qml" }
         ListElement { kind: "about"; file: "AboutTab.qml" }
-    }
-
-    Component {
-        id: ownPicturePicker
-        ImagePickerPage {
-            //% "Your picture"
-            title: qsTrId("rustrx-he-own-picture")
-            onSelectedContentPropertiesChanged: {
-                if (!selectedContentProperties.filePath) return
-                rustrx.setOwnAvatar(selectedContentProperties.filePath)
-                //% "Setting your picture"
-                Notices.show(qsTrId("rustrx-no-own-picture"), Notice.Short)
-            }
-        }
     }
 
     RemorsePopup { id: remorsePopup }

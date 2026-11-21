@@ -155,6 +155,17 @@ QtObject {
     readonly property var accountColours: ["#3fa7d6", "#e0457b", "#f2a541", "#59c3a7", "#a77ce8", "#e8743b", "#8fbf3f", "#d65db1"]
     readonly property int qrScanMs: 350
     readonly property int qrScanWidth: 720
+    // nothing read for this long: the QR scanner searches the focus anew
+    // on the middle and holds it this long (0.8, the author's find)
+    readonly property int qrRefocusMs: 3000
+    readonly property int qrRefocusHoldMs: 1500
+    // the QR scanner asks for droid's barcode scene; false to compare
+    readonly property bool qrBarcodeExposure: true
+    // camera focus: a tapped point holds this long (stock: 5 s), and the
+    // shutter waits this long at most for a focus lock (a fixed-focus
+    // front camera may never answer)
+    readonly property int tapFocusResetMs: 5000
+    readonly property int focusLockMs: 2500
     // draft save and server probe after the last keystroke
     readonly property int typingDebounceMs: 800
     // search as you type; shorter than typingDebounceMs

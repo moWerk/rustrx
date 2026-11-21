@@ -39,7 +39,8 @@ Page {
     property string refusal
 
     function look() {
-        if (reading || sent) return
+        // no picture while the lens moves: it would be a blurred one
+        if (reading || sent || camera.lockStatus === Camera.Searching) return
         var w = Math.min(video.width, Tunables.qrScanWidth)
         reading = video.grabToImage(function(result) {
             page.reading = false
@@ -90,6 +91,16 @@ Page {
         running: page.status === PageStatus.Active && camera.cameraStatus === Camera.ActiveStatus && !page.sent
         onTriggered: page.look()
     }
+    // nothing read for a while: a fresh focus search on the middle, held
+    // briefly, then continuous focus again (0.8, the author's find: the
+    // scan focused worse than the stock camera). Continuous focus alone
+    // may settle on the background behind a phone's screen
+    Timer {
+        interval: Tunables.qrRefocusMs
+        repeat: true
+        running: page.status === PageStatus.Active && viewfinderFocus.canFocus && !viewfinderFocus.tapped && !page.sent
+        onTriggered: viewfinderFocus.refocus()
+    }
     // after a refusal the camera looks again, once the hint was readable
     Timer {
         id: again
@@ -102,19 +113,37 @@ Page {
         // still image, though it never takes one: any other mode makes Qt
         // ask Sailfish's resource policy for the video recording set, with
         // audio playback and recording, which pauses the music (jp26)
+        // (still image mode keeps continuous focus: it is droid's
+        // continuous-picture, the mode the stock camera's photos use)
         captureMode: Camera.CaptureStillImage
+        // continuous on the middle, asked again once the camera is active
+        // (ViewfinderFocus says why)
         focus {
-            focusMode: Camera.FocusContinuous
-            focusPointMode: Camera.FocusPointAuto
+            focusMode: viewfinderFocus.focusMode
+            focusPointMode: viewfinderFocus.focusPointMode
         }
+        // Android's barcode scene where the phone's camera has one (droid
+        // maps it to a scene mode); an off switch in Tunables, in case that
+        // scene overrides the focus mode on a phone
+        exposure.exposureMode: camera.cameraStatus === Camera.ActiveStatus && Tunables.qrBarcodeExposure
+                               ? Camera.ExposureBarcode : Camera.ExposureAuto
     }
 
+    // no orientation: the video backend turns the frames upright (CameraPage)
     VideoOutput {
         id: video
         anchors.fill: parent
         source: camera
         fillMode: VideoOutput.PreserveAspectFit
-        orientation: (720 - camera.orientation - 90) % 360
+    }
+
+    // a tap focuses on that spot, as in the stock camera
+    ViewfinderFocus {
+        id: viewfinderFocus
+        anchors.fill: parent
+        camera: camera
+        video: video
+        centred: true
     }
 
     Rectangle {

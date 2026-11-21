@@ -206,14 +206,17 @@ SilicaFlickable {
         // below the tab bar, as on every tab (SettingsPage.tabTop)
         Item { width: 1; height: settings.tabTop(tab) }
 
-        // one's own picture; a tap picks a new one
-        BackgroundItem {
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: Theme.itemSizeHuge
-            height: width
-            onClicked: settings.pickPicture()
+        // one's own picture; a tap takes a selfie or picks one (0.8)
+        PictureChoice {
+            width: parent.width
+            //% "Your picture"
+            title: qsTrId("rustrx-he-own-picture")
+            front: true
+            onPicked: settings.setPicture(path)
             OwnAvatar {
-                anchors.fill: parent
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Theme.itemSizeHuge
+                height: width
                 path: settings.ownAvatar
                 version: settings.ownAvatarVersion
                 name: settings.displayName

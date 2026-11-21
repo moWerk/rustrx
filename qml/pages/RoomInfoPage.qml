@@ -17,7 +17,6 @@
 import QtQuick 2.6
 import Rustrx 1.0
 import Sailfish.Silica 1.0
-import Sailfish.Pickers 1.0
 import "../components"
 
 // The room behind the conversation, attached to the right of RoomPage:
@@ -142,7 +141,8 @@ Page {
                 visible: page.may.avatar === true && !info.is_dm
                 //% "Change the room's picture"
                 text: qsTrId("rustrx-me-room-picture")
-                onClicked: pageStack.push(roomPicturePicker)
+                // the gallery, as before; a tap on the picture also offers a photo
+                onClicked: roomPictureChoice.pickPicture()
             }
             MenuItem {
                 visible: !info.is_dm
@@ -193,20 +193,6 @@ Page {
                         core.command({ cmd: "leave_room", room_id: id })
                         pageStack.pop(pageStack.find(function (p) { return p.objectName === "main" }))
                     })
-                }
-            }
-        }
-
-        Component {
-            id: roomPicturePicker
-            ImagePickerPage {
-                //% "Room picture"
-                title: qsTrId("rustrx-he-room-picture")
-                onSelectedContentPropertiesChanged: {
-                    if (!selectedContentProperties.filePath) return
-                    rustrx.setRoomAvatar(roomId, selectedContentProperties.filePath)
-                    //% "Setting the room's picture"
-                    Notices.show(qsTrId("rustrx-no-room-picture"), Notice.Short)
                 }
             }
         }
@@ -309,17 +295,25 @@ Page {
             }
 
             // the room's picture, large, well below the name and topic (the
-            // author's wish); for moderators a tap changes it
+            // author's wish); for moderators a tap changes it, with a photo
+            // taken now (back camera first) or one from the gallery (0.8)
             Item { width: 1; height: Theme.paddingLarge }
-            BackgroundItem {
+            PictureChoice {
+                id: roomPictureChoice
                 visible: !info.is_dm
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: Theme.itemSizeHuge
-                height: width
+                width: parent.width
                 enabled: page.may.avatar === true
-                onClicked: pageStack.push(roomPicturePicker)
+                //% "Room picture"
+                title: qsTrId("rustrx-he-room-picture")
+                onPicked: {
+                    rustrx.setRoomAvatar(page.roomId, path)
+                    //% "Setting the room's picture"
+                    Notices.show(qsTrId("rustrx-no-room-picture"), Notice.Short)
+                }
                 Rectangle {
-                    anchors.fill: parent
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: Theme.itemSizeHuge
+                    height: width
                     radius: width * app.avatarRadius
                     visible: !roomPicture.visible
                     color: Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
@@ -332,7 +326,9 @@ Page {
                 }
                 Image {
                     id: roomPicture
-                    anchors.fill: parent
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: Theme.itemSizeHuge
+                    height: width
                     visible: status === Image.Ready
                     asynchronous: true
                     fillMode: Image.PreserveAspectCrop

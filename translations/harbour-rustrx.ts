@@ -146,10 +146,6 @@
         <source>Focusing…</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-tap-to-capture">
-        <source>Tap to take the photo</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-la-camera-starting">
         <source>Starting the camera…</source>
         <translation type="unfinished"></translation>
@@ -3374,6 +3370,18 @@
     </message>
     <message id="rustrx-la-alias-to-add">
         <source>To be added: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-use">
+        <source>Use</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-tap-to-focus">
+        <source>Tap the picture to focus</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-pick-picture">
+        <source>Pick from the gallery</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
