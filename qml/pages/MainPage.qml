@@ -46,6 +46,10 @@ Page {
     DebugValue { id: debugNavigate; name: "debugNavigate"; defaultValue: "" }
     DebugValue { id: debugMarkRead; name: "debugMarkRead"; defaultValue: "" }
     // the filter menu opened and closed from a shell, for looking at it
+    // typing in the menu's search: the orders and switches fold away so the
+    // field is the menu's top line and the keyboard leaves room for the
+    // results (the author's wish); they come back when the field lets go
+    property bool searching
     DebugValue { id: debugSortOpen; name: "debugSortOpen"; defaultValue: false; onValueChanged: page.sortOpen = value === true }
     DebugValue { id: debugAccountsOpen; name: "debugAccountsOpen"; defaultValue: false; onValueChanged: page.accountsOpen = value === true }
     property bool debugDone
@@ -409,7 +413,7 @@ Page {
                 // switches that combine with any order; the menu stays open, a
                 // tap on the filter icon closes it
                 Repeater {
-                    model: page.sortOpen ? [
+                    model: page.sortOpen && !page.searching ? [
                         //: room list order
                         //% "By activity"
                         { key: "activity", text: qsTrId("rustrx-me-sort-activity") },
@@ -442,14 +446,14 @@ Page {
                     }
                 }
                 Separator {
-                    visible: page.sortOpen
+                    visible: page.sortOpen && !page.searching
                     x: Theme.horizontalPageMargin
                     width: page.width - 2 * x
                     color: Theme.secondaryColor
                     horizontalAlignment: Qt.AlignRight
                 }
                 Repeater {
-                    model: page.sortOpen ? [
+                    model: page.sortOpen && !page.searching ? [
                         //: room list option, with any order
                         //% "Favs on top"
                         { key: "favsOnTop", text: qsTrId("rustrx-me-sort-favs-on-top") },
@@ -483,7 +487,7 @@ Page {
                     }
                 }
                 Separator {
-                    visible: page.sortOpen
+                    visible: page.sortOpen && !page.searching
                     x: Theme.horizontalPageMargin
                     width: page.width - 2 * x
                     color: Theme.secondaryColor
@@ -506,6 +510,7 @@ Page {
                         inputMethodHints: Qt.ImhNoPredictiveText
                         text: page.filterText
                         onTextChanged: page.filterText = text
+                        onActiveFocusChanged: page.searching = activeFocus
                         EnterKey.iconSource: "image://theme/icon-m-enter-accept"
                         EnterKey.enabled: text.trim().length >= Tunables.minSearchChars
                         EnterKey.onClicked: page.lockFilter()
