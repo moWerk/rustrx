@@ -57,6 +57,10 @@ Page {
         onTriggered: page.elapsed = Date.now() - page.startedAt
     }
 
+    // a finished recording is sent or discarded by its buttons: a back
+    // swipe threw it away without a word (0.8 audit)
+    backNavigation: !(recorded && !active && !sent && !voice.recording && voice.path.length > 0)
+
     Component.onDestruction: if (!sent) voice.discard()
 
     // debug: record three seconds by itself (unattended tests)
