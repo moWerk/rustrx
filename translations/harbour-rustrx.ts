@@ -1165,10 +1165,6 @@
         <source>Link copied</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-no-address-copied">
-        <source>Address copied</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-no-room-id-copied">
         <source>Room ID copied</source>
         <translation type="unfinished"></translation>
@@ -3125,6 +3121,10 @@
     </message>
     <message id="rustrx-se-storage">
         <source>Storage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-room-id">
+        <source>Room ID</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

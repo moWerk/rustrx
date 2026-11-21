@@ -65,6 +65,12 @@ Page {
             membersLoaded = true
         }
         onRoomSettings: if (settings.room_id === page.roomId) page.settings = settings
+        // a page below (a space's) asked for its own link: only on top
+        onRoomLink: {
+            if (roomId !== page.roomId || pageStack.currentPage !== page) return
+            Clipboard.text = link
+            Notices.show(qsTrId("rustrx-no-link-copied"), Notice.Short)
+        }
         onErrorOccurred: {
             if (cmd === "set_room_name" || cmd === "set_room_topic") refresh()
             // a refused change: show the settings as they are
@@ -357,22 +363,27 @@ Page {
 
             Item { width: 1; height: Theme.paddingMedium }
 
-            // the address, a tap copies it, for sharing the room
+            // the address, or the room's ID where it has none (the author
+            // looked for something to post and found nothing); a tap copies
+            // a matrix.to link, which opens in any client (onRoomLink)
             BackgroundItem {
-                visible: !!(info.alias && info.alias.length)
+                id: addressItem
+                readonly property bool hasAlias: !!(info.alias && info.alias.length)
+                visible: hasAlias || !info.is_dm
                 width: parent.width
                 height: aliasItem.height
-                onClicked: {
-                    Clipboard.text = info.alias
-                    //% "Address copied"
-                    Notices.show(qsTrId("rustrx-no-address-copied"), Notice.Short)
-                }
+                // the core's link names the servers that know the room
+                onClicked: rustrx.command({ cmd: "room_link", room_id: page.roomId })
                 DetailItem {
                     id: aliasItem
                     width: parent.width
-                    //% "Address"
-                    label: qsTrId("rustrx-la-alias")
-                    value: info.alias || ""
+                    label: addressItem.hasAlias
+                           //% "Address"
+                           ? qsTrId("rustrx-la-alias")
+                           //: a room without an address: its ID stands in
+                           //% "Room ID"
+                           : qsTrId("rustrx-la-room-id")
+                    value: addressItem.hasAlias ? info.alias : page.roomId
                 }
             }
             // who may join: anyone, people who ask, members of its spaces,
