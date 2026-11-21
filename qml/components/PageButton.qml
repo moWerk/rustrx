@@ -28,17 +28,33 @@ Item {
     property alias text: button.text
     // one of several side by side in a Row
     property bool inRow
+    // a line under the button that says what it does, in the ambience
+    // colour (the author's choice): one item, so the button and its note
+    // can no longer show apart (0.8 audit)
+    property alias hint: hintLabel.text
+    // the button itself, for enabled and the like
+    property alias button: button
     signal clicked()
 
     // added to the column's spacing on either side
     readonly property real margin: Theme.paddingMedium
 
     width: inRow || !parent ? button.width : parent.width
-    height: button.height + 2 * margin
+    height: button.height + 2 * margin + (hintLabel.visible ? hintLabel.height + Theme.paddingSmall : 0)
 
     Button {
         id: button
-        anchors.centerIn: parent
+        anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: box.margin }
         onClicked: box.clicked()
+    }
+    Label {
+        id: hintLabel
+        visible: text.length > 0
+        anchors { top: button.bottom; topMargin: Theme.paddingSmall; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(implicitWidth, (box.parent ? box.parent.width : box.width) - 2 * Theme.horizontalPageMargin)
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.Wrap
+        font.pixelSize: Theme.fontSizeExtraSmall
+        color: Theme.secondaryHighlightColor
     }
 }
