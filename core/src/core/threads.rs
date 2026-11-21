@@ -39,6 +39,13 @@ impl Core {
         let own = client.user_id().context("no user id")?.to_owned();
         let root = EventId::parse(root)?;
         self.close_thread().await;
+        // the reply being written there, from the encrypted store: "draft"
+        // (a back swipe lost it before; 0.8 audit)
+        match room.load_composer_draft(Some(&root)).await {
+            Ok(draft) => self.emit(json!({"ev": "draft", "room_id": room.room_id().as_str(), "thread_root": root.as_str(),
+                                          "text": draft.map(|d| d.plain_text).unwrap_or_default()})),
+            Err(e) => tracing::warn!("thread draft: not loaded: {e}"),
+        }
         let seq = self.state.lock().await.thread_seq;
         let timeline = Self::build_timeline(&room, TimelineFocus::Thread { root_event_id: root.clone() }, true).await?;
         let tl = timeline.clone();

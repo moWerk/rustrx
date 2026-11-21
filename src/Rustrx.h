@@ -363,8 +363,9 @@ public:
     Q_INVOKABLE QString formatTime(const QVariant &ms) const;
     Q_INVOKABLE QString formatDate(const QVariant &ms) const;
     // unsent text per room, kept across pages and restarts
-    Q_INVOKABLE QString draft(const QString &roomId) const;
-    Q_INVOKABLE void setDraft(const QString &roomId, const QString &text);
+    // a thread's draft with its root (rootId), the room's without
+    Q_INVOKABLE QString draft(const QString &roomId, const QString &rootId = QString()) const;
+    Q_INVOKABLE void setDraft(const QString &roomId, const QString &text, const QString &rootId = QString());
     Q_INVOKABLE void closeWindow() { emit closeRequested(); }
     // the room a notification asked for; its account is shown first
     Q_INVOKABLE QString takePendingRoom();
@@ -449,7 +450,7 @@ signals:
     void joined(const QString &roomId);
     void paginated(const QString &roomId, bool atStart);
     // a room's draft from the store, as the room opens
-    void draftLoaded(const QString &roomId, const QString &text);
+    void draftLoaded(const QString &roomId, const QString &text, const QString &threadRoot);
     void mediaExported(const QString &eventId, const QString &path);
     // count: the room's notifications now; account: whose room (every
     // account's lists notify, the shown one's and the others')

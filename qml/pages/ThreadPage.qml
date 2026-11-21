@@ -36,7 +36,11 @@ Page {
     property Item composer
 
     Component.onCompleted: rustrx.openThread(roomId, rootId)
-    Component.onDestruction: rustrx.closeThread()
+    // what is typed stays as the thread's draft (a back swipe lost it)
+    Component.onDestruction: {
+        if (composer) composer.saveDraft()
+        rustrx.closeThread()
+    }
 
     // what is shown here is read: a threaded read receipt, which the thread
     // lines here and in the other clients go by
@@ -116,6 +120,7 @@ Page {
                 id: composer
                 roomId: page.roomId
                 rootId: page.rootId
+                drafts: true
                 emojiOpen: emojiDock.open
                 //% "Reply in the thread"
                 placeholderText: qsTrId("rustrx-ph-thread")

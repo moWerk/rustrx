@@ -892,20 +892,30 @@ QString Rustrx::formatDate(const QVariant &ms) const
 
 // Drafts live in the core's store (encrypted where the store is); this is
 // the copy QML reads at once, filled as rooms open ("draft").
-QString Rustrx::draft(const QString &roomId) const
+// a room's drafts and its threads' in one table
+static QString draftKey(const QString &roomId, const QString &rootId)
 {
-    return m_cur->drafts.value(roomId);
+    return rootId.isEmpty() ? roomId : roomId + QLatin1Char(' ') + rootId;
 }
 
-void Rustrx::setDraft(const QString &roomId, const QString &text)
+QString Rustrx::draft(const QString &roomId, const QString &rootId) const
 {
-    if (m_cur->drafts.value(roomId) == text)
+    return m_cur->drafts.value(draftKey(roomId, rootId));
+}
+
+void Rustrx::setDraft(const QString &roomId, const QString &text, const QString &rootId)
+{
+    const QString key = draftKey(roomId, rootId);
+    if (m_cur->drafts.value(key) == text)
         return;
     if (text.trimmed().isEmpty())
-        m_cur->drafts.remove(roomId);
+        m_cur->drafts.remove(key);
     else
-        m_cur->drafts.insert(roomId, text);
-    command({ { "cmd", "save_draft" }, { "room_id", roomId }, { "text", text.trimmed().isEmpty() ? QString() : text } });
+        m_cur->drafts.insert(key, text);
+    QVariantMap c{ { "cmd", "save_draft" }, { "room_id", roomId }, { "text", text.trimmed().isEmpty() ? QString() : text } };
+    if (!rootId.isEmpty())
+        c.insert(QStringLiteral("thread_root"), rootId);
+    command(c);
 }
 
 static bool isLoginCommand(const QString &cmd)
@@ -1021,7 +1031,7 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     } else if (type == QLatin1String("ignored_users")) {
         emit ignoredUsers(ev.value("users").toList());
     } else if (type == QLatin1String("draft")) {
-        emit draftLoaded(ev.value("room_id").toString(), ev.value("text").toString());
+        emit draftLoaded(ev.value("room_id").toString(), ev.value("text").toString(), ev.value("thread_root").toString());
     } else if (type == QLatin1String("paginated")) {
         emit paginated(ev.value("room_id").toString(), ev.value("at_start").toBool());
     } else if (type == QLatin1String("search_results")) {
@@ -1242,12 +1252,12 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
         if (shown)
             emit encryptionChanged();
     } else if (type == QLatin1String("draft")) {
-        const QString roomId = ev.value("room_id").toString();
+        const QString key = draftKey(ev.value("room_id").toString(), ev.value("thread_root").toString());
         const QString text = ev.value("text").toString();
         if (text.isEmpty())
-            a->drafts.remove(roomId);
+            a->drafts.remove(key);
         else
-            a->drafts.insert(roomId, text);
+            a->drafts.insert(key, text);
     } else if (type == QLatin1String("profile")) {
         a->displayName = ev.value("display_name").toString();
         a->avatarPath = ev.value("avatar_path").toString();

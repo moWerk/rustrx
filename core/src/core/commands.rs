@@ -89,7 +89,7 @@ impl Core {
                 self.send_sticker(&room_id, &mxc, &body, info, given(&thread_root)).await
             }
             OpenThread { room_id, thread_root } => self.open_thread(&room_id, &thread_root).await,
-            SaveDraft { room_id, text } => self.save_draft(&room_id, &text).await,
+            SaveDraft { room_id, text, thread_root } => self.save_draft(&room_id, &text, thread_root.as_deref()).await,
             RetrySend { room_id, txn_id } => self.retry_send(&room_id, &txn_id).await,
             CloseThread => {
                 self.close_thread().await;

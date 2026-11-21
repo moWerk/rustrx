@@ -338,10 +338,12 @@ impl Core {
 
     /// The text being written in a room, kept in the SDK's store, which is
     /// encrypted where the store is; empty text removes it.
-    pub(crate) async fn save_draft(&self, room_id: &str, text: &str) -> Result<()> {
+    pub(crate) async fn save_draft(&self, room_id: &str, text: &str, thread_root: Option<&str>) -> Result<()> {
         let room = self.room(room_id).await?;
+        let root = thread_root.map(EventId::parse).transpose()?;
+        let root = root.as_deref();
         if text.trim().is_empty() {
-            room.clear_composer_draft(None).await?;
+            room.clear_composer_draft(root).await?;
         } else {
             let draft = matrix_sdk::ComposerDraft {
                 plain_text: text.to_owned(),
@@ -349,7 +351,7 @@ impl Core {
                 draft_type: matrix_sdk::ComposerDraftType::NewMessage,
                 attachments: Vec::new(),
             };
-            room.save_composer_draft(draft, None).await?;
+            room.save_composer_draft(draft, root).await?;
         }
         Ok(())
     }

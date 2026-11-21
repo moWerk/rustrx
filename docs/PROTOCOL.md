@@ -50,12 +50,12 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | cmd | fields | answered by |
 |---|---|---|
 | `open_room` | `room_id` | `draft`, then `timeline` (repeatedly), `typing` |
-| `save_draft` | `room_id`, `text` ("" removes it; kept in the encrypted store) | |
+| `save_draft` | `room_id`, `text` ("" removes it; kept in the encrypted store), `thread_root?` (a thread's draft) | |
 | `close_room` | | |
 | `paginate_back` | `room_id`, `count?` (30) | `paginated` |
 | `send_text` | `room_id`, `body`, `reply_to?`, `markdown?` (true), `emotes?` (shortcode → mxc: custom emoji in the HTML), `thread_root?`, `emote?` (an m.emote, as /me sends), `mentions?` (`{user_id, name}`: the names become pills, m.mentions; "@room" in the body mentions the room) | `timeline` |
 | `send_sticker` | `room_id`, `mxc`, `body`, `info?`, `thread_root?` | `timeline` |
-| `open_thread` | `room_id`, `thread_root` | `thread_timeline` (live until `close_thread`) |
+| `open_thread` | `room_id`, `thread_root` | `draft` (with `thread_root`), then `thread_timeline` (live until `close_thread`) |
 | `close_thread` | | |
 | `retry_send` | `room_id`, `txn_id` (a message the server did not take) | `timeline` |
 | `send_file` | `room_id`, `path`, `mime?`, `caption?`, `w?`, `h?`, `thumb_path?`, `thumb_w?`, `thumb_h?`, `voice?`, `duration_ms?` (a voice message's or a video's length), `thread_root?` | `timeline` |
@@ -194,7 +194,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `rooms` | `rooms`: room objects, invitations first, then by activity |
 | `timeline` | `room_id`, `items`: timeline items, oldest first, the whole list each time |
 | `paginated` | `room_id`, `at_start` |
-| `draft` | `room_id`, `text` (what was being written there; "" for none) |
+| `draft` | `room_id`, `thread_root?` (a thread's), `text` (what was being written there; "" for none) |
 | `typing` | `room_id`, `names` (others typing) |
 | `media` | `room_id`, `event_id`, `thumb`, `exported`, `path` |
 | `emote` | `mxc`, `path` |

@@ -79,7 +79,7 @@ Column {
     }
     // the draft is noted before the field takes something else
     function stash() {
-        if (drafts && holdsDraft) rustrx.setDraft(roomId, input.text)
+        if (drafts && holdsDraft) rustrx.setDraft(roomId, input.text, rootId)
     }
 
     function reply(id, text) {
@@ -104,7 +104,7 @@ Column {
         var back = !holdsDraft
         restoring = true
         mode = ""; targetId = ""; targetText = ""
-        if (back) input.text = drafts ? rustrx.draft(roomId) : ""
+        if (back) input.text = drafts ? rustrx.draft(roomId, rootId) : ""
         restoring = false
     }
 
@@ -121,12 +121,12 @@ Column {
         if (!holdsDraft) return ""
         var t = input.text.trim()
         put("")
-        if (drafts) rustrx.setDraft(roomId, "")
+        if (drafts) rustrx.setDraft(roomId, "", rootId)
         return t
     }
 
     function saveDraft() {
-        if (drafts && holdsDraft) rustrx.setDraft(roomId, input.text)
+        if (drafts && holdsDraft) rustrx.setDraft(roomId, input.text, rootId)
     }
 
     function send() {
@@ -138,7 +138,7 @@ Column {
         if (command && mode === "reply") {
             rustrx.command({ cmd: "react", room_id: roomId, event_id: targetId, key: command[1].trim() })
             put("")
-            if (drafts) rustrx.setDraft(roomId, "")
+            if (drafts) rustrx.setDraft(roomId, "", rootId)
             mode = ""; targetId = ""; targetText = ""
             input.forceActiveFocus()
             return
@@ -174,7 +174,7 @@ Column {
                              { markdown: c.markdown, emote: c.emote, mentions: mentionsIn(c.send) })
         picked = []
         put("")
-        if (drafts) rustrx.setDraft(roomId, "")
+        if (drafts) rustrx.setDraft(roomId, "", rootId)
         mode = ""; targetId = ""; targetText = ""
         if (typing) {
             typingTimer.stop()
@@ -193,7 +193,7 @@ Column {
     Connections {
         target: rustrx
         onDraftLoaded: {
-            if (!composer.drafts || roomId !== composer.roomId || !composer.holdsDraft) return
+            if (!composer.drafts || roomId !== composer.roomId || threadRoot !== composer.rootId || !composer.holdsDraft) return
             if (input.text.length === 0 && text.length > 0) composer.put(text)
         }
     }
@@ -202,7 +202,7 @@ Column {
     Timer {
         id: draftSave
         interval: Tunables.typingDebounceMs
-        onTriggered: if (composer.drafts && composer.holdsDraft) rustrx.setDraft(composer.roomId, input.text)
+        onTriggered: if (composer.drafts && composer.holdsDraft) rustrx.setDraft(composer.roomId, input.text, composer.rootId)
     }
 
     // @mentions: "@" and some letters list the room's members that match

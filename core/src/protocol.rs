@@ -72,8 +72,9 @@ pub(crate) enum Command {
     OpenThread { room_id: String, thread_root: String },
     CloseThread,
     /// The text being written in a room, kept encrypted; "" removes it.
-    /// The room's draft comes with open_room as "draft".
-    SaveDraft { room_id: String, text: String },
+    /// The room's draft comes with open_room as "draft"; a thread's
+    /// (thread_root) with open_thread.
+    SaveDraft { room_id: String, text: String, thread_root: Option<String> },
     /// A message the server did not take (its txn_id), sent again as it was.
     RetrySend { room_id: String, txn_id: String },
     /// The room's threads, live; answered by "thread_list".
