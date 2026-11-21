@@ -291,7 +291,9 @@ Page {
                 BackgroundItem {
                     id: accountRow
                     width: page.width
-                    height: Theme.itemSizeSmall
+                    // a picture and two lines: a full row's height (the
+                    // author found the list cramped)
+                    height: Theme.itemSizeMedium
                     onClicked: {
                         // the switch first: closing empties the model, which
                         // destroys this row, and with it the context the
@@ -350,6 +352,12 @@ Page {
                     }
                 }
             }
+            // room below the last account before the line
+            Item {
+                visible: page.accountsOpen
+                width: 1
+                height: Theme.paddingLarge
+            }
             Separator {
                 visible: page.accountsOpen
                 x: Theme.horizontalPageMargin
@@ -375,7 +383,7 @@ Page {
                     id: orderRow
                     readonly property bool chosen: rustrx.sortOrder === modelData.key
                     width: page.width
-                    height: Theme.itemSizeExtraSmall
+                    height: Theme.itemSizeSmall
                     onClicked: rustrx.sortOrder = modelData.key
                     Label {
                         anchors { right: radio.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }
@@ -415,7 +423,7 @@ Page {
                     id: optionRow
                     readonly property bool on: rustrx[modelData.key] === true
                     width: page.width
-                    height: Theme.itemSizeExtraSmall
+                    height: Theme.itemSizeSmall
                     onClicked: rustrx[modelData.key] = !on
                     Label {
                         anchors { right: box.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }
