@@ -571,8 +571,16 @@ ListItem {
                         sourceComponent: Component {
                             Item {
                                 readonly property real maxWidth: Math.min(innerMax, Math.min(msg.width, Screen.width) * Tunables.mediaMaxWidth)
-                                readonly property bool sized: !!(model.h && model.w)
-                                readonly property real aspect: sized ? model.h / model.w : Tunables.mediaFallbackAspect
+                                // the picture as it shows, once loaded (upright: its turn
+                                // applied): the sender's size may be the stored one of a
+                                // turned video, and the box came out landscape around a
+                                // portrait thumbnail (the author's find); before that the
+                                // sender's size, else a guess
+                                readonly property bool loaded: picture.status === Image.Ready
+                                                               && picture.implicitWidth > 0 && picture.implicitHeight > 0
+                                readonly property bool sized: loaded || !!(model.h && model.w)
+                                readonly property real aspect: loaded ? picture.implicitHeight / picture.implicitWidth
+                                                             : sized ? model.h / model.w : Tunables.mediaFallbackAspect
                                 // a portrait one as narrow as it is: no empty sides
                                 // beside it, and the rounded corners on its own
                                 height: Math.min(maxWidth, Math.max(Theme.itemSizeLarge, maxWidth * aspect))
