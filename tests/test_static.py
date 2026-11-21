@@ -251,6 +251,25 @@ def test_translation_file_is_in_step():
     assert not ts - used, sorted(ts - used)[:20]
 
 
+def test_counted_texts_have_english_plurals():
+    """A text with %n shows the English of the .ts when no translation
+    is installed; without its two forms it read "1 members". The .ts
+    needs language="en" too, or lrelease drops the second form.
+    Planted-bug: empty one numerusform, or remove the language."""
+    ts = read("translations/harbour-rustrx.ts")
+    assert re.search(r'<TS [^>]*\blanguage="en"', ts)
+    counted = set()
+    for p in QML + CPP:
+        counted |= set(re.findall(r'q[st]TrId\("([^"]+)",\s*[^\s)]', p.read_text(encoding="utf-8")))
+    bad = []
+    for tid in sorted(counted):
+        m = re.search(r'<message id="%s"( numerus="yes")?>(.*?)</message>' % re.escape(tid), ts, re.S)
+        forms = re.findall(r"<numerusform>([^<]+)</numerusform>", m.group(2)) if m and m.group(1) else []
+        if len(forms) != 2:
+            bad.append(tid)
+    assert not bad, bad
+
+
 # --- Qt 5.6 (Sailfish OS) traps ---
 
 ES5_TRAPS = [

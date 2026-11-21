@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1">
+<TS version="2.1" language="en" sourcelanguage="en">
 <context>
     <name></name>
     <message id="rustrx-la-today">
@@ -133,8 +133,9 @@
     <message id="rustrx-no-new-messages" numerus="yes">
         <source>%n new messages</source>
         <extracomment>notification body, %n new messages</extracomment>
-        <translation type="unfinished">
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n new message</numerusform>
+            <numerusform>%n new messages</numerusform>
         </translation>
     </message>
     <message id="rustrx-no-capture-failed">
@@ -426,8 +427,9 @@
     <message id="rustrx-la-risk-devices" numerus="yes">
         <source>%n of your other devices are not verified. Anyone holding one could read along.</source>
         <extracomment>%n other devices of the user without verification</extracomment>
-        <translation type="unfinished">
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n of your other devices is not verified. Anyone holding it could read along.</numerusform>
+            <numerusform>%n of your other devices are not verified. Anyone holding one could read along.</numerusform>
         </translation>
     </message>
     <message id="rustrx-la-risk-devices-fix">
@@ -779,8 +781,9 @@
     <message id="rustrx-se-members" numerus="yes">
         <source>%n members</source>
         <extracomment>%n the room&apos;s members</extracomment>
-        <translation type="unfinished">
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n member</numerusform>
+            <numerusform>%n members</numerusform>
         </translation>
     </message>
     <message id="rustrx-me-direct-chat">
@@ -1024,8 +1027,9 @@
     <message id="rustrx-la-n-files" numerus="yes">
         <source>%n files</source>
         <extracomment>%n the number of files</extracomment>
-        <translation type="unfinished">
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n file</numerusform>
+            <numerusform>%n files</numerusform>
         </translation>
     </message>
     <message id="rustrx-la-location-open">
@@ -1134,8 +1138,9 @@
     <message id="rustrx-la-thread-replies" numerus="yes">
         <source>%n replies</source>
         <extracomment>%n replies in a thread</extracomment>
-        <translation type="unfinished">
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n reply</numerusform>
+            <numerusform>%n replies</numerusform>
         </translation>
     </message>
     <message id="rustrx-la-uploading">
@@ -1175,8 +1180,9 @@
     <message id="rustrx-la-space-rooms" numerus="yes">
         <source>%n rooms</source>
         <extracomment>%n the rooms in a space</extracomment>
-        <translation type="unfinished">
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n room</numerusform>
+            <numerusform>%n rooms</numerusform>
         </translation>
     </message>
     <message id="rustrx-la-replaced">
@@ -1379,8 +1385,9 @@
     <message id="rustrx-la-n-members" numerus="yes">
         <source>%n members</source>
         <extracomment>%n members</extracomment>
-        <translation type="unfinished">
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n member</numerusform>
+            <numerusform>%n members</numerusform>
         </translation>
     </message>
     <message id="rustrx-la-preview-failed">
@@ -1519,8 +1526,9 @@
     <message id="rustrx-la-banner-knocks" numerus="yes">
         <source>%n requests to join. Tap to answer.</source>
         <extracomment>%n open requests to join rooms or spaces</extracomment>
-        <translation type="unfinished">
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n request to join. Tap to answer.</numerusform>
+            <numerusform>%n requests to join. Tap to answer.</numerusform>
         </translation>
     </message>
     <message id="rustrx-la-no-match">
@@ -1604,8 +1612,9 @@
     <message id="rustrx-bt-members" numerus="yes">
         <source>Members (%n)</source>
         <extracomment>%n the room&apos;s members</extracomment>
-        <translation type="unfinished">
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Members (%n)</numerusform>
+            <numerusform>Members (%n)</numerusform>
         </translation>
     </message>
     <message id="rustrx-la-rule-admins-only">
@@ -2244,9 +2253,12 @@
         <source>Roles and permissions</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-bt-pinned">
+    <message id="rustrx-bt-pinned" numerus="yes">
         <source>Pinned (%n)</source>
-        <translation type="unfinished"></translation>
+        <translation>
+            <numerusform>Pinned (%n)</numerusform>
+            <numerusform>Pinned (%n)</numerusform>
+        </translation>
     </message>
     <message id="rustrx-bt-remove">
         <source>Remove</source>
@@ -2732,17 +2744,26 @@
         <source>Move up</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-no-redacted-recent">
+    <message id="rustrx-no-redacted-recent" numerus="yes">
         <source>Removed %n of their messages</source>
-        <translation type="unfinished"></translation>
+        <translation>
+            <numerusform>Removed %n of their messages</numerusform>
+            <numerusform>Removed %n of their messages</numerusform>
+        </translation>
     </message>
-    <message id="rustrx-no-space-banned">
+    <message id="rustrx-no-space-banned" numerus="yes">
         <source>Banned in %n rooms</source>
-        <translation type="unfinished"></translation>
+        <translation>
+            <numerusform>Banned in %n room</numerusform>
+            <numerusform>Banned in %n rooms</numerusform>
+        </translation>
     </message>
-    <message id="rustrx-no-space-banned-skipped">
+    <message id="rustrx-no-space-banned-skipped" numerus="yes">
         <source>, not in %n</source>
-        <translation type="unfinished"></translation>
+        <translation>
+            <numerusform>, not in %n</numerusform>
+            <numerusform>, not in %n</numerusform>
+        </translation>
     </message>
     <message id="rustrx-la-read-as-shown-hint">
         <source>Messages count as read as they come into view, and the unread count goes down with them. Off: opening a room is enough.</source>
