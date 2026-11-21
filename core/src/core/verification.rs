@@ -4,6 +4,19 @@
 
 use super::*;
 
+/// An emoji comparison's state for the log, without its contents.
+fn sas_state_name(state: &SasState) -> &'static str {
+    match state {
+        SasState::Created { .. } => "created",
+        SasState::Started { .. } => "started",
+        SasState::Accepted { .. } => "accepted",
+        SasState::KeysExchanged { .. } => "keys_exchanged",
+        SasState::Confirmed => "confirmed",
+        SasState::Done { .. } => "done",
+        SasState::Cancelled(_) => "cancelled",
+    }
+}
+
 /// A request's state for the log, without its contents.
 fn request_state_name(state: &VerificationRequestState) -> &'static str {
     match state {
@@ -138,6 +151,9 @@ impl Core {
         let mut changes = sas.changes();
         let mut current = Some(sas.state());
         while let Some(state) = current.take() {
+            // every step with who started it: a comparison that stalls is
+            // read from these (dodoradio's on Beeper stopped without a trace)
+            tracing::info!(%flow, we_started = sas.we_started(), state = sas_state_name(&state), "sas");
             match state {
                 SasState::KeysExchanged { emojis: state_emojis, decimals: state_decimals } => {
                     // the state carries them; the accessor is only a fallback
