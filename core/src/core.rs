@@ -80,6 +80,8 @@ struct OpenRoom {
     room_id: OwnedRoomId,
     timeline: Arc<Timeline>,
     task: JoinHandle<()>,
+    /// the reactions on its state rows (state_reactions.rs)
+    state_reactions: Arc<state_reactions::SharedStateReactions>,
 }
 
 #[derive(Default)]
@@ -213,6 +215,7 @@ mod rooms;
 mod session;
 mod session_file;
 mod spaces;
+mod state_reactions;
 mod sync;
 mod threads;
 mod timeline;

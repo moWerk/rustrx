@@ -129,6 +129,9 @@ ListItem {
         return t
     }
     readonly property bool canAct: isEvent && msgType !== "membership" && msgType !== "state" && msgType !== "redacted"
+    // a reaction goes on state rows too: a wave on a join (Matrix allows one
+    // on any event; the core counts them, the SDK does not)
+    readonly property bool canReact: canAct || ((msgType === "membership" || msgType === "state") && eventId.length > 0)
     // the reactions offered in the menu; the first stays where it always was
 
     property bool exporting
@@ -369,6 +372,15 @@ ListItem {
                 wrapMode: Text.Wrap
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: Theme.secondaryColor
+            }
+            // its reactions, close under the line (a wave on a join, as nheko has it)
+            Loader {
+                readonly property real maxWidth: parent.width - 2 * sideMargin
+                readonly property real gap: Theme.paddingSmall
+                x: sideMargin
+                active: plainLine && reactionList.length > 0
+                visible: active
+                sourceComponent: reactionPills
             }
 
             // the bubble: own messages at the right in the highlight colour,
@@ -764,64 +776,11 @@ ListItem {
                     }
 
                     Loader {
-                        active: reactionList.length > 0
+                        readonly property real maxWidth: innerMax
+                        readonly property real gap: Theme.paddingMedium
+                        active: !plainLine && reactionList.length > 0
                         visible: active
-                        sourceComponent: Component {
-                            Flow {
-                                width: Math.min(innerMax, reactionMeasure.width)
-                                spacing: Theme.paddingMedium
-                                Repeater {
-                                    model: reactionList
-                                    // a tap toggles our own reaction with this key
-                                    Item {
-                                        width: chipRow.width
-                                        height: chipRow.height
-                                        Row {
-                                            id: chipRow
-                                            spacing: Theme.paddingSmall / 2
-                                            // a custom emoji (its mxc address is the key)
-                                            Image {
-                                                visible: modelData.emote !== undefined
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                height: visible ? chip.height : 0
-                                                width: height
-                                                fillMode: Image.PreserveAspectFit
-                                                sourceSize.height: chip.height
-                                                source: modelData.emote || ""
-                                            }
-                                            Label {
-                                                id: chip
-                                                textFormat: Text.StyledText
-                                                // label: the key as the model rendered it
-                                                text: (modelData.emote !== undefined ? "" : modelData.label + " ") + modelData.count
-                                                font.pixelSize: Theme.fontSizeExtraSmall
-                                                color: modelData.me ? Theme.highlightColor : Theme.secondaryColor
-                                            }
-                                        }
-                                        MouseArea {
-                                            anchors { fill: parent; margins: -Theme.paddingSmall }
-                                            onClicked: rustrx.command({ cmd: "react", room_id: roomId, event_id: msg.eventId, key: modelData.key })
-                                        }
-                                    }
-                                }
-
-                                // the reactions' width in one line, so the bubble is no wider
-                                // than they need (not shown, so the Flow leaves it out)
-                                Row {
-                                    id: reactionMeasure
-                                    visible: false
-                                    spacing: Theme.paddingMedium
-                                    Repeater {
-                                        model: reactionList
-                                        Label {
-                                            textFormat: Text.StyledText
-                                            text: (modelData.emote !== undefined ? "\u2B1C" : modelData.label) + " " + modelData.count
-                                            font.pixelSize: Theme.fontSizeExtraSmall
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        sourceComponent: reactionPills
                     }
                     // a reply in a thread, here in the room's flow: the thread mark,
                     // a tap opens the thread
@@ -997,13 +956,73 @@ ListItem {
         }
     }
 
+    // the reaction pills, under a bubble or under a state line; the Loader
+    // that shows them gives the widest they get and the space between them
+    Component {
+        id: reactionPills
+        Flow {
+            width: Math.min(parent ? parent.maxWidth : 0, reactionMeasure.width)
+            spacing: parent ? parent.gap : Theme.paddingMedium
+            Repeater {
+                model: reactionList
+                // a tap toggles our own reaction with this key
+                Item {
+                    width: chipRow.width
+                    height: chipRow.height
+                    Row {
+                        id: chipRow
+                        spacing: Theme.paddingSmall / 2
+                        // a custom emoji (its mxc address is the key)
+                        Image {
+                            visible: modelData.emote !== undefined
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: visible ? chip.height : 0
+                            width: height
+                            fillMode: Image.PreserveAspectFit
+                            sourceSize.height: chip.height
+                            source: modelData.emote || ""
+                        }
+                        Label {
+                            id: chip
+                            textFormat: Text.StyledText
+                            // label: the key as the model rendered it
+                            text: (modelData.emote !== undefined ? "" : modelData.label + " ") + modelData.count
+                            font.pixelSize: Theme.fontSizeExtraSmall
+                            color: modelData.me ? Theme.highlightColor : Theme.secondaryColor
+                        }
+                    }
+                    MouseArea {
+                        anchors { fill: parent; margins: -Theme.paddingSmall }
+                        onClicked: rustrx.command({ cmd: "react", room_id: roomId, event_id: msg.eventId, key: modelData.key })
+                    }
+                }
+            }
+
+            // the reactions' width in one line, so the bubble is no wider
+            // than they need (not shown, so the Flow leaves it out)
+            Row {
+                id: reactionMeasure
+                visible: false
+                spacing: parent.spacing
+                Repeater {
+                    model: reactionList
+                    Label {
+                        textFormat: Text.StyledText
+                        text: (modelData.emote !== undefined ? "\u2B1C" : modelData.label) + " " + modelData.count
+                        font.pixelSize: Theme.fontSizeExtraSmall
+                    }
+                }
+            }
+        }
+    }
+
     Component {
         id: contextMenu
         ContextMenu {
             // the reactions first: the five most used at a tap, the menu
             // closes after one; "more" opens the emoji picker for this message
             Row {
-                visible: canAct && !failed && !cancellable
+                visible: canReact && !failed && !cancellable
                 anchors.horizontalCenter: parent.horizontalCenter
                 Repeater {
                     model: app.favouriteEmoji
@@ -1035,7 +1054,8 @@ ListItem {
                     icon.source: "image://theme/icon-m-add"
                     onClicked: {
                         var id = msg.eventId
-                        var t = (model.sender_name || model.sender) + ": " + (model.body || "")
+                        // a state line already names who it is about
+                        var t = canAct ? (model.sender_name || model.sender) + ": " + (model.body || "") : (model.body || "")
                         msg.closeMenu()
                         msg.reactMore(id, t)
                     }

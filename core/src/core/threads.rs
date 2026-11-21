@@ -64,7 +64,7 @@ impl Core {
                     let _ = back.paginate_backwards(THREAD_FILL).await;
                 });
             };
-            Self::stream_timeline(&room, &tl, &own, emit, page_in, self.threads_read.subscribe()).await;
+            Self::stream_timeline(&room, &tl, &own, emit, page_in, self.threads_read.subscribe(), None).await;
         });
         tracing::info!(room = %room_id, %root, "thread: open");
         // a close or another open during the build: this one is not wanted

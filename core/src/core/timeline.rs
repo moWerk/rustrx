@@ -153,7 +153,9 @@ impl Core {
 
     /// A timeline's items on every change, coalesced per update burst, until
     /// its stream ends. Replies get their originals fetched, read receipts
-    /// their names. `started` runs once, after the first items are out.
+    /// their names, state rows their reactions where `state_reactions` is
+    /// given (the room's timeline). `started` runs once, after the first
+    /// items are out.
     pub(crate) async fn stream_timeline(
         room: &Room,
         timeline: &Arc<Timeline>,
@@ -161,16 +163,24 @@ impl Core {
         emit: impl Fn(Value) + Send,
         started: impl FnOnce() + Send,
         mut threads_read: tokio::sync::watch::Receiver<u64>,
+        state_reactions: Option<Arc<state_reactions::SharedStateReactions>>,
     ) {
         let mut names = HashMap::new();
         let mut replies_asked = std::collections::HashSet::new();
         let mut unread = HashMap::new();
         let (mut items, mut stream) = timeline.subscribe().await;
         let mut started = Some(started);
+        let mut reactions_changed = state_reactions.as_ref().map(|s| s.subscribe());
         loop {
             Self::fetch_replied(timeline, &items, &mut replies_asked);
+            if let Some(shared) = &state_reactions {
+                Self::fetch_state_reactions(room, shared, &items);
+            }
             Self::receipt_names(room, &items, &mut names).await;
             let mut json = items_json(&items, own, &names);
+            if let Some(shared) = &state_reactions {
+                shared.put_into(&mut json, own.as_str());
+            }
             // the message our own read receipt is on (the SDK keeps our
             // receipts off the items): the room's unread count runs from
             // there, where the unread line (m.fully_read) can lag far behind
@@ -202,6 +212,17 @@ impl Core {
                         std::future::pending::<()>().await;
                     }
                     unread.clear();
+                }
+                // a reaction to a state row came, went or was fetched
+                changed = async {
+                    match reactions_changed.as_mut() {
+                        Some(rx) => rx.changed().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    if changed.is_err() {
+                        std::future::pending::<()>().await;
+                    }
                 }
             }
             tokio::time::sleep(TIMELINE_COALESCE).await;
@@ -256,10 +277,14 @@ impl Core {
 
     /// Timeline snapshots for the open room, and who is typing there (the
     /// own user left out). Ends when the timeline's stream does.
-    pub(crate) async fn timeline_task(&'static self, room: Room, timeline: Arc<Timeline>, own: OwnedUserId) {
+    pub(crate) async fn timeline_task(&'static self, room: Room, timeline: Arc<Timeline>, own: OwnedUserId,
+                                      reactions: Arc<state_reactions::SharedStateReactions>) {
         let room_id = room.room_id().to_owned();
         let emit = |items: Value| self.emit(json!({"ev": "timeline", "room_id": room_id.as_str(), "items": items}));
-        let items = Self::stream_timeline(&room, &timeline, &own, emit, || {}, self.threads_read.subscribe());
+        // the guard keeps the sync's reactions coming while this task lives
+        let _reactions_guard = Self::watch_state_reactions(&room, &reactions);
+        let items = Self::stream_timeline(&room, &timeline, &own, emit, || {}, self.threads_read.subscribe(),
+                                          Some(reactions));
         // the guard keeps the typing handler registered while this task lives
         let (_typing_guard, mut typing) = room.subscribe_to_typing_notifications();
         let typing = async {
@@ -322,11 +347,12 @@ impl Core {
             // a close or another open came while this one was building
             return Ok(());
         }
-        let task = self.rt.spawn(self.timeline_task(room.clone(), timeline.clone(), own));
+        let state_reactions = state_reactions::SharedStateReactions::new();
+        let task = self.rt.spawn(self.timeline_task(room.clone(), timeline.clone(), own, state_reactions.clone()));
         if let Some(previous) = st.open.take() {
             previous.task.abort();
         }
-        st.open = Some(OpenRoom { room_id, timeline: timeline.clone(), task });
+        st.open = Some(OpenRoom { room_id, timeline: timeline.clone(), task, state_reactions });
         drop(st);
         // Sliding sync brings a short window; fill the first screen.
         let tl = timeline.clone();
@@ -510,6 +536,10 @@ impl Core {
     pub(crate) async fn react(&self, room_id: &str, event_id: &str, key: &str) -> Result<()> {
         let room = self.room(room_id).await?;
         let event = EventId::parse(event_id)?;
+        // a state row of the open room: counted here, not by the timeline
+        if let Some(shared) = self.open_state_reactions(&room).await.filter(|s| s.tracks(event.as_str())) {
+            return Self::toggle_state_reaction(&room, &shared, &event, key).await;
+        }
         let id = TimelineEventItemId::EventId(event.clone());
         let toggled = match self.timeline_holding(&room, Some(event_id)).await {
             Ok(tl) => tl.toggle_reaction(&id, key).await.map_err(|e| anyhow!("{e}")),

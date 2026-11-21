@@ -60,7 +60,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `close_thread` | | |
 | `retry_send` | `room_id`, `txn_id` (a message the server did not take) | `timeline` |
 | `send_file` | `room_id`, `path`, `mime?`, `caption?`, `w?`, `h?`, `thumb_path?`, `thumb_w?`, `thumb_h?`, `voice?`, `duration_ms?` (a voice message's or a video's length), `thread_root?` | `timeline` |
-| `react` | `room_id`, `event_id`, `key` (toggles) | `timeline` |
+| `react` | `room_id`, `event_id`, `key` (toggles; on a state row of the open room too: sent to the room, or our own reaction there redacted) | `timeline` |
 | `redact` | `room_id`, `event_id?` or `txn_id?` (discards a local echo), `reason?` | `timeline` |
 | `edit` | `room_id`, `event_id?` or `txn_id?`, `body`, `emotes?`, `mentions?` (as for `send_text`; the message's own pills and custom emoji stay where the new body still has the name or shortcode) | `timeline` |
 | `forward` | `room_id`, `event_id` (a message of this account), `to_room` (a joined room of the same account) | `forwarded`; the content as it reads now (its latest edit), without reply, thread or mentions; a file's or picture's address and key travel in it, nothing is uploaded again; polls, live locations, removed and unreadable messages are refused (`error`) |
@@ -274,3 +274,11 @@ message our own read receipt is on: the unread count runs from it), `editable`,
 `sticker`, `location` (`geo_uri`), `poll` (`body` the question, `answers`:
 `{id, text, count, mine}`, `max_selections`, `ended`), `verification`,
 `membership` and `state` (`body`, one line), `redacted`, `utd` (not decrypted yet).
+
+`membership` and `state` rows of the open room carry `reactions` too, in the
+same shape. The SDK's timeline keeps none for state events, so the core
+counts them (`core/src/core/state_reactions.rs`): each state event in the
+loaded timeline gets its annotations fetched once (`/relations/{eventId}/m.annotation`,
+the first 100), the sync adds new ones and takes redacted ones away, and the
+timeline is sent again when that changes a row. The counts go when the room
+closes. Thread timelines (`thread_timeline`) leave them out.
