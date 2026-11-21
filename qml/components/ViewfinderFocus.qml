@@ -34,6 +34,9 @@ MouseArea {
     property bool centred
     // a tap or refocus() holds its own focus point until the release
     property bool tapped
+    // the page shows the front camera unmirrored (it flips droid's mirror
+    // back): then the tap needs no mirroring either
+    property bool unmirrored
 
     readonly property bool active: camera !== null && camera.cameraStatus === Camera.ActiveStatus
     // the camera turns its lens; fixed-focus front cameras do not, and then
@@ -100,7 +103,7 @@ MouseArea {
         var fx = p.x / frame.width
         var fy = p.y / frame.height
         // droid shows the front camera mirrored; stock mirrors the point back
-        if (facingUser) {
+        if (facingUser && !unmirrored) {
             if (camera.orientation % 180 === 0) fx = 1 - fx
             else fy = 1 - fy
         }

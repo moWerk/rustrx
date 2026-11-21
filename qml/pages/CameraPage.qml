@@ -158,6 +158,13 @@ Page {
         visible: shotPath.length === 0
         source: camera
         fillMode: VideoOutput.PreserveAspectFit
+        // droid shows the front camera as a mirror, the photo is not one:
+        // the viewfinder is flipped back so it shows what the photo will
+        // be (the author found them swapped against each other)
+        transform: Scale {
+            origin.x: video.width / 2
+            xScale: camera.position === Camera.FrontFace ? -1 : 1
+        }
     }
 
     // a tap on the viewfinder focuses there
@@ -167,6 +174,7 @@ Page {
         visible: shotPath.length === 0
         camera: camera
         video: video
+        unmirrored: camera.position === Camera.FrontFace
     }
 
     Label {
