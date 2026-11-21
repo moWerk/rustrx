@@ -18,62 +18,27 @@ import QtQuick 2.6
 import Sailfish.Silica 1.0
 import "../components"
 
-// Something shared from another app: pick the room, it is sent there and
-// the room opens. Rooms and direct chats in one list, by activity.
-Page {
+// Something shared from another app: pick the room, check it, send; the
+// room opens. It sent at the first tap, so a mis-tap in a long list sent
+// a photo to the wrong room (0.8 audit, the author's decision 4). With
+// several accounts every account's rooms are offered, each with its name.
+RoomPickerPage {
     id: page
 
     property var files: []
     property string text
 
-    function sendTo(roomId, name) {
-        for (var i = 0; i < files.length; i++)
-            rustrx.sendFile(roomId, files[i], files.length === 1 ? text : "")
-        if (text.length && files.length !== 1)
-            rustrx.sendText(roomId, text, "")
-        // shared into the room it was opened from: back to that page, not a
-        // second one of the same room above it
-        var below = pageStack.previousPage(page)
-        if (below && below.objectName === "room" && below.roomId === roomId)
-            pageStack.pop()
-        else
-            pageStack.replace(Qt.resolvedUrl("RoomPage.qml"), { roomId: roomId, roomName: name })
-    }
+    allAccounts: true
+    //% "Send to"
+    title: qsTrId("rustrx-he-send-to")
+    description: files.length > 1
+                 //: %n the number of files
+                 //% "%n files"
+                 ? qsTrId("rustrx-la-n-files", files.length)
+                 : files.length === 1 ? files[0].split("/").pop() : text
 
-    SilicaListView {
-        id: list
-        anchors.fill: parent
-        // every joined room and chat, whatever the main page's filter
-        // (rustrx.rooms left out direct chats and a note to self)
-        model: rustrx.targets
-
-        header: Column {
-            width: list.width
-            PageHeader {
-                //% "Send to"
-                title: qsTrId("rustrx-he-send-to")
-                description: files.length > 1
-                             //: %n the number of files
-                             //% "%n files"
-                             ? qsTrId("rustrx-la-n-files", files.length)
-                             : files.length === 1 ? files[0].split("/").pop() : text
-            }
-        }
-
-        delegate: BackgroundItem {
-            width: list.width
-            height: Theme.itemSizeMedium
-            onClicked: page.sendTo(model.room_id, model.name)
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                anchors.verticalCenter: parent.verticalCenter
-                truncationMode: TruncationMode.Fade
-                text: model.name
-                color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
-            }
-        }
-
-        VerticalScrollDecorator { }
-    }
+    onPicked: pageStack.push(Qt.resolvedUrl("ConfirmSendPage.qml"), {
+        account: account, roomId: roomId, roomName: name, avatarPath: avatarPath, avatarVersion: avatarVersion,
+        files: page.files, text: page.text
+    })
 }

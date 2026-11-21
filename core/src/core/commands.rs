@@ -85,6 +85,10 @@ impl Core {
                                given(&thread_root), emote.unwrap_or(false), mentions.as_deref().unwrap_or(&[]))
                     .await
             }
+            NotificationReply { room_id, body } => {
+                self.notification_reply(&room_id, &body).await;
+                Ok(())
+            }
             SendSticker { room_id, mxc, body, info, thread_root } => {
                 self.send_sticker(&room_id, &mxc, &body, info, given(&thread_root)).await
             }
@@ -115,6 +119,7 @@ impl Core {
             Edit { room_id, event_id, txn_id, body, emotes, mentions } => {
                 self.edit(&room_id, event_id, txn_id, &body, emotes.as_ref(), mentions.as_deref().unwrap_or(&[])).await
             }
+            Forward { room_id, event_id, to_room } => self.forward(&room_id, &event_id, &to_room).await,
             PollVote { room_id, event_id, answers } => self.poll_vote(&room_id, &event_id, answers).await,
             Report { room_id, event_id, reason } => self.report(&room_id, &event_id, given(&reason)).await,
             EventSource { room_id, event_id } => self.event_source(&room_id, &event_id).await,

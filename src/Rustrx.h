@@ -139,6 +139,10 @@ class Rustrx : public QObject
     Q_PROPERTY(RoomModel *spaces READ spaces NOTIFY shownAccountChanged)
     // every joined room and chat, whatever the filter: what sharing offers
     Q_PROPERTY(RoomModel *targets READ targets NOTIFY shownAccountChanged)
+    // the same for every logged-in account, each row with its `account`:
+    // what sharing offers with several accounts (0.8 audit); filled only
+    // while a page follows it (followAllTargets)
+    Q_PROPERTY(RoomModel *allTargets READ allTargets CONSTANT)
     // every account with a login (or one the server ended), in the order
     // they were added: { key, user_id, name, avatar, avatar_v, logged_in,
     // shown, unread }
@@ -358,8 +362,18 @@ public:
     // a copy in Downloads, where other apps may read it; answered by mediaExported
     Q_INVOKABLE void exportMedia(const QString &roomId, const QString &eventId);
     Q_INVOKABLE QVariantMap roomInfo(const QString &roomId) const;
-    // the most recent room with unread messages, for the cover; empty if none
-    Q_INVOKABLE QString firstUnreadRoom() const;
+    // the most recent room with unread messages, for the cover: {room_id,
+    // account}, from the lists the tabs show (the merged view's across all
+    // accounts, as the cover counts them; 0.8 audit); empty if none
+    Q_INVOKABLE QVariantMap firstUnread() const;
+    // allTargets kept up to date while on (a picker page is open)
+    Q_INVOKABLE void followAllTargets(bool on);
+    // something shared from another app, into a room of any account: the
+    // files (pictures prepared as always), the text as the caption of a
+    // single file or as its own message
+    Q_INVOKABLE void shareTo(int key, const QString &roomId, const QStringList &files, const QString &text);
+    // how many requests to join an account has open (its notification goes at none)
+    Q_INVOKABLE int knockCountIn(int key) const;
     Q_INVOKABLE QString formatTime(const QVariant &ms) const;
     Q_INVOKABLE QString formatDate(const QVariant &ms) const;
     // unsent text per room, kept across pages and restarts
@@ -370,7 +384,8 @@ public:
     // the room a notification asked for; its account is shown first
     Q_INVOKABLE QString takePendingRoom();
     Q_INVOKABLE QString takePendingCall() { return m_handover.takePendingCall(); }
-    Q_INVOKABLE bool takePendingKnocks() { return m_handover.takePendingKnocks(); }
+    // the requests' notification asked for them; their account is shown first
+    Q_INVOKABLE bool takePendingKnocks();
     // a link or a share that arrived before QML was loaded
     Q_INVOKABLE QString takePendingUri() { return m_handover.takePendingUri(); }
     Q_INVOKABLE QVariantMap takePendingShare() { return m_handover.takePendingShare(); }
@@ -394,6 +409,8 @@ signals:
     // starting a call opened the room's calls to everyone (permissions)
     void callsAllowed(const QString &roomId);
     void knockRequestsChanged();
+    // any account's requests to join changed (knockCountIn)
+    void accountKnocksChanged(int account);
     // a pushed message, fetched (the woken process shows it); account: whose
     void pushNotification(const QString &roomId, const QString &eventId, const QString &roomName, const QString &senderName,
                           const QString &body, bool isDm, bool noisy, int account);
@@ -434,7 +451,15 @@ signals:
     void recoveryKey(const QString &key);
     void recoveryDone();
     void members(const QString &roomId, const QVariantList &members);
-    void devices(const QVariantList &devices);
+    // accountUrl: the account service's device list, "" without one
+    // (removing a device then happens there, each device's manage_url)
+    void devices(const QVariantList &devices, const QString &accountUrl);
+    // a message forwarded: it is in toRoom's send queue
+    void forwarded(const QString &roomId, const QString &eventId, const QString &toRoom);
+    // a notification's reply reached the server, or did not (kept: its
+    // text was added to the room's draft); any account
+    void replySent(const QString &roomId, int account);
+    void replyFailed(const QString &roomId, const QString &message, bool kept, int account);
     void deviceDeleted(const QString &deviceId);
     void searchResults(const QVariantMap &results);
     void roomSearchResults(const QVariantMap &results);
@@ -529,6 +554,8 @@ public slots:
     Q_SCRIPTABLE void answerAccountCall(const QString &account, const QString &roomId);
     // the requests' notification: open the app on the list of requests
     Q_SCRIPTABLE void openKnocks();
+    // the same for the requests of the account `account` (as text), shown first
+    Q_SCRIPTABLE void openAccountKnocks(const QString &account);
     // a room notification's "Mark as read" (Service.qml sends the receipt,
     // as the privacy setting has it, once logged in)
     Q_SCRIPTABLE void markRoomRead(const QString &roomId);
@@ -587,6 +614,11 @@ private:
     RoomLists *shownLists() const;
     // the merged list fed anew from every logged-in account's rooms
     void refreshMerged();
+    // allTargets fed anew, while followed
+    void refreshAllTargets();
+    RoomModel *allTargets() const { return m_allTargets; }
+    RoomModel *m_allTargets = nullptr;
+    int m_allTargetsFollowers = 0;
     // the account the classic call is on (its events and commands)
     int m_voipKey = 0;
     // a call handed over by the stand-in, until its account is logged in

@@ -59,8 +59,9 @@ public:
     // the media folder was cleared, or the account logged out
     void clearEmotes();
 
+    // account: another account's room (a share, Rustrx::shareTo); -1 the shown one's
     void sendFile(const QString &roomId, const QString &path, const QString &caption,
-                  const QString &threadRoot);
+                  const QString &threadRoot, int account = -1);
     void sendVoice(const QString &roomId, const QString &path, qint64 durationMs,
                    const QString &caption);
     void setRoomAvatar(const QString &roomId, const QString &path);

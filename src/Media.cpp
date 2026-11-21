@@ -197,11 +197,14 @@ static void sweepOutgoing()
 }
 
 void Media::sendFile(const QString &roomId, const QString &path, const QString &caption,
-                     const QString &threadRoot)
+                     const QString &threadRoot, int account)
 {
     sweepOutgoing();
     const QString p = localPath(path);
     QVariantMap cmd{{"cmd", "send_file"}, {"room_id", roomId}, {"path", p}};
+    // taken off again by Rustrx, which sends it to that account
+    if (account >= 0)
+        cmd.insert("account", account);
     if (!threadRoot.isEmpty())
         cmd.insert("thread_root", threadRoot);
     if (!caption.trimmed().isEmpty())

@@ -235,17 +235,17 @@ QVariantMap RoomLists::roomInfo(const QString &roomId) const
     return m_roomsById.value(roomId);
 }
 
-QString RoomLists::firstUnreadRoom() const
+QVariantMap RoomLists::firstUnread() const
 {
     // the core sends the rooms by activity; take the first with something
     // unread, a room or a person, whatever the tabs' filters (the rooms the
-    // cover counts)
+    // cover counts); a merged row carries its account
     for (const QVariant &v : m_lastRooms) {
         const QVariantMap r = v.toMap();
         if (!isInvited(r) && !r.value("is_space").toBool() && badgeCount(r) > 0)
-            return r.value("room_id").toString();
+            return r;
     }
-    return QString();
+    return QVariantMap();
 }
 
 void RoomLists::setRooms(const QVariantList &rooms)

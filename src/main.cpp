@@ -198,6 +198,9 @@ int main(int argc, char *argv[])
         QObject::connect(&rustrx, &Rustrx::markReadRequested, &idle, [&idle]() { idle.start(); });
         QObject::connect(&rustrx, &Rustrx::replyRequested, &idle, [&idle]() { idle.start(); });
         QObject::connect(&rustrx, &Rustrx::reactRequested, &idle, [&idle]() { idle.start(); });
+        // a reply's outcome, so its "not sent" notification is still posted
+        QObject::connect(&rustrx, &Rustrx::replySent, &idle, [&idle]() { idle.start(); });
+        QObject::connect(&rustrx, &Rustrx::replyFailed, &idle, [&idle]() { idle.start(); });
         idle.start();
         QTimer::singleShot(Keys::kPushMaxLifeMs, app.data(), &QCoreApplication::quit);
         return app->exec();

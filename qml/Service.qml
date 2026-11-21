@@ -65,12 +65,16 @@ Item {
             service.closeNotification(account, roomId)
             service.markRead(roomId, undefined, undefined, account)
         }
-        // its reply field and emoji buttons: answered means read
+        // its reply field and emoji buttons: answered means read. A reply
+        // is followed until the server has it, and one that failed is said
+        // in a notification of its own, its text kept as the room's draft
+        // (0.8 audit: it was lost without a trace, the room marked read)
         onReplyRequested: {
             service.closeNotification(account, roomId)
-            service.whenLoggedIn(account, { cmd: "send_text", room_id: roomId, body: text })
-            service.markRead(roomId, undefined, undefined, account)
+            service.whenLoggedIn(account, { cmd: "notification_reply", room_id: roomId, body: text })
         }
+        onReplySent: service.markRead(roomId, undefined, undefined, account)
+        onReplyFailed: service.notifyReplyFailed(account, roomId, kept)
         onReactRequested: {
             service.closeNotification(account, roomId)
             service.countEmoji(key)
@@ -95,9 +99,10 @@ Item {
         onInvited: if (known || cfg.strangerInvites) service.notifyInvite(account, roomId, roomName, inviter, direct)
         onInviteGone: service.closeInvite(account, roomId)
         onCallRing: service.ringCall(account, roomId, roomName, senderName, ring, eventId, expiresMs)
-        onNewKnock: service.notifyKnock(roomName, isSpace, name, reason)
+        onNewKnock: service.notifyKnock(account, roomName, isSpace, name, reason)
         onPushNotification: service.notifyPush(account, roomId, eventId, roomName, senderName, body, isDm)
-        onKnockRequestsChanged: if (rustrx.knockRequests.length === 0) knockNote.close()
+        // each account's requests have their own line
+        onAccountKnocksChanged: if (rustrx.knockCountIn(account) === 0) service.closeKnocks(account)
         onCallAnswered: service.stopRinging(roomId)
         onUnreadChanged: if (rustrx.standIn) console.log("stand-in: unread", rustrx.unreadTotal, "in", rustrx.unreadChats)
         onOpenRoomChanged: if (rustrx.openRoomId.length) { service.closeNotification(rustrx.accountKey, rustrx.openRoomId); service.stopRinging(rustrx.openRoomId) }
@@ -205,6 +210,26 @@ Item {
         return actions
     }
 
+    // With several accounts, which one a notification is for: its name, or
+    // its user id where another account has the same name; "" with one
+    // account. Text, so it also tells accounts apart with the colours off
+    // (0.8 audit: two accounts in one room gave twin banners).
+    function accountLabel(key) {
+        var all = rustrx.accounts
+        if (all.length < 2) return ""
+        var mine = null
+        for (var i = 0; i < all.length; i++) if (all[i].key === key) mine = all[i]
+        if (!mine) return ""
+        var name = mine.name || ""
+        for (var j = 0; j < all.length; j++) if (all[j].key !== key && all[j].name === name) name = ""
+        return name.length ? name : (mine.user_id || "")
+    }
+    // a notification's title with its account after it
+    function withAccount(title, key) {
+        var label = accountLabel(key)
+        return label.length ? title + " · " + label : title
+    }
+
     // one notification per room and account, updated in place: the events
     // view keeps a line per room, the banner shows the latest message
     property var roomNotifications: ({})
@@ -232,7 +257,7 @@ Item {
         var pending = count
         roomPending[noteKey(account, roomId)] = pending
         n.remoteActions = roomActions(account, roomId, info.latest_event_id || "")
-        n.summary = chatDetails ? roomName : "Rustrx"
+        n.summary = withAccount(chatDetails ? roomName : "Rustrx", account)
         n.previewSummary = n.summary
         //: notification body, %n new messages
         //% "%n new messages"
@@ -249,7 +274,7 @@ Item {
         var who = inviter.length ? inviter : roomName
         //: notification title for an invitation
         //% "Invitation"
-        n.summary = qsTrId("rustrx-no-invitation")
+        n.summary = withAccount(qsTrId("rustrx-no-invitation"), account)
         n.previewSummary = n.summary
         n.body = !chatDetails
                 //% "Someone invites you to a chat"
@@ -294,7 +319,7 @@ Item {
         stopRinging(roomId)
         var n = ringComponent.createObject(service, { roomId: roomId, eventId: eventId, ring: ring, account: account })
         // who calls and from where stays inside Rustrx when chat names do (Privacy)
-        n.summary = !chatDetails
+        n.summary = withAccount(!chatDetails
                 //: notification title when chat names stay inside Rustrx
                 //% "Incoming call"
                 ? qsTrId("rustrx-no-call-anonymous")
@@ -304,7 +329,7 @@ Item {
                 ? qsTrId("rustrx-no-call-ring").arg(senderName)
                 //: notification title, %1 the room
                 //% "Call in %1"
-                : qsTrId("rustrx-no-call-group").arg(roomName)
+                : qsTrId("rustrx-no-call-group").arg(roomName), account)
         n.previewSummary = n.summary
         n.body = !chatDetails ? "Rustrx"
                 : ring ? roomName
@@ -378,7 +403,7 @@ Item {
         roomPending[noteKey(account, roomId)] = pending
         var who = senderName && !isDm && chatDetails ? senderName + ": " : ""
         n.remoteActions = roomActions(account, roomId, eventId)
-        n.summary = chatDetails ? roomName : "Rustrx"
+        n.summary = withAccount(chatDetails ? roomName : "Rustrx", account)
         n.previewSummary = n.summary
         n.body = body && notifyText ? who + body : qsTrId("rustrx-no-new-messages", pending)
         n.previewBody = n.body
@@ -386,14 +411,21 @@ Item {
         n.publish()
     }
 
-    // requests to join: one notification, the latest request in it, a tap
-    // opens the list
-    function notifyKnock(roomName, isSpace, name, reason) {
+    // requests to join: one notification per account, the latest request
+    // in it; a tap opens that account's list (0.8 audit: it opened the shown
+    // account's, and closed when the shown account had none)
+    property var knockNotes: ({})
+    function notifyKnock(account, roomName, isSpace, name, reason) {
+        var n = knockNotes[account]
+        if (!n) {
+            n = knockComponent.createObject(service, { account: account })
+            knockNotes[account] = n
+        }
         //: notification title for a request to join
         //% "Request to join"
-        knockNote.summary = qsTrId("rustrx-no-knock")
-        knockNote.previewSummary = knockNote.summary
-        knockNote.body = !chatDetails
+        n.summary = withAccount(qsTrId("rustrx-no-knock"), account)
+        n.previewSummary = n.summary
+        n.body = !chatDetails
                 //% "Someone asks to join"
                 ? qsTrId("rustrx-no-knock-hidden")
                 : isSpace
@@ -403,16 +435,51 @@ Item {
                 //: %1 who asks, %2 the room
                 //% "%1 asks to join %2"
                 : qsTrId("rustrx-no-knock-room").arg(name).arg(roomName)
-        knockNote.previewBody = knockNote.body
-        knockNote.itemCount = rustrx.knockRequests.length
-        knockNote.publish()
+        n.previewBody = n.body
+        n.itemCount = Math.max(1, rustrx.knockCountIn(account))
+        n.publish()
     }
-    Notification {
-        id: knockNote
-        appName: "Rustrx"
-        appIcon: "harbour-rustrx"
-        category: "x-nemo.messaging.im"
-        remoteActions: [ service.action("default", "openKnocks") ]
+    function closeKnocks(account) {
+        var n = knockNotes[account]
+        if (!n) return
+        n.close()
+        n.destroy()
+        delete knockNotes[account]
+    }
+    Component {
+        id: knockComponent
+        Notification {
+            property int account
+            appName: "Rustrx"
+            appIcon: "harbour-rustrx"
+            category: "x-nemo.messaging.im"
+            remoteActions: [ service.action("default", "openAccountKnocks", [ String(account) ]) ]
+        }
+    }
+
+    // a reply from a notification that did not reach the server: said in
+    // the room's line, a tap opens the room with the text as its draft
+    // (kept: the core added it there)
+    function notifyReplyFailed(account, roomId, kept) {
+        console.log("notify: reply not sent, account", account)
+        var n = roomNote(account, roomId)
+        var name = chatDetails ? (rustrx.roomInfoIn(account, roomId).name || "") : ""
+        n.remoteActions = [ action("default", "openAccountRoom", [ String(account), roomId ]) ]
+        n.summary = withAccount(name.length
+                //: notification title, %1 the room
+                //% "Your reply to %1 was not sent"
+                ? qsTrId("rustrx-no-reply-failed").arg(name)
+                //% "Your reply was not sent"
+                : qsTrId("rustrx-no-reply-failed-hidden"), account)
+        n.previewSummary = n.summary
+        n.body = kept
+                //% "Tap to open the chat, your text is waiting there."
+                ? qsTrId("rustrx-no-reply-failed-kept")
+                //% "Tap to open the chat."
+                : qsTrId("rustrx-no-reply-failed-open")
+        n.previewBody = n.body
+        n.itemCount = 1
+        n.publish()
     }
 
     function closeNotification(account, roomId) {

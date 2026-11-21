@@ -62,6 +62,10 @@ pub(crate) const LOGOUT_SERVER_TIMEOUT: Duration = Duration::from_secs(15);
 /// A room's send queue switched off by a network error is switched on
 /// again after this (sooner when the sync comes back).
 pub(crate) const SEND_RETRY_DELAY: Duration = Duration::from_secs(30);
+/// How long a reply from a notification may take to reach the server
+/// before it counts as not sent: inside the 30 s a process woken for it
+/// stays (kPushIdleMs), login included (0.8 audit)
+pub(crate) const NOTIFICATION_REPLY_WAIT: Duration = Duration::from_secs(20);
 /// Timeline changes this close together are sent as one snapshot
 /// (rooms and threads).
 pub(crate) const TIMELINE_COALESCE: Duration = Duration::from_millis(60);

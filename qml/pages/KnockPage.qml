@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
 
 // Requests to join the rooms and spaces we may invite to (their join rule
 // is "knock"). A tap or the menu answers: accept invites them, decline
@@ -93,18 +94,12 @@ Page {
                 y: Theme.paddingMedium
                 width: parent.width - 2 * x
 
-                Label {
+                // the second line lit too while pressed, as every row (0.8 audit)
+                RowTexts {
                     width: parent.width
-                    truncationMode: TruncationMode.Fade
-                    color: item.highlighted ? Theme.highlightColor : Theme.primaryColor
                     text: item.request.name
-                }
-                Label {
-                    width: parent.width
-                    truncationMode: TruncationMode.Fade
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    color: Theme.secondaryColor
-                    text: item.request.user_id
+                    description: item.request.user_id
+                    highlighted: item.highlighted
                 }
                 Label {
                     width: parent.width

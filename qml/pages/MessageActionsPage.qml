@@ -71,6 +71,37 @@ Page {
                     Notices.show(qsTrId("rustrx-no-link-copied"), Notice.Short)
                 })
             }
+            // into another room or chat of this account: the picker, then a
+            // last look, then the notice (the author's ask since 0.4.7)
+            ActionLine {
+                visible: page.info.copyLink === true && page.info.forward !== false
+                //% "Forward"
+                text: qsTrId("rustrx-me-forward")
+                onClicked: {
+                    // taken before this page goes: the handler runs after it
+                    var info = page.info, back = pageStack.previousPage(page)
+                    var stack = pageStack, confirmUrl = Qt.resolvedUrl("ConfirmSendPage.qml")
+                    var picker = stack.replace(Qt.resolvedUrl("RoomPickerPage.qml"), {
+                        //% "Forward to"
+                        title: qsTrId("rustrx-he-forward-to"),
+                        description: String(info.body || "").split("\n")[0]
+                    })
+                    picker.picked.connect(function (account, roomId, name, avatarPath, avatarVersion) {
+                        var media = info.msgType === "image" || info.msgType === "video" || info.msgType === "sticker"
+                                    || info.msgType === "file" || info.msgType === "audio"
+                        stack.push(confirmUrl, {
+                            account: account, roomId: roomId, roomName: name,
+                            avatarPath: avatarPath, avatarVersion: avatarVersion,
+                            // a file's or picture's body is its name or caption
+                            text: media ? "" : String(info.body || ""),
+                            fileName: media && !(info.thumb && (info.msgType === "image" || info.msgType === "sticker"))
+                                      ? String(info.filename || info.body || "") : "",
+                            picture: String(info.thumb || ""),
+                            eventId: info.eventId, fromRoom: info.roomId, backTo: back
+                        })
+                    })
+                }
+            }
             // a custom emoji seen in the message, into the user's own pack
             Repeater {
                 model: page.info.emotes || []

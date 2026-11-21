@@ -144,7 +144,15 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
 {
     s_instance = this;
     m_dataDir = dataDir;
-    connect(m_media, &Media::command, this, &Rustrx::command);
+    // a share into another account's room names it (shareTo)
+    connect(m_media, &Media::command, this, [this](const QVariantMap &cmd) {
+        if (!cmd.contains(QStringLiteral("account"))) {
+            command(cmd);
+            return;
+        }
+        QVariantMap c = cmd;
+        commandTo(c.take(QStringLiteral("account")).toInt(), c);
+    });
     connect(m_media, &Media::errorOccurred, this, &Rustrx::errorOccurred);
     connect(m_media, &Media::emoteReady, this, &Rustrx::emoteReady);
     connect(m_media, &Media::settingsChanged, this, &Rustrx::settingsChanged);
@@ -206,6 +214,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     connect(m_merged, &RoomLists::settingsChanged, this, [this]() { if (m_mergedView) emit settingsChanged(); });
     connect(m_merged, &RoomLists::roomFilterChanged, this, [this]() { if (m_mergedView) emit roomFilterChanged(); });
     connect(m_merged, &RoomLists::unreadChanged, this, [this]() { if (m_mergedView) emit unreadChanged(); });
+    m_allTargets = new RoomModel(this);
     m_cur = startAccount(0, dataDir);
     QDir more(dataDir + QLatin1String("/accounts"));
     QList<int> keys;
@@ -276,11 +285,21 @@ void Rustrx::openAccountRoom(const QString &account, const QString &roomId)
 
 QString Rustrx::takePendingRoom()
 {
-    const int key = m_handover.takePendingAccount();
+    // the account stays for takePendingKnocks when no room was asked for
+    // (route() takes the room first; the requests opened the wrong account)
     const QString room = m_handover.takePendingRoom();
     if (!room.isEmpty())
-        requestShow(key);
+        requestShow(m_handover.takePendingAccount());
     return room;
+}
+
+bool Rustrx::takePendingKnocks()
+{
+    if (!m_handover.takePendingKnocks())
+        return false;
+    // a request of another account: that account first (0.8 audit)
+    requestShow(m_handover.takePendingAccount());
+    return true;
 }
 
 void Rustrx::open()
@@ -372,6 +391,14 @@ void Rustrx::openKnocks()
         return;
     emit activateRequested();
     emit knocksRequested();
+}
+
+void Rustrx::openAccountKnocks(const QString &account)
+{
+    const int key = account.toInt();
+    m_handover.setPendingAccount(key);
+    requestShow(key);
+    openKnocks();
 }
 
 void Rustrx::declineCall(const QString &roomId, const QString &eventId)
@@ -570,7 +597,60 @@ void Rustrx::setHideMuted(bool on) { shownLists()->setHideMuted(on); }
 QString Rustrx::roomFilter() const { return shownLists()->roomFilter(); }
 void Rustrx::setRoomFilter(const QString &text) { shownLists()->setRoomFilter(text); }
 QVariantMap Rustrx::roomInfo(const QString &roomId) const { return m_cur->lists->roomInfo(roomId); }
-QString Rustrx::firstUnreadRoom() const { return m_cur->lists->firstUnreadRoom(); }
+QVariantMap Rustrx::firstUnread() const
+{
+    const QVariantMap r = shownLists()->firstUnread();
+    if (r.isEmpty())
+        return r;
+    // the merged view's rows carry their account; the shown account's do not
+    return QVariantMap{ { "room_id", r.value("room_id") },
+                        { "account", r.contains(QStringLiteral("account")) ? r.value("account").toInt() : m_cur->key } };
+}
+
+int Rustrx::knockCountIn(int key) const
+{
+    const Account *a = account(key);
+    return a ? a->lists->knockRequests().size() : 0;
+}
+
+void Rustrx::followAllTargets(bool on)
+{
+    m_allTargetsFollowers = qMax(0, m_allTargetsFollowers + (on ? 1 : -1));
+    if (m_allTargetsFollowers)
+        refreshAllTargets();
+    else
+        m_allTargets->setRooms({});
+}
+
+void Rustrx::refreshAllTargets()
+{
+    if (!m_allTargetsFollowers)
+        return;
+    QList<QPair<int, QVariantList>> all;
+    for (const Account *a : m_accounts)
+        if (a->loggedIn)
+            all.append({ a->key, a->lastRooms });
+    // as each account's targets: joined rooms and chats, no spaces
+    QVariantList targets;
+    for (const QVariant &v : RoomLists::mergeAccounts(all)) {
+        const QVariantMap r = v.toMap();
+        const QString state = r.value("state").toString();
+        if (r.value("is_space").toBool() || (!state.isEmpty() && state != QLatin1String("joined")))
+            continue;
+        targets.append(r);
+    }
+    m_allTargets->setRooms(targets);
+}
+
+void Rustrx::shareTo(int key, const QString &roomId, const QStringList &files, const QString &text)
+{
+    if (!account(key))
+        return;
+    for (const QString &f : files)
+        m_media->sendFile(roomId, f, files.size() == 1 ? text : QString(), QString(), key);
+    if (!text.isEmpty() && files.size() != 1)
+        commandTo(key, { { "cmd", "send_text" }, { "room_id", roomId }, { "body", text } });
+}
 
 QString Rustrx::coreVersion() const
 {
@@ -1008,7 +1088,9 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     } else if (type == QLatin1String("members")) {
         emit members(ev.value("room_id").toString(), ev.value("members").toList());
     } else if (type == QLatin1String("devices")) {
-        emit devices(ev.value("devices").toList());
+        emit devices(ev.value("devices").toList(), ev.value("account_url").toString());
+    } else if (type == QLatin1String("forwarded")) {
+        emit forwarded(ev.value("room_id").toString(), ev.value("event_id").toString(), ev.value("to_room").toString());
     } else if (type == QLatin1String("device_deleted")) {
         emit deviceDeleted(ev.value("device_id").toString());
     } else if (type == QLatin1String("profile")) {
@@ -1195,6 +1277,7 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
         a->lists->clear();
         a->lastRooms.clear();
         refreshMerged();
+        refreshAllTargets();
         if (shown) {
             m_openRoomId.clear();
             m_timeline->clear();
@@ -1239,10 +1322,16 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
         a->lastRooms = ev.value("rooms").toList();
         a->lists->setRooms(a->lastRooms);
         refreshMerged();
+        refreshAllTargets();
         if (first && shown)
             emit roomsLoadedChanged();
     } else if (type == QLatin1String("knock_requests")) {
         a->lists->setKnockRequests(ev);
+    } else if (type == QLatin1String("reply_sent")) {
+        emit replySent(ev.value("room_id").toString(), a->key);
+    } else if (type == QLatin1String("reply_failed")) {
+        qWarning().noquote() << "notification reply not sent: account" << a->key << ev.value("message").toString();
+        emit replyFailed(ev.value("room_id").toString(), ev.value("message").toString(), ev.value("kept").toBool(), a->key);
     } else if (type == QLatin1String("verification_state")) {
         a->verificationState = ev.value("state").toString();
         if (shown)
@@ -1312,7 +1401,11 @@ Account *Rustrx::startAccount(int key, const QString &dir)
             emit unreadChanged();
         emit accountsChanged();
     });
-    connect(lists, &RoomLists::knockRequestsChanged, this, [this, a]() { if (a == m_cur) emit knockRequestsChanged(); });
+    connect(lists, &RoomLists::knockRequestsChanged, this, [this, a]() {
+        if (a == m_cur)
+            emit knockRequestsChanged();
+        emit accountKnocksChanged(a->key);
+    });
     connect(lists, &RoomLists::newKnock, this,
             [this, a](const QString &roomId, const QString &roomName, bool isSpace, const QString &name, const QString &reason) {
         emit newKnock(roomId, roomName, isSpace, name, reason, a->key);

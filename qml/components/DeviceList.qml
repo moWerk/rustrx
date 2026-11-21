@@ -18,14 +18,27 @@ import QtQuick 2.6
 import Sailfish.Silica 1.0
 
 // The account's sessions, listed in place (Settings). Removing one asks
-// for the password, as the server requires.
+// for the password, as the server requires; a server whose logins an
+// account service keeps (matrix.org) takes none, and its own page for the
+// device opens in the browser instead (0.8 audit: the prompt was a dead end).
 Column {
     id: devicesColumn
 
     property bool loading: true
     property string loadError
+    // the account service's device list, "" without one
+    property string accountUrl
+    // back from the account service's page: the list again, without the removed one
+    property bool awayToRemove
 
     Component.onCompleted: rustrx.command({ cmd: "devices" })
+    Connections {
+        target: Qt.application
+        onStateChanged: if (Qt.application.state === Qt.ApplicationActive && devicesColumn.awayToRemove) {
+            devicesColumn.awayToRemove = false
+            rustrx.command({ cmd: "devices" })
+        }
+    }
 
     ListModel { id: deviceModel }
 
@@ -36,14 +49,17 @@ Column {
         visible: running
     }
 
-    Label {
+    Note {
+        kind: "error"
         visible: !devicesColumn.loading && deviceModel.count === 0
-        x: Theme.horizontalPageMargin
-        width: parent.width - 2 * x
-        wrapMode: Text.Wrap
-        color: Theme.secondaryHighlightColor
         //% "The devices could not be loaded"
-        text: qsTrId("rustrx-la-devices-failed") + (devicesColumn.loadError.length ? ": " + devicesColumn.loadError : "")
+        text: qsTrId("rustrx-la-devices-failed") + (devicesColumn.loadError.length ? ": " + devicesColumn.loadError : ".")
+    }
+    Note {
+        kind: "footnote"
+        visible: devicesColumn.accountUrl.length > 0 && deviceModel.count > 0
+        //% "Your account's devices are removed on your server's account page, which opens in the browser."
+        text: qsTrId("rustrx-la-devices-account-page")
     }
 
     Repeater {
@@ -56,11 +72,20 @@ Column {
             menu: model.current ? null : removeMenu
 
             // verified or not at a glance; a login without encryption keys
-            // has nothing to verify and gets no icon
+            // has nothing to verify and gets no icon. Not verified is a
+            // warning, not StateIcon's cross: a cross at a row's right edge
+            // read as a delete button (0.8 audit)
             StateIcon {
                 id: verifiedIcon
                 anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
-                level: model.keys === true && model.verified === true ? "good" : model.unverified ? "bad" : ""
+                level: model.keys === true && model.verified === true ? "good" : ""
+            }
+            Image {
+                visible: model.unverified === true
+                anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                sourceSize.width: Theme.iconSizeMedium
+                sourceSize.height: Theme.iconSizeMedium
+                source: visible ? "image://theme/icon-m-warning?" + Theme.errorColor : ""
             }
 
             Column {
@@ -75,8 +100,9 @@ Column {
                 Label {
                     width: parent.width
                     truncationMode: TruncationMode.Fade
-                    //% "%1 (this device)"
-                    text: model.current ? qsTrId("rustrx-la-this-device").arg(model.name || model.device_id) : (model.name || model.device_id)
+                    // the user's own phone is "this phone" everywhere (0.8 audit)
+                    //% "%1 (this phone)"
+                    text: model.current ? qsTrId("rustrx-la-this-phone-device").arg(model.name || model.device_id) : (model.name || model.device_id)
                     color: item.highlighted ? Theme.highlightColor : Theme.primaryColor
                 }
                 Label {
@@ -104,6 +130,11 @@ Column {
                         //% "Remove"
                         text: qsTrId("rustrx-me-remove")
                         onClicked: {
+                            // the account service removes it on its own page
+                            if (model.manage_url) {
+                                devicesColumn.awayToRemove = app.openExternal(model.manage_url)
+                                return
+                            }
                             var dialog = pageStack.push(passwordDialog, { deviceName: model.name || model.device_id })
                             var id = model.device_id
                             dialog.accepted.connect(function () {
@@ -153,11 +184,14 @@ Column {
         target: rustrx
         onDevices: {
             devicesColumn.loading = false
+            devicesColumn.accountUrl = accountUrl
             deviceModel.clear()
             for (var i = 0; i < devices.length; i++) {
                 // only a device with encryption keys can be verified
                 var d = devices[i]
                 d.unverified = d.keys === true && d.verified === false
+                // a ListModel role keeps its first type: no nulls
+                d.manage_url = d.manage_url || ""
                 deviceModel.append(d)
             }
         }

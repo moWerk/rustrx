@@ -66,6 +66,11 @@ pub(crate) enum Command {
         /// pills, and the message mentions them (m.mentions)
         mentions: Option<Vec<MentionArg>>,
     },
+    /// A reply typed into a notification: sent at once (not through the
+    /// open timeline), then "reply_sent", or "reply_failed" once the server
+    /// refused it or did not take it in time. A failed one is not sent
+    /// later; its text is kept as the room's draft (0.8 audit).
+    NotificationReply { room_id: String, body: String },
     /// A sticker from an image pack.
     SendSticker { room_id: String, mxc: String, body: String, info: Option<serde_json::Value>, thread_root: Option<String> },
     /// A thread's timeline beside the room's; answered by "thread_timeline".
@@ -123,6 +128,11 @@ pub(crate) enum Command {
         emotes: Option<std::collections::HashMap<String, String>>,
         mentions: Option<Vec<MentionArg>>,
     },
+    /// A message of this account sent again into another of its rooms, as
+    /// it reads now, without its reply or thread; a file's or picture's
+    /// key travels in the content, so nothing is uploaded again. Polls and
+    /// what cannot be read are refused. Answered by "forwarded".
+    Forward { room_id: String, event_id: String, to_room: String },
     PollVote { room_id: String, event_id: String, answers: Vec<String> },
     Report { room_id: String, event_id: String, reason: Option<String> },
     /// The event's JSON as received (and its latest edit): "event_source".
@@ -352,9 +362,9 @@ mod tests {
     /// is a reviewed act: update this list and docs/PROTOCOL.md.
     const COMMANDS: &[&str] = &[
         "probe_server", "login_password", "login_sso", "login_oauth", "login_qr", "qr_check_code", "qr_scanned", "grant_qr", "login_cancel", "restore", "set_classic_sync", "logout",
-        "open_room", "close_room", "paginate_back", "send_text", "send_sticker",
+        "open_room", "close_room", "paginate_back", "send_text", "notification_reply", "send_sticker",
         "open_thread", "close_thread", "save_draft", "retry_send", "thread_list", "close_thread_list", "mark_thread_read",
-        "push_set", "push_remove", "push_check", "push_handle", "send_file", "react", "redact", "edit",
+        "push_set", "push_remove", "push_check", "push_handle", "send_file", "react", "redact", "edit", "forward",
         "poll_vote", "report", "event_source", "mark_read", "typing", "set_presence", "get_media",
         "fetch_emote", "image_packs", "add_user_emote",
         "get_notification_mode", "set_notification_mode", "set_account_notifications", "set_favourite", "set_low_priority",
@@ -378,7 +388,7 @@ mod tests {
 
     /// How many fields the commands require, all together. Like COMMANDS, a
     /// change here is a change of the contract.
-    const REQUIRED_FIELDS: usize = 157;
+    const REQUIRED_FIELDS: usize = 162;
 
 
     /// The names serde knows, from its own error for an unknown tag

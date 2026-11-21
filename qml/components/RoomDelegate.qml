@@ -39,6 +39,8 @@ ListItem {
     // -1: the shown account's own list
     readonly property int account: model.account !== undefined && model.account !== null ? model.account : -1
     readonly property bool otherAccount: account >= 0 && account !== rustrx.accountKey
+    readonly property string accountMark: rustrx.mergedView && !app.accountChips && rustrx.accounts.length > 1
+                                          && account >= 0 ? app.accountShort(account) : ""
     // a command for the room's own account
     function send(c) {
         if (account >= 0) rustrx.commandTo(account, c)
@@ -383,7 +385,10 @@ ListItem {
         visible: text.length > 0
         font.pixelSize: Theme.fontSizeExtraSmall
         color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
-        text: {
+        // the merged view without colours: the account's short name before
+        // the age, so the accounts can still be told apart (0.8 audit)
+        text: (item.accountMark.length ? item.accountMark + (age.length ? " · " : "") : "") + age
+        readonly property string age: {
             if (!model.ts || invited) return ""
             var s = (app.now - model.ts) / 1000
             //: age of the last message, keep it to one short word

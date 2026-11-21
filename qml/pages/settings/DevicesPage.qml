@@ -19,11 +19,22 @@ import Sailfish.Silica 1.0
 import "../../components"
 
 // Settings, Account, Devices: the account's sessions (DeviceList asks the
-// core for them when it is made, so only when this page opens).
+// core for them when it is made, so only when this page opens), and the
+// account service's page for them where the server has one.
 Page {
     SilicaFlickable {
         anchors.fill: parent
         contentHeight: column.height
+
+        // the account service's own device list, where it keeps them (0.8 audit)
+        PullDownMenu {
+            visible: deviceList.accountUrl.length > 0
+            MenuItem {
+                //% "Open the account page"
+                text: qsTrId("rustrx-me-devices-account-page")
+                onClicked: deviceList.awayToRemove = app.openExternal(deviceList.accountUrl)
+            }
+        }
 
         Column {
             id: column
@@ -31,7 +42,7 @@ Page {
 
             PageHeader { title: qsTrId("rustrx-se-devices") }
 
-            DeviceList { width: parent.width }
+            DeviceList { id: deviceList; width: parent.width }
         }
 
         VerticalScrollDecorator { }

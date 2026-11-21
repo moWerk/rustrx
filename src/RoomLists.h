@@ -53,7 +53,7 @@ public:
     int unreadChats() const { return m_unreadChats; }
     const QHash<QString, QVariantMap> &roomsById() const { return m_roomsById; }
     QVariantMap roomInfo(const QString &roomId) const;
-    QString firstUnreadRoom() const;
+    QVariantMap firstUnread() const;
     QVariantList knockRequests() const;
 
     QString currentTab() const { return m_currentTab; }

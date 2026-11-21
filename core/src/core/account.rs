@@ -71,17 +71,43 @@ impl Core {
         Ok(())
     }
 
-    /// The account's devices: "devices".
+    /// The account's devices: "devices". A server whose logins an account
+    /// service (OAuth 2.0, MAS) keeps takes no password to remove a device:
+    /// its page for that device goes with each (`manage_url`), and its
+    /// device list as `account_url` (0.8 audit: the password prompt was a
+    /// dead end on matrix.org).
     pub(crate) async fn devices(&self) -> Result<()> {
+        use matrix_sdk::ruma::api::client::discovery::get_authorization_server_metadata::v1::{
+            AccountManagementActionData, DeviceDeleteData,
+        };
         let client = self.client().await?;
         let own = client.device_id().map(|d| d.to_string());
         let user = client.user_id().context("not logged in")?.to_owned();
+        // also for a password login on such a server (an older session
+        // carried over): the homeserver then asks for no password either
+        let meta = match client.oauth().cached_server_metadata().await {
+            Ok(m) if m.account_management_uri.is_some() => Some(m),
+            Ok(_) => None,
+            Err(e) => {
+                tracing::info!("devices: no account service ({e})");
+                None
+            }
+        };
+        let account_url = meta
+            .as_ref()
+            .and_then(|m| m.account_management_url_with_action(AccountManagementActionData::DevicesList))
+            .map(|u| u.to_string());
         let mut devices: Vec<Value> = Vec::new();
         for d in client.devices().await?.devices.iter() {
             // verified: cross-signed by us; keys: it has encryption keys at
             // all (a device without them is no risk to the account's keys)
             let crypto = client.encryption().get_device(&user, &d.device_id).await.ok().flatten();
+            let manage_url = meta
+                .as_ref()
+                .and_then(|m| m.account_management_url_with_action(AccountManagementActionData::DeviceDelete(DeviceDeleteData::new(&d.device_id))))
+                .map(|u| u.to_string());
             devices.push(json!({
+                "manage_url": manage_url,
                 "device_id": d.device_id.as_str(),
                 "name": d.display_name,
                 "last_seen_ts": d.last_seen_ts.map(|t| u64::from(t.0)),
@@ -91,7 +117,7 @@ impl Core {
                 "verified": crypto.map(|c| c.is_verified()).unwrap_or(false),
             }));
         }
-        self.emit(json!({"ev": "devices", "devices": devices}));
+        self.emit(json!({"ev": "devices", "devices": devices, "account_url": account_url}));
         Ok(())
     }
 
@@ -102,6 +128,12 @@ impl Core {
         let ids = [id];
         if let Err(e) = client.delete_devices(&ids, None).await {
             let info = e.as_uiaa_response().context(format!("{e}"))?;
+            // a single sign-on account may have no password the server takes
+            // here: said plainly, not as the server's refusal of a wrong one
+            let password_flow = info.flows.iter().any(|f| f.stages.iter().any(|s| s.as_str() == "m.login.password"));
+            if !password_flow {
+                bail!("this server does not take a password to remove a device; remove it from another client or the server's own page");
+            }
             let localpart = client.user_id().context("no user id")?.localpart().to_owned();
             let mut auth = Password::new(UserIdentifier::Matrix(MatrixUserIdentifier::new(localpart)), password);
             auth.session = info.session.clone();

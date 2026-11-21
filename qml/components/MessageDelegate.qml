@@ -92,6 +92,10 @@ ListItem {
         return {
             roomId: roomId, roomName: roomName, eventId: msg.eventId, rowId: model.id || "",
             sender: model.sender_name || model.sender || "", body: body,
+            // what Forward's confirm view shows: a file by its name, a
+            // picture by its thumbnail
+            msgType: msgType, filename: model.filename || "",
+            thumb: model.thumb_path || (msgType === "image" ? (model.media_path || "") : ""),
             // a picture's or file's caption or name: its menu has Save instead
             copyText: (isMedia || isFile) && body.length > 0,
             selectText: !inThread,

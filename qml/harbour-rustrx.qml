@@ -130,6 +130,13 @@ ApplicationWindow {
     }
 
     // an account's colour in the merged view (Tunables.accountColours)
+    // an account in a word: its user id's local part (@alice:server: alice)
+    function accountShort(key) {
+        var all = rustrx.accounts
+        for (var i = 0; i < all.length; i++)
+            if (all[i].key === key) return String(all[i].user_id || "").replace(/^@/, "").split(":")[0]
+        return ""
+    }
     function accountColour(key) {
         var c = Tunables.accountColours
         return c[((key % c.length) + c.length) % c.length]
@@ -392,7 +399,9 @@ ApplicationWindow {
                  "join_by_id_or_alias", "knock", "room_preview", "search_rooms",
                  // choice boxes that go back and say why (ChoiceBox.revert)
                  "set_join_rule", "set_history_visibility", "set_notification_mode", "set_level",
-                 "set_user_level"].indexOf(cmd) >= 0) return
+                 "set_user_level",
+                 // the confirm view says it in place
+                 "forward"].indexOf(cmd) >= 0) return
             // receipts go out while reading and are tried again in the core:
             // a weak network is no news to the reader
             if (cmd === "mark_read") return

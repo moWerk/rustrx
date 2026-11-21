@@ -571,6 +571,124 @@ impl Core {
         Ok(())
     }
 
+    /// A message sent again into another room of this account (matrix-sdk
+    /// has no helper for it): the content as it reads now, its latest edit
+    /// in, without its reply, thread or mentions (they meant the other
+    /// room). A file's or picture's address and key are in the content, so
+    /// nothing is uploaded again. "forwarded" once it is in the target's
+    /// send queue.
+    pub(crate) async fn forward(&self, room_id: &str, event_id: &str, to_room: &str) -> Result<()> {
+        use matrix_sdk::ruma::events::AnyMessageLikeEventContent;
+        use matrix_sdk_ui::timeline::MsgLikeKind;
+        let room = self.room(room_id).await?;
+        let target = self.room(to_room).await?;
+        if target.state() != RoomState::Joined {
+            bail!("only a joined room can be forwarded to");
+        }
+        let tl = self.timeline_holding(&room, Some(event_id)).await?;
+        let item = tl
+            .item_by_event_id(&EventId::parse(event_id)?)
+            .await
+            .context("the message is not in the loaded timeline")?;
+        let kind = item.content().as_msglike().map(|m| &m.kind);
+        let content: AnyMessageLikeEventContent = match kind {
+            Some(MsgLikeKind::Message(message)) => RoomMessageEventContent::new(message.msgtype().clone()).into(),
+            Some(MsgLikeKind::Sticker(sticker)) => {
+                let mut content = sticker.content().clone();
+                content.relates_to = None;
+                content.into()
+            }
+            Some(MsgLikeKind::Poll(_)) => bail!("polls cannot be forwarded"),
+            Some(MsgLikeKind::LiveLocation(_)) => bail!("a live location cannot be forwarded"),
+            Some(MsgLikeKind::UnableToDecrypt(_)) => bail!("a message that cannot be read here cannot be forwarded"),
+            Some(MsgLikeKind::Redacted) => bail!("a removed message cannot be forwarded"),
+            _ => bail!("only messages, files, pictures and stickers can be forwarded"),
+        };
+        target.send_queue().send(content).await?;
+        self.emit(json!({"ev": "forwarded", "room_id": room_id, "event_id": event_id, "to_room": target.room_id().as_str()}));
+        Ok(())
+    }
+
+    /// A reply typed into a notification, sent through the room's send
+    /// queue and followed until the server took it: "reply_sent". A process
+    /// woken for a push is gone soon after, and an error then showed nowhere
+    /// and the text was lost (0.8 audit). So a refusal, no answer within
+    /// NOTIFICATION_REPLY_WAIT, or any error before is "reply_failed": the
+    /// message is taken back out of the queue (it would otherwise go out
+    /// later, unseen, after the user typed it again) and its text added to
+    /// the room's draft. Errors never come as "error" here.
+    pub(crate) async fn notification_reply(&self, room_id: &str, body: &str) {
+        match self.send_and_wait(room_id, body).await {
+            Ok(()) => self.emit(json!({"ev": "reply_sent", "room_id": room_id})),
+            Err(e) => {
+                tracing::warn!(room = %room_id, "notification reply not sent: {e:#}");
+                let kept = self.keep_as_draft(room_id, body).await;
+                if let Err(d) = &kept {
+                    tracing::warn!(room = %room_id, "notification reply: not kept as draft: {d:#}");
+                }
+                self.emit(json!({"ev": "reply_failed", "room_id": room_id, "kept": kept.is_ok(),
+                                 "message": format!("{e:#}")}));
+            }
+        }
+    }
+
+    async fn send_and_wait(&self, room_id: &str, body: &str) -> Result<()> {
+        use matrix_sdk::send_queue::RoomSendQueueUpdate;
+        let room = self.room(room_id).await?;
+        let queue = room.send_queue();
+        // subscribed before the send: its echo and its outcome come after
+        let (_, mut updates) = queue.subscribe().await?;
+        // a queue an earlier network error switched off would hold it back
+        queue.set_enabled(true);
+        let handle = queue.send(message_content(body, true, false, None, &[]).into()).await?;
+        let outcome = tokio::time::timeout(NOTIFICATION_REPLY_WAIT, async {
+            // the send handle does not say its transaction id: the first new
+            // echo after the send is ours (nothing else sends here meanwhile)
+            let mut ours = None;
+            loop {
+                match updates.recv().await {
+                    Ok(RoomSendQueueUpdate::NewLocalEvent(echo)) if ours.is_none() => ours = Some(echo.transaction_id),
+                    Ok(RoomSendQueueUpdate::SentEvent { transaction_id, .. }) if ours.as_ref() == Some(&transaction_id) => {
+                        return Ok(());
+                    }
+                    Ok(RoomSendQueueUpdate::SendError { transaction_id, error, .. }) if ours.as_ref() == Some(&transaction_id) => {
+                        return Err(anyhow!("{error}"));
+                    }
+                    Ok(_) => {}
+                    Err(e) => return Err(anyhow!("send queue: {e}")),
+                }
+            }
+        })
+        .await
+        .unwrap_or_else(|_| Err(anyhow!("no answer from the server in time")));
+        if let Err(e) = outcome {
+            // sent after all in the meantime: then it counts as sent
+            match handle.abort().await {
+                Ok(true) => {}
+                Ok(false) => {
+                    tracing::info!(room = %room_id, "notification reply: went out while it was given up");
+                    return Ok(());
+                }
+                Err(a) => tracing::warn!(room = %room_id, "notification reply: not taken back out of the queue: {a}"),
+            }
+            // the error switched the room's queue off: on again for the rest
+            queue.set_enabled(true);
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    /// A reply that was not sent goes into the room's draft, after what was
+    /// there; "draft" tells the bridge.
+    async fn keep_as_draft(&self, room_id: &str, body: &str) -> Result<()> {
+        let room = self.room(room_id).await?;
+        let old = room.load_composer_draft(None).await?.map(|d| d.plain_text).unwrap_or_default();
+        let text = if old.trim().is_empty() { body.to_owned() } else { format!("{}\n{body}", old.trim_end()) };
+        self.save_draft(room_id, &text, None).await?;
+        self.emit(json!({"ev": "draft", "room_id": room.room_id().as_str(), "text": text}));
+        Ok(())
+    }
+
     pub(crate) async fn poll_vote(&self, room_id: &str, event_id: &str, answers: Vec<String>) -> Result<()> {
         let room = self.room(room_id).await?;
         let poll = EventId::parse(event_id)?;

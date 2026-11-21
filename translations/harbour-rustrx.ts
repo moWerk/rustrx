@@ -158,10 +158,6 @@
         <source>Send</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-this-device">
-        <source>%1 (this device)</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-la-device-not-verified">
         <source>Not verified</source>
         <translation type="unfinished"></translation>
@@ -3322,6 +3318,54 @@
     </message>
     <message id="rustrx-la-thread-not-loaded">
         <source>This thread could not be loaded</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-forward-to">
+        <source>Forward to</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-devices-account-page">
+        <source>Your account&apos;s devices are removed on your server&apos;s account page, which opens in the browser.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-picker-empty">
+        <source>No rooms or chats yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-this-phone-device">
+        <source>%1 (this phone)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-devices-account-page">
+        <source>Open the account page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-forward">
+        <source>Forward</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-forwarded">
+        <source>Forwarded to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-reply-failed">
+        <source>Your reply to %1 was not sent</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-reply-failed-hidden">
+        <source>Your reply was not sent</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-reply-failed-kept">
+        <source>Tap to open the chat, your text is waiting there.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-reply-failed-open">
+        <source>Tap to open the chat.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-ph-picker-search">
+        <source>Search rooms and chats</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

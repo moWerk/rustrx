@@ -54,6 +54,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `close_room` | | |
 | `paginate_back` | `room_id`, `count?` (30) | `paginated` |
 | `send_text` | `room_id`, `body`, `reply_to?`, `markdown?` (true), `emotes?` (shortcode → mxc: custom emoji in the HTML), `thread_root?`, `emote?` (an m.emote, as /me sends), `mentions?` (`{user_id, name}`: the names become pills, m.mentions; "@room" in the body mentions the room) | `timeline` |
+| `notification_reply` | `room_id`, `body` (typed into a notification) | `reply_sent` once the server took it; `reply_failed` when it refused it, gave no answer within 20 seconds or anything failed before (never `error`): the message is taken back out of the queue and its text added to the room's draft (`draft`) |
 | `send_sticker` | `room_id`, `mxc`, `body`, `info?`, `thread_root?` | `timeline` |
 | `open_thread` | `room_id`, `thread_root` | `draft` (with `thread_root`), then `thread_timeline` (live until `close_thread`) |
 | `close_thread` | | |
@@ -62,6 +63,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `react` | `room_id`, `event_id`, `key` (toggles) | `timeline` |
 | `redact` | `room_id`, `event_id?` or `txn_id?` (discards a local echo), `reason?` | `timeline` |
 | `edit` | `room_id`, `event_id?` or `txn_id?`, `body`, `emotes?`, `mentions?` (as for `send_text`; the message's own pills and custom emoji stay where the new body still has the name or shortcode) | `timeline` |
+| `forward` | `room_id`, `event_id` (a message of this account), `to_room` (a joined room of the same account) | `forwarded`; the content as it reads now (its latest edit), without reply, thread or mentions; a file's or picture's address and key travel in it, nothing is uploaded again; polls, live locations, removed and unreadable messages are refused (`error`) |
 | `poll_vote` | `room_id`, `event_id`, `answers` (answer ids) | `timeline` |
 | `report` | `room_id`, `event_id`, `reason?` | |
 | `mark_read` | `room_id`, `private?` (a private receipt), `marker?` (default true; false leaves the fully-read marker), `event_id?` (read up to this message, never backwards; without it the whole room) | `rooms` |
@@ -120,7 +122,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | cmd | fields | answered by |
 |---|---|---|
 | `devices` | | `devices` |
-| `delete_device` | `device_id`, `password` | `device_deleted` |
+| `delete_device` | `device_id`, `password` | `device_deleted`; a server that asks for no password stage is said in `error` (an account service's devices are removed on its page, `devices`' `manage_url`) |
 | `profile` | | `profile` |
 | `set_display_name` | `name` | |
 | `set_own_avatar` | `path` (a prepared picture) | `profile` |
@@ -195,6 +197,9 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `timeline` | `room_id`, `items`: timeline items, oldest first, the whole list each time |
 | `paginated` | `room_id`, `at_start` |
 | `draft` | `room_id`, `thread_root?` (a thread's), `text` (what was being written there; "" for none) |
+| `forwarded` | `room_id`, `event_id` (the message forwarded), `to_room` (where it went: in its send queue) |
+| `reply_sent` | `room_id` (a `notification_reply` the server took) |
+| `reply_failed` | `room_id`, `kept` (its text was added to the room's draft), `message` |
 | `typing` | `room_id`, `names` (others typing) |
 | `media` | `room_id`, `event_id`, `thumb`, `exported`, `path` |
 | `emote` | `mxc`, `path` |
@@ -220,7 +225,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `recovery_key` | `recovery_key` (shown once) |
 | `recovery_done` | |
 | `keys_exported` / `keys_imported` | `path` / `imported`, `total` |
-| `devices` | `devices`: `{device_id, name, last_seen_ts, last_seen_ip, current, keys, verified}` (`keys`: it has encryption keys; `verified`: cross-signed by us) |
+| `devices` | `devices`: `{device_id, name, last_seen_ts, last_seen_ip, current, keys, verified, manage_url}` (`keys`: it has encryption keys; `verified`: cross-signed by us; `manage_url`: the account service's page that removes it, null without one), `account_url` (the account service's device list, or null): with an account service the server takes no password to remove a device |
 | `device_deleted` | `device_id` |
 | `ignored_users` | `users`: `{user_id, name}` (name where the server gives a profile) |
 | `user_info` | `user_id`, `name`, `has_identity`, `verified`, `ignored`, `is_self`; with a room: `room_id`, `membership`, `power`, `role`, `can_kick`, `can_ban`, `can_set_level`, `can_mute`, `own_level`, `events_default` |

@@ -265,7 +265,10 @@ CoverBackground {
     }
 
     // the same line at the bottom in both views: "Rustrx" while connected,
-    // which is the usual case; otherwise what is wrong
+    // which is the usual case; otherwise what is wrong. With several
+    // accounts, the shown one's name in its place, unless the merged view
+    // counts them all (0.8 audit: the cover never said which account)
+    readonly property string accountName: inChat || !rustrx.mergedView ? service.accountLabel(rustrx.accountKey) : ""
     Label {
         id: chatState
         anchors {
@@ -282,7 +285,7 @@ CoverBackground {
         color: fine ? Theme.secondaryColor : Theme.highlightColor
         //% "Not logged in"
         text: !rustrx.loggedIn ? qsTrId("rustrx-la-cover-not-logged-in")
-            : fine ? "Rustrx"
+            : fine ? (cover.accountName.length ? cover.accountName : "Rustrx")
             //% "Connecting"
             : rustrx.syncState === "idle" ? qsTrId("rustrx-la-cover-connecting")
             //% "Offline"
@@ -290,7 +293,8 @@ CoverBackground {
     }
 
     // left: find a room or a person; right: the most recent room with
-    // unread messages (only while there is one)
+    // unread messages, only while there is one (0.8 audit: it showed with
+    // nothing to open), from all accounts in the merged view as the count is
     // a call: answer while it rings, unmute while muted, else hang up
     CoverActionList {
         enabled: cover.call.state === "incoming"
@@ -318,22 +322,30 @@ CoverBackground {
         }
     }
 
+    function search() {
+        app.activate()
+        pageStack.push(Qt.resolvedUrl("../pages/SearchPage.qml"), {}, PageStackAction.Immediate)
+    }
     CoverActionList {
-        enabled: rustrx.loggedIn && !cover.inCall
+        enabled: rustrx.loggedIn && !cover.inCall && rustrx.unreadChats > 0
         CoverAction {
             iconSource: "image://theme/icon-cover-search"
-            onTriggered: {
-                app.activate()
-                pageStack.push(Qt.resolvedUrl("../pages/SearchPage.qml"), {}, PageStackAction.Immediate)
-            }
+            onTriggered: cover.search()
         }
         CoverAction {
             iconSource: "image://theme/icon-cover-message"
             onTriggered: {
                 app.activate()
-                var id = rustrx.firstUnreadRoom()
-                if (id.length) app.showRoom(id)
+                var next = rustrx.firstUnread()
+                if (next.room_id) app.openIn(next.account, next.room_id)
             }
+        }
+    }
+    CoverActionList {
+        enabled: rustrx.loggedIn && !cover.inCall && rustrx.unreadChats === 0
+        CoverAction {
+            iconSource: "image://theme/icon-cover-search"
+            onTriggered: cover.search()
         }
     }
 }
