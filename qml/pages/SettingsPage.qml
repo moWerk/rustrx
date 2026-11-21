@@ -34,10 +34,19 @@ Page {
     // the Encryption page's results, kept here: the new recovery key is
     // shown only once and must outlive that page
     property string recoveryResult
+    // a refused restore, backup or reset, apart from the results so it
+    // shows in the error colour (0.8 audit)
+    property string recoveryError
     property string shownKey
     property string resetApprovalUrl
 
     readonly property real tabBarHeight: tabs.tabBarHeight
+    // where a tab's first line starts, the same on all four: the tab bar is
+    // drawn over a tab with a pulley menu, so its content starts below it
+    // (the four had three gaps; 0.8 audit)
+    function tabTop(tab) {
+        return (tab && tab.pullDownMenu ? tabBarHeight : 0) + Theme.paddingMedium
+    }
     // the log out and the clearing; the Encryption page has its own
     property alias remorse: remorsePopup
 
@@ -98,7 +107,9 @@ Page {
         if (startTab.length) { showTab(startTab); startTab = "" }
         if (showEncryption) {
             showEncryption = false
-            if (rustrx.recoveryState === "incomplete") encryptionLater.start()
+            // the recovery key is entered there (the verification page's
+            // way out for those without another device leads here too)
+            encryptionLater.start()
         }
     }
     // a new recovery key on a page of its own, which closes only after
@@ -177,6 +188,7 @@ Page {
             displayName = ""
             ownAvatar = ""
             recoveryResult = ""
+            recoveryError = ""
             shownKey = ""
             resetApprovalUrl = ""
             rustrx.command({ cmd: "profile" })
@@ -188,14 +200,19 @@ Page {
             ownAvatar = profile.avatar_path || ""
             ownAvatarVersion = profile.avatar_v || 0
         }
-        //% "Encrypted messages restored. Rooms fill in as keys arrive."
-        onRecoveryDone: recoveryResult = qsTrId("rustrx-la-restored")
+        onRecoveryDone: {
+            recoveryError = ""
+            //% "Encrypted messages restored. Rooms fill in as keys arrive."
+            recoveryResult = qsTrId("rustrx-la-restored")
+        }
         onIdentityResetApproval: {
+            recoveryError = ""
             resetApprovalUrl = url
             //% "Approve the reset on your server's page in the browser (within two minutes). If it did not open, use the buttons above."
             recoveryResult = qsTrId("rustrx-la-reset-approve")
         }
         onRecoveryKey: {
+            recoveryError = ""
             resetApprovalUrl = ""
             //% "Backup is on. Write this recovery key down and keep it safe; it is shown only now. Tap it to copy."
             recoveryResult = qsTrId("rustrx-la-key-shown")
@@ -203,8 +220,10 @@ Page {
             keyLater.start()
         }
         onErrorOccurred: {
-            if (cmd === "recovery_recover" || cmd === "recovery_enable" || cmd === "recovery_reset" || cmd === "identity_reset")
-                recoveryResult = message
+            if (cmd === "recovery_recover" || cmd === "recovery_enable" || cmd === "recovery_reset" || cmd === "identity_reset") {
+                recoveryResult = ""
+                recoveryError = app.friendlyError(cmd, message)
+            }
         }
     }
 }

@@ -19,13 +19,14 @@ import Sailfish.Silica 1.0
 
 // Who may do one thing in a room, as a role: members, moderators, admins
 // (the levels 0, 50, 100); a level that is none of them shows as itself.
-// Only levels up to one's own are offered (the server refuses more).
-HoldComboBox {
+// Only levels up to one's own are offered (the server refuses more). A
+// ChoiceBox: it follows `level` and sends chosen(value) with the tapped
+// level (0.8 audit; it was one of the hand copies of that fix).
+ChoiceBox {
     id: box
 
     property int level
     property int ownLevel: 100
-    signal chosen(int level)
 
     readonly property var levels: [0, 50, 100].filter(function (l) { return l <= box.ownLevel || l === box.level })
     readonly property bool custom: levels.indexOf(level) < 0
@@ -39,25 +40,7 @@ HoldComboBox {
         return qsTrId("rustrx-la-level-admins")
     }
 
-    width: parent ? parent.width : 0
-    // The choice acts on the tapped entry, and the box shows the level as
-    // the room has it: the ComboBox sets currentIndex itself (a binding
-    // there breaks at the first tap, a refused or remote change then never
-    // showed), and an index of -1 gave chosen(undefined).
-    readonly property int shownIndex: custom ? levels.length : Math.max(0, levels.indexOf(level))
-    currentIndex: shownIndex
-    onShownIndexChanged: currentIndex = shownIndex
-    menu: ContextMenu {
-        Repeater {
-            model: box.levels
-            MenuItem {
-                text: box.roleName(modelData)
-                onClicked: if (modelData !== box.level) box.chosen(modelData)
-            }
-        }
-        MenuItem {
-            visible: box.custom
-            text: qsTrId("rustrx-la-role-level").arg(box.level)
-        }
-    }
+    value: level
+    choices: levels.map(function (l) { return { value: l, text: box.roleName(l) } })
+                   .concat(custom ? [{ value: level, text: qsTrId("rustrx-la-role-level").arg(level) }] : [])
 }

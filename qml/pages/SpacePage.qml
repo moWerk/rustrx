@@ -117,14 +117,8 @@ Page {
                 description: app.joinRuleName(page.info.join_rule || "", "")
             }
 
-            Label {
-                visible: !!page.info.topic
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
+            Note {
                 bottomPadding: Theme.paddingMedium
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.highlightColor
                 text: page.info.topic || ""
             }
 
@@ -247,6 +241,7 @@ Page {
             anchors.centerIn: parent
             size: BusyIndicatorSize.Large
             running: page.loading && page.rooms.length === 0
+            visible: running
         }
 
         ViewPlaceholder {

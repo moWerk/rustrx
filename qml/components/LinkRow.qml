@@ -21,7 +21,8 @@ import Sailfish.Silica 1.0
 // (with a smaller second line, if any), an arrow to the right; a small
 // icon in front where the line is a warning. Without a target (enabled
 // false) the arrow goes and the line is plain text. The Account tab's
-// links all look like this: its gaps, its notes, Encryption and Devices.
+// links all look like this: its gaps, its notes, Encryption and Devices,
+// and so does every other line that opens a page (0.8 audit).
 BackgroundItem {
     id: row
 
@@ -30,6 +31,8 @@ BackgroundItem {
     // an image://theme source without its colour, or ""
     property string icon
     property color iconColor: Theme.primaryColor
+    // the room settings' Threads and Members keep their medium icons
+    property real iconSize: Theme.iconSizeSmall
     // a note rather than a heading: smaller, in the secondary colour
     property bool secondary
 
@@ -41,16 +44,17 @@ BackgroundItem {
         visible: row.icon.length > 0
         x: Theme.horizontalPageMargin
         anchors.verticalCenter: parent.verticalCenter
-        sourceSize.width: Theme.iconSizeSmall
-        sourceSize.height: Theme.iconSizeSmall
-        source: row.icon.length ? row.icon + "?" + row.iconColor : ""
+        sourceSize.width: row.iconSize
+        sourceSize.height: row.iconSize
+        opacity: row.enabled ? 1 : Theme.opacityLow
+        source: row.icon.length ? row.icon + "?" + (row.highlighted ? Theme.highlightColor : row.iconColor) : ""
     }
 
     Column {
         id: texts
         anchors {
             left: parent.left
-            leftMargin: Theme.horizontalPageMargin + (lead.visible ? Theme.iconSizeSmall + Theme.paddingMedium : 0)
+            leftMargin: Theme.horizontalPageMargin + (lead.visible ? row.iconSize + (row.iconSize > Theme.iconSizeSmall ? Theme.paddingLarge : Theme.paddingMedium) : 0)
             right: parent.right
             rightMargin: Theme.horizontalPageMargin + (arrow.visible ? arrow.width - Theme.paddingMedium : 0)
             verticalCenter: parent.verticalCenter

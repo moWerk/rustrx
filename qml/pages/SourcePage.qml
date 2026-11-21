@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
 
 // A message's source: its JSON as the server sent it (decrypted where it
 // was encrypted), and its latest edit's below. Selectable; Copy in the pulley.
@@ -30,7 +31,7 @@ Page {
     Connections {
         target: rustrx
         onEventSource: if (eventId === page.eventId) { page.json = json; page.edit = edit }
-        onErrorOccurred: if (cmd === "event_source") page.failure = message
+        onErrorOccurred: if (cmd === "event_source") page.failure = app.friendlyError(cmd, message)
     }
 
     SilicaFlickable {
@@ -82,17 +83,16 @@ Page {
                 color: Theme.primaryColor
             }
 
-            Label {
-                visible: page.failure.length > 0
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: Theme.secondaryHighlightColor
+            // in words and in the error colour, not the raw text in the
+            // success look (0.8 audit, item 5)
+            Note {
+                kind: "error"
                 text: page.failure
             }
         }
 
         BusyIndicator {
+            visible: running
             anchors.centerIn: parent
             size: BusyIndicatorSize.Large
             running: page.json.length === 0 && page.failure.length === 0

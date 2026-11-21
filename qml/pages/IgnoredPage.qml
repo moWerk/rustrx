@@ -91,6 +91,7 @@ Page {
             anchors.centerIn: parent
             size: BusyIndicatorSize.Large
             running: !page.loaded
+            visible: running
         }
 
         VerticalScrollDecorator { }

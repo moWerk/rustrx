@@ -89,9 +89,9 @@ SilicaFlickable {
     readonly property var safeguards: {
         var store = { status: storeSlice, weight: 2, go: "encryption",
                       title: storeSlice === "risk"
-                             //% "Not encrypted on the phone"
+                             //% "Not encrypted on this phone"
                              ? qsTrId("rustrx-la-arc-store-risk")
-                             //% "Encrypted on the phone"
+                             //% "Encrypted on this phone"
                              : qsTrId("rustrx-la-arc-store-ok") }
         if (storeState === "unencrypted") {
             //% "Your messages on this phone are stored without encryption, because this store was made before Rustrx used Sailfish Secrets."
@@ -107,9 +107,9 @@ SilicaFlickable {
         }
         var verify = { status: verifySlice, weight: 1, go: "verify",
                        title: verifySlice === "risk"
-                              //% "The phone is not verified"
+                              //% "This phone is not verified"
                               ? qsTrId("rustrx-la-arc-verified-risk")
-                              //% "The phone is verified"
+                              //% "This phone is verified"
                               : qsTrId("rustrx-la-arc-verified-ok"),
                        //% "This phone is not verified, so others cannot tell it is really you, and it may miss keys for older messages."
                        text: qsTrId("rustrx-la-risk-unverified"),
@@ -192,7 +192,7 @@ SilicaFlickable {
 
     // down to a section of this tab, its header just under the tab bar
     function scrollTo(item) {
-        var y = item.mapToItem(column, 0, 0).y - (pullDownMenu ? settings.tabBarHeight : 0)
+        var y = item.mapToItem(column, 0, 0).y - settings.tabTop(tab)
         scroll.to = Math.max(originY, Math.min(y, contentHeight - height + originY))
         scroll.restart()
     }
@@ -203,8 +203,8 @@ SilicaFlickable {
         width: parent.width
         spacing: Theme.paddingMedium
 
-        // the tab bar is drawn over a tab with a pulley menu; content starts below it
-        Item { width: 1; height: (tab.pullDownMenu ? settings.tabBarHeight : 0) + Theme.paddingLarge }
+        // below the tab bar, as on every tab (SettingsPage.tabTop)
+        Item { width: 1; height: settings.tabTop(tab) }
 
         // one's own picture; a tap picks a new one
         BackgroundItem {
@@ -237,25 +237,19 @@ SilicaFlickable {
             }
         }
 
-        Label {
-            x: Theme.horizontalPageMargin
-            width: parent.width - 2 * x
+        // a fact, not a control: the ambience colour (0.8 audit)
+        Note {
+            kind: "status"
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WrapAnywhere
-            font.pixelSize: Theme.fontSizeSmall
-            color: Theme.secondaryColor
             text: rustrx.userId + "\n" + rustrx.homeserver
         }
 
         // the server notifies of nothing for this account: its rule was
         // switched off, often in another app, and nothing here said so
         // (davodego's log: push worked, no message ever notified)
-        Label {
+        Note {
             visible: rustrx.notificationsOff
-            x: Theme.horizontalPageMargin
-            width: parent.width - 2 * x
-            wrapMode: Text.Wrap
-            color: Theme.highlightColor
             //% "Notifications are switched off for this account on your server, maybe in another app. No message notifies until they are on again."
             text: qsTrId("rustrx-la-account-notifications-off")
         }
@@ -271,11 +265,9 @@ SilicaFlickable {
         SectionHeader { text: qsTrId("rustrx-se-security-status") }
 
         // the verdict first: what follows details it
-        Label {
-            x: Theme.horizontalPageMargin
-            width: parent.width - 2 * x
+        Note {
+            kind: "intro"
             horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.Wrap
             color: tab.complete ? Tunables.securityComplete : Theme.highlightColor
             text: tab.complete
                   //% "Everything that protects your messages is active."
@@ -341,14 +333,18 @@ SilicaFlickable {
 
         Item { width: 1; height: Theme.paddingSmall }
 
-        // the notes: worth knowing, no risk
-        Repeater {
-            model: tab.notes
-            LinkRow {
-                enabled: modelData.go.length > 0
-                onClicked: tab.follow(modelData.go)
-                text: modelData.text
-                secondary: true
+        // the notes: worth knowing, no risk. Rows that lead somewhere sit
+        // without the column's gap between them, as Silica lists them (0.8 audit)
+        Column {
+            width: parent.width
+            Repeater {
+                model: tab.notes
+                LinkRow {
+                    enabled: modelData.go.length > 0
+                    onClicked: tab.follow(modelData.go)
+                    text: modelData.text
+                    secondary: true
+                }
             }
         }
 
@@ -356,28 +352,31 @@ SilicaFlickable {
         //% "Keys and devices"
         SectionHeader { text: qsTrId("rustrx-se-keys-devices") }
 
-        // the recovery key, its backup, a reset and the room keys file
-        LinkRow {
-            //% "Encryption"
-            text: qsTrId("rustrx-se-encryption")
-            onClicked: settings.openEncryption()
-        }
+        Column {
+            width: parent.width
+            // the recovery key, its backup, a reset and the room keys file
+            LinkRow {
+                //% "Encryption"
+                text: qsTrId("rustrx-se-encryption")
+                onClicked: settings.openEncryption()
+            }
 
-        // the sessions, loaded only when asked
-        LinkRow {
-            //% "Devices"
-            text: qsTrId("rustrx-se-devices")
-            onClicked: pageStack.push(Qt.resolvedUrl("DevicesPage.qml"))
-        }
+            // the sessions, loaded only when asked
+            LinkRow {
+                //% "Devices"
+                text: qsTrId("rustrx-se-devices")
+                onClicked: pageStack.push(Qt.resolvedUrl("DevicesPage.qml"))
+            }
 
-        // another phone or computer in with this account, by QR code; only
-        // where the server can (its account service logs devices in by a
-        // code: not on most servers, matrix.org without the rendezvous)
-        LinkRow {
-            visible: rustrx.deviceLogin
-            //% "Link a new device"
-            text: qsTrId("rustrx-he-link-device")
-            onClicked: pageStack.push(Qt.resolvedUrl("LinkDevicePage.qml"))
+            // another phone or computer in with this account, by QR code; only
+            // where the server can (its account service logs devices in by a
+            // code: not on most servers, matrix.org without the rendezvous)
+            LinkRow {
+                visible: rustrx.deviceLogin
+                //% "Link a new device"
+                text: qsTrId("rustrx-he-link-device")
+                onClicked: pageStack.push(Qt.resolvedUrl("LinkDevicePage.qml"))
+            }
         }
 
         // how the account talks to its server
@@ -397,8 +396,13 @@ SilicaFlickable {
             onClicked: rustrx.setClassicSync(!rustrx.classicSync)
         }
 
-        //% "Debug log"
-        SectionHeader { id: debugHeader; text: qsTrId("rustrx-se-debug-log") }
+        // the id on a line of its own: after `id: ...;` on the same line
+        // lupdate dropped the //% text, and the raw id showed (0.8 audit)
+        SectionHeader {
+            id: debugHeader
+            //% "Debug log"
+            text: qsTrId("rustrx-se-debug-log")
+        }
 
         TextSwitch {
             //% "Keep a debug log"
@@ -412,6 +416,8 @@ SilicaFlickable {
         PageButton {
             //% "Share the debug log"
             text: qsTrId("rustrx-bt-share-log")
+            //% "A copy goes to Downloads, so you can also attach it to a mail or a forum post."
+            hint: qsTrId("rustrx-la-share-log-hint")
             onClicked: {
                 var path = rustrx.shareableLog()
                 if (path === "")
@@ -420,15 +426,8 @@ SilicaFlickable {
                 logShare.trigger()
             }
         }
-        Label {
-            x: Theme.horizontalPageMargin
-            width: parent.width - 2 * x
-            wrapMode: Text.Wrap
-            font.pixelSize: Theme.fontSizeExtraSmall
-            color: Theme.secondaryColor
-            //% "A copy goes to Downloads, so you can also attach it to a mail or a forum post."
-            text: qsTrId("rustrx-la-share-log-hint")
-        }
+        // apart from Share and its hint, so the hint is not read as this one's
+        Item { width: 1; height: Theme.paddingLarge }
         PageButton {
             //% "Delete the debug log"
             text: qsTrId("rustrx-bt-clear-log")

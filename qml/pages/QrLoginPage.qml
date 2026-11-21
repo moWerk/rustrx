@@ -25,175 +25,147 @@ import "../components"
 // Or (scanned) this phone read the code of the logged-in device
 // (QrScanPage) and shows two digits for it. That device hands over the
 // keys, so this one comes in verified. The login page started it.
-Page {
+ShortPage {
     id: page
     // done: the window's route() leaves the page for its Continue
     objectName: state_ === "done" && !continued ? "qrLoginDone" : ""
     property bool continued
 
     property string state_: "starting"
-    property int width_
-    property string modules
     property string userCode
     property string checkCode
     property string error
     // this phone scanned; the first answer came with the scan
     property bool scanned
     property var initial
-    readonly property int modulesWide: width_
-    // the code's minute (Tunables.qrValidSeconds), counted from when it came
-    property int secondsLeft
-    property real shownAt
-    Timer {
-        running: page.state_ === "qr" && page.secondsLeft > 0
-        interval: 1000
-        repeat: true
-        onTriggered: page.secondsLeft = Math.max(0, Tunables.qrValidSeconds - Math.floor((Date.now() - page.shownAt) / 1000))
-    }
+    // what the login page sent, for a new code
+    property string user
+    property string homeserver
+    // a new code was asked for: the running login ends first, and its
+    // "cancelled" is not an error
+    property bool restarting
 
     function take(progress) {
         page.state_ = progress.state
-        if (progress.state === "qr") {
-            page.width_ = progress.width
-            page.modules = progress.modules
-            page.shownAt = Date.now()
-            page.secondsLeft = Tunables.qrValidSeconds
-        }
+        if (progress.state === "qr") panel.show(progress.width, progress.modules)
         if (progress.state === "waiting") page.userCode = progress.user_code || ""
         if (progress.state === "check") page.checkCode = progress.check_code || ""
     }
     Component.onCompleted: if (initial) take(initial)
+    // left by back while the login runs: it ends, or the login page's
+    // buttons stay off until the core gives up (0.8 audit)
+    Component.onDestruction: if (rustrx.loggingIn && state_ !== "done") rustrx.command({ cmd: "login_cancel" })
+
+    // an expired code, or an error: a new code in place (0.8 audit)
+    function newCode() {
+        page.error = ""
+        if (rustrx.loggingIn) {
+            page.restarting = true
+            rustrx.command({ cmd: "login_cancel" })
+        } else {
+            begin()
+        }
+    }
+    function begin() {
+        page.state_ = "starting"
+        page.userCode = ""
+        page.checkCode = ""
+        rustrx.loginQr(page.user, page.homeserver)
+    }
+    // the core lets go of the old login just after it says so
+    Timer { id: restartLater; interval: 300; onTriggered: page.begin() }
 
     Connections {
         target: rustrx
         onQrLogin: page.take(progress)
-        onLoginError: page.error = message
+        onLoginError: {
+            if (page.restarting) {
+                page.restarting = false
+                restartLater.start()
+                return
+            }
+            page.error = message
+        }
         // logged in: the window's route() takes the stack over
     }
 
-    SilicaFlickable {
-        anchors.fill: parent
-        contentHeight: column.height + Theme.paddingLarge
+    //% "Log in with a QR code"
+    title: qsTrId("rustrx-he-qr-login")
 
-        Column {
-            id: column
-            width: parent.width
-            spacing: Theme.paddingLarge
-
-            PageHeader {
-                //% "Log in with a QR code"
-                title: qsTrId("rustrx-he-qr-login")
-            }
-
-            // done: the large green check, the security ring's green
-            Image {
-                visible: page.state_ === "done"
-                anchors.horizontalCenter: parent.horizontalCenter
-                sourceSize.width: Theme.iconSizeExtraLarge * 1.5
-                sourceSize.height: Theme.iconSizeExtraLarge * 1.5
-                source: "image://theme/icon-l-acknowledge?" + Tunables.securityComplete
-            }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                // done in the green of the account's complete safeguards
-                color: page.error.length ? Theme.errorColor : page.state_ === "done" ? Tunables.securityComplete : Theme.highlightColor
-                text: page.error.length ? page.error
-                      : page.state_ === "qr"
-                        //% "On a device that is logged in, choose to link a new device (Rustrx: Settings, Account, Link a new device), then scan this code."
-                        ? qsTrId("rustrx-la-qr-scan")
-                        : page.state_ === "scanned"
-                          //% "Type the two digits the other device shows."
-                          ? qsTrId("rustrx-la-qr-digits")
-                          : page.state_ === "connecting"
-                            //% "Connecting to the other device…"
-                            ? qsTrId("rustrx-la-qr-connecting")
-                          : page.state_ === "check"
-                            //% "Type these two digits on the other device."
-                            ? qsTrId("rustrx-la-qr-check")
-                          : page.state_ === "waiting"
-                            //% "Confirm the login on the other device."
-                            ? qsTrId("rustrx-la-qr-confirm")
+    body: [
+        FlowStatus {
+            error: page.error
+            done: page.state_ === "done"
+            busy: page.state_ === "starting" || page.state_ === "connecting" || page.state_ === "sent"
+                  || page.state_ === "syncing"
+            text: page.state_ === "qr"
+                  //% "On a device that is logged in, choose to link a new device (Rustrx: Settings, Account, Link a new device), then scan this code."
+                  ? qsTrId("rustrx-la-qr-scan")
+                  : page.state_ === "scanned"
+                    //% "Type the two digits the other device shows."
+                    ? qsTrId("rustrx-la-qr-digits")
+                    : page.state_ === "connecting"
+                      //% "Connecting to the other device…"
+                      ? qsTrId("rustrx-la-qr-connecting")
+                      : page.state_ === "check"
+                        //% "Type these two digits on the other device."
+                        ? qsTrId("rustrx-la-qr-check")
+                        : page.state_ === "waiting"
+                          //% "Confirm the login on the other device."
+                          ? qsTrId("rustrx-la-qr-confirm")
+                          : page.state_ === "sent"
+                            // it fell back to "Asking the server…" and read
+                            // as a new start (0.8 audit)
+                            //% "Checking the digits…"
+                            ? qsTrId("rustrx-la-qr-sent")
                             : page.state_ === "syncing"
                               //% "Logged in. Bringing over the keys…"
                               ? qsTrId("rustrx-la-qr-syncing")
                               : page.state_ === "done"
                                 //% "All set. This phone is logged in and verified, and it has your keys, so your encrypted messages can be read here."
                                 ? qsTrId("rustrx-la-qr-done")
-                              //% "Asking the server…"
-                              : qsTrId("rustrx-la-qr-starting")
+                                //% "Asking the server…"
+                                : qsTrId("rustrx-la-qr-starting")
+        },
+        QrPanel {
+            id: panel
+            page: page
+            visible: page.state_ === "qr" && !page.error.length && modulesWide > 0
+        },
+        DigitsField {
+            visible: page.state_ === "scanned" && !page.error.length
+            onEntered: {
+                rustrx.command({ cmd: "qr_check_code", code: code })
+                page.state_ = "sent"
             }
-
-            QrCode {
-                visible: page.state_ === "qr" && page.width_ > 0
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.min(page.width, page.height) - 2 * Theme.horizontalPageMargin
-                modulesWide: page.width_
-                modules: page.modules
-            }
-
-            // the rendezvous behind the code lives a minute from now on
-            Label {
-                visible: page.state_ === "qr" && page.modulesWide > 0
-                anchors.horizontalCenter: parent.horizontalCenter
-                color: page.secondsLeft > 0 ? Theme.secondaryHighlightColor : Theme.errorColor
-                font.pixelSize: Theme.fontSizeSmall
-                text: page.secondsLeft > 0
-                      //% "Valid for %1 s"
-                      ? qsTrId("rustrx-la-qr-valid").arg(page.secondsLeft)
-                      //% "This code has expired."
-                      : qsTrId("rustrx-la-qr-expired")
-            }
-
-            TextField {
-                id: digits
-                visible: page.state_ === "scanned"
-                width: parent.width
-                //% "The two digits"
-                label: qsTrId("rustrx-la-qr-code")
-                placeholderText: label
-                inputMethodHints: Qt.ImhDigitsOnly
-                validator: RegExpValidator { regExp: /^[0-9]{0,2}$/ }
-                EnterKey.enabled: text.length === 2
-                EnterKey.iconSource: "image://theme/icon-m-enter-accept"
-                EnterKey.onClicked: {
-                    rustrx.command({ cmd: "qr_check_code", code: parseInt(text, 10) })
-                    page.state_ = "sent"
-                }
-            }
-
-            Label {
-                visible: page.state_ === "check" && page.checkCode.length > 0
-                anchors.horizontalCenter: parent.horizontalCenter
-                font.pixelSize: Theme.fontSizeHuge
-                color: Theme.highlightColor
-                text: page.checkCode
-            }
-
-            Label {
-                visible: page.state_ === "waiting" && page.userCode.length > 0
-                anchors.horizontalCenter: parent.horizontalCenter
-                font.pixelSize: Theme.fontSizeHuge
-                color: Theme.highlightColor
-                text: page.userCode
-            }
-
-            PageButton {
-                visible: page.state_ === "done"
-                //% "Continue"
-                text: qsTrId("rustrx-bt-qr-continue")
-                onClicked: { page.continued = true; app.route() }
-            }
-
-            PageButton {
-                visible: !page.error.length && page.state_ !== "done"
-                //% "Cancel"
-                text: qsTrId("rustrx-bt-sso-cancel")
-                onClicked: { rustrx.command({ cmd: "login_cancel" }); pageStack.pop() }
-            }
+        },
+        BigCode {
+            text: page.error.length ? ""
+                  : page.state_ === "check" ? page.checkCode
+                  : page.state_ === "waiting" ? page.userCode : ""
         }
-        VerticalScrollDecorator { }
-    }
+    ]
+
+    buttons: [
+        PageButton {
+            visible: page.state_ === "done"
+            //% "Continue"
+            text: qsTrId("rustrx-bt-qr-continue")
+            onClicked: { page.continued = true; app.route() }
+        },
+        // the code's minute is short; a scanned code has nothing to renew
+        PageButton {
+            visible: !page.scanned && page.state_ !== "done" && !page.restarting && !restartLater.running
+                     && (page.error.length > 0 || (page.state_ === "qr" && panel.expired))
+            //% "Show a new code"
+            text: qsTrId("rustrx-bt-qr-new")
+            onClicked: page.newCode()
+        },
+        PageButton {
+            visible: page.state_ !== "done"
+            //% "Cancel"
+            text: qsTrId("rustrx-bt-sso-cancel")
+            onClicked: { if (rustrx.loggingIn) rustrx.command({ cmd: "login_cancel" }); pageStack.pop() }
+        }
+    ]
 }

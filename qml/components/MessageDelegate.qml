@@ -130,6 +130,39 @@ ListItem {
     property bool exporting
     // a tap opens the copy in another app; "Save to Downloads" only saves it
     property bool exportOpens
+    // a file opening or saving, a sound being fetched: a spinner in the
+    // time line, and taps wait for it (0.8 audit, item 7)
+    readonly property bool busy: exporting || wantPlay
+
+    // a message from a device its sender has not verified (the core's red shield)
+    readonly property bool unverified: !!model.shield && model.shield.indexOf("red") === 0
+
+    // GIFs move (AnimatedImage; Image shows the first frame only). In the
+    // chat only those in view play, by themselves if "Play GIFs" is on,
+    // else after a tap; once, unless "Loop GIFs" is on. The thumbnail may be
+    // a still JPEG, so the moving one is the full file (the author, 0.8)
+    readonly property bool isGif: msgType === "image" && model.mime === "image/gif"
+    readonly property bool inView: {
+        var v = msg.ListView.view
+        if (!v || !msg.visible || !Qt.application.active) return false
+        return msg.y + msg.height > v.contentY && msg.y < v.contentY + v.height
+    }
+    // played by a tap, until it leaves the view
+    property bool gifTapped
+    // played to its end once (no looping): it stays on its last frame
+    property bool gifDone
+    // it moves right now (set from inside the picture's component)
+    property bool gifAnimating
+    readonly property bool gifWanted: isGif && inView && !gifDone && (gifTapped || app.settings.gifAutoplay)
+    onInViewChanged: if (!inView) { gifTapped = false; gifDone = false }
+    // the moving GIF needs the full file: fetched when it is to play
+    onGifWantedChanged: fetchGif()
+    property bool gifAsked
+    function fetchGif() {
+        if (gifAsked || !gifWanted || !eventId.length || model.media_path && model.media_path.length) return
+        gifAsked = true
+        rustrx.getMedia(roomId, eventId, false)
+    }
 
     // other apps cannot read this app's data folder: a copy goes to Downloads
     function openMedia() {
@@ -158,22 +191,39 @@ ListItem {
     }
 
     // A double tap replies, without the long press (side swipes belong to
-    // the tabs and the room page). A single tap (opening a picture, playing
-    // audio) waits the system's double-tap interval first: at the first
-    // release Qt cannot know whether a second tap follows.
+    // the tabs and the room page). Where a single tap does something
+    // itself (a picture, video, file, sound or place opens, a failed
+    // message goes again) it acts at once and a double tap does not reply
+    // there: waiting the double-tap interval read as lag (0.8 audit,
+    // item 7). Elsewhere (a thread's reply in the room's flow) the single
+    // tap still waits, as Qt cannot know at the first release whether a
+    // second tap follows.
+    readonly property bool tapsAtOnce: failed || isMedia || isFile || msgType === "location"
     onDoubleClicked: {
         singleTap.stop()
-        if (!canAct || failed) return
+        if (tapsAtOnce || !canAct) return
         msg.reply(model.event_id, (model.sender_name || model.sender) + ": " + (model.body || ""))
     }
-    onClicked: singleTap.restart()
+    onClicked: {
+        if (!tapsAtOnce) { singleTap.restart(); return }
+        // the second tap of a double tap, or a tap while it still loads
+        if (tapCalm.running || busy) return
+        tapCalm.restart()
+        msg.tapped()
+    }
     Timer {
         id: singleTap
         interval: Qt.styleHints.mouseDoubleClickInterval
         onTriggered: msg.tapped()
     }
+    Timer { id: tapCalm; interval: Qt.styleHints.mouseDoubleClickInterval }
 
     function tapped() {
+        // not sent: a tap sends it again as it was (0.8 audit, item 6)
+        if (failed) {
+            if (model.txn_id) msg.resend(model.txn_id)
+            return
+        }
         // a reply in a thread, shown in the room's flow: on to its thread
         // (pictures, files, sounds and places still open themselves)
         if (model.thread_root && !inThread && !isMedia && !isFile && msgType !== "audio" && msgType !== "location") {
@@ -193,8 +243,13 @@ ListItem {
         } else if (msgType === "video") {
             pageStack.push(Qt.resolvedUrl("../pages/VideoPage.qml"), { roomId: roomId, eventId: eventId,
                            source: model.media_path || "" })
+        } else if (isGif && !gifAnimating) {
+            // a GIF standing still plays at a tap; a tap on a moving one opens it
+            gifDone = false
+            gifTapped = true
+            fetchGif()
         } else if (msgType === "image" || msgType === "sticker") {
-            pageStack.push(Qt.resolvedUrl("../pages/ImagePage.qml"), { roomId: roomId, eventId: eventId,
+            pageStack.push(Qt.resolvedUrl("../pages/ImagePage.qml"), { roomId: roomId, eventId: eventId, mime: model.mime || "",
                            source: model.media_path || model.thumb_path || "", fullLoaded: !!(model.media_path && model.media_path.length) })
         } else if (isMedia || isFile) {
             openMedia()
@@ -224,7 +279,8 @@ ListItem {
             if (exportOpens) msg.openFile(path)
             else Notices.show(qsTrId("rustrx-no-saved").arg(path))
         }
-        onErrorOccurred: if (exporting && cmd === "get_media") exporting = false
+        // the error names no event: whatever waited for a file stops waiting
+        onErrorOccurred: if (cmd === "get_media") { exporting = false; wantPlay = false; gifAsked = false }
     }
 
     // a media row asks for its picture once it is on screen: the thumbnail
@@ -238,9 +294,10 @@ ListItem {
     }
     Component.onCompleted: {
         requestPicture()
+        fetchGif()
         syncSpoilers()
     }
-    onEventIdChanged: requestPicture()
+    onEventIdChanged: { requestPicture(); fetchGif() }
 
     // the size of Twemoji in the small lines (reactions, a thread's latest
     // reply), which the model renders
@@ -418,13 +475,43 @@ ListItem {
 
                     // a thin bar marks a mention; plain bodies get their addresses linked
                     Row {
+                        id: bodyRow
+                        // what goes before the text: the mention bar, a file's or a place's icon
+                        readonly property real lead: (mentionBar ? spacing + Tunables.barWidth : 0)
+                                                     + (kindIcon.visible ? spacing + kindIcon.width : 0)
                         visible: !isMedia
-                        width: Math.min(body.implicitWidth + (mentionBar ? spacing + Tunables.barWidth : 0), innerMax)
+                        width: Math.min(body.implicitWidth + lead, innerMax)
                         spacing: Theme.paddingSmall
                         Rectangle { visible: mentionBar; width: Tunables.barWidth; height: body.height; color: Theme.highlightColor }
+                        // the kind of file at a glance (the system's icon for
+                        // its type), a pin on a place (0.8 audit, icons)
+                        Item {
+                            id: kindIcon
+                            visible: msgType === "file" || msgType === "location"
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Theme.iconSizeMedium
+                            height: width
+                            // the file icons keep their own colours, as in the file manager
+                            HighlightImage {
+                                visible: msgType === "file"
+                                anchors.fill: parent
+                                sourceSize.width: width
+                                sourceSize.height: height
+                                source: visible ? Theme.iconForMimeType(model.mime || "") : ""
+                                highlighted: msg.highlighted
+                            }
+                            Icon {
+                                visible: msgType === "location"
+                                anchors.fill: parent
+                                sourceSize.width: width
+                                sourceSize.height: height
+                                source: visible ? "image://theme/icon-m-location" : ""
+                                color: mainColor
+                            }
+                        }
                         Label {
                             id: body
-                            width: parent.width - (mentionBar ? parent.spacing + Tunables.barWidth : 0)
+                            width: parent.width - bodyRow.lead
                             wrapMode: Text.Wrap
                             textFormat: msgType === "text" || msgType === "notice" || msgType === "emote" || htmlText.length > 0 ? Text.StyledText : Text.PlainText
                             color: msgType === "utd" || msgType === "redacted" ? dimColor : (mention ? Theme.highlightColor : mainColor)
@@ -505,6 +592,60 @@ ListItem {
                                     }
                                     // what the bubble's width comes to in portrait: decoded once
                                     sourceSize.width: Math.round(Screen.width * Tunables.mediaMaxWidth)
+                                    // under a moving GIF (a transparent one showed the still through)
+                                    opacity: gif.status === Image.Ready ? 0 : 1
+                                }
+                                // a GIF that moves: the full file, over the still
+                                AnimatedImage {
+                                    id: gif
+                                    anchors.fill: parent
+                                    visible: status === Image.Ready
+                                    asynchronous: true
+                                    cache: false
+                                    fillMode: Image.PreserveAspectFit
+                                    source: isGif && model.media_path && model.media_path.length ? "file://" + model.media_path : ""
+                                    playing: msg.gifWanted
+                                    // no looping: it stops on its last frame
+                                    onCurrentFrameChanged: if (!app.settings.gifLoop && frameCount > 1 && currentFrame === frameCount - 1) msg.gifDone = true
+                                    // one that ends by itself (its own loop count) counts as done; looping, it starts again
+                                    onPlayingChanged: if (!playing && msg.gifWanted) {
+                                        msg.gifDone = true
+                                        if (app.settings.gifLoop) gifAgain.restart()
+                                    }
+                                    Timer { id: gifAgain; interval: 0; onTriggered: msg.gifDone = false }
+                                }
+                                Binding { target: msg; property: "gifAnimating"; value: gif.visible && gif.playing && gif.frameCount > 1 }
+                                // a GIF standing still says what it is, so a tap is expected to play it
+                                Rectangle {
+                                    visible: isGif && !msg.gifAnimating
+                                    anchors { left: parent.left; bottom: parent.bottom; margins: Theme.paddingSmall }
+                                    width: gifMark.implicitWidth + 2 * Theme.paddingSmall
+                                    height: gifMark.implicitHeight
+                                    radius: Theme.paddingSmall
+                                    color: Theme.rgba(Theme.overlayBackgroundColor, Theme.opacityOverlay)
+                                    Label {
+                                        id: gifMark
+                                        anchors.centerIn: parent
+                                        //: the mark on a GIF that is not moving; a tap plays it
+                                        //% "GIF"
+                                        text: qsTrId("rustrx-la-gif")
+                                        font.pixelSize: Theme.fontSizeExtraSmall
+                                        font.bold: true
+                                        color: Theme.primaryColor
+                                    }
+                                }
+                                // a video is told from a photo before the tap (0.8 audit, icons)
+                                Image {
+                                    visible: msgType === "video" && picture.status === Image.Ready
+                                    anchors.centerIn: parent
+                                    readonly property real side: Math.min(parent.width, parent.height) > 2 * Theme.iconSizeLarge
+                                                                 ? Theme.iconSizeLarge : Theme.iconSizeMedium
+                                    width: side
+                                    height: side
+                                    sourceSize.width: side
+                                    sourceSize.height: side
+                                    source: visible ? "image://theme/icon-l-opaque-play" : ""
+                                    opacity: msg.highlighted ? Theme.opacityHigh : 1
                                 }
                                 Label {
                                     anchors.centerIn: parent
@@ -693,11 +834,15 @@ ListItem {
                                     id: inThreadRow
                                     x: Theme.paddingSmall
                                     spacing: Theme.paddingSmall
-                                    Image {
+                                    // the thread mark: one icon in one size everywhere (0.8 audit, icons)
+                                    Icon {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        sourceSize.width: Theme.iconSizeExtraSmall
-                                        sourceSize.height: Theme.iconSizeExtraSmall
-                                        source: "image://theme/icon-m-menu?" + Theme.secondaryHighlightColor
+                                        width: Theme.iconSizeSmall
+                                        height: width
+                                        sourceSize.width: width
+                                        sourceSize.height: height
+                                        source: "image://theme/icon-s-chat"
+                                        color: inThreadLine.highlighted ? Theme.highlightColor : Theme.secondaryHighlightColor
                                     }
                                     Label {
                                         anchors.verticalCenter: parent.verticalCenter
@@ -726,12 +871,15 @@ ListItem {
                                     x: Theme.paddingSmall
                                     y: Theme.paddingSmall
                                     spacing: Theme.paddingSmall
-                                    // the thread mark: Silica's menu lines
-                                    Image {
+                                    // the thread mark, as above
+                                    Icon {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        sourceSize.width: Theme.iconSizeSmall
-                                        sourceSize.height: Theme.iconSizeSmall
-                                        source: "image://theme/icon-m-menu?" + Theme.highlightColor
+                                        width: Theme.iconSizeSmall
+                                        height: width
+                                        sourceSize.width: width
+                                        sourceSize.height: height
+                                        source: "image://theme/icon-s-chat"
+                                        color: Theme.highlightColor
                                     }
                                     Label {
                                         anchors.verticalCenter: parent.verticalCenter
@@ -758,38 +906,86 @@ ListItem {
                         }
                     }
 
-                    Label {
-                        // at the bubble's right edge
+                    // a message the server did not take, said plainly in the
+                    // error colour; a tap sends it again (0.8 audit, item 6)
+                    Row {
+                        visible: failed
                         x: parent.width - width
-                        width: Math.min(implicitWidth, innerMax)
-                        truncationMode: TruncationMode.Fade
-                        font.pixelSize: Theme.fontSizeTiny
-                        color: dimColor
-                        text: {
-                            var t = rustrx.formatTime(model.ts)
-                            if (uploading)
-                                //: a file on its way to the server, %1 how much of it, in percent
-                                //% "uploading %1 %"
-                                t += " · " + qsTrId("rustrx-la-uploading").arg(Math.round(uploadFraction * 100))
-                            //% "sending"
-                            else if (model.send_state === "sending") t += " · " + qsTrId("rustrx-la-sending")
-                            //% "not sent"
-                            if (model.send_state === "failed") t += " · " + qsTrId("rustrx-la-not-sent")
-                            //% "edited"
-                            if (model.edited) t += " · " + qsTrId("rustrx-la-edited")
-                            if (model.shield && model.shield.indexOf("red") === 0)
-                                //: a message from a device the sender has not verified
-                                //% "unverified device"
-                                t += " · " + qsTrId("rustrx-la-shield-red")
-                            else if (model.shield && model.shield.indexOf("grey") === 0)
-                                //: authenticity cannot be checked (e.g. a key from backup)
-                                //% "not verifiable"
-                                t += " · " + qsTrId("rustrx-la-shield-grey")
-                            if (app.showReadBy && model.read_by && model.read_by.length)
-                                //: %1 the names of the people whose read receipt sits on this message
-                                //% "read by %1"
-                                t += " · " + qsTrId("rustrx-la-read-by").arg(model.read_by.join(", "))
-                            return t
+                        spacing: Theme.paddingSmall
+                        Icon {
+                            id: failedMark
+                            anchors.verticalCenter: parent.verticalCenter
+                            source: "image://theme/icon-s-warning"
+                            color: Theme.errorColor
+                        }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.min(implicitWidth, innerMax - failedMark.width - parent.spacing)
+                            wrapMode: Text.Wrap
+                            font.pixelSize: Theme.fontSizeExtraSmall
+                            color: Theme.errorColor
+                            //% "Not sent. Tap to send again."
+                            text: qsTrId("rustrx-la-not-sent-tap")
+                        }
+                    }
+
+                    // the time and the message's state, at the bubble's right
+                    // edge: a spinner while its file opens or saves, a warning
+                    // mark on a message from an unverified device
+                    Row {
+                        id: stateRow
+                        x: parent.width - width
+                        spacing: Theme.paddingSmall
+                        readonly property real markSize: Math.round(Theme.fontSizeExtraSmall * Tunables.emojiScale)
+                        BusyIndicator {
+                            id: busyMark
+                            anchors.verticalCenter: parent.verticalCenter
+                            size: BusyIndicatorSize.ExtraSmall
+                            running: msg.busy
+                            visible: running
+                        }
+                        Icon {
+                            id: shieldMark
+                            visible: msg.unverified
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: stateRow.markSize
+                            height: width
+                            sourceSize.width: width
+                            sourceSize.height: height
+                            source: "image://theme/icon-s-high-importance"
+                            color: Theme.errorColor
+                        }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.min(implicitWidth, innerMax - (busyMark.visible ? busyMark.width + parent.spacing : 0)
+                                                                    - (shieldMark.visible ? shieldMark.width + parent.spacing : 0))
+                            truncationMode: TruncationMode.Fade
+                            font.pixelSize: Theme.fontSizeTiny
+                            color: dimColor
+                            text: {
+                                var t = rustrx.formatTime(model.ts)
+                                if (uploading)
+                                    //: a file on its way to the server, %1 how much of it, in percent
+                                    //% "uploading %1 %"
+                                    t += " · " + qsTrId("rustrx-la-uploading").arg(Math.round(uploadFraction * 100))
+                                //% "sending"
+                                else if (model.send_state === "sending") t += " · " + qsTrId("rustrx-la-sending")
+                                //% "edited"
+                                if (model.edited) t += " · " + qsTrId("rustrx-la-edited")
+                                if (msg.unverified)
+                                    //: a message from a device the sender has not verified
+                                    //% "unverified device"
+                                    t += " · " + qsTrId("rustrx-la-shield-red")
+                                else if (model.shield && model.shield.indexOf("grey") === 0)
+                                    //: authenticity cannot be checked (e.g. a key from backup)
+                                    //% "not verifiable"
+                                    t += " · " + qsTrId("rustrx-la-shield-grey")
+                                if (app.showReadBy && model.read_by && model.read_by.length)
+                                    //: %1 the names of the people whose read receipt sits on this message
+                                    //% "read by %1"
+                                    t += " · " + qsTrId("rustrx-la-read-by").arg(model.read_by.join(", "))
+                                return t
+                            }
                         }
                     }
                 }

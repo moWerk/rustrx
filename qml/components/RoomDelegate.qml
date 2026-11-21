@@ -20,7 +20,7 @@ import Sailfish.Silica 1.0
 import "../markup.js" as Markup
 
 // One room: name and a second line (topic, or the invitation), the unread
-// count at the right. Long press for favourite, mark read, leave.
+// count at the right. Long press for Favs, mark read, leave.
 ListItem {
     id: item
     width: ListView.view.width
@@ -251,7 +251,8 @@ ListItem {
         }
 
         // the last message (1 to 3 lines, the last faded). The room's state
-        // leads its first line: a stop sign when muted, a lock when
+        // leads its first line: a handset while a call runs, a crossed-out
+        // speaker when muted, a lock when
         // encrypted, a check when one's own last message was read. Only the
         // first line makes room for them (lineLaidOut), so the lines below
         // start at the left edge. The topic or the state where there is no
@@ -267,22 +268,25 @@ ListItem {
                 spacing: Theme.paddingSmall
                 // centred on the preview's first line
                 y: (firstLine.height - height) / 2
-                // a call is running in the room
+                // a call is running in the room: the plain handset, as the
+                // room page shows it (the incoming-call arrow read as "someone
+                // is calling you", 0.8 audit)
                 Image {
                     visible: model.in_call === true && !invited
                     anchors.verticalCenter: parent.verticalCenter
-                    source: "image://theme/icon-s-incoming-call?" + Theme.highlightColor
+                    source: "image://theme/icon-m-call?" + Theme.highlightColor
                     sourceSize.width: parent.parent.iconSize
                     sourceSize.height: parent.parent.iconSize
                 }
-                // muted: Silica's stop sign; its canvas is 42 px where the
-                // lock's is 48, so it is drawn at that ratio
+                // muted: the crossed-out speaker; the stop sign read as
+                // "blocked", next to Ignored users (0.8 audit). Its glyph
+                // fills more of its canvas than the lock: a tenth smaller
                 Image {
                     visible: model.muted === true && !invited
                     anchors.verticalCenter: parent.verticalCenter
-                    source: "image://theme/icon-s-blocked?" + parent.parent.iconColor
-                    sourceSize.width: Math.round(parent.parent.iconSize * 42 / 48)
-                    sourceSize.height: Math.round(parent.parent.iconSize * 42 / 48)
+                    source: "image://theme/icon-m-speaker-mute?" + parent.parent.iconColor
+                    sourceSize.width: Math.round(parent.parent.iconSize * 0.9)
+                    sourceSize.height: Math.round(parent.parent.iconSize * 0.9)
                 }
                 Image {
                     visible: model.encrypted && !invited

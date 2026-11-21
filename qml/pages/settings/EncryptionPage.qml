@@ -18,7 +18,7 @@ import QtQuick 2.6
 import Sailfish.Silica 1.0
 import "../../components"
 
-// Settings, Account, Encryption: verifying this device, the recovery key and
+// Settings, Account, Encryption: verifying this phone, the recovery key and
 // key backup, a reset, and room keys to and from a file. Rare, stateful and
 // partly dangerous, so on a page of their own. The results live on the
 // Settings page (`settings`): a new recovery key is shown only once.
@@ -29,9 +29,10 @@ Page {
 
     function verificationText() {
         switch (rustrx.verificationState) {
-        //% "This device is verified."
+        // "this phone" for one's own, "device" for the others (0.8 audit)
+        //% "This phone is verified."
         case "verified": return qsTrId("rustrx-la-device-verified")
-        //% "This device is not verified yet. Verify it from another device you are logged in on, or start the verification here."
+        //% "This phone is not verified yet. Verify it from another device you are logged in on, or start the verification here."
         case "unverified": return qsTrId("rustrx-la-device-unverified")
         //% "Verification state not known yet."
         default: return qsTrId("rustrx-la-device-unknown")
@@ -40,9 +41,9 @@ Page {
 
     function recoveryText() {
         switch (rustrx.recoveryState) {
-        //% "Key backup is on and this device holds the recovery secrets. Older encrypted messages are restored from the backup."
+        //% "Key backup is on and this phone holds the recovery secrets. Older encrypted messages are restored from the backup."
         case "enabled": return qsTrId("rustrx-la-recovery-enabled")
-        //% "Key backup exists, but this device lacks the recovery key. Enter it below to read older encrypted messages."
+        //% "Key backup exists, but this phone lacks the recovery key. Enter it below to read older encrypted messages."
         case "incomplete": return qsTrId("rustrx-la-recovery-incomplete")
         //% "Key backup is off. Turn it on to keep encrypted messages readable after a new login."
         case "disabled": return qsTrId("rustrx-la-recovery-disabled")
@@ -71,7 +72,7 @@ Page {
 
             PageButton {
                 visible: rustrx.verificationState !== "verified"
-                //% "Verify this device"
+                //% "Verify this phone"
                 text: qsTrId("rustrx-bt-verify-device")
                 onClicked: {
                     rustrx.command({ cmd: "verification_request_self" })
@@ -99,6 +100,7 @@ Page {
                 EnterKey.enabled: text.trim().length > 0
                 EnterKey.iconSource: "image://theme/icon-m-enter-accept"
                 EnterKey.onClicked: {
+                    settings.recoveryError = ""
                     //% "Restoring…"
                     settings.recoveryResult = qsTrId("rustrx-la-restoring")
                     rustrx.command({ cmd: "recovery_recover", recovery_key: text })
@@ -112,6 +114,7 @@ Page {
                 //% "Restore encrypted messages"
                 text: qsTrId("rustrx-bt-restore")
                 onClicked: {
+                    settings.recoveryError = ""
                     settings.recoveryResult = qsTrId("rustrx-la-restoring")
                     rustrx.command({ cmd: "recovery_recover", recovery_key: keyField.text })
                 }
@@ -122,40 +125,31 @@ Page {
                 visible: rustrx.recoveryState === "incomplete" && rustrx.verificationState !== "verified"
                 //% "Reset encryption"
                 text: qsTrId("rustrx-bt-reset-identity")
+                //% "No other device and no recovery key? A reset makes new encryption keys and a new backup with a new recovery key. Older encrypted messages stay unreadable, and your other devices have to be verified again."
+                hint: qsTrId("rustrx-la-reset-identity-hint")
                 onClicked: {
                     var core = rustrx
                     var shell = settings
                     //% "Resetting the encryption"
                     remorse.execute(qsTrId("rustrx-re-reset-identity"), function () {
+                        shell.recoveryError = ""
                         //% "Resetting… the server may ask you to approve it in the browser."
                         shell.recoveryResult = qsTrId("rustrx-la-resetting")
                         core.command({ cmd: "identity_reset" })
                     })
                 }
             }
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                visible: rustrx.recoveryState === "incomplete" && rustrx.verificationState !== "verified"
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
-                //% "No other device and no recovery key? A reset makes new encryption keys and a new backup with a new recovery key. Older encrypted messages stay unreadable, and your other devices have to be verified again."
-                text: qsTrId("rustrx-la-reset-identity-hint")
-            }
-            // the approval page, if the browser did not open by itself
-            Row {
+            // the approval page, if the browser did not open by itself; side
+            // by side where they fit, stacked for a long translation (0.8 audit)
+            ButtonLayout {
+                width: parent.width
                 visible: settings.resetApprovalUrl.length > 0
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: Theme.paddingLarge
-                PageButton {
-                    inRow: true
+                Button {
                     //% "Open approval"
                     text: qsTrId("rustrx-bt-open-approval")
                     onClicked: app.openExternal(settings.resetApprovalUrl)
                 }
-                PageButton {
-                    inRow: true
+                Button {
                     text: qsTrId("rustrx-bt-sso-copy")
                     onClicked: {
                         Clipboard.text = settings.resetApprovalUrl
@@ -169,6 +163,7 @@ Page {
                 //% "Turn on key backup"
                 text: qsTrId("rustrx-bt-enable-backup")
                 onClicked: {
+                    settings.recoveryError = ""
                     //% "Setting up the backup…"
                     settings.recoveryResult = qsTrId("rustrx-la-enabling-backup")
                     rustrx.command({ cmd: "recovery_enable" })
@@ -180,36 +175,29 @@ Page {
                 visible: rustrx.recoveryState === "enabled"
                 //% "New recovery key"
                 text: qsTrId("rustrx-bt-new-recovery-key")
+                //% "Lost the recovery key? A new one replaces it. The backup and your messages stay, only the old key stops working."
+                hint: qsTrId("rustrx-la-new-recovery-key-hint")
                 onClicked: {
                     var core = rustrx
                     var shell = settings
                     //% "Making a new recovery key"
                     remorse.execute(qsTrId("rustrx-re-new-recovery-key"), function () {
+                        shell.recoveryError = ""
                         //% "Making a new recovery key…"
                         shell.recoveryResult = qsTrId("rustrx-la-new-recovery-key")
                         core.command({ cmd: "recovery_reset" })
                     })
                 }
             }
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                visible: rustrx.recoveryState === "enabled"
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
-                //% "Lost the recovery key? A new one replaces it. The backup and your messages stay, only the old key stops working."
-                text: qsTrId("rustrx-la-new-recovery-key-hint")
-            }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                visible: settings.recoveryResult.length > 0
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.secondaryHighlightColor
+            // how it went; a failure in the error colour, not the colour of
+            // success (0.8 audit)
+            Note {
+                kind: "status"
                 text: settings.recoveryResult
+            }
+            Note {
+                kind: "error"
+                text: settings.recoveryError
             }
 
             Label {
@@ -233,21 +221,10 @@ Page {
             Item { width: 1; height: Theme.paddingLarge }
 
             // room keys to and from a file, for another client or a backup of one's own
-            BackgroundItem {
-                id: keysRow
-                width: parent.width
+            LinkRow {
+                //% "Export or import room keys"
+                text: qsTrId("rustrx-la-keys-file")
                 onClicked: pageStack.push(Qt.resolvedUrl("../KeysPage.qml"))
-                Label {
-                    x: Theme.horizontalPageMargin
-                    anchors.verticalCenter: parent.verticalCenter
-                    //% "Export or import room keys"
-                    text: qsTrId("rustrx-la-keys-file")
-                    color: keysRow.highlighted ? Theme.highlightColor : Theme.primaryColor
-                }
-                Image {
-                    anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin - Theme.paddingMedium; verticalCenter: parent.verticalCenter }
-                    source: "image://theme/icon-m-right?" + (keysRow.highlighted ? Theme.highlightColor : Theme.primaryColor)
-                }
             }
 
             Item { width: 1; height: Theme.paddingLarge }

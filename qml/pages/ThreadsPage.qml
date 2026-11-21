@@ -110,6 +110,7 @@ Page {
         }
 
         BusyIndicator {
+            visible: running
             anchors.centerIn: parent
             size: BusyIndicatorSize.Large
             running: page.loading && page.threads.length === 0

@@ -20,7 +20,7 @@ import "../components"
 
 // One verification, incoming or started here: the request, then the seven
 // emoji, then done. Going back cancels it.
-Page {
+ShortPage {
     id: page
 
     property string flowId
@@ -45,7 +45,7 @@ Page {
         //% "Request sent. Accept it on the other device."
         case "ready": return qsTrId("rustrx-la-ver-sent")
         //: %1 the other device's name or id
-        //% "%1 wants to verify this device. Accept to compare emoji."
+        //% "%1 wants to verify this phone. Accept to compare emoji."
         case "requested": return qsTrId("rustrx-la-ver-requested").arg(info.other_device_name || info.other_device || info.other_user || "")
         //% "Starting the emoji comparison…"
         case "sas": return qsTrId("rustrx-la-ver-starting")
@@ -64,104 +64,106 @@ Page {
         }
     }
 
-    SilicaFlickable {
-        anchors.fill: parent
-        contentHeight: column.height
+    // the self-verification is about this phone; another person's is
+    // about their device (0.8 audit: "this phone" for the user's own)
+    title: waiting || info.self_verification === true
+           ? qsTrId("rustrx-he-verify-phone")
+           //% "Verify device"
+           : qsTrId("rustrx-he-verify")
 
-        Column {
-            id: column
-            width: parent.width
-            spacing: Theme.paddingLarge
-
-            //% "Verify device"
-            PageHeader { title: qsTrId("rustrx-he-verify") }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: Theme.highlightColor
-                text: stateText()
-            }
-
-            BusyIndicator {
-                anchors.horizontalCenter: parent.horizontalCenter
-                size: BusyIndicatorSize.Large
-                running: phase === "waiting" || phase === "created" || phase === "ready" || phase === "sas" || phase === "confirmed"
-            }
-
-            PageButton {
-                visible: phase === "requested"
-                //% "Accept"
-                text: qsTrId("rustrx-bt-accept")
-                onClicked: rustrx.command({ cmd: "verification_accept", flow_id: flowId })
-            }
-
-            PageButton {
-                visible: phase === "ready" && !info.we_started
-                //% "Start emoji comparison"
-                text: qsTrId("rustrx-bt-start-sas")
-                onClicked: rustrx.command({ cmd: "verification_start_sas", flow_id: flowId })
-            }
-
-            Grid {
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: phase === "keys_exchanged" && emojis.length > 0
-                columns: 4
-                spacing: Theme.paddingLarge
-                Repeater {
-                    model: emojis
-                    Column {
-                        width: Theme.itemSizeLarge
-                        Label {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: modelData.symbol
-                            font.pixelSize: Theme.fontSizeHuge
-                        }
-                        Label {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: modelData.description
-                            font.pixelSize: Theme.fontSizeExtraSmall
-                            color: Theme.secondaryColor
-                        }
+    body: [
+        // done ends in the large green check, as the QR login does
+        FlowStatus {
+            text: page.stateText()
+            done: page.phase === "done"
+            busy: page.phase === "waiting" || page.phase === "created" || page.phase === "ready"
+                  || page.phase === "sas" || page.phase === "confirmed"
+        },
+        // four to a row inside the margins; a long name wraps in its cell
+        // instead of running into the next (0.8 audit)
+        Grid {
+            id: grid
+            readonly property real cell: (parent.width - 2 * Theme.horizontalPageMargin - 3 * Theme.paddingMedium) / 4
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: page.phase === "keys_exchanged" && page.emojis.length > 0
+            columns: 4
+            spacing: Theme.paddingMedium
+            Repeater {
+                model: page.emojis
+                Column {
+                    width: grid.cell
+                    Label {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: modelData.symbol
+                        font.pixelSize: Theme.fontSizeHuge
+                    }
+                    Label {
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.Wrap
+                        text: modelData.description
+                        font.pixelSize: Theme.fontSizeExtraSmall
+                        color: Theme.secondaryColor
                     }
                 }
             }
-
-            Label {
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: phase === "keys_exchanged" && emojis.length === 0 && decimals
-                text: decimals ? decimals.join("  ") : ""
-                font.pixelSize: Theme.fontSizeHuge
-            }
-
-            // the two answers stacked, far apart: side by side a slip on
-            // "They differ" could hit "They match", which trusts the other
-            // device (0.8 audit)
-            Column {
-                width: parent.width
-                visible: phase === "keys_exchanged"
-                spacing: Theme.itemSizeMedium
-                PageButton {
-                    //% "They match"
-                    text: qsTrId("rustrx-bt-match")
-                    onClicked: rustrx.command({ cmd: "verification_confirm", flow_id: flowId })
-                }
-                PageButton {
-                    //% "They differ"
-                    text: qsTrId("rustrx-bt-mismatch")
-                    onClicked: rustrx.command({ cmd: "verification_mismatch", flow_id: flowId })
-                }
-            }
-
-            PageButton {
-                visible: finished
-                //% "Done"
-                text: qsTrId("rustrx-bt-done")
-                onClicked: pageStack.pop()
-            }
+        },
+        BigCode {
+            text: page.phase === "keys_exchanged" && page.emojis.length === 0 && page.decimals
+                  ? page.decimals.join("  ") : ""
         }
-    }
+    ]
+
+    buttons: [
+        PageButton {
+            visible: page.phase === "requested"
+            //% "Accept"
+            text: qsTrId("rustrx-bt-accept")
+            onClicked: rustrx.command({ cmd: "verification_accept", flow_id: page.flowId })
+        },
+        PageButton {
+            visible: page.phase === "ready" && !page.info.we_started
+            //% "Start emoji comparison"
+            text: qsTrId("rustrx-bt-start-sas")
+            onClicked: rustrx.command({ cmd: "verification_start_sas", flow_id: page.flowId })
+        },
+        // the two answers stacked, far apart: side by side a slip on
+        // "They differ" could hit "They match", which trusts the other
+        // device (0.8 audit)
+        Column {
+            width: parent.width
+            visible: page.phase === "keys_exchanged"
+            spacing: Theme.itemSizeMedium
+            PageButton {
+                //% "They match"
+                text: qsTrId("rustrx-bt-match")
+                onClicked: rustrx.command({ cmd: "verification_confirm", flow_id: page.flowId })
+            }
+            PageButton {
+                //% "They differ"
+                text: qsTrId("rustrx-bt-mismatch")
+                onClicked: rustrx.command({ cmd: "verification_mismatch", flow_id: page.flowId })
+            }
+        },
+        // waiting for another device of one's own: without one, only the
+        // recovery key helps, and the page now leads there (0.8 audit)
+        PageButton {
+            visible: page.waiting || (page.info.self_verification === true
+                                      && (page.phase === "created" || page.phase === "requested"))
+            //% "No other device? Use the recovery key"
+            text: qsTrId("rustrx-bt-ver-use-key")
+            onClicked: {
+                if (page.flowId.length) rustrx.command({ cmd: "verification_cancel", flow_id: page.flowId })
+                pageStack.replace(Qt.resolvedUrl("SettingsPage.qml"), { showEncryption: true })
+            }
+        },
+        PageButton {
+            visible: page.finished
+            //% "Done"
+            text: qsTrId("rustrx-bt-done")
+            onClicked: pageStack.pop()
+        }
+    ]
 
     Connections {
         target: rustrx

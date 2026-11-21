@@ -18,15 +18,21 @@ import QtQuick 2.6
 import Sailfish.Silica 1.0
 
 // Shown once after a login made this phone a new device that is not
-// verified or lacks the recovery key. Verify opens the encryption settings,
-// as the line on top of the room list does; Later leaves only that line.
+// verified or lacks the recovery key. Verify starts the verification on an
+// unverified phone (it only opened the Account tab, 0.8 audit); with the
+// phone verified and the key missing, it opens the encryption settings, as
+// the line on top of the room list does. Later leaves only that line.
 Dialog {
     id: dialog
     objectName: "verifyNotice"
 
-    acceptDestination: Qt.resolvedUrl("SettingsPage.qml")
-    acceptDestinationProperties: { "showEncryption": true }
+    readonly property bool unverified: rustrx.verificationState === "unverified"
+
+    acceptDestination: unverified ? Qt.resolvedUrl("VerificationPage.qml") : Qt.resolvedUrl("SettingsPage.qml")
+    acceptDestinationProperties: unverified ? { "waiting": true } : { "showEncryption": true }
     acceptDestinationAction: PageStackAction.Replace
+    // as the Encryption page's "Verify this phone" does
+    onAccepted: if (unverified) rustrx.command({ cmd: "verification_request_self" })
 
     SilicaFlickable {
         anchors.fill: parent
@@ -82,5 +88,6 @@ Dialog {
                 text: qsTrId("rustrx-la-verify-phone-later")
             }
         }
+        VerticalScrollDecorator { }
     }
 }

@@ -50,7 +50,8 @@ Page {
         model: page.candidates
 
         header: PageHeader {
-            //% "Add to the space"
+            // one id, one text (SpaceAddPage has the same; 0.8 audit)
+            //% "Add to this space"
             title: qsTrId("rustrx-he-space-add")
             description: page.spaceName
         }

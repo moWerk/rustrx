@@ -251,6 +251,24 @@ def test_translation_file_is_in_step():
     assert not ts - used, sorted(ts - used)[:20]
 
 
+def test_lupdate_takes_every_text():
+    """The build runs lupdate itself: a //% it cannot attach to its
+    qsTrId (another member before it on the line, a function in its
+    arguments) leaves the id without English, and the phone shows the
+    raw id (rustrx-se-debug-log, "Members (%n)"). The committed .ts hides
+    it. Planted-bug: put `id: x;` before a `text: qsTrId(...)` under a //%."""
+    import shutil, subprocess, tempfile
+    tool = shutil.which("lupdate-qt5") or shutil.which("lupdate")
+    if not tool:
+        pytest.skip("no lupdate")
+    with tempfile.TemporaryDirectory() as d:
+        out = subprocess.run([tool, "qml", "src", "-ts", d + "/x.ts"], cwd=ROOT,
+                             capture_output=True, text=True)
+    bad = [l for l in (out.stdout + out.stderr).splitlines()
+           if "Discarding unconsumed meta data" in l or "has no source" in l]
+    assert not bad, bad
+
+
 def test_counted_texts_have_english_plurals():
     """A text with %n shows the English of the .ts when no translation
     is installed; without its two forms it read "1 members". The .ts

@@ -177,7 +177,8 @@ Page {
                 onClicked: {
                     errorText = ""
                     rustrx.loginQr(userField.text, serverField.text)
-                    pageStack.push(Qt.resolvedUrl("QrLoginPage.qml"))
+                    // kept there for "Show a new code"
+                    pageStack.push(Qt.resolvedUrl("QrLoginPage.qml"), { user: userField.text, homeserver: serverField.text })
                 }
             }
 
@@ -285,9 +286,11 @@ Page {
                 onClicked: login()
             }
 
+            // idle it left a hole before "New account" (0.8 audit)
             BusyIndicator {
                 anchors.horizontalCenter: parent.horizontalCenter
                 running: rustrx.loggingIn
+                visible: running
                 size: BusyIndicatorSize.Medium
             }
 
@@ -315,17 +318,16 @@ Page {
                     font.pixelSize: Theme.fontSizeExtraSmall
                     text: page.ssoUrl
                 }
-                Row {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    spacing: Theme.paddingLarge
-                    PageButton {
-                        inRow: true
+                // side by side where they fit, stacked where a translation
+                // is long; a Row ran off the page (0.8 audit)
+                ButtonLayout {
+                    width: parent.width
+                    Button {
                         //% "Open again"
                         text: qsTrId("rustrx-bt-sso-open-again")
                         onClicked: app.openExternal(page.ssoUrl)
                     }
-                    PageButton {
-                        inRow: true
+                    Button {
                         //% "Copy link"
                         text: qsTrId("rustrx-bt-sso-copy")
                         onClicked: {
@@ -437,7 +439,9 @@ Page {
 
     Connections {
         target: rustrx
-        onLoginError: errorText = message
+        // the user's own Cancel (or a new QR code) is no error to show in
+        // red (0.8 audit)
+        onLoginError: if (message !== "login cancelled") errorText = message
         // the sign-on page's address (the window's openUrl handler opens it too)
         onBrowserUrl: if (rustrx.loggingIn) page.ssoUrl = url
         onServerInfo: {

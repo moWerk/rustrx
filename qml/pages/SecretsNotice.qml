@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
 
 // Shown once after login on a phone without a working sailfish-secrets:
 // Rustrx then keeps its store unencrypted, and says so plainly, with how
@@ -82,14 +83,14 @@ Dialog {
                 text: dialog.installCommand
             }
 
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            // a button among texts, with the room every other one has (0.8 audit)
+            PageButton {
                 //% "Copy the command"
                 text: qsTrId("rustrx-bt-copy-command")
                 onClicked: {
                     Clipboard.text = dialog.installCommand
                     //% "Copied"
-                    Notices.show(qsTrId("rustrx-no-copied"))
+                    Notices.show(qsTrId("rustrx-no-copied"), Notice.Short)
                 }
             }
 

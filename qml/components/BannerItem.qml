@@ -18,18 +18,22 @@ import QtQuick 2.6
 import Sailfish.Silica 1.0
 
 // One tappable line in the highlight colour above a list (requests to
-// join, an unverified device); it takes no space while hidden.
+// join, this phone unverified); it takes no space while hidden. A long
+// text wraps: "Notifications are off ... Tap to switch them on." lost its
+// tap hint to the fade on a phone's width (0.8 audit).
 BackgroundItem {
     property alias text: label.text
 
     width: parent ? parent.width : 0
-    height: visible ? Theme.itemSizeSmall : 0
+    height: visible ? Math.max(Theme.itemSizeSmall, label.height + 2 * Theme.paddingMedium) : 0
 
     Label {
         id: label
         x: Theme.horizontalPageMargin
         width: parent.width - 2 * x
         anchors.verticalCenter: parent.verticalCenter
+        wrapMode: Text.Wrap
+        maximumLineCount: 3
         truncationMode: TruncationMode.Fade
         color: Theme.highlightColor
         font.pixelSize: Theme.fontSizeSmall

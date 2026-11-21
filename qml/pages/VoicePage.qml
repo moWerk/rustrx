@@ -151,7 +151,9 @@ Page {
 
         Label {
             anchors.horizontalCenter: parent.horizontalCenter
-            color: Theme.secondaryColor
+            // a static hint in the ambience colour, as on the camera page;
+            // an error in the error colour (0.8 audit)
+            color: voice.error.length ? Theme.errorColor : Theme.secondaryHighlightColor
             font.pixelSize: Theme.fontSizeSmall
             text: voice.error.length ? voice.error
                   //% "Recording, tap to stop"
@@ -160,18 +162,22 @@ Page {
                   : qsTrId("rustrx-la-voice-tap")
         }
 
-        Row {
-            anchors.horizontalCenter: parent.horizontalCenter
-            spacing: Theme.paddingLarge
-            visible: page.recorded && !page.active && !voice.recording && voice.path.length > 0
-            PageButton {
-                inRow: true
+        // opposite answers far apart; the row keeps its room while hidden,
+        // so the timer and the record button do not jump when it comes
+        // (0.8 audit)
+        ButtonLayout {
+            readonly property bool shown: page.recorded && !page.active && !voice.recording && voice.path.length > 0
+            width: parent.width
+            columnSpacing: Theme.paddingLarge * 2
+            rowSpacing: Theme.paddingLarge
+            opacity: shown ? 1 : 0
+            enabled: shown
+            Button {
                 //% "Discard"
                 text: qsTrId("rustrx-bt-discard")
                 onClicked: { voice.discard(); page.elapsed = 0; page.recorded = false }
             }
-            PageButton {
-                inRow: true
+            Button {
                 text: qsTrId("rustrx-bt-send")
                 onClicked: {
                     rustrx.sendVoice(page.roomId, voice.path, page.elapsed, page.takeCaption ? page.takeCaption() : "")

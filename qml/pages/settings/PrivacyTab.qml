@@ -35,8 +35,8 @@ SilicaFlickable {
         width: parent.width
         spacing: Theme.paddingMedium
 
-        // the tab bar is drawn over a tab with a pulley menu; content starts below it
-        Item { width: 1; height: (tab.pullDownMenu ? settings.tabBarHeight : 0) + Theme.paddingMedium }
+        // below the tab bar, as on every tab (SettingsPage.tabTop)
+        Item { width: 1; height: settings.tabTop(tab) }
 
         //% "Read receipts"
         SectionHeader { text: qsTrId("rustrx-se-receipts") }
@@ -120,35 +120,28 @@ SilicaFlickable {
         // what a picture or video says about itself: place, time, camera
         // (src/Exif.h, Png.h, Mp4.h); a downscaled picture is drawn anew
         // and keeps nothing at any level
-        HoldComboBox {
+        ChoiceBox {
             id: metadataBox
-            width: parent.width
             //% "Leave out when sending"
             label: qsTrId("rustrx-la-metadata-level")
-            description: [
-                //% "Pictures and videos go as the camera saved them, with the place and time they were taken."
-                qsTrId("rustrx-la-metadata-keep-hint"),
-                //% "Where a picture or video was taken goes; the rest stays (time, camera, which way up)."
-                qsTrId("rustrx-la-metadata-location-hint"),
-                //% "Pictures and videos leave without the place and time they were taken, the camera and anything else it noted, only which way up they are."
-                qsTrId("rustrx-la-metadata-all-hint")
-            ][Math.max(0, currentIndex)]
-            // the box follows the setting (the ComboBox sets currentIndex itself)
-            readonly property int shownIndex: Math.max(0, Math.min(2, rustrx.metadataLevel))
-            currentIndex: shownIndex
-            onShownIndexChanged: currentIndex = shownIndex
-            menu: ContextMenu {
+            value: Math.max(0, Math.min(2, rustrx.metadataLevel))
+            choices: [{
                 //% "Nothing"
-                MenuItem { text: qsTrId("rustrx-me-metadata-keep") }
+                value: 0, text: qsTrId("rustrx-me-metadata-keep"),
+                //% "Pictures and videos go as the camera saved them, with the place and time they were taken."
+                hint: qsTrId("rustrx-la-metadata-keep-hint")
+            }, {
                 //% "The location"
-                MenuItem { text: qsTrId("rustrx-me-metadata-location") }
+                value: 1, text: qsTrId("rustrx-me-metadata-location"),
+                //% "Where a picture or video was taken goes; the rest stays (time, camera, which way up)."
+                hint: qsTrId("rustrx-la-metadata-location-hint")
+            }, {
                 //% "All metadata"
-                MenuItem { text: qsTrId("rustrx-me-metadata-all") }
-            }
-            onCurrentIndexChanged: {
-                if (currentIndex >= 0 && currentIndex !== rustrx.metadataLevel)
-                    rustrx.metadataLevel = currentIndex
-            }
+                value: 2, text: qsTrId("rustrx-me-metadata-all"),
+                //% "Pictures and videos leave without the place and time they were taken, the camera and anything else it noted, only which way up they are."
+                hint: qsTrId("rustrx-la-metadata-all-hint")
+            }]
+            onChosen: rustrx.metadataLevel = value
         }
 
         //% "Calls"
@@ -201,21 +194,10 @@ SilicaFlickable {
             onClicked: app.strangerInvites = !app.strangerInvites
         }
 
-        BackgroundItem {
-            id: ignoredRow
-            width: parent.width
+        LinkRow {
+            //% "Ignored users"
+            text: qsTrId("rustrx-bt-ignored")
             onClicked: pageStack.push(Qt.resolvedUrl("../IgnoredPage.qml"))
-            Label {
-                x: Theme.horizontalPageMargin
-                anchors.verticalCenter: parent.verticalCenter
-                //% "Ignored users"
-                text: qsTrId("rustrx-bt-ignored")
-                color: ignoredRow.highlighted ? Theme.highlightColor : Theme.primaryColor
-            }
-            Image {
-                anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin - Theme.paddingMedium; verticalCenter: parent.verticalCenter }
-                source: "image://theme/icon-m-right?" + (ignoredRow.highlighted ? Theme.highlightColor : Theme.primaryColor)
-            }
         }
 
         Item { width: 1; height: Theme.paddingLarge }

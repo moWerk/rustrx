@@ -53,11 +53,8 @@ Dialog {
                 text: dialog.account
             }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: Theme.highlightColor
+            Note {
+                kind: "intro"
                 //% "This phone has no recovery key for this account. After logging out, the messages in encrypted rooms cannot be read here again, and if no other device of yours stays logged in, they cannot be read anywhere."
                 text: qsTrId("rustrx-la-logout-no-recovery")
             }

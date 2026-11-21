@@ -342,9 +342,10 @@ Page {
         }
         description: rustrx.syncState === "idle"
                      ? qsTrId("rustrx-la-cover-connecting")
+                     // one word with the cover's for the same state (0.8 audit, T5)
                      : rustrx.syncState !== "running"
-                     //% "Not connected"
-                     ? qsTrId("rustrx-la-not-connected")
+                     //% "Offline"
+                     ? qsTrId("rustrx-la-cover-offline")
                      : typingNames.length === 1
                      //: %1 a name
                      //% "%1 is typing…"
@@ -576,6 +577,7 @@ Page {
             width: list.width
             height: paginating ? Theme.itemSizeSmall : Theme.paddingLarge
             BusyIndicator {
+                visible: running
                 anchors.centerIn: parent
                 size: BusyIndicatorSize.Small
                 running: paginating
@@ -592,6 +594,30 @@ Page {
             }
 
             Item { width: 1; height: Theme.paddingMedium }
+
+            // this room's classic call runs while the user reads the chat:
+            // back to it (the call page no longer keeps the user away)
+            BackgroundItem {
+                visible: rustrx.voip.state !== "idle" && rustrx.voip.state !== "incoming" && rustrx.voip.roomId === roomId
+                width: parent.width
+                height: visible ? Theme.itemSizeSmall : 0
+                onClicked: app.showVoip()
+                Row {
+                    x: Theme.horizontalPageMargin
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.paddingMedium
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        source: "image://theme/icon-m-call"
+                        highlighted: parent.parent.highlighted
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTrId("rustrx-la-call-return").arg(rustrx.voip.peerName || "")
+                        color: Theme.highlightColor
+                    }
+                }
+            }
 
             // a call is running here: join it
             BackgroundItem {
@@ -678,6 +704,7 @@ Page {
         }
 
         BusyIndicator {
+            visible: running
             anchors.centerIn: parent
             size: BusyIndicatorSize.Large
             // also while the room looks for its unread line

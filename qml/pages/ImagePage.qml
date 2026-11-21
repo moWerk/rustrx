@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import Rustrx 1.0
 import Sailfish.Silica 1.0
+import "../components"
 
 // One picture, full screen: pinch or double tap to zoom. Shows the
 // thumbnail at once and swaps in the full image when it has arrived.
@@ -28,6 +29,12 @@ Page {
     property string source
     property bool fullLoaded
     property bool exporting
+    // a GIF moves here, always and looping (AnimatedImage; Image shows the
+    // first frame only), once its full file is in
+    property string mime
+    readonly property bool isGif: mime === "image/gif"
+    // the full picture could not be fetched: no spinner forever (0.8 audit)
+    property string failure
 
     allowedOrientations: Orientation.All
 
@@ -39,7 +46,7 @@ Page {
         onMediaChanged: {
             if (eventId !== page.eventId || page.fullLoaded) return
             var path = rustrx.timeline.mediaPath(eventId)
-            if (path.length) { page.source = path; page.fullLoaded = true }
+            if (path.length) { page.source = path; page.fullLoaded = true; page.failure = "" }
         }
     }
 
@@ -52,8 +59,11 @@ Page {
             //% "Saved to %1"
             Notices.show(qsTrId("rustrx-no-saved").arg(path))
         }
-        // the error names no event; one export runs at a time
-        onErrorOccurred: if (cmd === "get_media") exporting = false
+        // the error names no event; one fetch or export runs here at a time
+        onErrorOccurred: if (cmd === "get_media") {
+            if (!page.exporting && !page.fullLoaded) page.failure = app.friendlyError(cmd, message)
+            page.exporting = false
+        }
     }
 
     SilicaFlickable {
@@ -78,6 +88,7 @@ Page {
             MenuItem {
                 //% "Save to Downloads"
                 text: qsTrId("rustrx-me-save-downloads")
+                enabled: !page.exporting
                 onClicked: { page.exporting = true; rustrx.exportMedia(page.roomId, page.eventId) }
             }
         }
@@ -90,7 +101,8 @@ Page {
             asynchronous: true
             autoTransform: true
             smooth: true
-            source: page.source.length ? "file://" + page.source : ""
+            // under a moving GIF it lets go (a transparent one showed the still through)
+            source: page.source.length && !gif.visible ? "file://" + page.source : ""
 
             PinchArea {
                 anchors.fill: parent
@@ -112,10 +124,32 @@ Page {
             }
         }
 
+        AnimatedImage {
+            id: gif
+            width: flick.contentWidth
+            height: flick.contentHeight
+            visible: status === Image.Ready
+            fillMode: Image.PreserveAspectFit
+            asynchronous: true
+            cache: false
+            smooth: true
+            source: page.isGif && page.fullLoaded && page.source.length ? "file://" + page.source : ""
+            playing: Qt.application.active && page.status === PageStatus.Active
+        }
+
+        // while the full picture comes, and while it is saved
         BusyIndicator {
             anchors.centerIn: parent
             size: BusyIndicatorSize.Large
-            running: !page.fullLoaded
+            running: (!page.fullLoaded && !page.failure.length) || page.exporting
+            visible: running
+        }
+
+        Note {
+            kind: "error"
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: Theme.paddingLarge
+            text: page.failure
         }
     }
 }

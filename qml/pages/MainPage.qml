@@ -238,6 +238,34 @@ Page {
                         letterSize: Math.round(Theme.fontSizeExtraSmall * 1.2 * filterButton.scale_)
                         opacity: accountButton.pressed || page.accountsOpen ? Theme.opacityHigh : 1
                     }
+                    // not connected (after a grace, so a short drop does not
+                    // flicker): a small sync mark at the picture's lower
+                    // right; the list itself would just stop changing (0.8
+                    // audit). Connecting at the start ("idle") is no news.
+                    readonly property bool offline: rustrx.loggedIn && rustrx.syncState !== "running" && rustrx.syncState !== "idle"
+                    property bool showOffline
+                    onOfflineChanged: if (offline) offlineGrace.restart(); else { offlineGrace.stop(); showOffline = false }
+                    Component.onCompleted: if (offline) offlineGrace.start()
+                    Timer {
+                        id: offlineGrace
+                        interval: Tunables.offlineMarkDelayMs
+                        onTriggered: accountButton.showOffline = accountButton.offline
+                    }
+                    Rectangle {
+                        visible: accountButton.showOffline
+                        anchors { right: accountAvatar.right; bottom: accountAvatar.bottom; margins: -width / 4 }
+                        width: Math.round(accountAvatar.width * 0.6)
+                        height: width
+                        radius: width / 2
+                        // a backing so the mark reads on any picture
+                        color: Theme.highlightDimmerColor
+                        Image {
+                            anchors.centerIn: parent
+                            source: "image://theme/icon-s-sync?" + Theme.highlightColor
+                            sourceSize.width: Math.round(parent.width * 0.85)
+                            sourceSize.height: Math.round(parent.width * 0.85)
+                        }
+                    }
                     Rectangle {
                         // not in the merged view: every account's chats are in the list
                         visible: rustrx.otherUnread > 0 && !rustrx.mergedView
@@ -322,25 +350,16 @@ Page {
                         y: rowAvatar.y + rowAvatar.height - height * 0.75
                         colour: app.accountColour(modelData.key)
                     }
-                    Column {
-                        anchors { left: rowAvatar.right; leftMargin: Theme.paddingMedium; right: unreadLabel.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }
-                        Label {
-                            width: parent.width
-                            truncationMode: TruncationMode.Fade
-                            text: modelData.name || modelData.user_id
-                            font.pixelSize: Theme.fontSizeSmall
-                            color: modelData.shown || accountRow.highlighted ? Theme.highlightColor : Theme.primaryColor
-                        }
-                        Label {
-                            width: parent.width
-                            truncationMode: TruncationMode.Fade
-                            text: modelData.logged_in ? modelData.user_id
-                                                      //: an account whose session the server ended
-                                                      //% "Logged out, tap to log in again"
-                                                      : qsTrId("rustrx-la-account-logged-out")
-                            font.pixelSize: Theme.fontSizeExtraSmall
-                            color: Theme.secondaryColor
-                        }
+                    // the list rows' recipe: paddingLarge after the picture (0.8 audit)
+                    RowTexts {
+                        anchors { left: rowAvatar.right; leftMargin: Theme.paddingLarge; right: unreadLabel.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }
+                        highlighted: accountRow.highlighted
+                        accent: modelData.shown === true
+                        text: modelData.name || modelData.user_id
+                        description: modelData.logged_in ? modelData.user_id
+                                                         //: an account whose session the server ended
+                                                         //% "Logged out. Tap to log in again."
+                                                         : qsTrId("rustrx-la-account-logged-out")
                     }
                     Label {
                         id: unreadLabel
@@ -412,7 +431,7 @@ Page {
             Repeater {
                 model: page.sortOpen ? [
                     //: room list option, with any order
-                    //% "Favourites on top"
+                    //% "Favs on top"
                     { key: "favsOnTop", text: qsTrId("rustrx-me-sort-favs-on-top") },
                     //% "Low priority at the bottom"
                     { key: "lowLast", text: qsTrId("rustrx-me-sort-low-last") },
@@ -549,7 +568,7 @@ Page {
                 PullDownMenu {
                     MenuItem {
                         visible: !isSpaces
-                        //% "Add Room / Contact"
+                        //% "Add room or contact"
                         text: qsTrId("rustrx-me-add")
                         onClicked: pageStack.push(Qt.resolvedUrl("SearchPage.qml"))
                     }
@@ -597,15 +616,32 @@ Page {
                         text: qsTrId("rustrx-la-banner-notifications-off")
                     }
 
-                    // one line while this device cannot read encrypted rooms
+                    // a classic call runs while the user is in the chats: back to it
+                    BannerItem {
+                        visible: rustrx.voip.state !== "idle" && rustrx.voip.state !== "incoming"
+                        onClicked: app.showVoip()
+                        //: %1 the other person
+                        //% "Call with %1. Tap to return to it."
+                        text: qsTrId("rustrx-la-call-return").arg(rustrx.voip.peerName || "")
+                    }
+
+                    // one line while this phone cannot read encrypted rooms
                     BannerItem {
                         visible: rustrx.verificationState === "unverified" || rustrx.recoveryState === "incomplete"
-                        // the settings, scrolled to the encryption section, where
-                        // verifying from another device and the recovery key sit
-                        // together: without another device only the key helps
-                        onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { showEncryption: true })
+                        // unverified: "Tap to verify it" starts the verification (it
+                        // only opened the settings; 0.8 audit), whose page offers
+                        // the recovery key to someone without another device;
+                        // the missing key: the settings' encryption part
+                        onClicked: {
+                            if (rustrx.verificationState === "unverified") {
+                                rustrx.command({ cmd: "verification_request_self" })
+                                pageStack.push(Qt.resolvedUrl("VerificationPage.qml"), { waiting: true })
+                            } else {
+                                pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { showEncryption: true })
+                            }
+                        }
                         text: rustrx.verificationState === "unverified"
-                              //% "This device is not verified. Tap to verify it."
+                              //% "This phone is not verified. Tap to verify it."
                               ? qsTrId("rustrx-la-banner-unverified")
                               //% "Older encrypted messages need the recovery key. Tap to enter it."
                               : qsTrId("rustrx-la-banner-recovery")
@@ -621,6 +657,7 @@ Page {
                     anchors.centerIn: parent
                     size: BusyIndicatorSize.Large
                     running: list.count === 0 && !rustrx.roomsLoaded && rustrx.syncState !== "error"
+                    visible: running
                 }
 
                 ViewPlaceholder {
@@ -632,13 +669,13 @@ Page {
                           : rustrx.syncState === "running" || rustrx.syncState === "idle"
                           //% "Nothing here yet"
                           ? qsTrId("rustrx-la-empty")
-                          : qsTrId("rustrx-la-not-connected")
+                          : qsTrId("rustrx-la-cover-offline")
                     hintText: rustrx.roomFilter.length ? ""
                               : !(rustrx.syncState === "running" || rustrx.syncState === "idle")
                               //% "Rustrx connects again by itself once the network is back."
                               ? qsTrId("rustrx-la-offline-hint")
                               : isRooms || isAll
-                              //% "Join or create a room with Add Room / Contact in the pulley menu."
+                              //% "Join or create a room with Add room or contact in the pulley menu."
                               ? qsTrId("rustrx-la-empty-rooms-hint")
                               : isFavs
                               //% "Long press a room or a person and choose Add to Favs."
@@ -646,7 +683,7 @@ Page {
                               : isSpaces
                               //% "A space groups rooms. Make one with New space, or join one with its address in the pulley menu."
                               ? qsTrId("rustrx-la-empty-spaces-hint")
-                              //% "Start a chat with someone with Add Room / Contact in the pulley menu."
+                              //% "Start a chat with someone with Add room or contact in the pulley menu."
                               : qsTrId("rustrx-la-empty-people-hint")
                 }
 

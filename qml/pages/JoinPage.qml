@@ -38,15 +38,19 @@ Page {
     property bool asked
     // what went wrong, in words (the server's own text is in the debug log)
     property string problem
+    // the address leads nowhere: offer to search for its name (the author's wish, 0.8)
+    property bool notFound
 
+    // What only joining says: the user's own server named, the address
+    // typed here, the search on this page; everything else in the app's
+    // words for every page (app.friendlyError, 0.8 audit).
     function problemText(cmd, message) {
         var m = message || ""
         //: %1 the own homeserver, like tchncs.de
         //% "The moderators of this room do not let people from your server (%1) in."
         if (/server is banned/i.test(m)) return qsTrId("rustrx-la-join-server-banned").arg(ownServer)
+        //% "You are banned from it."
         if (/banned/i.test(m)) return qsTrId("rustrx-la-preview-banned")
-        //% "Only invited people can join. Ask someone inside for an invitation."
-        if (/not invited|invite only|invite-only/i.test(m)) return qsTrId("rustrx-la-preview-invite-only")
         // the core's lookup failed: the room's server cannot be reached from
         // the user's (no federation there, or a server that is down)
         //: %1 the own homeserver, %2 the room's server, like matrix.org
@@ -54,13 +58,20 @@ Page {
         if (/could not be looked up/i.test(m) && /federation|502|bad gateway|unreachable|connect/i.test(m))
             return qsTrId("rustrx-la-join-unreachable").arg(ownServer).arg(page.address.split(":").slice(1).join(":") || "?")
         //% "No room or space has this address. Check it, or type part of its name to search."
-        if (/not found|unknown room|M_NOT_FOUND|no known servers|room alias/i.test(m)) return qsTrId("rustrx-la-join-not-found")
+        if (isNotFound(m)) return qsTrId("rustrx-la-join-not-found")
         //% "That is no address yet. Type part of the name to search, or the full address, like #room:server."
         if (/sigil|invalid|not a valid/i.test(m)) return qsTrId("rustrx-la-join-not-address")
-        //% "The server would not let you in: %1"
-        if (/forbidden/i.test(m)) return qsTrId("rustrx-la-join-forbidden").arg(m.replace(/^.*\]\s*/, ""))
-        //% "Could not join: %1"
-        return qsTrId("rustrx-la-join-failed").arg(m)
+        return app.friendlyError(cmd, m)
+    }
+    function isNotFound(m) { return /not found|unknown room|M_NOT_FOUND|no known servers|room alias/i.test(m) }
+    // "Search for it": the name part of the address that led nowhere
+    function searchName() {
+        var name = page.address.replace(/^[#!@]/, "").split(":")[0]
+        page.problem = ""
+        page.notFound = false
+        addressField.text = name
+        searchLater.stop()
+        page.search()
     }
 
     // found by part of a name: [{room_id, name, alias, member_count, is_space, server}]
@@ -101,15 +112,18 @@ Page {
         asked = false
         loading = true
         problem = ""
+        notFound = false
         rustrx.command({ cmd: "room_preview", room_or_alias: id, via: via })
     }
     function join() {
         problem = ""
+        notFound = false
         waiting = true
         rustrx.command({ cmd: "join_by_id_or_alias", room_or_alias: address, via: via })
     }
     function knock() {
         problem = ""
+        notFound = false
         waiting = true
         rustrx.command({ cmd: "knock", room_or_alias: address, reason: reasonField.text.trim(), via: via })
     }
@@ -154,6 +168,7 @@ Page {
                 page.loading = false
                 // a private room's preview comes as ok: false, not as an error
                 page.problem = page.problemText(cmd, message)
+                page.notFound = page.isNotFound(message || "")
             }
             if (cmd === "search_rooms") page.searching = Math.max(0, page.searching - 1)
         }
@@ -190,6 +205,8 @@ Page {
                     if (page.isAddress(text.trim()) || text.trim() === page.address) return
                     page.preview = ({})
                     page.address = ""
+                    page.problem = ""
+                    page.notFound = false
                     searchLater.restart()
                 }
             }
@@ -202,39 +219,27 @@ Page {
                     width: column.width
                     height: Theme.itemSizeMedium
                     onClicked: page.take(modelData)
-                    Column {
+                    RowTexts {
                         x: Theme.horizontalPageMargin
                         width: parent.width - 2 * x
                         anchors.verticalCenter: parent.verticalCenter
-                        Label {
-                            width: parent.width
-                            truncationMode: TruncationMode.Fade
-                            color: foundRow.highlighted ? Theme.highlightColor : Theme.primaryColor
-                            text: modelData.name || modelData.alias || modelData.room_id
-                        }
-                        Label {
-                            width: parent.width
-                            truncationMode: TruncationMode.Fade
-                            font.pixelSize: Theme.fontSizeExtraSmall
-                            color: foundRow.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
-                            text: (modelData.is_space ? qsTrId("rustrx-la-kind-space") : qsTrId("rustrx-la-kind-room"))
-                                  + " · " + qsTrId("rustrx-la-n-members", modelData.member_count || 0)
-                                  + (modelData.joined
-                                     //% "joined"
-                                     ? " · " + qsTrId("rustrx-la-found-joined") : "")
-                                  + (modelData.alias ? " · " + modelData.alias : "")
-                        }
+                        highlighted: foundRow.highlighted
+                        text: modelData.name || modelData.alias || modelData.room_id
+                        // one "joined" for both search pages (two ids could be
+                        // translated two ways, 0.8 audit)
+                        description: (modelData.is_space ? qsTrId("rustrx-la-kind-space") : qsTrId("rustrx-la-kind-room"))
+                                     + " · " + qsTrId("rustrx-la-n-members", modelData.member_count || 0)
+                                     + (modelData.joined
+                                        //% "joined"
+                                        ? " · " + qsTrId("rustrx-la-joined") : "")
+                                     + (modelData.alias ? " · " + modelData.alias : "")
                     }
                 }
             }
-            Label {
+            Note {
+                kind: "status"
                 visible: !page.known && !page.loading && page.searched.length > 0 && page.found.length === 0 && page.searching === 0
                          && !page.isAddress(addressField.text.trim()) && addressField.text.trim().length >= Tunables.minSearchChars
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.secondaryHighlightColor
                 //% "Nothing found in the public directories. A private room needs its full address, like #room:server."
                 text: qsTrId("rustrx-la-found-none")
             }
@@ -294,35 +299,21 @@ Page {
                 }
             }
 
-            Label {
-                visible: page.known && !!page.preview.topic
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.highlightColor
-                text: page.preview.topic || ""
+            Note {
+                text: page.known ? (page.preview.topic || "") : ""
             }
 
             // the server would not tell (a private space): still try
-            Label {
+            Note {
+                kind: "status"
                 visible: page.preview.ok === false
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.secondaryHighlightColor
                 //% "Could not load a preview. You can still try to join, or ask to join."
                 text: qsTrId("rustrx-la-preview-failed")
             }
 
             // where we stand
-            Label {
+            Note {
                 visible: page.asked || page.state_ === "knocked" || page.state_ === "invited" || page.state_ === "joined" || page.state_ === "banned"
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: Theme.highlightColor
                 text: page.asked || page.state_ === "knocked"
                       //% "You asked to join. You will get an invitation once they let you in."
                       ? qsTrId("rustrx-la-asked")
@@ -330,7 +321,6 @@ Page {
                       //% "You are invited: the invitation is with your rooms."
                       ? qsTrId("rustrx-la-preview-invited")
                       : page.state_ === "banned"
-                      //% "You are banned from it."
                       ? qsTrId("rustrx-la-preview-banned")
                       //% "You are in it already."
                       : qsTrId("rustrx-la-preview-joined")
@@ -349,50 +339,58 @@ Page {
                 placeholderText: label
             }
 
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: Theme.paddingLarge
-                PageButton {
-                    inRow: true
-                    visible: page.address.length > 0 && !page.loading && !page.asked && page.state_ !== "banned"
-                             && page.state_ !== "knocked" && page.rule !== "knock" && page.rule !== "invite"
-                             && (page.known || page.preview.ok === false)
-                    enabled: !page.waiting
-                    text: page.state_ === "joined" || page.state_ === "invited"
-                          //% "Open"
-                          ? qsTrId("rustrx-bt-open")
-                          //% "Join"
-                          : qsTrId("rustrx-bt-join")
-                    onClicked: page.join()
-                }
-                PageButton {
-                    inRow: true
-                    visible: reasonField.show
-                    enabled: !page.waiting
-                    //% "Ask to join"
-                    text: qsTrId("rustrx-bt-knock")
-                    onClicked: page.knock()
+            // side by side while they fit, stacked when a translation is
+            // too long (a Row ran off the page; 0.8 audit, one button rule)
+            Item {
+                visible: joinButton.visible || knockButton.visible
+                width: parent.width
+                height: buttons.height + 2 * Theme.paddingMedium
+                ButtonLayout {
+                    id: buttons
+                    y: Theme.paddingMedium
+                    width: parent.width
+                    Button {
+                        id: joinButton
+                        visible: page.address.length > 0 && !page.loading && !page.asked && page.state_ !== "banned"
+                                 && page.state_ !== "knocked" && page.rule !== "knock" && page.rule !== "invite"
+                                 && (page.known || page.preview.ok === false)
+                        enabled: !page.waiting
+                        text: page.state_ === "joined" || page.state_ === "invited"
+                              //% "Open"
+                              ? qsTrId("rustrx-bt-open")
+                              //% "Join"
+                              : qsTrId("rustrx-bt-join")
+                        onClicked: page.join()
+                    }
+                    Button {
+                        id: knockButton
+                        visible: reasonField.show
+                        enabled: !page.waiting
+                        //% "Ask to join"
+                        text: qsTrId("rustrx-bt-knock")
+                        onClicked: page.knock()
+                    }
                 }
             }
 
-            Label {
+            Note {
+                kind: "status"
                 visible: page.known && page.rule === "invite" && page.state_ !== "joined" && page.state_ !== "invited"
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.secondaryHighlightColor
                 //% "Only invited people can join. Ask someone inside for an invitation."
                 text: qsTrId("rustrx-la-preview-invite-only")
             }
 
-            Label {
-                visible: page.problem.length > 0
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: Theme.highlightColor
+            Note {
+                kind: "error"
                 text: page.problem
+            }
+
+            // no room has the address: its name may still find one
+            PageButton {
+                visible: page.notFound && page.address.replace(/^[#!@]/, "").split(":")[0].length >= Tunables.minSearchChars
+                //% "Search for it"
+                text: qsTrId("rustrx-bt-search-for-it")
+                onClicked: page.searchName()
             }
 
             BusyIndicator {

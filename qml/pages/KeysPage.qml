@@ -26,6 +26,8 @@ Page {
     id: page
 
     property string result
+    // a failure apart from the result, in the error colour (0.8 audit)
+    property string error
     property bool working
 
     Connections {
@@ -42,7 +44,12 @@ Page {
             //% "%1 of %2 keys imported"
             page.result = qsTrId("rustrx-la-keys-imported").arg(imported).arg(total)
         }
-        onErrorOccurred: if (cmd === "export_keys" || cmd === "import_keys") { page.working = false; page.result = message }
+        onErrorOccurred: {
+            if (cmd !== "export_keys" && cmd !== "import_keys") return
+            page.working = false
+            page.result = ""
+            page.error = app.friendlyError(cmd, message)
+        }
     }
 
     SilicaFlickable {
@@ -59,12 +66,8 @@ Page {
                 title: qsTrId("rustrx-he-keys")
             }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.highlightColor
+            Note {
+                kind: "intro"
                 //% "The file holds the keys to your encrypted messages. It is protected by the passphrase; keep both apart."
                 text: qsTrId("rustrx-la-keys-hint")
             }
@@ -82,13 +85,15 @@ Page {
                 //% "Export to Documents"
                 text: qsTrId("rustrx-bt-export-keys")
                 onClicked: {
-                    page.working = true; page.result = ""
+                    page.working = true; page.result = ""; page.error = ""
                     var stamp = new Date().toISOString().slice(0, 10)
                     rustrx.command({ cmd: "export_keys", passphrase: pass.text,
                                      path: StandardPaths.documents + "/rustrx-keys-" + stamp + ".txt" })
                 }
             }
 
+            // the other direction, apart from Export (0.8 audit)
+            Item { width: 1; height: Theme.paddingLarge }
             PageButton {
                 enabled: pass.text.length > 0 && !page.working
                 //% "Import from a file"
@@ -98,7 +103,7 @@ Page {
                     picker.selectedContentPropertiesChanged.connect(function () {
                         var path = picker.selectedContentProperties.filePath
                         if (!path) return
-                        page.working = true; page.result = ""
+                        page.working = true; page.result = ""; page.error = ""
                         rustrx.command({ cmd: "import_keys", passphrase: pass.text, path: path })
                     })
                 }
@@ -107,16 +112,17 @@ Page {
             BusyIndicator {
                 anchors.horizontalCenter: parent.horizontalCenter
                 running: page.working
+                visible: running
                 size: BusyIndicatorSize.Medium
             }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                visible: page.result.length > 0
-                wrapMode: Text.Wrap
+            Note {
+                kind: "status"
                 text: page.result
-                color: Theme.secondaryHighlightColor
+            }
+            Note {
+                kind: "error"
+                text: page.error
             }
         }
     }

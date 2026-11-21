@@ -180,4 +180,14 @@ QtObject {
     readonly property int voipRingMs: 60000
     // how long the call page shows why a call ended
     readonly property int voipEndShownMs: 2000
+    // the app-wide error line stays this long (a tap closes it sooner);
+    // longer than a notice, it is read rather than glanced at
+    readonly property int errorNoticeMs: 6000
+    // the longest raw reason shown after "... did not work."
+    readonly property int errorReasonChars: 120
+    // the sync mark on the account picture waits this long, so a short
+    // drop does not flicker
+    readonly property int offlineMarkDelayMs: 3000
+    // addresses and names kept on Add room or contact, per account
+    readonly property int searchHistoryMax: 10
 }

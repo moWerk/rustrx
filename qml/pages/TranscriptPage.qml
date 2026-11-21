@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
 import "../transcript.js" as Transcript
 
 // The loaded chat as plain text, to select across messages with the
@@ -97,12 +98,8 @@ Page {
             //% "Select text"
             PageHeader { title: qsTrId("rustrx-he-select-text"); description: page.roomName }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryHighlightColor
+            Note {
+                kind: "footnote"
                 //% "Drag the handles to select more; the selection is copied when you let go. Hold a word to start a new selection."
                 text: qsTrId("rustrx-la-select-text-hint")
             }

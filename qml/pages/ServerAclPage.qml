@@ -62,19 +62,15 @@ Page {
         Column {
             id: column
             width: parent.width
-            spacing: Theme.paddingSmall
+            // one spacing on pages with buttons (0.8 audit)
+            spacing: Theme.paddingMedium
 
             PageHeader {
                 //% "Server access"
                 title: qsTrId("rustrx-he-server-acl")
                 description: rustrx.roomInfo(page.roomId).name || ""
             }
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.highlightColor
+            Note {
                 text: page.acl
                       //% "People from denied servers cannot join or write here; those inside stay, but their messages are refused."
                       ? qsTrId("rustrx-la-acl-on")
@@ -106,11 +102,8 @@ Page {
                 description: qsTrId("rustrx-la-acl-ip-hint")
             }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: page.ownStays ? Theme.secondaryHighlightColor : Theme.errorColor
+            Note {
+                kind: page.ownStays ? "status" : "error"
                 text: page.ownStays
                       //: %1 the own server
                       //% "Your server %1 stays allowed."
@@ -123,6 +116,8 @@ Page {
                 enabled: page.ownStays
                 //% "Save the list"
                 text: qsTrId("rustrx-bt-acl-save")
+                //% "A moderation bot (Draupnir, Mjolnir) may keep this list itself and put its own back. Then change it through the bot."
+                hint: qsTrId("rustrx-la-acl-bot")
                 onClicked: {
                     var allow = page.allowList, deny = page.denyList, ip = ipSwitch.checked, id = page.roomId, core = rustrx
                     //% "Saving the server list"
@@ -130,15 +125,6 @@ Page {
                         core.command({ cmd: "set_server_acl", room_id: id, allow: allow, deny: deny, allow_ip_literals: ip })
                     })
                 }
-            }
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
-                //% "A moderation bot (Draupnir, Mjolnir) may keep this list itself and put its own back. Then change it through the bot."
-                text: qsTrId("rustrx-la-acl-bot")
             }
         }
         VerticalScrollDecorator { }

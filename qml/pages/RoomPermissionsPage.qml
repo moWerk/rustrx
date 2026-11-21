@@ -52,14 +52,23 @@ Page {
         var v = events[type]
         return v === null || v === undefined ? (levels.state_default || 0) : v
     }
-    function set(key, level) {
+    // the box whose change was sent last: a refusal takes it back
+    property Item pendingBox
+    function set(box, key, level) {
+        pendingBox = box
         rustrx.command({ cmd: "set_level", room_id: roomId, permission: key, level: level })
     }
 
     Connections {
         target: rustrx
         onRoomSettings: if (settings.room_id === page.roomId) page.settings = settings
-        onErrorOccurred: if (cmd === "set_level") rustrx.command({ cmd: "room_settings", room_id: page.roomId })
+        onErrorOccurred: {
+            if (cmd !== "set_level") return
+            // it goes back and says why (decision 3, 0.8 audit)
+            if (page.pendingBox) page.pendingBox.revert(app.friendlyError(cmd, message))
+            page.pendingBox = null
+            rustrx.command({ cmd: "room_settings", room_id: page.roomId })
+        }
     }
 
     SilicaFlickable {
@@ -101,12 +110,8 @@ Page {
                     }
                 }
             }
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
+            Note {
+                kind: "footnote"
                 //% "A role is given on the person's page: tap a member in the member list."
                 text: qsTrId("rustrx-la-staff-hint")
             }
@@ -157,19 +162,16 @@ Page {
                     { key: "m.room.tombstone", text: qsTrId("rustrx-la-perm-upgrade") }
                 ].filter(function (p) { return !p.space || page.isSpace })
                 LevelComboBox {
+                    id: levelBox
                     label: modelData.text
                     enabled: page.canChange
                     ownLevel: page.ownLevel
                     level: modelData.field ? (page.levels[modelData.key] || 0) : page.eventLevel(modelData.key)
-                    onChosen: page.set(modelData.key, level)
+                    onChosen: page.set(levelBox, modelData.key, value)
                 }
             }
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
+            Note {
+                kind: "footnote"
                 //% "Each is open to that role and every higher one. Only levels up to your own can be chosen."
                 text: qsTrId("rustrx-la-perm-hint")
             }

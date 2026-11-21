@@ -39,6 +39,11 @@ ApplicationWindow {
     // picture fetched from anywhere
     _defaultLabelFormat: Text.PlainText
 
+    // the app-wide error line (friendlyError's sentences); pages call
+    // app.showError(text) for an error that has no place of its own
+    ErrorNotice { id: errorNotice }
+    function showError(text) { errorNotice.show(text) }
+
     // the rows' "3m" age labels follow this clock
     property real now: Date.now()
     Timer { interval: Tunables.ageTickMs; repeat: true; running: Qt.application.active; onTriggered: app.now = Date.now() }
@@ -231,13 +236,18 @@ ApplicationWindow {
         onReadingChanged: rustrx.setCallNear(reading !== null && reading.near)
         onActiveChanged: if (!active) rustrx.setCallNear(false)
     }
+    property string lastVoipState: "idle"
     Timer { id: voipRetry; interval: Tunables.retryIntervalMs; onTriggered: if (rustrx.voip.state !== "idle") app.showVoip() }
     Connections {
         target: rustrx.voip
         // ringing while Rustrx is in front (also a ring handed over by the
         // stand-in), or answered from the notification: the page follows
+        // only when the state changes: mute and the speaker change it too,
+        // and pulled a user who went back to the chat onto the call again
         onChanged: {
             var s = rustrx.voip.state
+            if (s === app.lastVoipState) return
+            app.lastVoipState = s
             if (s === "connecting" || s === "connected" || (s === "incoming" && Qt.application.active)) app.showVoip()
         }
     }
@@ -379,18 +389,17 @@ ApplicationWindow {
             // (recovery), keys, message source, devices, the login's server
             if (["recovery_recover", "recovery_enable", "recovery_reset", "identity_reset",
                  "export_keys", "import_keys", "event_source", "devices", "probe_server",
-                 "join_by_id_or_alias", "knock", "room_preview", "search_rooms"].indexOf(cmd) >= 0) return
+                 "join_by_id_or_alias", "knock", "room_preview", "search_rooms",
+                 // choice boxes that go back and say why (ChoiceBox.revert)
+                 "set_join_rule", "set_history_visibility", "set_notification_mode", "set_level",
+                 "set_user_level"].indexOf(cmd) >= 0) return
             // receipts go out while reading and are tried again in the core:
             // a weak network is no news to the reader
             if (cmd === "mark_read") return
-            var what = actionLabel(cmd)
-            Notices.show(what.length
-                         //: transient error line, %1 what was tried, %2 the server's or the network's message
-                         //% "%1 failed: %2"
-                         ? qsTrId("rustrx-no-action-failed").arg(what).arg(message)
-                         //: transient error line for anything without its own name, %1 the message
-                         //% "Something went wrong: %1"
-                         : qsTrId("rustrx-no-something-failed").arg(message), Notice.Long)
+            // in words, in the error look; the core's own text stays in the
+            // log (0.8 audit, item 5)
+            console.log("error:", cmd, message)
+            errorNotice.show(friendlyError(cmd, message))
         }
         // a tapped notification: bring the window up and show the room
         // (on a cold start route() has taken it already)
@@ -420,7 +429,9 @@ ApplicationWindow {
     function actionLabel(cmd) {
         switch (cmd) {
         //% "Sending"
-        case "send_text": case "send_file": return qsTrId("rustrx-la-act-send")
+        case "send_text": case "send_file": case "send_sticker": case "retry_send": return qsTrId("rustrx-la-act-send")
+        //% "Changing your name"
+        case "set_display_name": return qsTrId("rustrx-la-act-name")
         //% "Reacting"
         case "react": return qsTrId("rustrx-la-act-react")
         //% "Removing the message"
@@ -439,7 +450,8 @@ ApplicationWindow {
         case "invite": return qsTrId("rustrx-la-act-invite")
         //% "Changing the room"
         case "set_room_name": case "set_room_topic": return qsTrId("rustrx-la-act-room")
-        //% "Changing favourites"
+        //: Favs is the app's one name for favourite rooms (the tab's name)
+        //% "Changing Favs"
         case "set_favourite": case "set_low_priority": return qsTrId("rustrx-la-act-fav")
         //% "Changing notifications"
         case "set_notification_mode": return qsTrId("rustrx-la-act-notify")
@@ -451,8 +463,115 @@ ApplicationWindow {
         case "paginate_back": return qsTrId("rustrx-la-act-older")
         //% "Loading the picture"
         case "get_media": case "export_media": return qsTrId("rustrx-la-act-media")
+        // the pages that show their errors in place, through friendlyError
+        //% "Loading the message source"
+        case "event_source": return qsTrId("rustrx-la-act-source")
+        //% "Asking to join"
+        case "knock": return qsTrId("rustrx-la-act-knock")
+        //% "Looking up the room"
+        case "room_preview": return qsTrId("rustrx-la-act-preview")
+        //% "Searching for rooms"
+        case "search_rooms": return qsTrId("rustrx-la-act-search-rooms")
+        //% "Saving the keys"
+        case "export_keys": return qsTrId("rustrx-la-act-export-keys")
+        //% "Reading the keys"
+        case "import_keys": return qsTrId("rustrx-la-act-import-keys")
+        //% "Restoring with the recovery key"
+        case "recovery_recover": return qsTrId("rustrx-la-act-recover")
+        //% "Turning on the backup"
+        case "recovery_enable": return qsTrId("rustrx-la-act-recovery-on")
+        //% "Making a new recovery key"
+        case "recovery_reset": case "identity_reset": return qsTrId("rustrx-la-act-recovery-reset")
+        //% "Loading the devices"
+        case "devices": return qsTrId("rustrx-la-act-devices")
+        //% "Checking the server"
+        case "probe_server": return qsTrId("rustrx-la-act-probe")
+        //% "Reporting"
+        case "report": case "report_room": case "report_user": return qsTrId("rustrx-la-act-report")
+        //% "Pinning"
+        case "pin": return qsTrId("rustrx-la-act-pin")
+        //% "Changing the picture"
+        case "set_room_avatar": case "set_own_avatar": return qsTrId("rustrx-la-act-avatar")
+        //% "Removing them"
+        case "kick": return qsTrId("rustrx-la-act-kick")
+        //% "Banning"
+        case "ban": case "space_ban": return qsTrId("rustrx-la-act-ban")
+        //% "Lifting the ban"
+        case "unban": return qsTrId("rustrx-la-act-unban")
+        //% "Changing the room's settings"
+        case "set_join_rule": case "set_history_visibility": case "set_guest_access": case "enable_encryption":
+        case "set_directory_visibility": case "set_user_level": case "set_level": case "set_server_acl":
+        case "set_aliases": case "add_alias": case "remove_alias": return qsTrId("rustrx-la-act-settings")
         default: return ""
         }
+    }
+
+    // A core error as one short, plain sentence: the one helper for every
+    // error a user sees (0.8 audit, item 5). Built from the join page's
+    // mapping plus the common cases; anything else is "<what was tried>
+    // did not work." with the server's reason last. Pages show its result
+    // in the error colour (Note kind "error"); the raw text goes to the log.
+    function friendlyError(cmd, message) {
+        var m = String(message || "")
+        var own = rustrx.userId.indexOf(":") > 0 ? rustrx.userId.slice(rustrx.userId.indexOf(":") + 1) : ""
+        var joining = ["join_by_id_or_alias", "join_room", "knock", "room_preview"].indexOf(cmd) >= 0
+        var what = actionLabel(cmd)
+        //: lead-in of an error, %1 what was tried ("Sending", "Joining the room")
+        //% "%1 did not work."
+        var lead = what.length ? qsTrId("rustrx-no-err-lead").arg(what)
+        //: lead-in of an error for an action without its own name
+        //% "That did not work."
+                               : qsTrId("rustrx-no-err-lead-any")
+        // the join page's sentences (JoinPage.problemText before)
+        //: %1 the own homeserver, like tchncs.de
+        //% "The moderators of this room do not let people from your server (%1) in."
+        if (/server is banned/i.test(m)) return qsTrId("rustrx-la-join-server-banned").arg(own)
+        //% "You are banned from this room."
+        if (/banned/i.test(m)) return qsTrId("rustrx-no-err-banned")
+        //% "Only invited people can join. Ask someone inside for an invitation."
+        if (/not invited|invite only|invite-only/i.test(m)) return qsTrId("rustrx-la-preview-invite-only")
+        // the core's lookup failed: the room's server cannot be reached from
+        // the user's (no federation there, or a server that is down)
+        if (/could not be looked up/i.test(m) && /federation|502|bad gateway|unreachable|connect/i.test(m)) {
+            var addr = (/^(\S+) could not be looked up/.exec(m) || ["", ""])[1]
+            //: %1 the own homeserver, %2 the room's server, like matrix.org
+            //% "Your server (%1) cannot reach %2, so it cannot look up or join rooms there. Some servers do not connect to other servers at all."
+            return qsTrId("rustrx-la-join-unreachable").arg(own).arg(addr.split(":").slice(1).join(":") || "?")
+        }
+        // the common cases, for every command
+        //% "The server could not be reached. Check the network and try again."
+        if (/timed? ?out|timeout|network|offline|dns|error sending request|connection (refused|reset|closed)|failed to connect|unreachable/i.test(m))
+            return lead + " " + qsTrId("rustrx-no-err-network")
+        //% "The server asks to slow down. Wait a moment and try again."
+        if (/M_LIMIT_EXCEEDED|rate.?limit|too many requests|\b429\b/i.test(m))
+            return lead + " " + qsTrId("rustrx-no-err-rate")
+        //% "The server has ended this login. Log in again."
+        if (/M_UNKNOWN_TOKEN|unknown token|not logged in/i.test(m))
+            return lead + " " + qsTrId("rustrx-no-err-token")
+        //% "The file is too large for the server."
+        if (/M_TOO_LARGE|too large|\b413\b/i.test(m))
+            return lead + " " + qsTrId("rustrx-no-err-too-large")
+        if (joining) {
+            //% "No room or space has this address. Check it, or type part of its name to search."
+            if (/not found|unknown room|M_NOT_FOUND|no known servers|room alias/i.test(m)) return qsTrId("rustrx-la-join-not-found")
+            //% "That is no address yet. Type part of the name to search, or the full address, like #room:server."
+            if (/sigil|invalid|not a valid/i.test(m)) return qsTrId("rustrx-la-join-not-address")
+            //% "The server would not let you in: %1"
+            if (/forbidden/i.test(m)) return qsTrId("rustrx-la-join-forbidden").arg(m.replace(/^.*\]\s*/, ""))
+            //% "Could not join: %1"
+            return qsTrId("rustrx-la-join-failed").arg(m)
+        }
+        //% "You are not allowed to do that here."
+        if (/M_FORBIDDEN|forbidden|\b403\b/i.test(m)) return lead + " " + qsTrId("rustrx-no-err-forbidden")
+        //% "It is no longer there."
+        if (/M_NOT_FOUND|not found|\b404\b|not in timeline|unknown room|no media/i.test(m))
+            return lead + " " + qsTrId("rustrx-no-err-not-found")
+        // the innermost cause of the chain ("a: b: c"), as the server said it
+        var parts = m.split(": ")
+        var reason = parts[parts.length - 1].replace(/^.*\]\s*/, "")
+        if (reason.length < 3) reason = m
+        if (reason.length > Tunables.errorReasonChars) reason = reason.slice(0, Tunables.errorReasonChars) + "…"
+        return reason.length ? lead + " " + reason : lead
     }
 
     // matrix:r/alias:server, matrix:roomid/id:server, matrix:u/user:server
@@ -480,7 +599,11 @@ ApplicationWindow {
         }
         if (id.charAt(0) === "@") {
             // a link must not start a chat (and tell them our id) by itself
-            pageStack.push(dmDialog, { userId: id })
+            var d = pageStack.push(Qt.resolvedUrl("pages/StartChatDialog.qml"), { userId: id })
+            d.accepted.connect(function () {
+                app.pendingDm = true
+                rustrx.command({ cmd: "create_dm", user_id: id })
+            })
         } else if (id.charAt(0) === "!" && rustrx.roomInfo(id).name && rustrx.roomInfo(id).state === "joined") {
             if (rustrx.roomInfo(id).is_space)
                 pageStack.push(Qt.resolvedUrl("pages/SpacePage.qml"), { spaceId: id, spaceName: rustrx.roomInfo(id).name })
@@ -492,32 +615,6 @@ ApplicationWindow {
             pageStack.push(Qt.resolvedUrl("pages/JoinPage.qml"), { address: id, via: via })
         }
         return true
-    }
-    Component {
-        id: dmDialog
-        Dialog {
-            property string userId
-            onAccepted: {
-                app.pendingDm = true
-                rustrx.command({ cmd: "create_dm", user_id: userId })
-            }
-            Column {
-                width: parent.width
-                DialogHeader {
-                    //% "Start chat"
-                    acceptText: qsTrId("rustrx-he-start-chat")
-                }
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * x
-                    wrapMode: Text.Wrap
-                    color: Theme.highlightColor
-                    //: %1 a Matrix user id from a link
-                    //% "Start a direct chat with %1? They are invited and see your Matrix address."
-                    text: qsTrId("rustrx-la-start-chat-ask").arg(userId)
-                }
-            }
-        }
     }
     // a direct chat asked for by a matrix:u/ link: shown once it is there
     property bool pendingDm

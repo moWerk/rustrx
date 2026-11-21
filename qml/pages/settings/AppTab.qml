@@ -53,8 +53,8 @@ SilicaFlickable {
         // room between the buttons and the texts around them
         spacing: Theme.paddingMedium
 
-        // the tab bar is drawn over a tab with a pulley menu; content starts below it
-        Item { width: 1; height: tab.pullDownMenu ? settings.tabBarHeight : 0 }
+        // below the tab bar, as on every tab (SettingsPage.tabTop)
+        Item { width: 1; height: settings.tabTop(tab) }
 
         //% "Notifications"
         SectionHeader { text: qsTrId("rustrx-se-notifications") }
@@ -64,57 +64,41 @@ SilicaFlickable {
         // stand-in (kept running and syncing), or nothing. Until chosen:
         // push where a distributor is installed, else the stand-in
         // (app.applyClosedMode). Push is only offered with a distributor.
-        HoldComboBox {
+        ChoiceBox {
             id: closedBox
-            width: parent.width
-            readonly property var modes: rustrx.push.available ? ["push", "background", "off"] : ["background", "off"]
             readonly property string mode: rustrx.push.available && rustrx.push.enabled ? "push"
                                            : rustrx.background ? "background" : "off"
             //% "When Rustrx is closed"
             label: qsTrId("rustrx-la-closed-mode")
-            // the box follows the mode in force (the ComboBox sets currentIndex
-            // itself, which broke a plain binding at the first tap; a fallback
-            // from push or push coming or going then showed the wrong choice)
-            readonly property int shownIndex: Math.max(0, modes.indexOf(mode))
-            currentIndex: shownIndex
-            onShownIndexChanged: currentIndex = shownIndex
-            onModesChanged: currentIndex = shownIndex
-            menu: ContextMenu {
-                Repeater {
-                    model: closedBox.modes
-                    MenuItem {
-                        text: modelData === "push"
-                              //% "Push notifications"
-                              ? qsTrId("rustrx-la-push")
-                              : modelData === "background"
-                              //% "Keep running in the background"
-                              ? qsTrId("rustrx-la-background")
-                              //% "No notifications"
-                              : qsTrId("rustrx-la-closed-off")
-                    }
-                }
-            }
-            onCurrentIndexChanged: {
-                var m = modes[currentIndex]
-                if (m === mode) return
-                app.closedMode = m
+            value: mode
+            // push only with a distributor; each mode says what it means
+            choices: (rustrx.push.available ? [{
+                //% "Push notifications"
+                value: "push", text: qsTrId("rustrx-la-push"),
+                hint: rustrx.push.active
+                      //: %1 the push gateway's host
+                      //% "Through Foghorn and %1: nothing of Rustrx keeps running. The gateway and the push server see when a message comes and for which room, never what it says."
+                      ? qsTrId("rustrx-la-push-active").arg(rustrx.push.gatewayHost)
+                      //: %1 what push is doing (registering, waiting for an address, an error)
+                      //% "Setting up: %1"
+                      : qsTrId("rustrx-la-push-setting-up").arg(rustrx.push.status || "…")
+            }] : []).concat([{
+                //% "Keep running in the background"
+                value: "background", text: qsTrId("rustrx-la-background"),
+                //% "Rustrx starts with the phone and stays connected without a window, shown by a line in the events view: tap it to open Rustrx, or quit it there. While the phone sleeps it checks for messages every five minutes."
+                hint: qsTrId("rustrx-la-background-hint") + (rustrx.push.available ? ""
+                      //% " Push needs no running Rustrx: install a UnifiedPush distributor such as Foghorn (OpenRepos)."
+                      : qsTrId("rustrx-la-push-none-short"))
+            }, {
+                //% "No notifications"
+                value: "off", text: qsTrId("rustrx-la-closed-off"),
+                //% "Notifications only while Rustrx is open."
+                hint: qsTrId("rustrx-la-closed-off-hint")
+            }])
+            onChosen: {
+                app.closedMode = value
                 app.applyClosedMode()
             }
-            description: mode === "push"
-                         ? (rustrx.push.active
-                            //: %1 the push gateway's host
-                            //% "Through Foghorn and %1: nothing of Rustrx keeps running. The gateway and the push server see when a message comes and for which room, never what it says."
-                            ? qsTrId("rustrx-la-push-active").arg(rustrx.push.gatewayHost)
-                            //: %1 what push is doing (registering, waiting for an address, an error)
-                            //% "Setting up: %1"
-                            : qsTrId("rustrx-la-push-setting-up").arg(rustrx.push.status || "…"))
-                         : mode === "background"
-                         //% "Rustrx starts with the phone and stays connected without a window, shown by a line in the events view: tap it to open Rustrx, or quit it there. While the phone sleeps it checks for messages every five minutes."
-                         ? qsTrId("rustrx-la-background-hint") + (rustrx.push.available ? ""
-                         //% " Push needs no running Rustrx: install a UnifiedPush distributor such as Foghorn (OpenRepos)."
-                                                                                        : qsTrId("rustrx-la-push-none-short"))
-                         //% "Notifications only while Rustrx is open."
-                         : qsTrId("rustrx-la-closed-off-hint")
         }
 
         TextSwitch {
@@ -204,31 +188,31 @@ SilicaFlickable {
         }
 
         TextSwitch {
-            //% "Highlight Favs channels with new messages"
+            // one name for them, Favs (the author: the tab bar's width; 0.8 audit)
+            //% "Highlight Favs with new messages"
             text: qsTrId("rustrx-la-highlight-favs")
-            //% "A favourite with something unread glows calmly in the lists, its star with it."
+            //% "A Fav with something unread glows calmly in the lists, its star with it."
             description: qsTrId("rustrx-la-highlight-favs-hint")
             checked: app.highlightFavs
             automaticCheck: false
             onClicked: app.highlightFavs = !app.highlightFavs
         }
 
-        HoldComboBox {
-            width: parent.width
+        ChoiceBox {
             //% "Message preview"
             label: qsTrId("rustrx-la-preview-lines")
             //% "Lines of the last message under a room's name."
             description: qsTrId("rustrx-la-preview-lines-hint")
-            currentIndex: Math.max(0, Math.min(2, app.previewLines - 1))
-            menu: ContextMenu {
+            value: Math.max(1, Math.min(3, app.previewLines))
+            choices: [
                 //% "1 line"
-                MenuItem { text: qsTrId("rustrx-me-lines-1") }
+                { value: 1, text: qsTrId("rustrx-me-lines-1") },
                 //% "2 lines"
-                MenuItem { text: qsTrId("rustrx-me-lines-2") }
+                { value: 2, text: qsTrId("rustrx-me-lines-2") },
                 //% "3 lines"
-                MenuItem { text: qsTrId("rustrx-me-lines-3") }
-            }
-            onCurrentIndexChanged: app.previewLines = currentIndex + 1
+                { value: 3, text: qsTrId("rustrx-me-lines-3") }
+            ]
+            onChosen: app.previewLines = value
         }
 
         TextSwitch {
@@ -242,9 +226,9 @@ SilicaFlickable {
         }
 
         TextSwitch {
-            //% "Favourites tab"
+            //% "Favs tab"
             text: qsTrId("rustrx-la-separate-favs")
-            //% "The favourites as a tab of their own. When off, “Favourites on top” in the filter menu keeps them at hand."
+            //% "The Favs as a tab of their own. When off, “Favs on top” in the filter menu keeps them at hand."
             description: qsTrId("rustrx-la-separate-favs-hint")
             checked: app.separateFavs
             automaticCheck: false
@@ -318,6 +302,28 @@ SilicaFlickable {
             onClicked: rustrx.downscaleImages = !rustrx.downscaleImages
         }
 
+        // GIFs move while in view, once or on a loop (the author's ask,
+        // 0.8); a tap and the full screen play them either way
+        TextSwitch {
+            //% "Play GIFs in the chat"
+            text: qsTrId("rustrx-la-gif-autoplay")
+            //% "GIFs move while they are on the screen. When off, a tap plays one."
+            description: qsTrId("rustrx-la-gif-autoplay-hint")
+            checked: app.settings.gifAutoplay
+            automaticCheck: false
+            onClicked: app.settings.gifAutoplay = !app.settings.gifAutoplay
+        }
+
+        TextSwitch {
+            //% "Loop GIFs"
+            text: qsTrId("rustrx-la-gif-loop")
+            //% "When off, a GIF plays once and stops."
+            description: qsTrId("rustrx-la-gif-loop-hint")
+            checked: app.settings.gifLoop
+            automaticCheck: false
+            onClicked: app.settings.gifLoop = !app.settings.gifLoop
+        }
+
         // what Rustrx keeps on this phone
         //% "Storage"
         SectionHeader { text: qsTrId("rustrx-se-storage") }
@@ -335,20 +341,13 @@ SilicaFlickable {
         PageButton {
             //% "Clear pictures and files"
             text: qsTrId("rustrx-bt-clear-media")
+            //% "They are fetched again when a room shows them."
+            hint: qsTrId("rustrx-la-clear-media-hint")
             onClicked: {
                 var core = rustrx
                 //% "Clearing the cached pictures and files"
                 settings.remorse.execute(qsTrId("rustrx-re-clear-media"), function () { core.command({ cmd: "clear_media" }) })
             }
-        }
-        Label {
-            x: Theme.horizontalPageMargin
-            width: parent.width - 2 * x
-            wrapMode: Text.Wrap
-            font.pixelSize: Theme.fontSizeExtraSmall
-            color: Theme.secondaryColor
-            //% "They are fetched again when a room shows them."
-            text: qsTrId("rustrx-la-clear-media-hint")
         }
 
         Item { width: 1; height: Theme.paddingLarge }

@@ -36,7 +36,17 @@ Page {
 
     // the choices of "Who can join", as the core names them
     readonly property var rules: parentId.length ? ["invite", "knock", "restricted", "public"] : ["invite", "knock", "public"]
-    readonly property string rule: rules[Math.max(0, accessBox.currentIndex)]
+    property string rule: "invite"
+    function ruleHint(r) {
+        //% "Anyone can ask to join; you or a moderator let them in."
+        if (r === "knock") return qsTrId("rustrx-la-rule-knock-hint")
+        //% "Members of the space join without asking."
+        if (r === "restricted") return qsTrId("rustrx-la-rule-restricted-hint")
+        //% "Anyone can find and join it in the room directory."
+        if (r === "public") return qsTrId("rustrx-la-public-hint")
+        //% "Only people you invite."
+        return qsTrId("rustrx-la-rule-invite-hint")
+    }
 
     function create() {
         waiting = true
@@ -99,29 +109,19 @@ Page {
                 placeholderText: label
             }
 
-            HoldComboBox {
+            // the one choice box (0.8 audit), its hint from the choice
+            ChoiceBox {
                 id: accessBox
-                width: parent.width
                 //% "Who can join"
                 label: qsTrId("rustrx-la-who-can-join")
-                description: dialog.rule === "knock"
-                             //% "Anyone can ask to join; you or a moderator let them in."
-                             ? qsTrId("rustrx-la-rule-knock-hint")
-                             : dialog.rule === "restricted"
-                             //% "Members of the space join without asking."
-                             ? qsTrId("rustrx-la-rule-restricted-hint")
-                             : dialog.rule === "public"
-                             //% "Anyone can find and join it in the room directory."
-                             ? qsTrId("rustrx-la-public-hint")
-                             //% "Only people you invite."
-                             : qsTrId("rustrx-la-rule-invite-hint")
-                menu: ContextMenu {
-                    Repeater {
-                        model: dialog.rules
-                        MenuItem { text: app.joinRuleName(modelData, dialog.parentName) }
-                    }
+                value: dialog.rule
+                choices: dialog.rules.map(function (r) {
+                    return { value: r, text: app.joinRuleName(r, dialog.parentName), hint: dialog.ruleHint(r) }
+                })
+                onChosen: {
+                    dialog.rule = value
+                    encryptSwitch.checked = value !== "public"
                 }
-                onCurrentIndexChanged: encryptSwitch.checked = dialog.rule !== "public"
             }
 
             TextField {
@@ -157,6 +157,7 @@ Page {
             BusyIndicator {
                 anchors.horizontalCenter: parent.horizontalCenter
                 running: dialog.waiting
+                visible: running
                 size: BusyIndicatorSize.Medium
             }
         }

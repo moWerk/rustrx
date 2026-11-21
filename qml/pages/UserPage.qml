@@ -47,6 +47,8 @@ Page {
         onErrorOccurred: {
             if (cmd === "user_info" || cmd === "kick" || cmd === "ban" || cmd === "unban"
                     || cmd === "verify_user" || cmd === "set_user_level") { page.loaded = true; page.load() }
+            // a refused role goes back and says why (decision 3, 0.8 audit)
+            if (cmd === "set_user_level") roleBox.revert(app.friendlyError(cmd, message))
             if (cmd === "redact_recent") page.removing = false
         }
         //% "Reported to your server's admins"
@@ -156,12 +158,10 @@ Page {
                 description: page.userId
             }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
+            // how it stands; lit once verified (0.8 audit: no interactive colour)
+            Note {
+                kind: page.info.verified ? "paragraph" : "status"
                 visible: page.loaded && !page.info.is_self
-                wrapMode: Text.Wrap
-                color: page.info.verified ? Theme.highlightColor : Theme.secondaryColor
                 text: page.info.verified
                       //% "Verified: you compared emoji with them."
                       ? qsTrId("rustrx-la-user-verified")
@@ -194,10 +194,14 @@ Page {
                       ? qsTrId("rustrx-me-unignore")
                       //% "Ignore this person"
                       : qsTrId("rustrx-me-ignore")
+                // with the same undo as the members list and the Ignored
+                // page: it hides their messages at once (0.8 audit)
                 onClicked: {
-                    var cmd = page.info.ignored ? "unignore_user" : "ignore_user"
-                    rustrx.command({ cmd: cmd, user_id: page.userId })
-                    page.load()
+                    var ignored = page.info.ignored === true, uid = page.userId, core = rustrx, p = page
+                    remorse.execute(ignored ? qsTrId("rustrx-re-unignoring") : qsTrId("rustrx-re-ignoring"), function () {
+                        core.command({ cmd: ignored ? "unignore_user" : "ignore_user", user_id: uid })
+                        p.load()
+                    })
                 }
             }
 
@@ -214,48 +218,36 @@ Page {
                 label: qsTrId("rustrx-la-role")
                 value: page.roleName(page.info.role, page.info.power)
             }
-            HoldComboBox {
+            ChoiceBox {
                 id: roleBox
                 visible: !!page.info.can_set_level
-                width: parent.width
                 label: qsTrId("rustrx-la-role")
-                // a level that is no role's (say 75) shows as itself
-                readonly property bool custom: page.roleLevels.indexOf(page.info.power) < 0
-                // only roles up to our own level can be given
+                // only roles up to our own level can be given; a level that
+                // is no role's (say 75) shows as itself
                 readonly property var offered: page.roleLevels.filter(function (l) { return l <= (page.info.own_level || 0) })
-                // the tapped entry acts, the box follows the room (LevelComboBox)
-                readonly property int shownIndex: custom ? offered.length : Math.max(0, offered.indexOf(page.info.power))
-                currentIndex: shownIndex
-                onShownIndexChanged: currentIndex = shownIndex
-                function choose(level) {
-                    if (!page.loaded || level === page.info.power) return
-                    if (page.info.is_self && level < page.info.power) {
+                value: page.info.power
+                choices: offered.map(function (l) {
+                    return { value: l, text: page.roleName(l === 100 ? "admin" : l === 50 ? "moderator" : "member"),
+                             //% "You can lower your own role, but not raise it again."
+                             hint: page.info.is_self ? qsTrId("rustrx-la-role-self-hint") : "" }
+                }).concat(page.roleLevels.indexOf(page.info.power) < 0 && page.info.power !== undefined ? [{
+                    //: a power level that is none of the named roles
+                    //% "Level %1"
+                    value: page.info.power, text: qsTrId("rustrx-la-role-level").arg(page.info.power),
+                    hint: page.info.is_self ? qsTrId("rustrx-la-role-self-hint") : ""
+                }] : [])
+                onChosen: {
+                    if (!page.loaded) { revert(""); return }
+                    if (page.info.is_self && value < page.info.power) {
+                        var level = value
                         //% "Lowering your own role: no one below you can give it back"
                         remorse.execute(qsTrId("rustrx-re-self-demote"), function () { page.setLevel(level) })
                         // until the remorse runs out, the box shows the role as it is
-                        currentIndex = shownIndex
+                        revert("")
                     } else {
-                        page.setLevel(level)
+                        page.setLevel(value)
                     }
                 }
-                menu: ContextMenu {
-                    Repeater {
-                        model: roleBox.offered
-                        MenuItem {
-                            text: page.roleName(modelData === 100 ? "admin" : modelData === 50 ? "moderator" : "member")
-                            onClicked: roleBox.choose(modelData)
-                        }
-                    }
-                    MenuItem {
-                        visible: roleBox.custom
-                        //: a power level that is none of the named roles
-                        //% "Level %1"
-                        text: qsTrId("rustrx-la-role-level").arg(page.info.power)
-                    }
-                }
-                description: page.info.is_self
-                             //% "You can lower your own role, but not raise it again."
-                             ? qsTrId("rustrx-la-role-self-hint") : ""
             }
 
             // muted: a level below the one for sending messages. Only for
@@ -274,6 +266,15 @@ Page {
                 onClicked: page.setLevel(checked ? sendLevel : sendLevel - 1)
             }
 
+            // the moderator's acts as a group of their own, apart from the
+            // everyday buttons above (0.8 audit)
+            SectionHeader {
+                visible: (!!page.info.can_kick && (page.info.membership === "invite" || page.info.membership === "join"))
+                         || !!page.info.can_ban
+                         || (!page.info.is_self && !page.inSpace && page.info.membership !== undefined
+                             && app.roomMay(page.roomId).redact_other === true)
+                text: qsTrId("rustrx-se-moderation")
+            }
             PageButton {
                 visible: !!page.info.can_kick && page.info.membership === "invite"
                 //% "Revoke the invitation"
@@ -364,6 +365,7 @@ Page {
             anchors.centerIn: parent
             size: BusyIndicatorSize.Large
             running: !page.loaded
+            visible: running
         }
         VerticalScrollDecorator { }
     }

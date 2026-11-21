@@ -38,6 +38,10 @@ ConfigurationGroup {
     property bool separateLists: true
     property bool separateFavs: true
     property bool separateSpaces: true
+    // GIFs in the chat move by themselves while in view (else at a tap),
+    // and play once unless looping is on (App > Behaviour; the author, 0.8)
+    property bool gifAutoplay: true
+    property bool gifLoop: false
     // the kind of tab the main page was left on
     property string lastTabKind: "rooms"
 

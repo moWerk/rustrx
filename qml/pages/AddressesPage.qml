@@ -127,12 +127,9 @@ Page {
                     }
                 }
             }
-            Label {
+            Note {
+                kind: "status"
                 visible: page.all.length === 0
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: Theme.secondaryHighlightColor
                 //% "No address yet. Without one, the room is found only by invitation or by its ID."
                 text: qsTrId("rustrx-la-no-alias")
             }
@@ -166,12 +163,8 @@ Page {
                 running: page.adding.length > 0
                 visible: running
             }
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
+            Note {
+                kind: "footnote"
                 //% "A long press on an address makes it the main one, takes it out, or deletes it from its server."
                 text: qsTrId("rustrx-la-alias-hint")
             }

@@ -15,12 +15,17 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
+import Nemo.Configuration 1.0
 import Rustrx 1.0
 import Sailfish.Silica 1.0
+import "../components"
+import "../names.js" as Names
 
 // Find rooms in the server's public directory and people in the user
 // directory; a typed address (#room:server, @user:server) is offered as is.
-// Tapping a room joins and opens it, tapping a person opens the direct chat.
+// Tapping a joined room opens it, another room its join page, and a person
+// asks first, then opens the direct chat. While the field is empty, what
+// was opened or joined from here before is offered again.
 Page {
     id: page
 
@@ -30,11 +35,66 @@ Page {
     // alone never searched; only the enter key did)
     property string typed
     property bool searching
-    property string pending   // id being joined or started, for the busy label
+    // why the last search failed, in words; "" when it did not
+    property string searchError
+    property string pending   // name of the chat being started, for the busy label
+    property string pendingId
+    // a room handed to the join page: kept once it is joined
+    property string joinTerm
+    property string joinName
+
+    // what was opened or joined from here before, newest first, for each
+    // account its own (the author's wish, 0.8): a JSON list of
+    // { term, name, account } in one dconf key
+    readonly property int historyMax: Tunables.searchHistoryMax
+    ConfigurationValue {
+        id: historyValue
+        key: Names.dconfPath + "/searchHistory"
+        defaultValue: "[]"
+    }
+    function allHistory() {
+        try {
+            var all = JSON.parse(historyValue.value || "[]")
+            return Array.isArray(all) ? all : []
+        } catch (e) {
+            return []
+        }
+    }
+    readonly property var history: {
+        var all = allHistory(), mine = []
+        for (var i = 0; i < all.length; i++)
+            if (all[i].account === rustrx.userId && all[i].term) mine.push(all[i])
+        return mine
+    }
+    function remember(term, name) {
+        if (!term || !term.length) return
+        var all = allHistory(), kept = [], count = 1
+        for (var i = 0; i < all.length; i++) {
+            var mine = all[i].account === rustrx.userId
+            if (mine && all[i].term === term) continue
+            if (mine && ++count > historyMax) continue
+            kept.push(all[i])
+        }
+        kept.unshift({ term: term, name: name || term, account: rustrx.userId })
+        historyValue.value = JSON.stringify(kept)
+    }
+    function forget(term) {
+        var all = allHistory(), kept = []
+        for (var i = 0; i < all.length; i++)
+            if (!(all[i].account === rustrx.userId && all[i].term === term)) kept.push(all[i])
+        historyValue.value = JSON.stringify(kept)
+    }
+    function forgetAll() {
+        var all = allHistory(), kept = [], me = rustrx.userId
+        for (var i = 0; i < all.length; i++)
+            if (all[i].account !== me) kept.push(all[i])
+        historyValue.value = JSON.stringify(kept)
+    }
 
     function search(term) {
         term = term.trim()
         hits.clear()
+        page.searchError = ""
         if (term.length < Tunables.minSearchChars) return
         page.lastTerm = term
         if (/^[@#!][^\s]+:[^\s]+$/.test(term)) {
@@ -46,9 +106,39 @@ Page {
     }
 
     function open(roomId, name) {
+        // an existing chat comes back at once, while the question still
+        // slides away: the stack takes no page during a transition
+        if (pageStack.busy) {
+            openLater.roomId = roomId
+            openLater.name = name
+            openLater.restart()
+            return
+        }
         page.pending = ""
+        page.pendingId = ""
         pageStack.replace(Qt.resolvedUrl("RoomPage.qml"), { roomId: roomId, roomName: name })
     }
+    Timer {
+        id: openLater
+        property string roomId
+        property string name
+        interval: Tunables.retryIntervalMs
+        onTriggered: page.open(roomId, name)
+    }
+
+    // a person: ask first, as a link to them does (starting a chat invites
+    // them and shows them one's address; a tap did it at once, 0.8 audit)
+    function askChat(userId, name) {
+        var dialog = pageStack.push(Qt.resolvedUrl("StartChatDialog.qml"), { userId: userId, name: name })
+        dialog.accepted.connect(function () {
+            page.pending = name
+            page.pendingId = userId
+            rustrx.command({ cmd: "create_dm", user_id: userId })
+        })
+    }
+
+    // back here without joining: the join page's room is not kept
+    onStatusChanged: if (status === PageStatus.Active) { joinTerm = ""; joinName = "" }
 
     Connections {
         target: rustrx
@@ -64,18 +154,30 @@ Page {
             for (i = 0; i < results.rooms.length; i++) {
                 r = results.rooms[i]
                 hits.append({ kind: "room", id: r.alias || r.room_id, name: r.name || r.alias || r.room_id,
-                              //: %1 the number of people in a room
-                              //% "%1 members"
-                              info: [r.alias, qsTrId("rustrx-la-members").arg(r.member_count), r.topic]
+                              info: [r.alias, qsTrId("rustrx-la-n-members", r.member_count || 0), r.topic]
                                     .filter(function (s) { return s && s.length }).join(" · "),
                               joined: r.joined })
             }
         }
-        onJoined: if (page.pending.length) open(roomId, page.pending)
-        onDmReady: if (page.pending.length) open(roomId, page.pending)
+        onJoined: {
+            // joined on the join page this page opened
+            if (page.joinTerm.length && page.status !== PageStatus.Active) {
+                page.remember(page.joinTerm, page.joinName)
+                page.joinTerm = ""
+            }
+        }
+        onDmReady: {
+            if (!page.pending.length) return
+            page.remember(page.pendingId, page.pending)
+            page.open(roomId, page.pending)
+        }
         onErrorOccurred: {
-            page.pending = ""
-            if (cmd === "search") page.searching = false
+            if (cmd === "create_dm") { page.pending = ""; page.pendingId = "" }
+            if (cmd === "search") {
+                page.searching = false
+                // not "Nothing found": the search did not get through
+                page.searchError = app.friendlyError(cmd, message)
+            }
         }
     }
 
@@ -86,6 +188,8 @@ Page {
         interval: Tunables.searchDebounceMs
         onTriggered: page.search(page.typed)
     }
+
+    RemorsePopup { id: remorse }
 
     SilicaListView {
         id: list
@@ -100,21 +204,15 @@ Page {
             width: parent.width
 
             PageHeader {
-                //% "Add Room / Contact"
+                //% "Add room or contact"
                 title: qsTrId("rustrx-he-add")
             }
 
             // a room of one's own, named after what was typed if anything
-            BackgroundItem {
-                width: parent.width
+            LinkRow {
+                //% "Create a new room"
+                text: qsTrId("rustrx-la-create-room")
                 onClicked: pageStack.push(Qt.resolvedUrl("CreateRoomPage.qml"), { name: field.text.charAt(0) === "#" ? field.text.slice(1).split(":")[0] : field.text })
-                Label {
-                    x: Theme.horizontalPageMargin
-                    anchors.verticalCenter: parent.verticalCenter
-                    //% "Create a new room"
-                    text: qsTrId("rustrx-la-create-room")
-                    color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
-                }
             }
 
             SearchField {
@@ -128,14 +226,59 @@ Page {
                 Component.onCompleted: forceActiveFocus()
             }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                visible: page.searching
+            Note {
+                kind: "status"
                 //% "Searching…"
-                text: qsTrId("rustrx-la-searching")
-                color: Theme.secondaryHighlightColor
-                font.pixelSize: Theme.fontSizeSmall
+                text: page.searching ? qsTrId("rustrx-la-searching") : ""
+            }
+
+            // what was opened or joined before: a tap searches it again, the
+            // cross forgets it
+            Column {
+                width: parent.width
+                visible: page.typed.length === 0 && page.history.length > 0
+
+                SectionHeader {
+                    //: the rooms and people opened from this page before
+                    //% "Recent"
+                    text: qsTrId("rustrx-se-recent")
+                }
+                Repeater {
+                    model: page.typed.length === 0 ? page.history : []
+                    BackgroundItem {
+                        id: recentRow
+                        width: parent.width
+                        height: Theme.itemSizeMedium
+                        onClicked: {
+                            field.text = modelData.term
+                            debounce.stop()
+                            page.search(modelData.term)
+                        }
+                        RowTexts {
+                            anchors {
+                                left: parent.left
+                                leftMargin: Theme.horizontalPageMargin
+                                right: forgetButton.left
+                                verticalCenter: parent.verticalCenter
+                            }
+                            highlighted: recentRow.highlighted
+                            text: modelData.name
+                            description: modelData.name !== modelData.term ? modelData.term : ""
+                        }
+                        IconButton {
+                            id: forgetButton
+                            anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin - Theme.paddingMedium; verticalCenter: parent.verticalCenter }
+                            icon.source: "image://theme/icon-m-clear"
+                            onClicked: page.forget(modelData.term)
+                        }
+                    }
+                }
+                ActionLine {
+                    //% "Clear all"
+                    text: qsTrId("rustrx-me-clear-recent")
+                    //% "Clearing"
+                    onClicked: remorse.execute(qsTrId("rustrx-re-clearing-recent"), function () { page.forgetAll() })
+                }
             }
         }
 
@@ -147,19 +290,21 @@ Page {
 
             onClicked: {
                 if (model.kind === "user") {
-                    page.pending = model.name
-                    rustrx.command({ cmd: "create_dm", user_id: model.id })
+                    page.askChat(model.id, model.name)
                 } else if (model.joined) {
-                    open(model.id, model.name)
+                    page.remember(model.id, model.name)
+                    page.open(model.id, model.name)
                 } else {
                     // the join page: what the room is, joining or asking to
                     // join as the room wants, and why it failed in words (a
                     // join from here failed silently, and asked nobody)
+                    page.joinTerm = model.id
+                    page.joinName = model.name
                     pageStack.push(Qt.resolvedUrl("JoinPage.qml"), { address: model.id })
                 }
             }
 
-            Column {
+            RowTexts {
                 anchors {
                     left: parent.left
                     right: parent.right
@@ -167,45 +312,32 @@ Page {
                     rightMargin: Theme.horizontalPageMargin
                     verticalCenter: parent.verticalCenter
                 }
-
-                Label {
-                    width: parent.width
-                    truncationMode: TruncationMode.Fade
-                    color: row.highlighted ? Theme.highlightColor : Theme.primaryColor
-                    text: {
-                        var t = model.name
-                        //% "joined"
-                        if (model.joined) t += " · " + qsTrId("rustrx-la-joined")
-                        if (page.pending === model.name)
-                            t += " · " + (model.kind === "user"
-                                          //% "opening…"
-                                          ? qsTrId("rustrx-la-opening")
-                                          //% "joining…"
-                                          : qsTrId("rustrx-la-joining"))
-                        return t
-                    }
+                highlighted: row.highlighted
+                text: {
+                    var t = model.name
+                    //% "joined"
+                    if (model.joined) t += " · " + qsTrId("rustrx-la-joined")
+                    //% "opening…"
+                    if (page.pending.length && page.pendingId === model.id) t += " · " + qsTrId("rustrx-la-opening")
+                    return t
                 }
-
-                Label {
-                    width: parent.width
-                    visible: text.length > 0
-                    truncationMode: TruncationMode.Fade
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: row.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
-                    text: model.kind === "user"
-                          //% "Person"
-                          ? (model.info.length ? model.info : qsTrId("rustrx-la-person"))
-                          : model.info
-                }
+                description: model.kind === "user"
+                             //% "Person"
+                             ? (model.info.length ? model.info : qsTrId("rustrx-la-person"))
+                             : model.info
             }
         }
 
         ViewPlaceholder {
             enabled: hits.count === 0 && page.lastTerm.length > 0 && !page.searching
-            //% "Nothing found"
-            text: qsTrId("rustrx-la-nothing-found")
-            //% "Try an address like #room:server or @user:server."
-            hintText: qsTrId("rustrx-la-nothing-found-hint")
+            text: page.searchError.length
+                  //% "The search did not work"
+                  ? qsTrId("rustrx-la-search-failed")
+                  //% "Nothing found"
+                  : qsTrId("rustrx-la-nothing-found")
+            hintText: page.searchError.length ? page.searchError
+                      //% "Try an address like #room:server or @name:server."
+                      : qsTrId("rustrx-la-nothing-found-hint")
         }
 
         VerticalScrollDecorator { }

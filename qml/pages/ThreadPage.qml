@@ -163,6 +163,7 @@ Page {
         }
 
         BusyIndicator {
+            visible: running
             anchors.centerIn: parent
             size: BusyIndicatorSize.Large
             running: list.count === 0

@@ -45,11 +45,8 @@ Dialog {
                 acceptText: qsTrId("rustrx-bt-done")
             }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: Theme.highlightColor
+            Note {
+                kind: "intro"
                 //% "With this key, any new device of yours reads your encrypted messages. It is shown only now: write it down or keep it in a password manager, somewhere other than this phone."
                 text: qsTrId("rustrx-la-recovery-key-intro")
             }

@@ -33,10 +33,6 @@
         <source>sending</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-not-sent">
-        <source>not sent</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-la-edited">
         <source>edited</source>
         <translation type="unfinished"></translation>
@@ -158,10 +154,6 @@
         <source>Starting the camera…</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-bt-retake">
-        <source>Retake</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-bt-send">
         <source>Send</source>
         <translation type="unfinished"></translation>
@@ -269,12 +261,8 @@
         <source>Nothing here yet</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-not-connected">
-        <source>Not connected</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-la-empty-rooms-hint">
-        <source>Join or create a room with Add Room / Contact in the pulley menu.</source>
+        <source>Join or create a room with Add room or contact in the pulley menu.</source>
         <oldsource>Rooms you join appear here, sorted by activity.</oldsource>
         <translation type="unfinished"></translation>
     </message>
@@ -283,7 +271,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-empty-people-hint">
-        <source>Start a chat with someone with Add Room / Contact in the pulley menu.</source>
+        <source>Start a chat with someone with Add room or contact in the pulley menu.</source>
         <oldsource>Direct chats appear here.</oldsource>
         <translation type="unfinished"></translation>
     </message>
@@ -313,11 +301,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-device-verified">
-        <source>This device is verified.</source>
+        <source>This phone is verified.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-device-unverified">
-        <source>This device is not verified yet. Verify it from another device you are logged in on, or start the verification here.</source>
+        <source>This phone is not verified yet. Verify it from another device you are logged in on, or start the verification here.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-device-unknown">
@@ -325,11 +313,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-recovery-enabled">
-        <source>Key backup is on and this device holds the recovery secrets. Older encrypted messages are restored from the backup.</source>
+        <source>Key backup is on and this phone holds the recovery secrets. Older encrypted messages are restored from the backup.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-recovery-incomplete">
-        <source>Key backup exists, but this device lacks the recovery key. Enter it below to read older encrypted messages.</source>
+        <source>Key backup exists, but this phone lacks the recovery key. Enter it below to read older encrypted messages.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-recovery-disabled">
@@ -353,19 +341,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-arc-store-ok">
-        <source>Encrypted on the phone</source>
+        <source>Encrypted on this phone</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-arc-store-risk">
-        <source>Not encrypted on the phone</source>
+        <source>Not encrypted on this phone</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-arc-verified-ok">
-        <source>The phone is verified</source>
+        <source>This phone is verified</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-arc-verified-risk">
-        <source>The phone is not verified</source>
+        <source>This phone is not verified</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-arc-backup-ok">
@@ -502,7 +490,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-bt-verify-device">
-        <source>Verify this device</source>
+        <source>Verify this phone</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-recovery-key">
@@ -554,7 +542,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-ver-requested">
-        <source>%1 wants to verify this device. Accept to compare emoji.</source>
+        <source>%1 wants to verify this phone. Accept to compare emoji.</source>
         <extracomment>%1 the other device&apos;s name or id</extracomment>
         <translation type="unfinished"></translation>
     </message>
@@ -613,16 +601,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-me-add">
-        <source>Add Room / Contact</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-la-members">
-        <source>%1 members</source>
-        <extracomment>%1 the number of people in a room</extracomment>
+        <source>Add room or contact</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-he-add">
-        <source>Add Room / Contact</source>
+        <source>Add room or contact</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-search-placeholder">
@@ -641,10 +624,6 @@
         <source>opening…</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-la-joining">
-        <source>joining…</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-la-person">
         <source>Person</source>
         <translation type="unfinished"></translation>
@@ -654,7 +633,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-nothing-found-hint">
-        <source>Try an address like #room:server or @user:server.</source>
+        <source>Try an address like #room:server or @name:server.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-se-appearance">
@@ -690,7 +669,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-banner-unverified">
-        <source>This device is not verified. Tap to verify it.</source>
+        <source>This phone is not verified. Tap to verify it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-banner-recovery">
@@ -767,7 +746,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-sw-favourite">
-        <source>Favourite</source>
+        <source>In Favs</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-sw-low-priority">
@@ -775,7 +754,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-low-priority-desc">
-        <source>Sorted below the other rooms</source>
+        <source>Sorted below the other rooms.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-se-members" numerus="yes">
@@ -1189,16 +1168,6 @@
         <source>Declining</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-no-action-failed">
-        <source>%1 failed: %2</source>
-        <extracomment>transient error line, %1 what was tried, %2 the server&apos;s or the network&apos;s message</extracomment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-no-something-failed">
-        <source>Something went wrong: %1</source>
-        <extracomment>transient error line for anything without its own name, %1 the message</extracomment>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-no-calls-allowed">
         <source>Everyone in this room can now take part in calls</source>
         <extracomment>a call was started where only moderators could take part; the starter could change that</extracomment>
@@ -1245,7 +1214,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-act-fav">
-        <source>Changing favourites</source>
+        <source>Changing Favs</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-act-notify">
@@ -1294,7 +1263,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-he-space-add">
-        <source>Add to the space</source>
+        <source>Add to this space</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-space-add-none">
@@ -1340,10 +1309,6 @@
     </message>
     <message id="rustrx-la-join-name-or-address">
         <source>Name or address, like #room:server</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-la-found-joined">
-        <source>joined</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-found-none">
@@ -1495,7 +1460,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-me-sort-favs-on-top">
-        <source>Favourites on top</source>
+        <source>Favs on top</source>
         <extracomment>room list option, with any order</extracomment>
         <translation type="unfinished"></translation>
     </message>
@@ -1710,11 +1675,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-highlight-favs">
-        <source>Highlight Favs channels with new messages</source>
+        <source>Highlight Favs with new messages</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-highlight-favs-hint">
-        <source>A favourite with something unread glows calmly in the lists, its star with it.</source>
+        <source>A Fav with something unread glows calmly in the lists, its star with it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-separate-lists">
@@ -1726,11 +1691,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-separate-favs">
-        <source>Favourites tab</source>
+        <source>Favs tab</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-separate-favs-hint">
-        <source>The favourites as a tab of their own. When off, “Favourites on top” in the filter menu keeps them at hand.</source>
+        <source>The Favs as a tab of their own. When off, “Favs on top” in the filter menu keeps them at hand.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-separate-spaces">
@@ -2970,7 +2935,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-account-logged-out">
-        <source>Logged out, tap to log in again</source>
+        <source>Logged out. Tap to log in again.</source>
         <extracomment>an account whose session the server ended</extracomment>
         <translation type="unfinished"></translation>
     </message>
@@ -3017,10 +2982,6 @@
     </message>
     <message id="rustrx-la-link-intro">
         <source>Log in to %1 on another phone or computer, in Rustrx or Element. This phone hands over the keys, so the new device comes in verified.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="rustrx-la-link-show">
-        <source>On the new device, choose to log in with a QR code and scan this one.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-link-syncing">
@@ -3169,6 +3130,186 @@
     </message>
     <message id="rustrx-la-recovery-key-saved">
         <source>I have saved it</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-qr-new">
+        <source>Show a new code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-search-for-it">
+        <source>Search for it</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-ver-use-key">
+        <source>No other device? Use the recovery key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-avatar">
+        <source>Changing the picture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-ban">
+        <source>Banning</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-devices">
+        <source>Loading the devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-export-keys">
+        <source>Saving the keys</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-import-keys">
+        <source>Reading the keys</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-kick">
+        <source>Removing them</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-knock">
+        <source>Asking to join</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-name">
+        <source>Changing your name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-pin">
+        <source>Pinning</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-preview">
+        <source>Looking up the room</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-probe">
+        <source>Checking the server</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-recover">
+        <source>Restoring with the recovery key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-recovery-on">
+        <source>Turning on the backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-recovery-reset">
+        <source>Making a new recovery key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-report">
+        <source>Reporting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-search-rooms">
+        <source>Searching for rooms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-settings">
+        <source>Changing the room&apos;s settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-source">
+        <source>Loading the message source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-act-unban">
+        <source>Lifting the ban</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-call-return">
+        <source>Call with %1. Tap to return to it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-gif">
+        <source>GIF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-gif-autoplay">
+        <source>Play GIFs in the chat</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-gif-autoplay-hint">
+        <source>GIFs move while they are on the screen. When off, a tap plays one.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-gif-loop">
+        <source>Loop GIFs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-gif-loop-hint">
+        <source>When off, a GIF plays once and stops.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-link-show-scan">
+        <source>On the new device, choose Scan a QR code (in Element: Sign in with QR code) and scan this one.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-not-sent-tap">
+        <source>Not sent. Tap to send again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-qr-sent">
+        <source>Checking the digits…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-search-failed">
+        <source>The search did not work</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-clear-recent">
+        <source>Clear all</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-err-banned">
+        <source>You are banned from this room.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-err-forbidden">
+        <source>You are not allowed to do that here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-err-lead">
+        <source>%1 did not work.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-err-lead-any">
+        <source>That did not work.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-err-network">
+        <source>The server could not be reached. Check the network and try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-err-not-found">
+        <source>It is no longer there.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-err-rate">
+        <source>The server asks to slow down. Wait a moment and try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-err-token">
+        <source>The server has ended this login. Log in again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-err-too-large">
+        <source>The file is too large for the server.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-re-clearing-recent">
+        <source>Clearing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-invite-own-accounts">
+        <source>Your other accounts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-se-recent">
+        <source>Recent</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

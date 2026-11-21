@@ -45,6 +45,9 @@ Page {
                                  ? ["invite", "knock", "restricted", "knock_restricted", "public"]
                                  : ["invite", "knock", "public"]
     readonly property int knocks: app.knockCount(roomId)
+    // outside the qsTrId: a function inside its arguments made lupdate drop
+    // the //% text, and the row showed its raw id (0.8 audit)
+    readonly property int joinedCount: memberList.filter(function (m) { return !m.membership || m.membership === "join" }).length
 
     function refresh() {
         info = rustrx.roomInfo(roomId)
@@ -76,6 +79,10 @@ Page {
             // a refused change: show the settings as they are
             if (["set_history_visibility", "set_guest_access", "enable_encryption", "set_directory_visibility"].indexOf(cmd) >= 0)
                 rustrx.command({ cmd: "room_settings", room_id: page.roomId })
+            // a refused choice goes back and says why (decision 3, 0.8 audit)
+            if (cmd === "set_join_rule") joinBox.revert(app.friendlyError(cmd, message))
+            else if (cmd === "set_history_visibility") historyBox.revert(app.friendlyError(cmd, message))
+            else if (cmd === "set_notification_mode") notifyBox.revert(app.friendlyError(cmd, message))
         }
         //% "Reported to your server's admins"
         onReported: if (what.room_id === page.roomId) Notices.show(qsTrId("rustrx-no-reported"), Notice.Short)
@@ -209,6 +216,9 @@ Page {
         Column {
             id: column
             width: flick.width
+            // the settings tabs' room between rows, so buttons and switches
+            // stand as far apart here as there (0.8 audit)
+            spacing: Theme.paddingMedium
 
             PageHeader {
                 title: info.name || ""
@@ -220,54 +230,37 @@ Page {
             }
 
             // the room's threads and members, close to the top where they are
-            // found, each on a page of its own
-            Item { width: 1; height: Theme.paddingMedium }
-            Repeater {
-                model: [
+            // found, each on a page of its own; lines that open a page, as
+            // everywhere (0.8 audit)
+            Column {
+                width: parent.width
+                LinkRow {
+                    visible: !page.isSpace
+                    height: Theme.itemSizeMedium
+                    icon: "image://theme/icon-m-chat"
+                    iconSize: Theme.iconSizeMedium
                     //% "Threads"
-                    { key: "threads", text: qsTrId("rustrx-bt-threads"), icon: "icon-m-menu", show: !page.isSpace },
+                    text: qsTrId("rustrx-bt-threads")
+                    onClicked: pageStack.push(Qt.resolvedUrl("ThreadsPage.qml"), { roomId: roomId, roomName: info.name || "" })
+                }
+                LinkRow {
+                    height: Theme.itemSizeMedium
+                    icon: "image://theme/icon-m-people"
+                    iconSize: Theme.iconSizeMedium
+                    enabled: page.membersLoaded
                     //: %n the room's members
                     //% "Members (%n)"
-                    { key: "members", text: qsTrId("rustrx-bt-members", page.memberList.filter(function (m) { return !m.membership || m.membership === "join" }).length), icon: "icon-m-people", show: true }
-                ]
-                BackgroundItem {
-                    id: entry
-                    visible: modelData.show
-                    width: parent.width
-                    height: visible ? Theme.itemSizeMedium : 0
-                    enabled: modelData.key !== "members" || page.membersLoaded
-                    onClicked: {
-                        if (modelData.key === "threads")
-                            pageStack.push(Qt.resolvedUrl("ThreadsPage.qml"), { roomId: roomId, roomName: info.name || "" })
-                        else
-                            pageStack.push(Qt.resolvedUrl("MembersPage.qml"), { roomId: roomId, roomName: info.name || "", members: page.memberList })
-                    }
-                    Row {
-                        x: Theme.horizontalPageMargin
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: Theme.paddingLarge
-                        Image {
-                            anchors.verticalCenter: parent.verticalCenter
-                            sourceSize.width: Theme.iconSizeMedium
-                            sourceSize.height: Theme.iconSizeMedium
-                            source: "image://theme/" + modelData.icon + "?" + (entry.highlighted ? Theme.highlightColor : Theme.primaryColor)
-                            opacity: entry.enabled ? 1 : Theme.opacityLow
-                        }
-                        Label {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.text
-                            color: entry.highlighted ? Theme.highlightColor : Theme.primaryColor
-                            opacity: entry.enabled ? 1 : Theme.opacityLow
-                        }
-                    }
+                    text: qsTrId("rustrx-bt-members", page.joinedCount)
+                    onClicked: pageStack.push(Qt.resolvedUrl("MembersPage.qml"), { roomId: roomId, roomName: info.name || "", members: page.memberList })
+                    // where the arrow goes once they are there
                     BusyIndicator {
                         anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
                         size: BusyIndicatorSize.ExtraSmall
-                        running: modelData.key === "members" && !page.membersLoaded
+                        running: !page.membersLoaded
+                        visible: running
                     }
                 }
             }
-            Item { width: 1; height: Theme.paddingMedium }
 
             // name and topic: fields for moderators, labels for everyone else.
             // Nothing is sent on its own: the name on Enter, the topic by its
@@ -298,35 +291,26 @@ Page {
                 text: info.topic || ""
             }
 
-            BackgroundItem {
+            // a button, as on the server access page: a text area has no
+            // Enter to give (0.8 audit)
+            PageButton {
                 visible: page.may.topic === true && !info.is_dm && topicField.text !== (info.topic || "")
-                width: parent.width
-                height: Theme.itemSizeSmall
+                //% "Save topic"
+                text: qsTrId("rustrx-bt-save-topic")
                 onClicked: {
                     rustrx.command({ cmd: "set_room_topic", room_id: roomId, topic: topicField.text })
                     topicField.focus = false
                 }
-                Label {
-                    anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
-                    //% "Save topic"
-                    text: qsTrId("rustrx-bt-save-topic")
-                    color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
-                }
             }
 
-            Label {
-                visible: page.may.topic !== true && !!(info.topic && info.topic.length)
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
+            Note {
+                visible: page.may.topic !== true && text.length > 0
                 text: info.topic || ""
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.highlightColor
             }
 
             // the room's picture, large, well below the name and topic (the
             // author's wish); for moderators a tap changes it
-            Item { width: 1; height: Theme.paddingLarge * 2 }
+            Item { width: 1; height: Theme.paddingLarge }
             BackgroundItem {
                 visible: !info.is_dm
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -361,8 +345,6 @@ Page {
                     layer.effect: RoundMask { radius: app.avatarRadius }
                 }
             }
-
-            Item { width: 1; height: Theme.paddingMedium }
 
             // the address, or the room's ID where it has none (the author
             // looked for something to post and found nothing); a tap copies
@@ -404,30 +386,20 @@ Page {
             }
             // who may join: anyone, people who ask, members of its spaces,
             // or invited people only
-            HoldComboBox {
+            ChoiceBox {
+                id: joinBox
                 visible: !info.is_dm
                 enabled: info.can_join_rules === true
-                width: parent.width
                 label: qsTrId("rustrx-la-who-can-join")
-                description: info.can_join_rules === true ? ""
+                value: info.join_rule || "invite"
+                choices: page.rules.map(function (r) {
+                    return { value: r, text: app.joinRuleName(r, ""),
                              //% "Only admins can change it."
-                             : qsTrId("rustrx-la-rule-admins-only")
-                // the box follows the room (the ComboBox sets currentIndex itself,
-                // which broke a plain binding: a refused or remote change never showed)
-                readonly property int shownIndex: Math.max(0, page.rules.indexOf(info.join_rule || "invite"))
-                currentIndex: shownIndex
-                onShownIndexChanged: currentIndex = shownIndex
-                menu: ContextMenu {
-                    Repeater {
-                        model: page.rules
-                        MenuItem { text: app.joinRuleName(modelData, "") }
-                    }
-                }
-                onCurrentIndexChanged: {
-                    if (currentIndex < 0) return
-                    var r = page.rules[currentIndex]
-                    if (info.join_rule && r !== info.join_rule && info.can_join_rules === true)
-                        rustrx.command({ cmd: "set_join_rule", room_id: roomId, rule: r })
+                             hint: info.can_join_rules === true ? "" : qsTrId("rustrx-la-rule-admins-only") }
+                })
+                onChosen: {
+                    if (info.join_rule && info.can_join_rules === true)
+                        rustrx.command({ cmd: "set_join_rule", room_id: roomId, rule: value })
                 }
             }
             // people asking to join it
@@ -438,35 +410,29 @@ Page {
             }
             // who reads what was said before they came; a line for everyone,
             // a choice for those who may
-            HoldComboBox {
+            ChoiceBox {
                 id: historyBox
                 visible: !info.is_dm && page.settings.history_visibility !== undefined
                 enabled: page.may.history === true
-                width: parent.width
-                readonly property var values: ["shared", "invited", "joined", "world_readable"]
                 //% "Who can read the history"
                 label: qsTrId("rustrx-la-history")
-                description: page.may.history === true
-                             //% "Changes apply to what is said from now on."
-                             ? qsTrId("rustrx-la-history-hint") : qsTrId("rustrx-la-rule-admins-only")
-                readonly property int shownIndex: Math.max(0, values.indexOf(page.settings.history_visibility || "shared"))
-                currentIndex: shownIndex
-                onShownIndexChanged: currentIndex = shownIndex
-                menu: ContextMenu {
+                value: page.settings.history_visibility || "shared"
+                readonly property string hint: page.may.history === true
+                                               //% "Changes apply to what is said from now on."
+                                               ? qsTrId("rustrx-la-history-hint") : qsTrId("rustrx-la-rule-admins-only")
+                choices: [
                     //% "Members, all of it"
-                    MenuItem { text: qsTrId("rustrx-me-history-shared") }
+                    { value: "shared", text: qsTrId("rustrx-me-history-shared"), hint: historyBox.hint },
                     //% "Members, since they were invited"
-                    MenuItem { text: qsTrId("rustrx-me-history-invited") }
+                    { value: "invited", text: qsTrId("rustrx-me-history-invited"), hint: historyBox.hint },
                     //% "Members, since they joined"
-                    MenuItem { text: qsTrId("rustrx-me-history-joined") }
+                    { value: "joined", text: qsTrId("rustrx-me-history-joined"), hint: historyBox.hint },
                     //% "Anyone, without joining"
-                    MenuItem { text: qsTrId("rustrx-me-history-anyone") }
-                }
-                onCurrentIndexChanged: {
-                    if (currentIndex < 0) return
-                    var v = values[currentIndex]
-                    if (page.may.history === true && page.settings.history_visibility && v !== page.settings.history_visibility)
-                        rustrx.command({ cmd: "set_history_visibility", room_id: roomId, value: v })
+                    { value: "world_readable", text: qsTrId("rustrx-me-history-anyone"), hint: historyBox.hint }
+                ]
+                onChosen: {
+                    if (page.may.history === true && page.settings.history_visibility)
+                        rustrx.command({ cmd: "set_history_visibility", room_id: roomId, value: value })
                 }
             }
             // guests: only where anyone may join anyway
@@ -505,22 +471,14 @@ Page {
                 visible: !page.isSpace && !info.encrypted && page.may.encryption === true
                 //% "Turn on encryption"
                 text: qsTrId("rustrx-bt-encrypt-room")
+                //% "It cannot be turned off again. Bridges, bots and newcomers may not read what was said before."
+                hint: qsTrId("rustrx-la-encrypt-room-hint")
                 onClicked: {
                     //% "Turning on encryption, for good"
                     encryptRemorse.execute(qsTrId("rustrx-re-encrypt-room"), function () {
                         rustrx.command({ cmd: "enable_encryption", room_id: roomId })
                     })
                 }
-            }
-            Label {
-                visible: !page.isSpace && !info.encrypted && page.may.encryption === true
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
-                //% "It cannot be turned off again. Bridges, bots and newcomers may not read what was said before."
-                text: qsTrId("rustrx-la-encrypt-room-hint")
             }
             RemorsePopup { id: encryptRemorse }
             // the room's ID, which every room has; a tap copies it too
@@ -546,36 +504,33 @@ Page {
                 }
             }
 
-            HoldComboBox {
+            ChoiceBox {
+                id: notifyBox
                 visible: !page.isSpace
                 //% "Notifications"
                 label: qsTrId("rustrx-la-notifications")
                 enabled: page.notifyMode.length > 0
-                readonly property var modes: ["default", "all", "mentions", "mute"]
-                readonly property int shownIndex: Math.max(0, modes.indexOf(page.notifyMode))
-                currentIndex: shownIndex
-                onShownIndexChanged: currentIndex = shownIndex
-                menu: ContextMenu {
+                value: page.notifyMode
+                choices: [
                     //% "Default"
-                    MenuItem { text: qsTrId("rustrx-me-notify-default") }
+                    { value: "default", text: qsTrId("rustrx-me-notify-default") },
                     //% "All messages"
-                    MenuItem { text: qsTrId("rustrx-me-notify-all") }
+                    { value: "all", text: qsTrId("rustrx-me-notify-all") },
                     //% "Mentions only"
-                    MenuItem { text: qsTrId("rustrx-me-notify-mentions") }
+                    { value: "mentions", text: qsTrId("rustrx-me-notify-mentions") },
                     //% "Muted"
-                    MenuItem { text: qsTrId("rustrx-me-notify-mute") }
-                }
-                onCurrentIndexChanged: {
-                    if (currentIndex < 0) return
-                    var m = modes[currentIndex]
-                    if (page.notifyMode.length && m !== page.notifyMode)
-                        rustrx.command({ cmd: "set_notification_mode", room_id: roomId, mode: m })
+                    { value: "mute", text: qsTrId("rustrx-me-notify-mute") }
+                ]
+                onChosen: {
+                    if (page.notifyMode.length)
+                        rustrx.command({ cmd: "set_notification_mode", room_id: roomId, mode: value })
                 }
             }
 
             TextSwitch {
                 visible: !page.isSpace
-                //% "Favourite"
+                // Favs, the one name (decision 1, 0.8 audit)
+                //% "In Favs"
                 text: qsTrId("rustrx-sw-favourite")
                 checked: info.is_fav === true
                 automaticCheck: false
@@ -585,7 +540,7 @@ Page {
                 visible: !info.is_dm && !page.isSpace
                 //% "Low priority"
                 text: qsTrId("rustrx-sw-low-priority")
-                //% "Sorted below the other rooms"
+                //% "Sorted below the other rooms."
                 description: qsTrId("rustrx-la-low-priority-desc")
                 checked: info.is_low === true
                 automaticCheck: false
@@ -598,35 +553,37 @@ Page {
                 //% "Moderation"
                 text: qsTrId("rustrx-se-moderation")
             }
-            LinkRow {
-                visible: page.may.power_levels === true
-                //% "Roles and permissions"
-                text: qsTrId("rustrx-bt-permissions")
-                onClicked: pageStack.push(Qt.resolvedUrl("RoomPermissionsPage.qml"), { roomId: roomId, settings: page.settings, members: page.memberList })
+            Column {
+                width: parent.width
+                LinkRow {
+                    visible: page.may.power_levels === true
+                    //% "Roles and permissions"
+                    text: qsTrId("rustrx-bt-permissions")
+                    onClicked: pageStack.push(Qt.resolvedUrl("RoomPermissionsPage.qml"), { roomId: roomId, settings: page.settings, members: page.memberList })
+                }
+                LinkRow {
+                    visible: page.may.aliases === true
+                    //% "Addresses"
+                    text: qsTrId("rustrx-bt-addresses")
+                    onClicked: pageStack.push(Qt.resolvedUrl("AddressesPage.qml"), { roomId: roomId, settings: page.settings })
+                }
+                LinkRow {
+                    visible: page.may.server_acl === true
+                    //% "Server access"
+                    text: qsTrId("rustrx-bt-server-acl")
+                    onClicked: pageStack.push(Qt.resolvedUrl("ServerAclPage.qml"), { roomId: roomId, settings: page.settings })
+                }
+                LinkRow {
+                    visible: page.may.upgrade === true && page.settings.versions !== undefined && page.settings.versions.length > 0
+                    //% "Upgrade the room"
+                    text: qsTrId("rustrx-bt-upgrade")
+                    //: %1 the room's version
+                    //% "Version %1"
+                    description: qsTrId("rustrx-la-room-version").arg(page.settings.version || "?")
+                    onClicked: pageStack.push(Qt.resolvedUrl("UpgradeRoomPage.qml"), { roomId: roomId, settings: page.settings })
+                }
             }
-            LinkRow {
-                visible: page.may.aliases === true
-                //% "Addresses"
-                text: qsTrId("rustrx-bt-addresses")
-                onClicked: pageStack.push(Qt.resolvedUrl("AddressesPage.qml"), { roomId: roomId, settings: page.settings })
-            }
-            LinkRow {
-                visible: page.may.server_acl === true
-                //% "Server access"
-                text: qsTrId("rustrx-bt-server-acl")
-                onClicked: pageStack.push(Qt.resolvedUrl("ServerAclPage.qml"), { roomId: roomId, settings: page.settings })
-            }
-            LinkRow {
-                visible: page.may.upgrade === true && page.settings.versions !== undefined && page.settings.versions.length > 0
-                //% "Upgrade the room"
-                text: qsTrId("rustrx-bt-upgrade")
-                //: %1 the room's version
-                //% "Version %1"
-                description: qsTrId("rustrx-la-room-version").arg(page.settings.version || "?")
-                onClicked: pageStack.push(Qt.resolvedUrl("UpgradeRoomPage.qml"), { roomId: roomId, settings: page.settings })
-            }
-
-
+            Item { width: 1; height: Theme.paddingMedium }
         }
 
         VerticalScrollDecorator { }
@@ -647,10 +604,31 @@ Page {
                 userField.text = userId
                 accept()
             }
+            // already in the room or invited: not offered again
+            function inRoom(userId) {
+                for (var i = 0; i < page.memberList.length; i++) {
+                    var m = page.memberList[i]
+                    if (m.user_id === userId && (!m.membership || m.membership === "join" || m.membership === "invite")) return true
+                }
+                return false
+            }
+            // one's other accounts on this phone, as quick choices before
+            // anything is typed (the author's ask, 0.8)
+            readonly property var ownAccounts: {
+                var out = [], all = rustrx.accounts
+                for (var i = 0; i < all.length; i++) {
+                    var a = all[i]
+                    if (a.shown || !a.user_id || a.user_id === rustrx.userId || inRoom(a.user_id)) continue
+                    if (term.length && (a.name || "").toLowerCase().indexOf(term) < 0 && a.user_id.toLowerCase().indexOf(term) < 0) continue
+                    out.push({ user_id: a.user_id, name: a.name || "" })
+                }
+                return out
+            }
             // the direct chats' people that match, then the directory's
             function contacts() {
                 var out = [], seen = {}
                 if (term.length === 0) return out
+                for (var k = 0; k < ownAccounts.length; k++) seen[ownAccounts[k].user_id] = true
                 for (var i = 0; i < rustrx.people.count && out.length < Tunables.inviteContactsMax; i++) {
                     var r = rustrx.people.get(i)
                     if (!r.dm_user || seen[r.dm_user]) continue
@@ -708,30 +686,48 @@ Page {
                         EnterKey.iconSource: "image://theme/icon-m-enter-accept"
                         EnterKey.onClicked: dialog.accept()
                     }
+                    SectionHeader {
+                        visible: dialog.ownAccounts.length > 0
+                        //% "Your other accounts"
+                        text: qsTrId("rustrx-se-invite-own-accounts")
+                    }
                     Repeater {
-                        model: dialog.contacts()
+                        model: dialog.ownAccounts
                         BackgroundItem {
+                            id: ownRow
                             width: column.width
                             height: Theme.itemSizeMedium
                             onClicked: dialog.invite(modelData.user_id)
-                            Column {
+                            RowTexts {
                                 x: Theme.horizontalPageMargin
                                 width: parent.width - 2 * x
                                 anchors.verticalCenter: parent.verticalCenter
-                                Label {
-                                    width: parent.width
-                                    truncationMode: TruncationMode.Fade
-                                    color: highlighted ? Theme.highlightColor : Theme.primaryColor
-                                    text: modelData.name || modelData.user_id
-                                }
-                                Label {
-                                    visible: !!modelData.name
-                                    width: parent.width
-                                    truncationMode: TruncationMode.Fade
-                                    font.pixelSize: Theme.fontSizeExtraSmall
-                                    color: highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
-                                    text: modelData.user_id
-                                }
+                                highlighted: ownRow.highlighted
+                                text: modelData.name || modelData.user_id
+                                description: modelData.name ? modelData.user_id : ""
+                            }
+                        }
+                    }
+                    SectionHeader {
+                        visible: dialog.ownAccounts.length > 0 && foundList.count > 0
+                        //% "People"
+                        text: qsTrId("rustrx-se-people")
+                    }
+                    Repeater {
+                        id: foundList
+                        model: dialog.contacts()
+                        BackgroundItem {
+                            id: foundRow
+                            width: column.width
+                            height: Theme.itemSizeMedium
+                            onClicked: dialog.invite(modelData.user_id)
+                            RowTexts {
+                                x: Theme.horizontalPageMargin
+                                width: parent.width - 2 * x
+                                anchors.verticalCenter: parent.verticalCenter
+                                highlighted: foundRow.highlighted
+                                text: modelData.name || modelData.user_id
+                                description: modelData.name ? modelData.user_id : ""
                             }
                         }
                     }

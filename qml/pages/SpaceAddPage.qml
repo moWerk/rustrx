@@ -35,19 +35,20 @@ Page {
         //% "Add to this space"
         PageHeader { title: qsTrId("rustrx-he-space-add"); description: page.spaceName }
 
-        ActionLine {
+        // lines that open a page, as everywhere (0.8 audit)
+        LinkRow {
             //% "Add an existing room"
             text: qsTrId("rustrx-me-space-add")
             onClicked: pageStack.replace(Qt.resolvedUrl("AddToSpacePage.qml"),
                                          { spaceId: page.spaceId, spaceName: page.spaceName, existing: page.existing })
         }
-        ActionLine {
+        LinkRow {
             //% "New room in this space"
             text: qsTrId("rustrx-me-space-new-room")
             onClicked: pageStack.replace(Qt.resolvedUrl("CreateRoomPage.qml"),
                                          { parentId: page.spaceId, parentName: page.spaceName })
         }
-        ActionLine {
+        LinkRow {
             //% "New subspace"
             text: qsTrId("rustrx-me-space-new-space")
             onClicked: pageStack.replace(Qt.resolvedUrl("CreateRoomPage.qml"),

@@ -39,13 +39,9 @@ Dialog {
 
         DialogHeader { id: header }
 
-        Label {
+        Note {
             id: note
-            visible: text.length > 0
-            x: Theme.horizontalPageMargin
-            width: parent.width - 2 * x
-            wrapMode: Text.Wrap
-            color: Theme.highlightColor
+            kind: "intro"
         }
 
         TextField {

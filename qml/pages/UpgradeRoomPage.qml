@@ -33,8 +33,10 @@ Dialog {
         v.sort(function (a, b) { return (b === d) - (a === d) || (parseInt(b, 10) || 0) - (parseInt(a, 10) || 0) })
         return v
     }
-    canAccept: versions.length > 0 && versionBox.currentIndex >= 0
-    onAccepted: rustrx.command({ cmd: "upgrade_room", room_id: roomId, version: versions[versionBox.currentIndex] })
+    // the version chosen; the server's default until another is
+    property string chosen: versions.length ? versions[0] : ""
+    canAccept: chosen.length > 0
+    onAccepted: rustrx.command({ cmd: "upgrade_room", room_id: roomId, version: chosen })
 
     Column {
         width: parent.width
@@ -46,11 +48,8 @@ Dialog {
             //% "Upgrade the room"
             title: qsTrId("rustrx-bt-upgrade")
         }
-        Label {
-            x: Theme.horizontalPageMargin
-            width: parent.width - 2 * x
-            wrapMode: Text.Wrap
-            color: Theme.highlightColor
+        Note {
+            kind: "intro"
             //% "An upgrade makes a new room with the same name, settings and roles. This room ends and points to the new one: members are asked to follow, bridges and bots must be invited again. It cannot be undone."
             text: qsTrId("rustrx-la-upgrade-note")
         }
@@ -59,22 +58,18 @@ Dialog {
             label: qsTrId("rustrx-la-version-now")
             value: dialog.settings.version || "?"
         }
-        HoldComboBox {
+        ChoiceBox {
             id: versionBox
-            width: parent.width
             //% "New version"
             label: qsTrId("rustrx-la-version-new")
-            menu: ContextMenu {
-                Repeater {
-                    model: dialog.versions
-                    MenuItem {
-                        text: modelData === dialog.settings.version_default
-                              //: %1 a room version
-                              //% "%1 (the server's default)"
-                              ? qsTrId("rustrx-la-version-default").arg(modelData) : modelData
-                    }
-                }
-            }
+            value: dialog.chosen
+            choices: dialog.versions.map(function (v) {
+                return { value: v, text: v === dialog.settings.version_default
+                                         //: %1 a room version
+                                         //% "%1 (the server's default)"
+                                         ? qsTrId("rustrx-la-version-default").arg(v) : v }
+            })
+            onChosen: dialog.chosen = value
         }
     }
 }

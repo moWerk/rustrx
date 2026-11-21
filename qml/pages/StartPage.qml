@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
 
 // Shown until the core has read the saved session, usually a blink. When
 // it could not (the store's key did not come: Secrets locked, its prompt
@@ -53,8 +54,7 @@ Page {
             //% "Sailfish Secrets did not give Rustrx the key to its messages, for example because its question was not answered. You are still logged in; nothing is lost."
             text: qsTrId("rustrx-la-restore-failed-hint")
         }
-        Button {
-            anchors.horizontalCenter: parent.horizontalCenter
+        PageButton {
             //% "Try again"
             text: qsTrId("rustrx-bt-restore-retry")
             onClicked: rustrx.retryRestore()

@@ -17,6 +17,7 @@
 import QtQuick 2.6
 import QtMultimedia 5.6
 import Sailfish.Silica 1.0
+import "../components"
 
 // A video, played from the cache once it has been fetched. Tap to pause.
 Page {
@@ -25,6 +26,8 @@ Page {
     property string roomId
     property string eventId
     property string source
+    // the video could not be fetched: said, instead of spinning on (0.8 audit)
+    property string failure
 
     allowedOrientations: Orientation.All
 
@@ -35,7 +38,13 @@ Page {
         onMediaChanged: {
             if (eventId !== page.eventId || page.source.length) return
             page.source = rustrx.timeline.mediaPath(eventId)
+            if (page.source.length) page.failure = ""
         }
+    }
+    Connections {
+        target: rustrx
+        // the error names no event; this page waits for one file only
+        onErrorOccurred: if (cmd === "get_media" && !page.source.length) page.failure = app.friendlyError(cmd, message)
     }
 
     Rectangle { anchors.fill: parent; color: "black" }
@@ -55,7 +64,8 @@ Page {
     BusyIndicator {
         anchors.centerIn: parent
         size: BusyIndicatorSize.Large
-        running: !playError.visible && (!page.source.length || video.status === MediaPlayer.Loading || video.status === MediaPlayer.Buffering)
+        visible: running
+        running: !playError.visible && !page.failure.length && (!page.source.length || video.status === MediaPlayer.Loading || video.status === MediaPlayer.Buffering)
     }
 
     // a video the phone cannot play (a format its media stack lacks): say
@@ -67,10 +77,17 @@ Page {
         visible: video.error !== MediaPlayer.NoError || video.status === MediaPlayer.InvalidMedia
         wrapMode: Text.Wrap
         horizontalAlignment: Text.AlignHCenter
-        color: Theme.highlightColor
+        color: Theme.errorColor
         //: %1 the player's reason
         //% "This video cannot be played here. %1"
         text: qsTrId("rustrx-la-video-error").arg(video.errorString)
+    }
+
+    Note {
+        kind: "error"
+        anchors.verticalCenter: parent.verticalCenter
+        horizontalAlignment: Text.AlignHCenter
+        text: page.failure
     }
 
     Label {

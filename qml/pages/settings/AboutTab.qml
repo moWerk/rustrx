@@ -32,8 +32,8 @@ SilicaFlickable {
         y: Math.max(0, (tab.height - height) / 2)
         spacing: Theme.paddingLarge
 
-        // the tab bar is drawn over a tab with a pulley menu; content starts below it
-        Item { width: 1; height: tab.pullDownMenu ? settings.tabBarHeight : 0 }
+        // below the tab bar, as on every tab (SettingsPage.tabTop)
+        Item { width: 1; height: settings.tabTop(tab) }
 
         // the largest size the package installs; the theme does not know
         // the icon by name

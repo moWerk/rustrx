@@ -27,8 +27,11 @@ Page {
 
     readonly property var call: rustrx.voip
     allowedOrientations: Orientation.Portrait
-    // a running call is ended by its button, not by a swipe
-    backNavigation: call.state === "idle" && !rustrx.callDark
+    // back leads to the chat and the call goes on: the page only shows the
+    // call, which lives in rustrx.voip, and app.showVoip() brings it back
+    // (0.8 audit: the chat could not be reached during a call). Not while
+    // it rings, where the swipe answers, nor dark at the ear.
+    backNavigation: call.state !== "incoming" && !rustrx.callDark
 
     // the call's length, while it runs
     property int seconds
@@ -70,17 +73,22 @@ Page {
         onDeclined: page.call.reject()
     }
 
+    readonly property bool running: call.state === "outgoing" || call.state === "connecting" || call.state === "connected"
+
+    // who and how far, in the room above the swipe or the buttons
     Column {
         anchors.centerIn: parent
-        // above the swipe while ringing
-        anchors.verticalCenterOffset: page.call.state === "incoming" ? -parent.height * 0.28 : 0
+        anchors.verticalCenterOffset: page.call.state === "incoming" ? -parent.height * 0.28
+                                      : page.running ? -(controls.height + controls.anchors.bottomMargin) / 2 : 0
         width: parent.width - 2 * Theme.horizontalPageMargin
         spacing: Theme.paddingLarge
 
+        // the handset, the one mark for a call in Rustrx (the room's call
+        // line, the room list; the swipe's large one)
         Icon {
             anchors.horizontalCenter: parent.horizontalCenter
             visible: page.call.state !== "incoming"
-            source: "image://theme/icon-l-answer"
+            source: "image://theme/icon-l-dialer"
         }
         Label {
             width: parent.width
@@ -136,29 +144,58 @@ Page {
             //% "End-to-end encrypted"
             text: qsTrId("rustrx-la-voip-encrypted")
         }
+    }
 
-        Item { width: 1; height: Theme.paddingLarge }
+    // the buttons low, where the thumb is and where the swipe was while it
+    // rang; large, and hang up the largest, apart from the two toggles
+    // (0.8 audit: they sat mid-screen, hang up no bigger than mute)
+    Column {
+        id: controls
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: Theme.itemSizeLarge }
+        spacing: Theme.paddingLarge * 2
+        visible: page.running
 
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: Theme.paddingLarge * 2
-            visible: page.call.state === "outgoing" || page.call.state === "connecting" || page.call.state === "connected"
+            spacing: Theme.paddingLarge * 3
+            // both toggles light while on, so "muted?" reads from across
+            // the table (0.8 audit: only the loudspeaker did)
             IconButton {
+                width: Theme.itemSizeLarge
+                height: width
                 icon.source: page.call.muted ? "image://theme/icon-m-mic-mute" : "image://theme/icon-m-mic"
+                highlighted: page.call.muted
                 onClicked: page.call.muted = !page.call.muted
             }
             // the earpiece unless this is on
             IconButton {
+                width: Theme.itemSizeLarge
+                height: width
                 icon.source: page.call.speaker ? "image://theme/icon-m-speaker-on" : "image://theme/icon-m-speaker"
                 highlighted: page.call.speaker
                 onClicked: page.call.speaker = !page.call.speaker
             }
-            // the theme has no hang-up icon: the handset, put down
-            IconButton {
-                icon.source: "image://theme/icon-m-call"
-                icon.color: "#e04040"
+        }
+
+        // the handset put down, on red as in the phone app (the incoming
+        // swipe's red, kept in one place)
+        BackgroundItem {
+            id: hangup
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Theme.itemSizeExtraLarge
+            height: width
+            _showPress: false
+            onClicked: page.call.hangup()
+            Rectangle {
+                anchors.fill: parent
+                radius: width / 2
+                color: swipe.declineColor
+                opacity: hangup.pressed ? Theme.opacityHigh : 1
+            }
+            Icon {
+                anchors.centerIn: parent
                 rotation: 135
-                onClicked: page.call.hangup()
+                source: "image://theme/icon-l-dialer?white"
             }
         }
     }

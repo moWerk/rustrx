@@ -35,22 +35,31 @@ Dialog {
     onAccepted: app.callNoticeSeen = true
     onRejected: rustrx.command({ cmd: "call_end" })
 
-    Column {
-        width: parent.width
-        spacing: Theme.paddingLarge
+    // a long paragraph in landscape scrolls instead of being cut off (0.8 audit)
+    SilicaFlickable {
+        anchors.fill: parent
+        contentHeight: column.height + Theme.paddingLarge
 
-        DialogHeader {
-            //% "Call"
-            acceptText: qsTrId("rustrx-bt-call-go")
+        Column {
+            id: column
+            width: parent.width
+            spacing: Theme.paddingLarge
+
+            DialogHeader {
+                //% "Call"
+                acceptText: qsTrId("rustrx-bt-call-go")
+            }
+
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                wrapMode: Text.Wrap
+                color: Theme.highlightColor
+                //% "Calls in Rustrx are Element Call: a web page that Rustrx loads from call.element.io for each call. The sound and picture go through a media server, your homeserver's or Element's. Rustrx says this once."
+                text: qsTrId("rustrx-la-call-notice")
+            }
         }
 
-        Label {
-            x: Theme.horizontalPageMargin
-            width: parent.width - 2 * x
-            wrapMode: Text.Wrap
-            color: Theme.highlightColor
-            //% "Calls in Rustrx are Element Call: a web page that Rustrx loads from call.element.io for each call. The sound and picture go through a media server, your homeserver's or Element's. Rustrx says this once."
-            text: qsTrId("rustrx-la-call-notice")
-        }
+        VerticalScrollDecorator { }
     }
 }

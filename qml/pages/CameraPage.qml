@@ -136,18 +136,22 @@ Page {
         sourceSize.width: Screen.width
     }
 
-    Row {
+    // the voice page's decision in its words: Discard lets you take
+    // another; the two far apart, and clear of the gesture edge (0.8 audit)
+    ButtonLayout {
         id: decision
         anchors {
-            horizontalCenter: parent.horizontalCenter
+            left: parent.left
+            right: parent.right
             bottom: parent.bottom
-            bottomMargin: Theme.paddingLarge
+            bottomMargin: Theme.paddingLarge * 2
         }
         visible: shotPath.length > 0
-        spacing: Theme.paddingLarge
+        columnSpacing: Theme.paddingLarge * 2
+        rowSpacing: Theme.paddingLarge
         Button {
-            //% "Retake"
-            text: qsTrId("rustrx-bt-retake")
+            //% "Discard"
+            text: qsTrId("rustrx-bt-discard")
             onClicked: shotPath = ""
         }
         Button {
