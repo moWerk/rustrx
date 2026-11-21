@@ -271,10 +271,6 @@
         <source>Take a photo</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-me-send-image">
-        <source>Send an image</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-me-send-file">
         <source>Send a file</source>
         <translation type="unfinished"></translation>
@@ -3421,6 +3417,14 @@
     </message>
     <message id="rustrx-me-send-media">
         <source>Send a picture or video</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-send-picture">
+        <source>Send a picture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-send-video">
+        <source>Send a video</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

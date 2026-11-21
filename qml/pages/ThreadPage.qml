@@ -94,15 +94,24 @@ Page {
         currentIndex: -1
 
         PushUpMenu {
-            MenuItem {
-                //% "Send an image"
-                text: qsTrId("rustrx-me-send-image")
-                onClicked: {
-                    var picker = pageStack.push(imagePicker)
-                    picker.accepted.connect(function () {
-                        for (var i = 0; i < picker.selectedContent.count; i++)
-                            rustrx.sendFile(roomId, picker.selectedContent.get(i).filePath, "", rootId)
-                    })
+            // pictures and videos, each through its gallery picker (videos
+            // could not be sent in a thread at all)
+            Repeater {
+                model: [
+                    //% "Send a picture"
+                    { videos: false, text: qsTrId("rustrx-me-send-picture") },
+                    //% "Send a video"
+                    { videos: true, text: qsTrId("rustrx-me-send-video") }
+                ]
+                MenuItem {
+                    text: modelData.text
+                    onClicked: {
+                        var picker = pageStack.push(modelData.videos ? videoPicker : imagePicker)
+                        picker.accepted.connect(function () {
+                            for (var i = 0; i < picker.selectedContent.count; i++)
+                                rustrx.sendFile(roomId, picker.selectedContent.get(i).filePath, "", rootId)
+                        })
+                    }
                 }
             }
         }
@@ -185,5 +194,9 @@ Page {
     Component {
         id: imagePicker
         MultiImagePickerDialog { }
+    }
+    Component {
+        id: videoPicker
+        MultiVideoPickerDialog { }
     }
 }
