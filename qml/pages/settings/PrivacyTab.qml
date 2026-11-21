@@ -16,6 +16,7 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../../components"
 
 // Settings, Privacy: what others learn from Rustrx and who may reach one,
 // in short groups under plain headers as Jolla's own settings pages have
@@ -119,7 +120,7 @@ SilicaFlickable {
         // what a picture or video says about itself: place, time, camera
         // (src/Exif.h, Png.h, Mp4.h); a downscaled picture is drawn anew
         // and keeps nothing at any level
-        ComboBox {
+        HoldComboBox {
             id: metadataBox
             width: parent.width
             //% "Leave out when sending"

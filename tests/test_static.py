@@ -483,6 +483,35 @@ def test_sent_fields_are_the_protocol_fields():
     assert not bad
 
 
+def test_every_choice_box_takes_press_and_drag():
+    """Every choice box is HoldComboBox (Silica's ComboBox with the press and
+    drag selection of list item menus); the metadata level in Privacy was a
+    plain ComboBox since 0.6.0 and had no drag (the author's find, 0.7).
+    Planted-bug: make it a ComboBox again."""
+    plain = [p.name for p in QML if p.name != "HoldComboBox.qml"
+             and re.search(r"^\s*ComboBox\s*\{", code(p), re.M)]
+    assert not plain
+
+
+def test_pages_import_the_components_they_use():
+    """A page that uses one of qml/components/ (HoldComboBox, PageButton,
+    ...) imports that folder; without it the page does not load on the
+    phone, and qmllint does not notice. Planted-bug: drop the components
+    import from PrivacyTab.qml."""
+    names = {p.stem for p in files("qml/components/*.qml")}
+    missing = []
+    for p in QML:
+        if p.parent.name == "components":
+            continue
+        text = code(p)
+        if re.search(r'^import\s+"(\.\./)*components"', text, re.M):
+            continue
+        used = sorted(n for n in names if re.search(r"(?<![\w.])" + n + r"\s*\{", text))
+        if used:
+            missing.append(f"{p.name}: {', '.join(used)}")
+    assert not missing
+
+
 def test_dconf_path_in_one_place():
     """The dconf folder is written once, in names.js; Settings and the
     debug switches (DebugValue) build their keys from it (audit I16).
