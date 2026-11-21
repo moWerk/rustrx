@@ -13,7 +13,7 @@
 - New: all accounts in one list (Settings, App; off by default, dodoradio's
   idea). The tabs show every account's rooms and people together; a room
   opens in its own account. Colour-coded accounts: each account's rooms
-  carry its colour (on while the list is merged).
+  carry its colour as a bar at their edge (on while the list is merged).
 - New: Link a new device (Settings, Account). This phone shows a QR code
   the new device scans, or scans the new device's code; the new device
   comes in verified, its keys handed over. Works with Rustrx and Element

@@ -74,24 +74,16 @@ ListItem {
         }
     }
 
-    // the account's colour (merged view, "Colour-coded accounts"): a leaf at
-    // the picture's corner, or a bar along the row's edge; one of the two is
-    // kept after a round on the phone (app.chipPlacement, a debug switch)
+    // the account's colour (merged view, "Colour-coded accounts"): a bar
+    // along the row's edge, cleaner on every row than a leaf at the picture
+    // (the author's pick on the phone; the leaf stays on the account menu's
+    // pictures)
     Rectangle {
-        visible: app.accountChips && item.account >= 0 && app.chipPlacement === "bar"
+        visible: app.accountChips && item.account >= 0
         x: 0
         width: Math.round(Theme.paddingSmall * 0.75)
         height: parent.height
         color: app.accountColour(item.account)
-    }
-    AccountChip {
-        visible: app.accountChips && item.account >= 0 && app.chipPlacement !== "bar"
-        z: 2
-        width: Math.round(item.avatarSize * 0.34)
-        height: width
-        x: avatar.x + avatar.width - width * 0.75
-        y: avatar.y + avatar.height - height * 0.75
-        colour: app.accountColour(item.account)
     }
 
     onClicked: {

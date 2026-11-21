@@ -46,9 +46,9 @@ join) stays with the shown account. A row of another account opens in its accoun
 actions go to its account (`commandTo`). A room in two accounts is two rows.
 
 "Colour-coded accounts" (on while the merged view is): each account's colour by its key
-(`Tunables.accountColours`), as a leaf in the Sailfish shape (`AccountChip`) on its rooms and in
-the avatar's list. The debug value `debugChipPlacement` ("corner", "bar") tries a bar along the
-row's edge instead.
+(`Tunables.accountColours`), as a bar along the edge of its room rows, and as a leaf in the
+Sailfish shape (`AccountChip`) on the account pictures of the avatar's list. A leaf on every
+row was tried and found too busy (the author's pick on the phone).
 
 ## Not yet
 

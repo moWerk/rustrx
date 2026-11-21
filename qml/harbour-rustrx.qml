@@ -131,11 +131,6 @@ ApplicationWindow {
     }
     // the merged view marks rows and accounts with their colour: it is on,
     // its colours are, and there is more than one account to tell apart
-    // where the merged view shows a room's account colour: "corner" (a leaf
-    // at the picture) or "bar" (the row's edge); a debug switch until one is
-    // chosen on the phone
-    DebugValue { id: debugChipPlacement; name: "debugChipPlacement"; defaultValue: "corner" }
-    readonly property string chipPlacement: debugChipPlacement.value || "corner"
     readonly property bool accountChips: rustrx.mergedView && rustrx.colourAccounts && rustrx.accounts.length > 1
 
     // a room (or space) of the merged view: its account comes to the front
