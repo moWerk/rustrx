@@ -251,6 +251,24 @@ def test_translation_file_is_in_step():
     assert not ts - used, sorted(ts - used)[:20]
 
 
+def test_no_property_shares_a_name_with_an_id():
+    """An id wins over a property of the same name in its file: a
+    `property string age` on the Label with `id: age` made its text the
+    Label itself ("Label_QMLTYPE_20...") in every room row (0.8.0-7).
+    Planted-bug: give a property the name of an id in the same file."""
+    bad = []
+    for p in QML:
+        s = p.read_text(encoding="utf-8")
+        ids = set(re.findall(r"^\s*id:\s*(\w+)", s, re.M))
+        # an alias may name the item it points at (property alias button: button)
+        props = set(re.findall(r"^\s*(?:readonly\s+)?(?:default\s+)?property\s+(?!alias\b)[\w<>.]+\s+(\w+)", s, re.M))
+        bad += ["%s: %s" % (p.name, n) for n in sorted(ids & props)
+                # the page's handle on the composer in its list header, a
+                # component of its own where the id is the composer's
+                if (p.name, n) not in {("RoomPage.qml", "composer"), ("ThreadPage.qml", "composer")}]
+    assert not bad, bad
+
+
 def test_lupdate_takes_every_text():
     """The build runs lupdate itself: a //% it cannot attach to its
     qsTrId (another member before it on the line, a function in its

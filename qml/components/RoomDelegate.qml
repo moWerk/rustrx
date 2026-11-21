@@ -387,8 +387,8 @@ ListItem {
         color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
         // the merged view without colours: the account's short name before
         // the age, so the accounts can still be told apart (0.8 audit)
-        text: (item.accountMark.length ? item.accountMark + (age.length ? " · " : "") : "") + age
-        readonly property string age: {
+        text: (item.accountMark.length ? item.accountMark + (ageText.length ? " · " : "") : "") + ageText
+        readonly property string ageText: {
             if (!model.ts || invited) return ""
             var s = (app.now - model.ts) / 1000
             //: age of the last message, keep it to one short word
