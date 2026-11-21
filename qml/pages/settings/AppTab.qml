@@ -138,6 +138,16 @@ SilicaFlickable {
             onActiveFocusChanged: if (!activeFocus) service.notifyEmoji = text.trim()
         }
 
+        TextSwitch {
+            //% "Notify on joins to your rooms"
+            text: qsTrId("rustrx-la-notify-joins")
+            //% "When someone joins a room where you are a moderator or admin."
+            description: qsTrId("rustrx-la-notify-joins-hint")
+            checked: service.notifyJoins
+            automaticCheck: false
+            onClicked: service.notifyJoins = !service.notifyJoins
+        }
+
         // only with the background stand-in, the line's subject
         TextSwitch {
             visible: rustrx.background

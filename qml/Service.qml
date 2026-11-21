@@ -40,6 +40,7 @@ Item {
     property alias chatDetails: cfg.chatDetails
     property alias notifyReply: cfg.notifyReply
     property alias notifyReactions: cfg.notifyReactions
+    property alias notifyJoins: cfg.notifyJoins
     property alias notifyEmoji: cfg.notifyEmoji
     // the stand-in's line in the events view, on unless switched off
     property alias showBackgroundLine: cfg.showBackgroundLine
@@ -58,7 +59,7 @@ Item {
             service.notify(account, roomId, roomName, count)
         }
         // read here or in another client: the banner and its line go
-        onRoomRead: service.closeNotification(account, roomId)
+        onRoomRead: { service.closeNotification(account, roomId); service.closeJoins(account, roomId) }
         // the notification's "Mark as read": it goes at once, the receipt
         // follows when logged in (a process woken for it logs in first)
         onMarkReadRequested: {
@@ -75,6 +76,7 @@ Item {
         }
         onReplySent: service.markRead(roomId, undefined, undefined, account)
         onReplyFailed: service.notifyReplyFailed(account, roomId, kept)
+        onMemberJoined: if (service.notifyJoins) service.notifyJoin(account, roomId, roomName, name)
         onReactRequested: {
             service.closeNotification(account, roomId)
             service.countEmoji(key)
@@ -415,6 +417,58 @@ Item {
     // in it; a tap opens that account's list (0.8 audit: it opened the shown
     // account's, and closed when the shown account had none)
     property var knockNotes: ({})
+    // someone new in a room one moderates (Settings > App, on unless
+    // switched off; the author's wish): one line per room, its latest
+    // newcomer and how many came; a tap opens the room, reading it ends it
+    property var joinNotes: ({})
+    function notifyJoin(account, roomId, roomName, name) {
+        var k = noteKey(account, roomId)
+        var n = joinNotes[k]
+        if (!n) {
+            n = joinComponent.createObject(service, { account: account, roomId: roomId })
+            joinNotes[k] = n
+        }
+        n.count += 1
+        //: notification title, %1 the room
+        //% "New in %1"
+        n.summary = withAccount(chatDetails ? qsTrId("rustrx-no-join-title").arg(roomName)
+                                            //% "Someone joined a room you moderate"
+                                            : qsTrId("rustrx-no-join-hidden"), account)
+        n.previewSummary = n.summary
+        n.body = !chatDetails ? "Rustrx"
+                : n.count > 1
+                //: %1 the latest newcomer, %n how many joined since
+                //% "%1 and others joined (%n)"
+                ? qsTrId("rustrx-no-join-many", n.count).arg(name)
+                //: %1 who joined
+                //% "%1 joined"
+                : qsTrId("rustrx-no-join-one").arg(name)
+        n.previewBody = n.body
+        n.itemCount = n.count
+        n.publish()
+    }
+    function closeJoins(account, roomId) {
+        var k = noteKey(account, roomId)
+        var n = joinNotes[k]
+        if (!n) return
+        n.close()
+        n.destroy()
+        delete joinNotes[k]
+    }
+    Component {
+        id: joinComponent
+        Notification {
+            property int account
+            property string roomId
+            property int count
+            appName: "Rustrx"
+            appIcon: "harbour-rustrx"
+            // a quiet line, no vibration: news, not a message
+            category: "x-nemo.messaging.im"
+            remoteActions: [ service.action("default", "openAccountRoom", [ String(account), roomId ]) ]
+        }
+    }
+
     function notifyKnock(account, roomName, isSpace, name, reason) {
         var n = knockNotes[account]
         if (!n) {

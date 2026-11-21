@@ -110,6 +110,8 @@ pub(crate) const EMOTE_HTML_HEIGHT: u32 = 32;
 
 pub(crate) const POWER_MOD: i64 = 50;
 pub(crate) const POWER_ADMIN: i64 = 100;
+/// a join older than this is history (the first sync brings old ones), not news
+pub(crate) const JOIN_NOTIFY_MAX_AGE: Duration = Duration::from_secs(600);
 
 // Runtime
 

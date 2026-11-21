@@ -460,6 +460,9 @@ signals:
     // text was added to the room's draft); any account
     void replySent(const QString &roomId, int account);
     void replyFailed(const QString &roomId, const QString &message, bool kept, int account);
+    // someone new in a room this account moderates (the joins notification)
+    void memberJoined(const QString &roomId, const QString &roomName, const QString &userId,
+                      const QString &name, int account);
     void deviceDeleted(const QString &deviceId);
     void searchResults(const QVariantMap &results);
     void roomSearchResults(const QVariantMap &results);

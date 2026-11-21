@@ -1329,6 +1329,9 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
         a->lists->setKnockRequests(ev);
     } else if (type == QLatin1String("reply_sent")) {
         emit replySent(ev.value("room_id").toString(), a->key);
+    } else if (type == QLatin1String("member_joined")) {
+        emit memberJoined(ev.value("room_id").toString(), ev.value("room_name").toString(),
+                          ev.value("user_id").toString(), ev.value("name").toString(), a->key);
     } else if (type == QLatin1String("reply_failed")) {
         qWarning().noquote() << "notification reply not sent: account" << a->key << ev.value("message").toString();
         emit replyFailed(ev.value("room_id").toString(), ev.value("message").toString(), ev.value("kept").toBool(), a->key);

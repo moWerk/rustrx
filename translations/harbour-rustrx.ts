@@ -3384,5 +3384,32 @@
         <source>Pick from the gallery</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-notify-joins">
+        <source>Notify on joins to your rooms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-notify-joins-hint">
+        <source>When someone joins a room where you are a moderator or admin.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-join-hidden">
+        <source>Someone joined a room you moderate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-join-many" numerus="yes">
+        <source>%1 and others joined (%n)</source>
+        <translation>
+            <numerusform>%1 joined (%n)</numerusform>
+            <numerusform>%1 and others joined (%n)</numerusform>
+        </translation>
+    </message>
+    <message id="rustrx-no-join-one">
+        <source>%1 joined</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-join-title">
+        <source>New in %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

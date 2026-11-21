@@ -237,6 +237,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `space_rooms` | `space_id`, `loading`, `rooms` (`room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `is_space`, `member_count`, `children`, `join_rule`, `state`, `suggested`, `via`) |
 | `room_preview` | `room_or_alias`, `ok`, and when ok: `room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `member_count`, `is_space`, `join_rule`, `state`; else `error` |
 | `knocked` | `room_id` |
+| `member_joined` | `room_id`, `room_name`, `user_id`, `name`: someone new in a room (not a direct chat) where we are a moderator or admin; fresh joins only, not our own |
 | `room_link` | `room_id`, `link` (matrix.to with via) |
 | `knock_requests` | `room_id`, `room_name`, `is_space`, `requests` (`event_id`, `user_id`, `name`, `reason`, `ts`, `seen`), for rooms and spaces with the knock join rule where we may invite |
 | `event_source` | `event_id`, `json` (as received), `edit` (its latest edit, or null) |

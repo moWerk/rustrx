@@ -53,6 +53,8 @@ ConfigurationGroup {
     // a room notification's reply field and its favourite emoji buttons
     property bool notifyReply: true
     property bool notifyReactions: true
+    // a notification when someone joins a room one moderates (opt out)
+    property bool notifyJoins: true
     // those emoji buttons, space separated (three at most: they share one
     // row with Reply and Mark as read)
     property string notifyEmoji: "👍 😀 👎"

@@ -6,8 +6,51 @@
 
 use super::*;
 use matrix_sdk::ruma::events::room::join_rules::JoinRule;
+use matrix_sdk::ruma::events::room::member::{MembershipState, OriginalSyncRoomMemberEvent};
+use matrix_sdk::ruma::events::room::power_levels::UserPowerLevel;
+
+/// Someone's membership turned into "join" now, not a name or picture
+/// change of a member (prev_content join too).
+fn is_new_join(ev: &OriginalSyncRoomMemberEvent) -> bool {
+    ev.content.membership == MembershipState::Join
+        && ev.unsigned.prev_content.as_ref().map(|p| p.membership != MembershipState::Join).unwrap_or(true)
+}
 
 impl Core {
+    /// A new member in a room where we are a moderator or admin:
+    /// "member_joined", for the notification moderators can switch off
+    /// (the author's wish). Not our own joins, not direct chats, and only
+    /// fresh ones: the first sync brings old joins too.
+    pub(crate) fn install_join_handler(&'static self, client: &Client) {
+        client.add_event_handler(move |ev: OriginalSyncRoomMemberEvent, room: Room| async move {
+            if !is_new_join(&ev) || room.own_user_id().as_str() == ev.state_key.as_str() {
+                return;
+            }
+            let now = u64::from(matrix_sdk::ruma::MilliSecondsSinceUnixEpoch::now().0);
+            let ts = u64::from(ev.origin_server_ts.0);
+            if now.saturating_sub(ts) > JOIN_NOTIFY_MAX_AGE.as_millis() as u64 {
+                return;
+            }
+            if room.is_direct().await.unwrap_or(false) {
+                return;
+            }
+            let me = room.own_user_id().to_owned();
+            let moderator = match room.get_user_power_level(&me).await {
+                Ok(UserPowerLevel::Infinite) => true,
+                Ok(UserPowerLevel::Int(l)) => i64::from(l) >= POWER_MOD,
+                _ => false,
+            };
+            if !moderator {
+                return;
+            }
+            let name = ev.content.displayname.clone().unwrap_or_else(|| ev.state_key.to_string());
+            let room_name = room.cached_display_name().map(|n| n.to_string()).unwrap_or_else(|| room.room_id().to_string());
+            tracing::info!(room = %room.room_id(), "member joined, we moderate here");
+            self.emit(json!({"ev": "member_joined", "room_id": room.room_id().as_str(), "room_name": room_name,
+                             "user_id": ev.state_key.as_str(), "name": name}));
+        });
+    }
+
     /// Watches the requests of every joined room and space that takes them
     /// and where we may invite; called with every room list update, so a
     /// room that starts taking requests is picked up. Each watched room
@@ -108,5 +151,30 @@ impl Core {
         let users: Vec<OwnedUserId> = user_ids.iter().filter_map(|u| UserId::parse(u.trim()).ok()).collect();
         room.mark_knock_requests_as_seen(&users).await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn member(membership: &str, prev: Option<&str>) -> OriginalSyncRoomMemberEvent {
+        let mut v = json!({
+            "type": "m.room.member", "event_id": "$e", "sender": "@a:x", "state_key": "@a:x",
+            "origin_server_ts": 1, "content": { "membership": membership, "displayname": "A" },
+        });
+        if let Some(p) = prev {
+            v["unsigned"] = json!({ "prev_content": { "membership": p } });
+        }
+        serde_json::from_value(v).unwrap()
+    }
+
+    #[test]
+    fn a_join_is_new_but_a_name_change_is_not() {
+        assert!(is_new_join(&member("join", None)));
+        assert!(is_new_join(&member("join", Some("invite"))));
+        assert!(is_new_join(&member("join", Some("leave"))));
+        assert!(!is_new_join(&member("join", Some("join"))));
+        assert!(!is_new_join(&member("leave", Some("join"))));
     }
 }

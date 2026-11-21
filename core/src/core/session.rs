@@ -279,6 +279,7 @@ impl Core {
         }));
         self.install_handlers(&client);
         self.install_call_handlers(&client);
+        self.install_join_handler(&client);
         self.report_server_features(client.clone());
         let generation = {
             let mut st = self.state.lock().await;
