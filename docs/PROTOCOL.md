@@ -90,6 +90,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 |---|---|---|
 | `get_notification_mode` | `room_id` | `notification_mode` |
 | `set_notification_mode` | `room_id`, `mode` (`all`, `mentions`, `mute`, other: the account's default) | `notification_mode` |
+| `set_account_notifications` | `enabled` (false: the server's master rule on, nothing notifies) | `account_notifications` |
 | `set_favourite` / `set_low_priority` | `room_id`, `value?` (true) | `rooms` |
 | `join_room` / `leave_room` | `room_id` | `rooms` |
 | `join_by_id_or_alias` | `room_or_alias`, `via?` | `joined` |
@@ -207,6 +208,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `space_banned` | `space_id`, `user_id`, `rooms` (banned in), `skipped` (no power, or not joined) |
 | `redact_progress` | `room_id`, `user_id`, `done`, `total`, `finished` |
 | `notification_mode` | `room_id`, `mode` (`all`, `mentions`, `mute`, `default`) |
+| `account_notifications` | `enabled` (the master rule off), `dm` and `group` (the default for encrypted direct chats and groups: `all`, `mentions`, `mute`); after every `logged_in` and on every change |
 | `joined` | `room_id` |
 | `dm_ready` | `room_id`, `user_id` |
 | `room_search_results` | `term`, `server`, `rooms`: `{room_id, name, alias, topic, member_count, avatar_mxc, is_space, joined}` |

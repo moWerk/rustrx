@@ -24,6 +24,52 @@ impl Core {
         Ok(())
     }
 
+    /// The account's notification rules as the server keeps them, now and
+    /// whenever they change: "account_notifications". With the master rule
+    /// on (another client's "notifications for this account" off) the server
+    /// notifies of nothing, and Rustrx showed nothing, with no hint why
+    /// (davodego, 2026-11-21: push arrived, only as badge updates).
+    pub(crate) async fn account_notifications_task(&'static self, client: Client) {
+        let settings = client.notification_settings().await;
+        let mut changes = settings.subscribe_to_changes();
+        loop {
+            self.report_account_notifications(&settings).await;
+            match changes.recv().await {
+                Ok(()) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    }
+
+    async fn report_account_notifications(&self, settings: &matrix_sdk::notification_settings::NotificationSettings) {
+        use matrix_sdk::notification_settings::{IsEncrypted, IsOneToOne};
+        use matrix_sdk::ruma::push::{PredefinedOverrideRuleId, RuleKind};
+        let muted = settings
+            .is_push_rule_enabled(RuleKind::Override, PredefinedOverrideRuleId::Master.as_str())
+            .await
+            .unwrap_or(false);
+        let name = |m: RoomNotificationMode| match m {
+            RoomNotificationMode::AllMessages => "all",
+            RoomNotificationMode::MentionsAndKeywordsOnly => "mentions",
+            RoomNotificationMode::Mute => "mute",
+        };
+        let dm = name(settings.get_default_room_notification_mode(IsEncrypted::Yes, IsOneToOne::Yes).await);
+        let group = name(settings.get_default_room_notification_mode(IsEncrypted::Yes, IsOneToOne::No).await);
+        tracing::info!(enabled = !muted, dm, group, "push rules of the account");
+        self.emit(json!({"ev": "account_notifications", "enabled": !muted, "dm": dm, "group": group}));
+    }
+
+    pub(crate) async fn set_account_notifications(&self, enabled: bool) -> Result<()> {
+        use matrix_sdk::ruma::push::{PredefinedOverrideRuleId, RuleKind};
+        let client = self.client().await?;
+        let settings = client.notification_settings().await;
+        settings
+            .set_push_rule_enabled(RuleKind::Override, PredefinedOverrideRuleId::Master.as_str(), !enabled)
+            .await?;
+        self.report_account_notifications(&settings).await;
+        Ok(())
+    }
+
     /// "all", "mentions", "mute"; anything else goes back to the account's rule.
     pub(crate) async fn set_notification_mode(&self, room_id: &str, mode: &str) -> Result<()> {
         let room = self.room(room_id).await?;

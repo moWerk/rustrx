@@ -142,6 +142,7 @@ impl Core {
             // --- rooms (rooms.rs, spaces.rs) ---
             GetNotificationMode { room_id } => self.notification_mode(&room_id).await,
             SetNotificationMode { room_id, mode } => self.set_notification_mode(&room_id, &mode).await,
+            SetAccountNotifications { enabled } => self.set_account_notifications(enabled).await,
             SetFavourite { room_id, value } => self.set_favourite(&room_id, value.unwrap_or(true)).await,
             SetLowPriority { room_id, value } => self.set_low_priority(&room_id, value.unwrap_or(true)).await,
             JoinRoom { room_id } => self.join_room(&room_id).await,

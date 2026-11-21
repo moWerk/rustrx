@@ -247,6 +247,25 @@ SilicaFlickable {
             text: rustrx.userId + "\n" + rustrx.homeserver
         }
 
+        // the server notifies of nothing for this account: its rule was
+        // switched off, often in another app, and nothing here said so
+        // (davodego's log: push worked, no message ever notified)
+        Label {
+            visible: rustrx.notificationsOff
+            x: Theme.horizontalPageMargin
+            width: parent.width - 2 * x
+            wrapMode: Text.Wrap
+            color: Theme.highlightColor
+            //% "Notifications are switched off for this account on your server, maybe in another app. No message notifies until they are on again."
+            text: qsTrId("rustrx-la-account-notifications-off")
+        }
+        PageButton {
+            visible: rustrx.notificationsOff
+            //% "Switch notifications on"
+            text: qsTrId("rustrx-bt-account-notifications-on")
+            onClicked: rustrx.command({ cmd: "set_account_notifications", enabled: true })
+        }
+
         // a button, not a pulley: a pulley nobody expects here was pulled
         // by mistake (the author's find). The pulley waits for switching
         // between accounts (0.5).

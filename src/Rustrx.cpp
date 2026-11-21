@@ -1079,6 +1079,10 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
             emit stateChanged();
         emit accountsChanged();
         leaveIfNobodyLoggedIn();
+    } else if (type == QLatin1String("account_notifications")) {
+        a->notificationsOff = !ev.value("enabled").toBool();
+        if (shown)
+            emit stateChanged();
     } else if (type == QLatin1String("server_features")) {
         a->deviceLogin = ev.value("device_login").toBool();
         a->qrRendezvous = ev.value("qr_rendezvous").toBool();

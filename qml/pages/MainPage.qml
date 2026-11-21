@@ -587,6 +587,16 @@ Page {
                         text: qsTrId("rustrx-la-banner-knocks", rustrx.knockRequests.length)
                     }
 
+                    // the server notifies of nothing for this account (its
+                    // rule switched off elsewhere): the Account tab says
+                    // why and switches it on
+                    BannerItem {
+                        visible: rustrx.notificationsOff
+                        onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { startTab: "account" })
+                        //% "Notifications are off for this account on your server. Tap to switch them on."
+                        text: qsTrId("rustrx-la-banner-notifications-off")
+                    }
+
                     // one line while this device cannot read encrypted rooms
                     BannerItem {
                         visible: rustrx.verificationState === "unverified" || rustrx.recoveryState === "incomplete"

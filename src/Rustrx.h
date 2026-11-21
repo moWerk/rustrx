@@ -63,6 +63,9 @@ struct Account {
     // what the server offers for QR linking (server_features)
     bool deviceLogin = false;
     bool qrRendezvous = false;
+    // the server's master rule is on: it notifies of nothing (another
+    // client's "notifications for this account" off; account_notifications)
+    bool notificationsOff = false;
     bool restoreFailed = false;
     bool restoring = false;
     // no room list of this login yet
@@ -106,6 +109,7 @@ class Rustrx : public QObject
     Q_PROPERTY(bool classicSync READ classicSync NOTIFY stateChanged)
     Q_PROPERTY(bool deviceLogin READ deviceLogin NOTIFY stateChanged)
     Q_PROPERTY(bool qrRendezvous READ qrRendezvous NOTIFY stateChanged)
+    Q_PROPERTY(bool notificationsOff READ notificationsOff NOTIFY stateChanged)
     Q_PROPERTY(QString userId READ userId NOTIFY stateChanged)
     Q_PROPERTY(QString homeserver READ homeserver NOTIFY stateChanged)
     Q_PROPERTY(QString logoutReason READ logoutReason NOTIFY stateChanged)
@@ -207,6 +211,7 @@ public:
     // choice); its session restarts
     Q_INVOKABLE void setClassicSync(bool classic);
     bool qrRendezvous() const { return m_cur->qrRendezvous; }
+    bool notificationsOff() const { return m_cur->notificationsOff; }
     QString userId() const { return m_cur->userId; }
     QString homeserver() const { return m_cur->homeserver; }
     QString syncState() const { return m_cur->syncState; }

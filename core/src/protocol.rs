@@ -150,6 +150,9 @@ pub(crate) enum Command {
     GetNotificationMode { room_id: String },
     /// "all", "mentions", "mute", anything else: back to the account's rule.
     SetNotificationMode { room_id: String, mode: String },
+    /// Notifications for the whole account (the server's master rule, which
+    /// another client may have switched off): "account_notifications".
+    SetAccountNotifications { enabled: bool },
     SetFavourite { room_id: String, value: Option<bool> },
     SetLowPriority { room_id: String, value: Option<bool> },
     JoinRoom { room_id: String },
@@ -353,7 +356,7 @@ mod tests {
         "push_set", "push_remove", "push_check", "push_handle", "send_file", "react", "redact", "edit",
         "poll_vote", "report", "event_source", "mark_read", "typing", "set_presence", "get_media",
         "fetch_emote", "image_packs", "add_user_emote",
-        "get_notification_mode", "set_notification_mode", "set_favourite", "set_low_priority",
+        "get_notification_mode", "set_notification_mode", "set_account_notifications", "set_favourite", "set_low_priority",
         "join_room", "leave_room", "join_by_id_or_alias", "room_preview", "knock", "room_link",
         "set_join_rule", "space_open", "space_close", "space_add_child", "space_remove_child",
         "space_leave", "create_dm", "create_room", "room_members", "set_room_name",
@@ -374,7 +377,7 @@ mod tests {
 
     /// How many fields the commands require, all together. Like COMMANDS, a
     /// change here is a change of the contract.
-    const REQUIRED_FIELDS: usize = 156;
+    const REQUIRED_FIELDS: usize = 157;
 
 
     /// The names serde knows, from its own error for an unknown tag

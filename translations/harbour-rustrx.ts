@@ -3131,5 +3131,17 @@
         <source>Your server (%1) cannot reach %2, so it cannot look up or join rooms there. Some servers do not connect to other servers at all.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-bt-account-notifications-on">
+        <source>Switch notifications on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-account-notifications-off">
+        <source>Notifications are switched off for this account on your server, maybe in another app. No message notifies until they are on again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-banner-notifications-off">
+        <source>Notifications are off for this account on your server. Tap to switch them on.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

@@ -309,17 +309,18 @@ impl Core {
         // the cached room list first, before anything waits for the network
         let rooms = self.rt.spawn(self.rooms_task(client.clone()));
         let sends = self.rt.spawn(Self::send_queue_watch(client.clone()));
+        let rules = self.rt.spawn(self.account_notifications_task(client.clone()));
         {
             let mut st = self.state.lock().await;
             if st.generation != generation {
                 // ended already (an expired session's first request)
-                for t in [watch, rooms, sends] {
+                for t in [watch, rooms, sends, rules] {
                     t.abort();
                 }
                 return Ok(());
             }
             st.login_tasks.retain(|t| !t.is_finished());
-            st.login_tasks.extend([watch, rooms, sends]);
+            st.login_tasks.extend([watch, rooms, sends, rules]);
         }
         self.start_sync(client).await
     }
