@@ -135,18 +135,19 @@ Page {
                 font.pixelSize: Theme.fontSizeHuge
             }
 
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
+            // the two answers stacked, far apart: side by side a slip on
+            // "They differ" could hit "They match", which trusts the other
+            // device (0.8 audit)
+            Column {
+                width: parent.width
                 visible: phase === "keys_exchanged"
-                spacing: Theme.paddingLarge
+                spacing: Theme.itemSizeMedium
                 PageButton {
-                    inRow: true
                     //% "They match"
                     text: qsTrId("rustrx-bt-match")
                     onClicked: rustrx.command({ cmd: "verification_confirm", flow_id: flowId })
                 }
                 PageButton {
-                    inRow: true
                     //% "They differ"
                     text: qsTrId("rustrx-bt-mismatch")
                     onClicked: rustrx.command({ cmd: "verification_mismatch", flow_id: flowId })
