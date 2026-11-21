@@ -72,7 +72,13 @@ SilicaFlickable {
                                            : rustrx.background ? "background" : "off"
             //% "When Rustrx is closed"
             label: qsTrId("rustrx-la-closed-mode")
-            currentIndex: Math.max(0, modes.indexOf(mode))
+            // the box follows the mode in force (the ComboBox sets currentIndex
+            // itself, which broke a plain binding at the first tap; a fallback
+            // from push or push coming or going then showed the wrong choice)
+            readonly property int shownIndex: Math.max(0, modes.indexOf(mode))
+            currentIndex: shownIndex
+            onShownIndexChanged: currentIndex = shownIndex
+            onModesChanged: currentIndex = shownIndex
             menu: ContextMenu {
                 Repeater {
                     model: closedBox.modes
