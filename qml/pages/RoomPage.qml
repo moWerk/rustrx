@@ -524,19 +524,16 @@ Page {
         // with an empty message an entry sends on its own; with a message
         // drafted it attaches: the text goes along as the caption
         PushUpMenu {
+            // pictures and videos through Sailfish's gallery pickers, one
+            // step to choose which: videos took the file picker and its
+            // folders before (the author's find; four entries are what one
+            // thumb's swipe reaches, so not a fifth)
             MenuItem {
-                //% "Attach an image"
-                text: page.hasDraft ? qsTrId("rustrx-me-attach-image")
-                                    : qsTrId("rustrx-me-send-image")
-                onClicked: {
-                    var picker = pageStack.push(multiImagePicker)
-                    picker.accepted.connect(function () {
-                        // the text in the composer becomes the caption of a single picture
-                        var caption = picker.selectedContent.count === 1 ? page.takeCaption() : ""
-                        for (var i = 0; i < picker.selectedContent.count; i++)
-                            rustrx.sendFile(roomId, picker.selectedContent.get(i).filePath, caption)
-                    })
-                }
+                //% "Attach a picture or video"
+                text: page.hasDraft ? qsTrId("rustrx-me-attach-media")
+                                    //% "Send a picture or video"
+                                    : qsTrId("rustrx-me-send-media")
+                onClicked: pageStack.push(mediaChoice)
             }
             MenuItem {
                 //% "Attach a file"
@@ -721,6 +718,58 @@ Page {
     Component {
         id: multiImagePicker
         MultiImagePickerDialog { }
+    }
+    Component {
+        id: multiVideoPicker
+        MultiVideoPickerDialog { }
+    }
+    // the gallery picker for pictures or the one for videos, in this page's
+    // place; what was chosen is sent, the composer's text the caption of a
+    // single one
+    function pickMedia(videos) {
+        var picker = pageStack.replace(videos ? multiVideoPicker : multiImagePicker)
+        picker.accepted.connect(function () {
+            var caption = picker.selectedContent.count === 1 ? page.takeCaption() : ""
+            for (var i = 0; i < picker.selectedContent.count; i++)
+                rustrx.sendFile(roomId, picker.selectedContent.get(i).filePath, caption)
+        })
+    }
+    Component {
+        id: mediaChoice
+        Page {
+            Column {
+                width: parent.width
+                PageHeader {
+                    title: page.hasDraft ? qsTrId("rustrx-me-attach-media") : qsTrId("rustrx-me-send-media")
+                }
+                Repeater {
+                    model: [
+                        //% "Pictures"
+                        { videos: false, text: qsTrId("rustrx-la-media-pictures"), icon: "image://theme/icon-m-image" },
+                        //% "Videos"
+                        { videos: true, text: qsTrId("rustrx-la-media-videos"), icon: "image://theme/icon-m-video" }
+                    ]
+                    BackgroundItem {
+                        id: choiceRow
+                        width: parent.width
+                        height: Theme.itemSizeMedium
+                        onClicked: page.pickMedia(modelData.videos)
+                        Icon {
+                            id: choiceIcon
+                            x: Theme.horizontalPageMargin
+                            anchors.verticalCenter: parent.verticalCenter
+                            source: modelData.icon
+                            highlighted: choiceRow.highlighted
+                        }
+                        Label {
+                            anchors { left: choiceIcon.right; leftMargin: Theme.paddingLarge; verticalCenter: parent.verticalCenter }
+                            text: modelData.text
+                            color: choiceRow.highlighted ? Theme.highlightColor : Theme.primaryColor
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Component {

@@ -1579,10 +1579,6 @@
         <extracomment>%1 the shortcode a custom emoji got in the user&apos;s own pack</extracomment>
         <translation type="unfinished"></translation>
     </message>
-    <message id="rustrx-me-attach-image">
-        <source>Attach an image</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="rustrx-me-attach-file">
         <source>Attach a file</source>
         <translation type="unfinished"></translation>
@@ -3409,6 +3405,22 @@
     </message>
     <message id="rustrx-no-join-title">
         <source>New in %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-media-pictures">
+        <source>Pictures</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-media-videos">
+        <source>Videos</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-attach-media">
+        <source>Attach a picture or video</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-send-media">
+        <source>Send a picture or video</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
