@@ -101,6 +101,14 @@ Page {
             if (rustrx.recoveryState === "incomplete") encryptionLater.start()
         }
     }
+    // a new recovery key on a page of its own, which closes only after
+    // "I have saved it"; it waits for a page transition to end
+    Timer {
+        id: keyLater
+        interval: 0
+        onTriggered: pageStack.busy ? restart()
+                     : pageStack.push(Qt.resolvedUrl("settings/RecoveryKeyDialog.qml"), { key: page.shownKey })
+    }
     Timer {
         id: encryptionLater
         interval: 0
@@ -192,6 +200,7 @@ Page {
             //% "Backup is on. Write this recovery key down and keep it safe; it is shown only now. Tap it to copy."
             recoveryResult = qsTrId("rustrx-la-key-shown")
             shownKey = key
+            keyLater.start()
         }
         onErrorOccurred: {
             if (cmd === "recovery_recover" || cmd === "recovery_enable" || cmd === "recovery_reset" || cmd === "identity_reset")

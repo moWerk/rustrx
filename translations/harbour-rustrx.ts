@@ -3155,5 +3155,21 @@
         <source>This phone has no recovery key for this account. After logging out, the messages in encrypted rooms cannot be read here again, and if no other device of yours stays logged in, they cannot be read anywhere.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-bt-copy-key">
+        <source>Copy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-recovery-key">
+        <source>Your recovery key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-recovery-key-intro">
+        <source>With this key, any new device of yours reads your encrypted messages. It is shown only now: write it down or keep it in a password manager, somewhere other than this phone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-recovery-key-saved">
+        <source>I have saved it</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>
