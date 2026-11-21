@@ -269,11 +269,25 @@ Page {
         showComposer()
     }
 
+    Timer {
+        id: moreLater
+        interval: 0
+        onTriggered: if (list.atYEnd && !page.paginating && !page.atStart && list.count > 0) {
+            page.paginating = true
+            rustrx.command({ cmd: "paginate_back", room_id: page.roomId })
+        }
+    }
+
     Connections {
         target: rustrx
         onPaginated: if (roomId === page.roomId) {
             paginating = false
             page.atStart = atStart
+            // still at the top: the page brought little to show (state
+            // events, hidden ones), so the top never left and loading
+            // stopped there until a scroll down and up again; the next
+            // page comes by itself
+            if (!atStart && list.atYEnd && page.inTimeline) moreLater.restart()
             // the older page is in the model once the timeline came
             if (page.jumpTarget.length) jumpRetry.restart()
             if (!page.positioned) seekRetry.restart()
