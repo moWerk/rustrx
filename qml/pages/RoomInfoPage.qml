@@ -324,8 +324,9 @@ Page {
                 color: Theme.highlightColor
             }
 
-            // the room's picture, large; for moderators a tap changes it
-            Item { width: 1; height: Theme.paddingMedium }
+            // the room's picture, large, well below the name and topic (the
+            // author's wish); for moderators a tap changes it
+            Item { width: 1; height: Theme.paddingLarge * 2 }
             BackgroundItem {
                 visible: !info.is_dm
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -374,16 +375,31 @@ Page {
                 height: aliasItem.height
                 // the core's link names the servers that know the room
                 onClicked: rustrx.command({ cmd: "room_link", room_id: page.roomId })
-                DetailItem {
+                // at the page's left edge, the label above the address (a
+                // DetailItem centred it on the label's column)
+                Column {
                     id: aliasItem
-                    width: parent.width
-                    label: addressItem.hasAlias
-                           //% "Address"
-                           ? qsTrId("rustrx-la-alias")
-                           //: a room without an address: its ID stands in
-                           //% "Room ID"
-                           : qsTrId("rustrx-la-room-id")
-                    value: addressItem.hasAlias ? info.alias : page.roomId
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * x
+                    topPadding: Theme.paddingSmall
+                    bottomPadding: Theme.paddingSmall
+                    Label {
+                        width: parent.width
+                        text: addressItem.hasAlias
+                              //% "Address"
+                              ? qsTrId("rustrx-la-alias")
+                              //: a room without an address: its ID stands in
+                              //% "Room ID"
+                              : qsTrId("rustrx-la-room-id")
+                        font.pixelSize: Theme.fontSizeExtraSmall
+                        color: Theme.secondaryHighlightColor
+                    }
+                    Label {
+                        width: parent.width
+                        text: addressItem.hasAlias ? info.alias : page.roomId
+                        wrapMode: Text.WrapAnywhere
+                        color: addressItem.highlighted ? Theme.highlightColor : Theme.primaryColor
+                    }
                 }
             }
             // who may join: anyone, people who ask, members of its spaces,

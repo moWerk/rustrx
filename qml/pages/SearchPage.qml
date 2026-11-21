@@ -91,6 +91,10 @@ Page {
         id: list
         anchors.fill: parent
         model: hits
+        // no current row: the view gave the focus to its current item when
+        // the first results came, and the search field lost it mid-word
+        currentIndex: -1
+        onCurrentIndexChanged: if (currentIndex !== -1) currentIndex = -1
 
         header: Column {
             width: parent.width
@@ -148,8 +152,10 @@ Page {
                 } else if (model.joined) {
                     open(model.id, model.name)
                 } else {
-                    page.pending = model.name
-                    rustrx.command({ cmd: "join_by_id_or_alias", room_or_alias: model.id })
+                    // the join page: what the room is, joining or asking to
+                    // join as the room wants, and why it failed in words (a
+                    // join from here failed silently, and asked nobody)
+                    pageStack.push(Qt.resolvedUrl("JoinPage.qml"), { address: model.id })
                 }
             }
 

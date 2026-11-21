@@ -47,6 +47,12 @@ Page {
         if (/banned/i.test(m)) return qsTrId("rustrx-la-preview-banned")
         //% "Only invited people can join. Ask someone inside for an invitation."
         if (/not invited|invite only|invite-only/i.test(m)) return qsTrId("rustrx-la-preview-invite-only")
+        // the core's lookup failed: the room's server cannot be reached from
+        // the user's (no federation there, or a server that is down)
+        //: %1 the own homeserver, %2 the room's server, like matrix.org
+        //% "Your server (%1) cannot reach %2, so it cannot look up or join rooms there. Some servers do not connect to other servers at all."
+        if (/could not be looked up/i.test(m) && /federation|502|bad gateway|unreachable|connect/i.test(m))
+            return qsTrId("rustrx-la-join-unreachable").arg(ownServer).arg(page.address.split(":").slice(1).join(":") || "?")
         //% "No room or space has this address. Check it, or type part of its name to search."
         if (/not found|unknown room|M_NOT_FOUND|no known servers|room alias/i.test(m)) return qsTrId("rustrx-la-join-not-found")
         //% "That is no address yet. Type part of the name to search, or the full address, like #room:server."

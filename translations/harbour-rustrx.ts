@@ -3127,5 +3127,9 @@
         <source>Room ID</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-join-unreachable">
+        <source>Your server (%1) cannot reach %2, so it cannot look up or join rooms there. Some servers do not connect to other servers at all.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

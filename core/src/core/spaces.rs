@@ -10,7 +10,7 @@ use super::*;
 use matrix_sdk::ruma::events::room::join_rules::{AllowRule, JoinRule, Restricted, RoomJoinRulesEventContent};
 use matrix_sdk::ruma::room::{JoinRuleSummary, RoomType};
 use matrix_sdk::ruma::events::StateEventType;
-use matrix_sdk::ruma::{OwnedRoomOrAliasId, OwnedServerName};
+use matrix_sdk::ruma::OwnedServerName;
 use matrix_sdk_ui::spaces::room_list::SpaceRoomListPaginationState;
 use matrix_sdk_ui::spaces::{SpaceRoom, SpaceService};
 
@@ -238,7 +238,10 @@ impl Core {
     pub(crate) async fn room_preview(&'static self, id: &str, via: &Option<Vec<String>>) -> Result<()> {
         let client = self.client().await?;
         let rid = RoomOrAliasId::parse(id.trim())?;
-        match client.get_room_preview(&rid, servers(via)).await {
+        // an address that cannot be looked up is an error, not a private room
+        let mut via = servers(via);
+        let rid = Self::look_up_briefly(&client, &rid, &mut via).await?;
+        match client.get_room_preview(&rid, via).await {
             Ok(p) => self.emit(json!({
                 "ev": "room_preview", "room_or_alias": id, "ok": true,
                 "room_id": p.room_id.as_str(),
@@ -262,8 +265,10 @@ impl Core {
     /// Asks to join (knocks); answered by "knocked".
     pub(crate) async fn knock(&'static self, id: &str, reason: Option<&str>, via: &Option<Vec<String>>) -> Result<()> {
         let client = self.client().await?;
-        let rid = OwnedRoomOrAliasId::try_from(id.trim())?;
-        let room = client.knock(rid, reason.map(str::to_owned), servers(via)).await?;
+        let rid = RoomOrAliasId::parse(id.trim())?;
+        let mut via = servers(via);
+        let rid = Self::look_up_briefly(&client, &rid, &mut via).await?;
+        let room = client.knock(rid, reason.map(str::to_owned), via).await?;
         tracing::info!(room = %room.room_id(), "knock: asked to join");
         self.emit(json!({"ev": "knocked", "room_id": room.room_id().as_str()}));
         Ok(())
