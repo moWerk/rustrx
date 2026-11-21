@@ -6,7 +6,7 @@
 use super::*;
 use matrix_sdk::ruma::directory::RoomTypeFilter;
 use matrix_sdk::ruma::room::RoomType;
-use matrix_sdk::ruma::OwnedServerName;
+use matrix_sdk::ruma::{OwnedRoomOrAliasId, OwnedServerName, RoomAliasId};
 
 impl Core {
     /// The room's own notification rule, "default" without one: "notification_mode".
@@ -64,10 +64,36 @@ impl Core {
     }
 
     /// A room id or alias, with the servers that know it; answered by "joined".
+    /// An address is looked up first, with few retries: the SDK's own
+    /// lookup retried a refusal (a server without federation answers 502)
+    /// for as long as the app ran, and the page said "Joining…" forever.
+    /// The join itself is bounded too.
     pub(crate) async fn join_by_id_or_alias(&self, id: &str, via: &Option<Vec<String>>) -> Result<()> {
+        use matrix_sdk::ruma::api::client::alias::get_alias;
         let client = self.client().await?;
         let id = RoomOrAliasId::parse(id.trim())?;
-        let room = client.join_room_by_id_or_alias(&id, &spaces::servers(via)).await?;
+        let mut servers = spaces::servers(via);
+        let as_alias: Result<&RoomAliasId, &RoomId> = (&*id).try_into();
+        let target: OwnedRoomOrAliasId = match as_alias {
+            Ok(alias) => {
+                let config = matrix_sdk::config::RequestConfig::short_retry();
+                let found = client
+                    .send(get_alias::v3::Request::new(alias.to_owned()))
+                    .with_request_config(config)
+                    .await
+                    .map_err(|e| anyhow!("{alias} could not be looked up from your server: {e}"))?;
+                for s in found.servers {
+                    if !servers.contains(&s) {
+                        servers.push(s);
+                    }
+                }
+                found.room_id.into()
+            }
+            Err(_) => id.clone(),
+        };
+        let room = tokio::time::timeout(JOIN_TIMEOUT, client.join_room_by_id_or_alias(&target, &servers))
+            .await
+            .map_err(|_| anyhow!("joining {id}: your server did not finish the join in time"))??;
         self.emit(json!({"ev": "joined", "room_id": room.room_id().as_str()}));
         Ok(())
     }

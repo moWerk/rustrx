@@ -63,6 +63,9 @@ impl Core {
         // unsealed is an error here, and the store is left alone
         let Some(saved) = self.load_session()? else { return Ok(false) };
         let t = std::time::Instant::now();
+        if saved.sliding_sync != Some(false) {
+            self.drop_classic_to_device_token().await;
+        }
         let client = match saved.sliding_sync {
             Some(native) => self.build_client_with(&saved.homeserver, true, Some(native)).await?,
             None => self.build_client(&saved.homeserver, true).await?,
@@ -80,6 +83,43 @@ impl Core {
         self.after_login(client).await?;
         tracing::info!(ms = t.elapsed().as_millis() as u64, "startup: sync started");
         Ok(true)
+    }
+
+    /// Both syncs keep their to-device position in one place in the crypto
+    /// store, and sliding sync sends it on: after the classic sync (the
+    /// Classic sync switch, then back) Synapse refused it ("should look like
+    /// an int"), and the sync service retried at once, every 18 ms, for
+    /// hours (the Prawn, 2026-11-21). A position that is not a number is
+    /// dropped before the client opens the store; sliding sync then starts
+    /// its to-device stream afresh, and the server sends what is left.
+    async fn drop_classic_to_device_token(&self) {
+        use matrix_sdk_base::crypto::store::CryptoStore;
+        let dir = self.data_dir.join(STORE_DIR);
+        if !dir.join(CRYPTO_DB).exists() {
+            return;
+        }
+        let passphrase = match self.store_passphrase() {
+            Ok(p) => p,
+            Err(_) => return, // the client's build says why
+        };
+        let config = matrix_sdk::SqliteStoreConfig::with_low_memory_config(dir).passphrase(passphrase.as_deref());
+        let store = match matrix_sdk::SqliteCryptoStore::open_with_config(&config).await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!("to-device position: the store did not open: {e}");
+                return;
+            }
+        };
+        match store.next_batch_token().await {
+            Ok(Some(token)) if !token.is_empty() && !token.bytes().all(|b| b.is_ascii_digit()) => {
+                match store.remove_custom_value(NEXT_BATCH_TOKEN_KEY).await {
+                    Ok(()) => tracing::info!("to-device position from the classic sync dropped for sliding sync"),
+                    Err(e) => tracing::warn!("to-device position not dropped: {e}"),
+                }
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!("to-device position not read: {e}"),
+        }
     }
 
     pub(crate) async fn build_client(&self, server: &str, with_store: bool) -> Result<Client> {

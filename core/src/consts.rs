@@ -32,6 +32,16 @@ pub(crate) const ROOM_LIST_BATCH: Duration = Duration::from_millis(150);
 pub(crate) const ROOM_LIST_FULL_REBUILD: Duration = Duration::from_secs(60);
 /// Wait before syncing again after a sync error.
 pub(crate) const SYNC_RETRY_DELAY: Duration = Duration::from_secs(5);
+/// a sync service that fails within this time of starting failed at once
+pub(crate) const SYNC_QUICK_FAIL: Duration = Duration::from_secs(2);
+/// from this many such failures in a row it rests before starting again
+pub(crate) const SYNC_QUICK_FAILS: u32 = 3;
+/// its first rest, doubled on each further failure up to the longest
+pub(crate) const SYNC_REST_FIRST: Duration = Duration::from_secs(5);
+pub(crate) const SYNC_REST_MAX: Duration = Duration::from_secs(300);
+/// a join that takes longer is given up (a room on another server may
+/// take a while; the SDK alone retried a refusal without end)
+pub(crate) const JOIN_TIMEOUT: Duration = Duration::from_secs(120);
 /// a read receipt that failed (a weak network) is tried again after these
 pub(crate) const MARK_READ_RETRIES: [Duration; 3] =
     [Duration::from_secs(2), Duration::from_secs(5), Duration::from_secs(15)];
@@ -110,6 +120,10 @@ pub(crate) const RELOGIN_FILE: &str = "relogin.json";
 pub(crate) const DEVICE_ID_FILE: &str = "device_id";
 /// The matrix-sdk sqlite store.
 pub(crate) const STORE_DIR: &str = "store";
+/// the SDK's crypto database in the store, and the key its to-device
+/// position has there (matrix-sdk-sqlite 0.19.1, crypto_store.rs)
+pub(crate) const CRYPTO_DB: &str = "matrix-sdk-crypto.sqlite3";
+pub(crate) const NEXT_BATCH_TOKEN_KEY: &str = "next_batch_token";
 /// Marks a store that was made with a passphrase.
 pub(crate) const ENCRYPTED_MARKER: &str = "rustrx-encrypted";
 pub(crate) const MEDIA_DIR: &str = "media";

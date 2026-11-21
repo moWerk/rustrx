@@ -18,6 +18,13 @@ pub(super) struct ListSeen {
     pub(super) knocks_watched: HashSet<OwnedRoomId>,
 }
 
+/// How long the sync service rests after its `fails`-th failure in a row
+/// right after starting: from SYNC_REST_FIRST, doubling, at most SYNC_REST_MAX.
+fn sync_rest(fails: u32) -> Duration {
+    let doublings = fails.saturating_sub(SYNC_QUICK_FAILS).min(16);
+    SYNC_REST_FIRST.saturating_mul(1 << doublings).min(SYNC_REST_MAX)
+}
+
 impl Core {
     pub(crate) async fn start_sync(&'static self, client: Client) -> Result<()> {
         let generation = self.generation().await;
@@ -62,8 +69,16 @@ impl Core {
             let mut states = service.state();
             service.start().await;
             let queues = client.clone();
+            let svc = service.clone();
             let state_task = self.rt.spawn(async move {
                 let mut current = Some(states.get());
+                // A request the server refuses (a 400, not a network
+                // failure) ends the service, the offline mode finds the
+                // server reachable and starts it again at once: on the Prawn
+                // every 18 ms for hours. Failures right after starting count
+                // up; from the third the service rests, longer each time.
+                let mut running_since: Option<std::time::Instant> = None;
+                let mut quick_fails = 0u32;
                 loop {
                     let state = match current.take() {
                         Some(s) => s,
@@ -85,6 +100,20 @@ impl Core {
                     // network error switched off send what waits
                     if matches!(state, SyncState::Running) {
                         queues.send_queue().set_enabled(true).await;
+                        running_since = Some(std::time::Instant::now());
+                    } else if let Some(since) = running_since.take() {
+                        if since.elapsed() < SYNC_QUICK_FAIL {
+                            quick_fails += 1;
+                        } else {
+                            quick_fails = 0;
+                        }
+                        if quick_fails >= SYNC_QUICK_FAILS {
+                            let rest = sync_rest(quick_fails);
+                            tracing::warn!(quick_fails, secs = rest.as_secs(), "sync service: failing at once, resting");
+                            svc.stop().await;
+                            tokio::time::sleep(rest).await;
+                            svc.start().await;
+                        }
                     }
                 }
             });
@@ -372,5 +401,17 @@ impl Core {
             "media_cache": sizes.media_store,
         }));
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sync_rests_longer_each_time_up_to_the_most() {
+        assert_eq!(sync_rest(SYNC_QUICK_FAILS), SYNC_REST_FIRST);
+        assert_eq!(sync_rest(SYNC_QUICK_FAILS + 1), SYNC_REST_FIRST * 2);
+        assert_eq!(sync_rest(SYNC_QUICK_FAILS + 40), SYNC_REST_MAX);
     }
 }

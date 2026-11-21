@@ -33,6 +33,9 @@ rqrr = { version = "0.11", default-features = false }
 # seals session.json with the store's key (in the tree through matrix-sdk's
 # sqlite store; the version in Cargo.lock)
 matrix-sdk-store-encryption = "=0.19.1"
+# the crypto store's trait, to drop a classic sync's to-device position
+# before sliding sync sends it (in the tree through matrix-sdk)
+matrix-sdk-base = { version = "=0.19.1", default-features = false }
 
 [profile.release]
 opt-level = 2
