@@ -149,13 +149,27 @@ Page {
                     if (!t.length) return ""
                     return "#" + (t.indexOf(":") > 0 ? t : t + ":" + (page.settings.own_server || ""))
                 }
-                EnterKey.enabled: alias.length > 2 && page.adding.length === 0
-                EnterKey.iconSource: "image://theme/icon-m-enter-accept"
-                EnterKey.onClicked: {
+                readonly property bool ready: alias.length > 2 && page.adding.length === 0
+                function add() {
                     page.adding = alias
                     rustrx.command({ cmd: "add_alias", room_id: page.roomId, alias: alias })
                 }
-                description: alias.length ? alias : ""
+                EnterKey.enabled: ready
+                EnterKey.iconSource: "image://theme/icon-m-enter-accept"
+                EnterKey.onClicked: add()
+                // what will be added, said as not done yet: the bare address
+                // under the field read as added, and the author left the page
+                // with nothing sent (the only way was the Enter key)
+                //: %1 the full address, like #room:server
+                //% "To be added: %1"
+                description: alias.length ? qsTrId("rustrx-la-alias-to-add").arg(alias) : ""
+            }
+            PageButton {
+                visible: aliasField.alias.length > 2
+                //% "Add"
+                text: qsTrId("rustrx-bt-alias-add")
+                button.enabled: aliasField.ready
+                onClicked: aliasField.add()
             }
             BusyIndicator {
                 anchors.horizontalCenter: parent.horizontalCenter

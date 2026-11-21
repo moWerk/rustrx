@@ -3368,5 +3368,13 @@
         <source>Search rooms and chats</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-bt-alias-add">
+        <source>Add</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-alias-to-add">
+        <source>To be added: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>
