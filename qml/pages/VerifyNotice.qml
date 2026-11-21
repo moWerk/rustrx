@@ -16,13 +16,14 @@
  */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
 
 // Shown once after a login made this phone a new device that is not
 // verified or lacks the recovery key. Verify starts the verification on an
 // unverified phone (it only opened the Account tab, 0.8 audit); with the
 // phone verified and the key missing, it opens the encryption settings, as
 // the line on top of the room list does. Later leaves only that line.
-Dialog {
+ShortDialog {
     id: dialog
     objectName: "verifyNotice"
 
@@ -34,60 +35,45 @@ Dialog {
     // as the Encryption page's "Verify this phone" does
     onAccepted: if (unverified) rustrx.command({ cmd: "verification_request_self" })
 
-    SilicaFlickable {
-        anchors.fill: parent
-        contentHeight: column.height + Theme.paddingLarge
+    //% "Verify"
+    acceptText: qsTrId("rustrx-he-verify-accept")
+    //% "Later"
+    cancelText: qsTrId("rustrx-he-later")
 
-        Column {
-            id: column
-            width: parent.width
-            spacing: Theme.paddingLarge
-
-            DialogHeader {
-                //% "Verify"
-                acceptText: qsTrId("rustrx-he-verify-accept")
-                //% "Later"
-                cancelText: qsTrId("rustrx-he-later")
-            }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeLarge
-                color: Theme.highlightColor
-                //% "Verify this phone"
-                text: qsTrId("rustrx-he-verify-phone")
-            }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: Theme.highlightColor
-                //% "Logging in made this phone a new device of your account. Until it is verified, it cannot read your older encrypted messages, and your contacts see a device they cannot trust yet."
-                text: qsTrId("rustrx-la-verify-phone-why")
-            }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: Theme.highlightColor
-                //% "Confirm it on another device you are logged in on, or enter your recovery key."
-                text: qsTrId("rustrx-la-verify-phone-how")
-            }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.secondaryHighlightColor
-                //% "Later: the line on top of the room list leads there too."
-                text: qsTrId("rustrx-la-verify-phone-later")
-            }
+    body: [
+        Label {
+            x: Theme.horizontalPageMargin
+            width: parent.width - 2 * x
+            wrapMode: Text.Wrap
+            font.pixelSize: Theme.fontSizeLarge
+            color: Theme.highlightColor
+            //% "Verify this phone"
+            text: qsTrId("rustrx-he-verify-phone")
+        },
+        Label {
+            x: Theme.horizontalPageMargin
+            width: parent.width - 2 * x
+            wrapMode: Text.Wrap
+            color: Theme.highlightColor
+            //% "Logging in made this phone a new device of your account. Until it is verified, it cannot read your older encrypted messages, and your contacts see a device they cannot trust yet."
+            text: qsTrId("rustrx-la-verify-phone-why")
+        },
+        Label {
+            x: Theme.horizontalPageMargin
+            width: parent.width - 2 * x
+            wrapMode: Text.Wrap
+            color: Theme.highlightColor
+            //% "Confirm it on another device you are logged in on, or enter your recovery key."
+            text: qsTrId("rustrx-la-verify-phone-how")
+        },
+        Label {
+            x: Theme.horizontalPageMargin
+            width: parent.width - 2 * x
+            wrapMode: Text.Wrap
+            font.pixelSize: Theme.fontSizeSmall
+            color: Theme.secondaryHighlightColor
+            //% "Later: the line on top of the room list leads there too."
+            text: qsTrId("rustrx-la-verify-phone-later")
         }
-        VerticalScrollDecorator { }
-    }
+    ]
 }

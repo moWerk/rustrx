@@ -162,11 +162,21 @@ Page {
             description: page.roomName
         }
 
+        // a thread that brings nothing (offline, or it failed) stopped
+        // spinning never: the spinner gives up and says so
         BusyIndicator {
             visible: running
             anchors.centerIn: parent
             size: BusyIndicatorSize.Large
-            running: list.count === 0
+            running: list.count === 0 && threadGrace.running
+        }
+        Timer { id: threadGrace; interval: Tunables.threadLoadMs; running: true }
+        ViewPlaceholder {
+            enabled: list.count === 0 && !threadGrace.running
+            text: rustrx.syncState === "running" || rustrx.syncState === "idle"
+                  //% "This thread could not be loaded"
+                  ? qsTrId("rustrx-la-thread-not-loaded")
+                  : qsTrId("rustrx-la-cover-offline")
         }
 
         VerticalScrollDecorator { }

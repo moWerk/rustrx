@@ -61,10 +61,16 @@ Page {
         onJoined: {
             if (!dialog.waiting) return
             dialog.waiting = false
-            if (dialog.space)
-                pageStack.replace(Qt.resolvedUrl("SpacePage.qml"), { spaceId: roomId, spaceName: nameField.text.trim() })
+            var url = dialog.space ? Qt.resolvedUrl("SpacePage.qml") : Qt.resolvedUrl("RoomPage.qml")
+            var props = dialog.space ? { spaceId: roomId, spaceName: nameField.text.trim() }
+                                     : { roomId: roomId, roomName: nameField.text.trim() }
+            // made from Add room or contact: the search goes too, so back
+            // leads to the list, not to the search (0.8 audit)
+            var below = pageStack.previousPage(dialog)
+            if (below && below.objectName === "search" && pageStack.previousPage(below))
+                pageStack.replaceAbove(pageStack.previousPage(below), url, props)
             else
-                pageStack.replace(Qt.resolvedUrl("RoomPage.qml"), { roomId: roomId, roomName: nameField.text.trim() })
+                pageStack.replace(url, props)
         }
         onErrorOccurred: if (cmd === "create_room") dialog.waiting = false
     }

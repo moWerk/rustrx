@@ -66,7 +66,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-invitation">
-        <source>Invitation. Long press to accept or decline.</source>
+        <source>Invitation. Tap to accept or decline.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-encrypted">
@@ -1878,7 +1878,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-me-space-add-more">
-        <source>Add to this space…</source>
+        <source>Add to this space</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-he-space-add">
@@ -2097,7 +2097,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-ignored-hint">
-        <source>Ignore someone from a room&apos;s member list.</source>
+        <source>Ignore someone from their page or a room&apos;s member list.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-bt-ignored">
@@ -3310,6 +3310,18 @@
     </message>
     <message id="rustrx-se-recent">
         <source>Recent</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-voip-again">
+        <source>Call again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-voip-close">
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-thread-not-loaded">
+        <source>This thread could not be loaded</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

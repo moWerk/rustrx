@@ -190,4 +190,6 @@ QtObject {
     readonly property int offlineMarkDelayMs: 3000
     // addresses and names kept on Add room or contact, per account
     readonly property int searchHistoryMax: 10
+    // a thread's spinner gives up after this long without its messages
+    readonly property int threadLoadMs: 15000
 }

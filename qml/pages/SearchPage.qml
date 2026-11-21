@@ -28,6 +28,7 @@ import "../names.js" as Names
 // was opened or joined from here before is offered again.
 Page {
     id: page
+    objectName: "search"
 
     property string lastTerm
     // what is typed: the field lives in the list's header, out of reach of

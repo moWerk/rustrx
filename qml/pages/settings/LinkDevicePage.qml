@@ -61,8 +61,12 @@ ShortPage {
 
     Component.onDestruction: if (busy) rustrx.command({ cmd: "login_cancel" })
 
+    // the account service's page for the consent, for "Open again" and
+    // "Copy link" when the browser did not come up (0.8 audit)
+    property string consentUrl
     Connections {
         target: rustrx
+        onBrowserUrl: if (page.state_ === "consent" || page.busy) page.consentUrl = url
         onQrGrant: {
             if (progress.state === "refused") return   // the scanner says so
             if (progress.state === "error" && (page.cancelling || page.restarting)) {
@@ -160,6 +164,21 @@ ShortPage {
             visible: page.state_ === "qr" && panel.expired
             text: qsTrId("rustrx-bt-qr-new")
             onClicked: page.newCode()
+        },
+        ButtonLayout {
+            width: parent ? parent.width : 0
+            visible: page.state_ === "consent" && page.consentUrl.length > 0
+            Button {
+                text: qsTrId("rustrx-bt-sso-open-again")
+                onClicked: app.openExternal(page.consentUrl)
+            }
+            Button {
+                text: qsTrId("rustrx-bt-sso-copy")
+                onClicked: {
+                    Clipboard.text = page.consentUrl
+                    Notices.show(qsTrId("rustrx-no-link-copied"), Notice.Short)
+                }
+            }
         },
         PageButton {
             visible: page.busy

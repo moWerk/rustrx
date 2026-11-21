@@ -83,7 +83,7 @@ Page {
             enabled: page.loaded && page.users.length === 0
             //% "Nobody is ignored"
             text: qsTrId("rustrx-la-ignored-none")
-            //% "Ignore someone from a room's member list."
+            //% "Ignore someone from their page or a room's member list."
             hintText: qsTrId("rustrx-la-ignored-hint")
         }
 

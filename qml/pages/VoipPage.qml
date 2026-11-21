@@ -57,7 +57,18 @@ Page {
     Timer {
         id: closer
         interval: Tunables.voipEndShownMs
-        onTriggered: if (page.call.state === "idle" && page.status === PageStatus.Active) pageStack.pop()
+        onTriggered: if (page.call.state === "idle" && page.status === PageStatus.Active && !page.failed) pageStack.pop()
+    }
+    // a call that did not get through stays with "Call again" and "Close"
+    // (0.8 audit: the page went and the call had to be found again)
+    readonly property bool failed: call.state === "idle"
+        && ["invite_timeout", "ice_failed", "send_failed", "user_media_failed"].indexOf(call.endReason) >= 0
+    // whom to call again: the direct chat's other person
+    property string lastRoomId
+    property string lastPeerName
+    Connections {
+        target: page.call
+        onChanged: if (page.call.roomId.length) { page.lastRoomId = page.call.roomId; page.lastPeerName = page.call.peerName }
     }
     onStatusChanged: if (status === PageStatus.Active && call.state === "idle" && !closer.running) closer.restart()
 
@@ -197,6 +208,26 @@ Page {
                 rotation: 135
                 source: "image://theme/icon-l-dialer?white"
             }
+        }
+    }
+
+    Column {
+        visible: page.failed
+        anchors { bottom: parent.bottom; bottomMargin: Theme.itemSizeLarge }
+        width: parent.width
+        spacing: Theme.itemSizeSmall
+        PageButton {
+            //% "Call again"
+            text: qsTrId("rustrx-bt-voip-again")
+            onClicked: {
+                var info = rustrx.roomInfo(page.lastRoomId)
+                if (info.dm_user) rustrx.placeCall(page.lastRoomId, info.dm_user, page.lastPeerName || info.dm_user)
+            }
+        }
+        PageButton {
+            //% "Close"
+            text: qsTrId("rustrx-bt-voip-close")
+            onClicked: pageStack.pop()
         }
     }
 

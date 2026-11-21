@@ -323,7 +323,7 @@ ListItem {
                 text: {
                     // a new indent needs a new layout (Qt 5.6 has no forceLayout)
                     var unused = indent
-                    //% "Invitation. Long press to accept or decline."
+                    //% "Invitation. Tap to accept or decline."
                     if (invited) return qsTrId("rustrx-la-invitation")
                     // a space: its topic, else how many rooms it holds
                     //: %n the rooms in a space

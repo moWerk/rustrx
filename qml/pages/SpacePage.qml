@@ -103,7 +103,7 @@ Page {
             // a manager's three ways to add, on a page of their own
             MenuItem {
                 visible: page.canManage
-                //% "Add to this space…"
+                //% "Add to this space"
                 text: qsTrId("rustrx-me-space-add-more")
                 onClicked: pageStack.push(Qt.resolvedUrl("SpaceAddPage.qml"), { spaceId: page.spaceId, spaceName: page.spaceName, existing: page.rooms })
             }

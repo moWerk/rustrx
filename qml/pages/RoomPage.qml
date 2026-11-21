@@ -699,8 +699,12 @@ Page {
 
         ViewPlaceholder {
             enabled: list.count === 0 && !openGrace.running
-            //% "No messages yet"
-            text: qsTrId("rustrx-la-no-messages")
+            // offline the list may be empty for want of a connection, not
+            // of messages
+            text: rustrx.syncState === "running" || rustrx.syncState === "idle"
+                  //% "No messages yet"
+                  ? qsTrId("rustrx-la-no-messages")
+                  : qsTrId("rustrx-la-cover-offline")
         }
 
         BusyIndicator {
