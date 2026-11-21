@@ -174,10 +174,13 @@ Page {
                 //% "Leave the space and its rooms"
                 text: qsTrId("rustrx-me-leave-space-rooms")
                 onClicked: {
-                    var id = roomId, core = rustrx
+                    var id = roomId, core = rustrx, nav = app
                     leaveRemorse.execute(qsTrId("rustrx-re-leaving"), function () {
                         core.command({ cmd: "space_leave", space_id: id, with_rooms: true })
-                        pageStack.pop(pageStack.find(function (p) { return p.objectName === "main" }))
+                        // the list, also when the remorse ran out early
+                        // because the page was swiped away (the app waits;
+                        // captured: the page may be gone by then)
+                        nav.backToList()
                     })
                 }
             }
@@ -188,10 +191,13 @@ Page {
                       //% "Leave room"
                       : qsTrId("rustrx-me-leave-room")
                 onClicked: {
-                    var id = roomId, core = rustrx
+                    var id = roomId, core = rustrx, nav = app
                     leaveRemorse.execute(qsTrId("rustrx-re-leaving"), function () {
                         core.command({ cmd: "leave_room", room_id: id })
-                        pageStack.pop(pageStack.find(function (p) { return p.objectName === "main" }))
+                        // the list, also when the remorse ran out early
+                        // because the page was swiped away (the app waits;
+                        // captured: the page may be gone by then)
+                        nav.backToList()
                     })
                 }
             }

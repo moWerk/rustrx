@@ -223,6 +223,17 @@ ApplicationWindow {
     // than a second pushed; and only above the room list (a call answered
     // from a notification with Rustrx closed would otherwise sit on the
     // start page, and the list never came)
+    // back to the room list, once the page stack is free: a room left by
+    // a remorse that ran out early, because the user swiped away from its
+    // page, asked for the list mid-swipe; the stack ignored it and the
+    // user stood in the room just left (the author's find)
+    function backToList() {
+        var main = pageStack.find(function (p) { return p.objectName === "main" })
+        if (!main) return
+        if (pageStack.busy) { listLater.restart(); return }
+        pageStack.pop(main)
+    }
+    Timer { id: listLater; interval: Tunables.retryIntervalMs; onTriggered: app.backToList() }
     function showVoip() {
         if (!pageStack.find(function (p) { return p.objectName === "main" }) || pageStack.busy) {
             voipRetry.restart()
