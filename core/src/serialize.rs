@@ -600,6 +600,14 @@ pub(crate) fn item_json(item: &Arc<TimelineItem>, own: &UserId, names: &HashMap<
                 put(&mut o, "upload_done", p.progress.current as u64);
                 put(&mut o, "upload_total", p.progress.total as u64);
             }
+            // why a send failed, where it is no use trying again: the file
+            // is larger than the server takes (tchncs.de's proxy answered
+            // 413 to a video, and "send again" could never work)
+            if let Some(EventSendState::SendingFailed { error, .. }) = e.send_state() {
+                if send_error_too_large(&error.to_string()) {
+                    put(&mut o, "send_error", "too_large");
+                }
+            }
             put(
                 &mut o,
                 "send_state",
@@ -813,5 +821,25 @@ mod tests {
         assert_eq!(profile_name(&TimelineDetails::Ready(Profile::default()), user), "anna");
         assert_eq!(profile_name(&TimelineDetails::Pending, user), "anna");
         assert_eq!(profile_name(&TimelineDetails::Unavailable, user), "anna");
+    }
+}
+
+/// A server's (or its proxy's) "too large" for an upload or an event.
+fn send_error_too_large(error: &str) -> bool {
+    error.contains("[413")
+        || error.contains("M_TOO_LARGE")
+        || error.contains("Request Entity Too Large")
+        || error.contains("Payload Too Large")
+}
+
+#[cfg(test)]
+mod send_error_tests {
+    use super::send_error_too_large;
+
+    #[test]
+    fn a_413_is_too_large_and_a_timeout_is_not() {
+        assert!(send_error_too_large("the server returned an error: [413] <non-json bytes>"));
+        assert!(send_error_too_large("[400 / M_TOO_LARGE] too big"));
+        assert!(!send_error_too_large("error sending request: operation timed out"));
     }
 }

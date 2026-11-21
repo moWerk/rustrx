@@ -27,7 +27,18 @@ impl Core {
             let next = asleep.values().min().copied();
             tokio::select! {
                 e = errors.recv() => match e {
-                    Ok(e) if !e.is_recoverable => Self::drop_refused_reactions(&client).await,
+                    // refused for good (413: a file larger than the server
+                    // takes): the message stays marked as not sent, and the
+                    // room's queue, which the SDK switched off, goes on at
+                    // once; it stayed off, and nothing after the refused
+                    // video went out (the author's Prawn, tchncs.de)
+                    Ok(e) if !e.is_recoverable => {
+                        Self::drop_refused_reactions(&client).await;
+                        tracing::info!(room_id = %e.room_id, "send queue: one message refused, the rest goes on");
+                        if let Some(room) = client.get_room(&e.room_id) {
+                            room.send_queue().set_enabled(true);
+                        }
+                    }
                     Ok(e) => {
                         tracing::info!(room_id = %e.room_id, "send queue: off after a network error, on again later");
                         asleep.entry(e.room_id).or_insert_with(|| tokio::time::Instant::now() + SEND_RETRY_DELAY);

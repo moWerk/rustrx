@@ -51,7 +51,7 @@ TimelineModel::TimelineModel(QObject *parent)
                             "reactions", "reply_to", "thread_root", "thread", "mime", "size", "w", "h", "has_thumb",
                             "filename", "duration", "geo_uri", "media_path", "thumb_path", "read_by",
                             "caption", "shield", "answers", "max_selections", "ended", "upload_done", "upload_total",
-                            "emotes", "body_html", "caption_html", "thread_html" };
+                            "emotes", "body_html", "caption_html", "thread_html", "send_error" };
     int role = Qt::UserRole + 1;
     for (const char *n : names) {
         m_roles.insert(role, QByteArray(n));

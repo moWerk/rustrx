@@ -111,6 +111,8 @@ ListItem {
     }
     readonly property string eventId: model.event_id || ""
     readonly property bool failed: model.send_state === "failed"
+    // the server takes no file this large: sending again cannot help
+    readonly property bool tooLarge: failed && model.send_error === "too_large"
     // a picture or file on its way: the share of it the server has (0..1)
     readonly property bool uploading: model.send_state === "sending" && model.upload_total > 0
     readonly property real uploadFraction: uploading ? Math.min(1, model.upload_done / model.upload_total) : 0
@@ -228,7 +230,7 @@ ListItem {
     function tapped() {
         // not sent: a tap sends it again as it was (0.8 audit, item 6)
         if (failed) {
-            if (model.txn_id) msg.resend(model.txn_id)
+            if (model.txn_id && !tooLarge) msg.resend(model.txn_id)
             return
         }
         // a reply in a thread, shown in the room's flow: on to its thread
@@ -895,8 +897,11 @@ ListItem {
                             wrapMode: Text.Wrap
                             font.pixelSize: Theme.fontSizeExtraSmall
                             color: Theme.errorColor
-                            //% "Not sent. Tap to send again."
-                            text: qsTrId("rustrx-la-not-sent-tap")
+                            text: msg.tooLarge
+                                  //% "Not sent: larger than your server takes."
+                                  ? qsTrId("rustrx-la-not-sent-too-large")
+                                  //% "Not sent. Tap to send again."
+                                  : qsTrId("rustrx-la-not-sent-tap")
                         }
                     }
 
@@ -1079,7 +1084,7 @@ ListItem {
             // a failed message, picture or file: send it again as it was, or
             // let it go
             MenuItem {
-                visible: failed
+                visible: failed && !tooLarge
                 //% "Send again"
                 text: qsTrId("rustrx-me-send-again")
                 onClicked: msg.resend(model.txn_id || "")

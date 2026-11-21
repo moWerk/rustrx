@@ -266,7 +266,7 @@ Every item: `id` (unique, stable), `kind` (`event`, `date`, `readmarker`, `start
 Date dividers carry `ts`. Events carry `event_id` (absent for a local echo),
 `txn_id`, `sender`, `sender_name`, `is_own`, `ts`, `read_by`, `own_read` (true on the
 message our own read receipt is on: the unread count runs from it), `editable`,
-`highlight` (mentions us), `send_state` (`sending`, `failed`, `sent`),
+`highlight` (mentions us), `send_state` (`sending`, `failed`, `sent`), `send_error` (with `failed`: `too_large`, the server takes no file or event this large),
 `shield` (`red:<code>`, `grey:<code>` for unverified or unverifiable senders),
 `reactions` (`{key, count, me}`), `reply_to` (`{event_id, sender, sender_name, body}`),
 `thread_root`, `edited`, and by `type`:

@@ -3427,5 +3427,9 @@
         <source>Send a video</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-not-sent-too-large">
+        <source>Not sent: larger than your server takes.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>
