@@ -1,4 +1,4 @@
-* Fri Nov 20 2026 moWerk <mo@mowerk.net> - 0.7.0
+* Sat Nov 21 2026 moWerk <mo@mowerk.net> - 0.7.0
 - New: several accounts, as many as you like. The shown account's picture
   sits left of the tabs; a tap lists the accounts with their unread chats,
   a tap on one shows it (with one account, the tap opens its settings).
@@ -17,7 +17,8 @@
 - New: Link a new device (Settings, Account). This phone shows a QR code
   the new device scans, or scans the new device's code; the new device
   comes in verified, its keys handed over. Works with Rustrx and Element
-  on the other side, on servers with an account service (MAS).
+  on the other side; shown only where the account's server offers it
+  (an account service, MAS, with the QR rendezvous for showing a code).
 - New: the login page scans a QR code of a logged-in device, so another
   account is added without typing.
 - New: after a login, Rustrx offers once to verify the phone, when the

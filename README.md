@@ -30,7 +30,8 @@ people sit apart by default, timestamps are short (5m, 3h, 2d), the room
 list can be sorted, filtered and searched, and it runs on community ports
 without sailfish-secrets. Since 0.6 it makes classic 1:1 calls with Element and
 nheko, end-to-end encrypted, on the earpiece (and Element Call since 0.4.4), threads, spaces with requests to join, and Twemoji with custom emoji and
-stickers. It also works well as the client for a second account next to another one.
+stickers. Since 0.7 it holds as many accounts as you like, each notifying on
+its own, and shows them apart or all in one list.
 
 ![Rustrx 0.4.9 on the Pro¹-X: Settings as four tabs, Account with its security ring all green and "Log out now", Privacy in short groups (online status, location removed from photos, chat names outside Rustrx, invitations from strangers), App with the avatar corners slider and a choice box opened by press and drag, About with the thanks to everyone who reported or suggested](screenshots/rustrx-0.4.9.jpg)
 
@@ -44,8 +45,22 @@ stickers. It also works well as the client for a second account next to another 
   account service's page and logs in, or opens the sign-up page. The session is kept: Rustrx starts in about a second, and if
   a server really ends the session, it goes back to the login page and says
   so.
+- Several accounts, as many as you like: the shown account's picture left
+  of the tabs switches between them, and Settings > Account adds one more.
+  Every account syncs and notifies at once, in the background and through
+  push too; a notification's tap shows its account. Each keeps its own
+  store and keys. "All accounts in one list" (Settings > App, off by
+  default) shows every account's rooms together, each marked with its
+  account's colour, and opens a room in its own account.
+- Logging in with a QR code, both ways: Settings > Account > Link a new
+  device shows a code for a new phone or scans the new phone's code, and
+  the login page scans the code of a device that is logged in. The new
+  device comes in verified, with the keys. It works with Element on the
+  other side too, on servers that offer it (an account service with the
+  QR rendezvous).
 - Native sliding sync where the server has it (matrix.org does), classic
-  sync otherwise. Sync comes back by itself after a Wi-Fi drop.
+  sync otherwise, and a switch per account for servers whose sliding sync
+  leaves rooms out. Sync comes back by itself after a Wi-Fi drop.
 - Rooms, People, Favs and Spaces as tabs, paged the way Jolla's Settings
   are, or, if you prefer, one "Chats" list with or without the Favs and
   Spaces tabs.
@@ -180,14 +195,16 @@ when a process exits after hiding or recreating its window.
 
 ## Status
 
-0.4.9. From "let's build a client" to 0.2.0 in one evening, used daily on
+0.7.0. From "let's build a client" to 0.2.0 in one evening, used daily on
 the Jolla Phone 2026 since, and developed and maintained for the long run.
-Tested with two accounts, on matrix.org and on tchncs.de (single sign-on
-through its account service); since 0.4.7 servers with an account service
-are logged into through it (OAuth 2.0), since 0.4.8 also with a QR code. Not
-yet there: video calls, forwarding, QR verification. Push through UnifiedPush
-works with [Foghorn](https://openrepos.net/content/projectmoon/foghorn) as the
-distributor; the stand-in remains the fallback without one.
+Tested with several accounts at once, on matrix.org, tchncs.de and a server
+of our own with an account service (OAuth 2.0 login, QR login and linking).
+Not yet there: video calls, forwarding, QR verification. Push through
+UnifiedPush works with [Foghorn](https://openrepos.net/content/projectmoon/foghorn)
+as the distributor; the stand-in remains the fallback without one.
+
+The road from here: 0.8 audits the code in depth and polishes the UI, 0.9
+fixes only what users report, and 1.0 comes after some quiet weeks of 0.9.
 
 ## Install
 
