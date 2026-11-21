@@ -266,15 +266,6 @@ SilicaFlickable {
             onClicked: rustrx.command({ cmd: "set_account_notifications", enabled: true })
         }
 
-        // a button, not a pulley: a pulley nobody expects here was pulled
-        // by mistake (the author's find). The pulley waits for switching
-        // between accounts (0.5).
-        PageButton {
-            //% "Log out now"
-            text: qsTrId("rustrx-bt-log-out-now")
-            onClicked: settings.logOut()
-        }
-
         // the ring, its safeguards and the notes: how safe the messages are
         //% "Security status"
         SectionHeader { text: qsTrId("rustrx-se-security-status") }
@@ -455,6 +446,16 @@ SilicaFlickable {
             mimeType: "text/plain"
             //% "Rustrx debug log"
             title: qsTrId("rustrx-he-share-log")
+        }
+
+        // a button, not a pulley (a pulley here was pulled by mistake, the
+        // author's find), and last: right under the user ID it sat one tap
+        // from deleting the store (0.8 audit)
+        Item { width: 1; height: Theme.paddingLarge * 2 }
+        PageButton {
+            //% "Log out now"
+            text: qsTrId("rustrx-bt-log-out-now")
+            onClicked: settings.logOut()
         }
 
         Item { width: 1; height: Theme.paddingLarge }

@@ -3143,5 +3143,17 @@
         <source>Notifications are off for this account on your server. Tap to switch them on.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-bt-log-out-anyway">
+        <source>Log out anyway</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-logout-set-up-recovery">
+        <source>Set up the recovery key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-logout-no-recovery">
+        <source>This phone has no recovery key for this account. After logging out, the messages in encrypted rooms cannot be read here again, and if no other device of yours stays logged in, they cannot be read anywhere.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

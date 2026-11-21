@@ -72,11 +72,19 @@ Page {
 
     function pickPicture() { pageStack.push(ownPicturePicker) }
 
+    // with the recovery key on this phone, a short undo; without it the
+    // dialog says what is lost first, and offers to set the key up
     function logOut() {
-        //% "Logging out"
-        remorsePopup.execute(qsTrId("rustrx-re-logging-out"), function () {
-            rustrx.command({ cmd: "logout" })
-        })
+        if (rustrx.recoveryState === "enabled") {
+            //% "Logging out"
+            remorsePopup.execute(qsTrId("rustrx-re-logging-out"), function () {
+                rustrx.command({ cmd: "logout" })
+            })
+            return
+        }
+        var d = pageStack.push(Qt.resolvedUrl("settings/LogoutDialog.qml"), { account: rustrx.userId })
+        d.accepted.connect(function () { rustrx.command({ cmd: "logout" }) })
+        d.rejected.connect(function () { if (d.wantsRecovery) encryptionLater.start() })
     }
 
     // opened from the main page's line about verification or the recovery
