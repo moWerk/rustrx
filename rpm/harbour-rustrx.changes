@@ -1,3 +1,30 @@
+* Sat Nov 21 2026 moWerk <mo@mowerk.net> - 0.7.1
+- New: when notifications are switched off for the account on the server
+  (often in another app, "notifications for this account"), the room list
+  says so and the Account tab switches them on again. Rustrx follows the
+  account's rules and stayed silent without a word (davodego's report).
+  The debug log now names the account's rules.
+- Fixed: after Classic sync was switched off again, the account could stop
+  syncing and retry many times a second, using battery; it heals on the
+  next start. A sync the server refuses now waits longer each time.
+- Fixed: joining from Add Room / Contact. A tap on a room opens the join
+  page: what the room is, Join or Ask to join, and why it failed in words.
+  A room whose server cannot be reached from yours (for example a server
+  without federation) no longer says "joining" forever.
+- Fixed: Add Room / Contact searches while typing again, and the field
+  keeps its focus when results come.
+- Room info shows the room's ID where it has no address; a tap copies a
+  link that opens in any Matrix app.
+- English counts in the singular ("1 member", "1 reply").
+- The account menu has full-height rows; the sort and filter rows are
+  easier to tap.
+- The emoji picker no longer covers the whole screen in landscape (or on
+  the Pro¹-X with its keyboard out).
+- Settings, Account: sections for the security status, keys and devices
+  and the connection; Settings, App: Behaviour and Storage.
+- Fixed: "Leave out when sending" (Privacy) takes press and drag again,
+  and "When Rustrx is closed" shows the mode in force after a change.
+
 * Sat Nov 21 2026 moWerk <mo@mowerk.net> - 0.7.0
 - New: several accounts, as many as you like. The shown account's picture
   sits left of the tabs; a tap lists the accounts with their unread chats,

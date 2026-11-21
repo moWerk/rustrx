@@ -197,7 +197,7 @@ when a process exits after hiding or recreating its window.
 
 ## Status
 
-0.7.0. From "let's build a client" to 0.2.0 in one evening, used daily on
+0.7.1. From "let's build a client" to 0.2.0 in one evening, used daily on
 the Jolla Phone 2026 since, and developed and maintained for the long run.
 Tested with several accounts at once, on matrix.org, tchncs.de and a server
 of our own with an account service (OAuth 2.0 login, QR login and linking).
@@ -227,8 +227,8 @@ from this repository and keep it updated.
 
 ## Credits
 
-Thanks for bug reports and ideas to doctorflynt, dodoradio, finceptum,
-Fuzzillogic, JimKnopfIoT, Luna-Terra-CG, MrHappy, poetaster, projectmoon and
+Thanks for bug reports and ideas to davodego, doctorflynt, dodoradio,
+finceptum, Fuzzillogic, JimKnopfIoT, Luna-Terra-CG, MrHappy, poetaster, projectmoon and
 Tealk; dodoradio also for testing nearly every build and designing much of
 Rustrx with the author, and JimKnopfIoT, whose Xmatic made the classic
 WebRTC calls first and so brought them to Rustrx. The same list is on
