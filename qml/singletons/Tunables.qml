@@ -63,7 +63,7 @@ QtObject {
     readonly property real cardOpacity: 0.3
     // emoji picker background, opacity of highlightDimmerColor
     readonly property real panelOpacity: 0.9
-    // emoji picker height before the keyboard's is known, of Screen.height
+    // emoji picker height before the keyboard's is known, of the page's height
     readonly property real emojiPanelPortrait: 0.36
     readonly property real emojiPanelLandscape: 0.5
     // the fewest columns in the emoji grid

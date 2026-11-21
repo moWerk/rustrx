@@ -64,8 +64,12 @@ Item {
         enabled: dock.liftAnimated
         NumberAnimation { duration: Tunables.panelSlideMs; easing.type: Easing.InOutQuad }
     }
+    // of the page's height: Screen.height is the long side in landscape
+    // too, which made the picker cover the whole screen there (and on the
+    // Pro¹-X with its keyboard out); the page ends above the keyboard
     function defaultHeight() {
-        return Math.round(Screen.height * (!page || page.isPortrait ? Tunables.emojiPanelPortrait : Tunables.emojiPanelLandscape))
+        var h = page ? page.height + keyboardSize : Screen.height
+        return Math.round(h * (!page || page.isPortrait ? Tunables.emojiPanelPortrait : Tunables.emojiPanelLandscape))
     }
     Connections {
         target: dock.page
