@@ -143,6 +143,10 @@ ApplicationWindow {
 
     // flow ids of verifications that already have a page
     property var shownVerifications: ({})
+    // an edit not yet saved when its room or thread was left: it comes back
+    // on the next visit (this run only), by account, room and thread
+    property var editDrafts: ({})
+    function editDraftKey(roomId, rootId) { return rustrx.accountKey + " " + roomId + " " + (rootId || "") }
 
     function route() {
         if (!rustrx.ready) return

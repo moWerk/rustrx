@@ -125,8 +125,26 @@ Column {
         return t
     }
 
+    // on leaving: the draft, and an unsaved edit kept for the next visit
+    // (it was lost; 0.8 audit)
     function saveDraft() {
+        var key = app.editDraftKey(roomId, rootId)
+        if (mode === "edit" && input.text !== targetText)
+            app.editDrafts[key] = { id: targetId, original: targetText, text: input.text }
+        else
+            delete app.editDrafts[key]
         if (drafts && holdsDraft) rustrx.setDraft(roomId, input.text, rootId)
+    }
+    // an edit left unsaved here comes back as it was; the draft stays in
+    // the store for after it
+    function restoreEdit() {
+        var key = app.editDraftKey(roomId, rootId)
+        var e = app.editDrafts[key]
+        if (!e) return false
+        delete app.editDrafts[key]
+        mode = "edit"; targetId = e.id; targetText = e.original
+        put(e.text)
+        return true
     }
 
     function send() {
@@ -353,7 +371,7 @@ Column {
             // a tap on Send (or anywhere else) must not take the focus and
             // close the keyboard, as in Jolla's Messages
             focusOutBehavior: FocusBehavior.KeepFocus
-            Component.onCompleted: if (composer.drafts) composer.put(rustrx.draft(composer.roomId))
+            Component.onCompleted: if (!composer.restoreEdit() && composer.drafts) composer.put(rustrx.draft(composer.roomId, composer.rootId))
             onTextChanged: {
                 if (composer.restoring || !composer.holdsDraft) return
                 if (composer.drafts) draftSave.restart()
