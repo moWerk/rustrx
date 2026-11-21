@@ -1,3 +1,44 @@
+* Sat Nov 21 2026 moWerk <mo@mowerk.net> - 0.8.0
+- The first UI audit: six reviews of every page (consistency, paths,
+  icons, layout, modules, the whole), and everything they found.
+- New: Forward. A message's More... page sends it to another room of the
+  account, after a look at where it goes and what is sent; files go
+  again without uploading.
+- New: sharing from other apps shows where it goes and what is sent
+  before it goes; with several accounts every account's rooms are listed.
+- New: GIFs move while on screen; Settings, App: play and loop.
+- New: Add room or contact keeps the rooms and people you opened as
+  Recent; a room opens on its join page first, a person is asked about
+  before a chat starts; the join page offers "Search for it".
+- New: matrix.to links in the browser offer Rustrx (davodego).
+- Errors are plain sentences in the error colour at the top of the
+  screen; a message that did not go out says so in red, and a tap sends it
+  again; taps on pictures and files act at once, with a spinner while
+  they load.
+- Safer: logging out without the recovery key on the phone asks first; a
+  new recovery key gets a page that closes once it is saved; "They match"
+  and "They differ" stand far apart; replies in threads keep their drafts,
+  an unsaved edit comes back, a finished voice message is not swiped away.
+- Every choice box shows the setting in force and goes back with a reason
+  when a change is refused. Hints sit under their buttons, short pages sit
+  lower on tall screens, the QR code fits in landscape.
+- QR: the hint names "Scan a QR code", an expired code offers a new one,
+  "Open again" and "Copy link" during the browser step; verifying this
+  phone offers the recovery key to those without another device.
+- Classic calls: controls low and large, hang up the largest, mute lit;
+  the chat can be read during a call, with a line back to it; a call that
+  did not get through offers "Call again".
+- Several accounts: notifications and the cover name their account, a
+  request to join opens its own account, the merged list without colours
+  names each row's account. A reply from a notification that fails is
+  kept as the draft and said.
+- Devices: on accounts with an account service, Remove opens its page in
+  the browser; an unverified device shows a warning, not a red cross.
+- Older messages keep loading while you stay at the top (dodoradio).
+- Room addresses: an Add button, and "To be added" until it is in.
+- Words: "this phone" for your own, Favs everywhere, the Debug log header
+  and "Members (n)" no longer show raw ids.
+
 * Sat Nov 21 2026 moWerk <mo@mowerk.net> - 0.7.1
 - New: when notifications are switched off for the account on the server
   (often in another app, "notifications for this account"), the room list

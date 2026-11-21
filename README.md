@@ -76,19 +76,25 @@ its own, and shows them apart or all in one list.
   or alphabetically; favourites on top and low priority at the bottom as
   switches; and a search that narrows the lists while you type, kept with
   a check mark if you want it to stay.
-- "Add Room / Contact" in the pulley menu searches users and public rooms,
-  takes a #alias or @user directly, and creates rooms and direct chats.
-- A line under the tabs reminds you while the device is unverified or has
-  no recovery key.
+- "Add room or contact" in the pulley menu searches users and public rooms,
+  takes a #alias or @user directly, keeps the ones you opened as Recent, and
+  creates rooms and direct chats. A room opens on its join page first (what
+  it is, Join or Ask to join), a person is asked about before a chat starts.
+- A line under the tabs reminds you while this phone is unverified or has
+  no recovery key, or when notifications are off for the account on its
+  server.
 - Conversations with text in markdown, replies that quote what they answer,
   spoilers (covered until tapped; `||text||` sends one), reactions, images, videos, audio, files, stickers, polls, locations and
   state events. A long press shows reactions and the four usual actions,
   the rest on a "More…" page: your own messages can be edited or removed;
-  messages can be reported, copied as a link, shown as source, or sent
-  again when they failed, and a running upload can be cancelled. A double
-  tap replies. Messages sit in bubbles, without avatars:
+  messages can be forwarded to another room, reported, copied as a link or
+  shown as source, and a running upload can be cancelled. A message that
+  did not go out says so in red; a tap sends it again. A double tap on a
+  text replies. GIFs move while on screen (Settings > App: play, loop). Messages sit in bubbles, without avatars:
   the sender's name is inside. The header shows the room's picture and who
-  is typing, "read by ..." shows read receipts. Drafts are kept per room.
+  is typing, "read by ..." shows read receipts. Drafts are kept per room
+  and per thread, and an unsaved edit comes back when the room is opened
+  again.
   Pinned messages: a pill under the header steps through them; pinning and
   unpinning in a message's menu, where the room allows it.
 - Threads: replies in a thread are marked in the room and open their
@@ -126,7 +132,8 @@ its own, and shows them apart or all in one list.
   the room at once with their upload progress. Pictures open in a viewer
   with pinch zoom and saving to Downloads.
 - The share sheet: "Send to a room" from the gallery, the browser and other
-  apps. `matrix:` and matrix.to links open in Rustrx.
+  apps, with a look at where it goes and what is sent before it goes.
+  `matrix:` and matrix.to links open in Rustrx.
 - A page for each room: its picture (moderators can change it), name,
   topic, address, encryption, favourite, low priority, members, invite,
   leave, and its own notification level. Moderation as the room's power
@@ -197,16 +204,18 @@ when a process exits after hiding or recreating its window.
 
 ## Status
 
-0.7.1. From "let's build a client" to 0.2.0 in one evening, used daily on
+0.8.0. From "let's build a client" to 0.2.0 in one evening, used daily on
 the Jolla Phone 2026 since, and developed and maintained for the long run.
 Tested with several accounts at once, on matrix.org, tchncs.de and a server
 of our own with an account service (OAuth 2.0 login, QR login and linking).
-Not yet there: video calls, forwarding, QR verification. Push through
+Not yet there: video calls, QR verification. Push through
 UnifiedPush works with [Foghorn](https://openrepos.net/content/projectmoon/foghorn)
 as the distributor; the stand-in remains the fallback without one.
 
-The road from here: 0.8 audits the code in depth and polishes the UI, 0.9
-fixes only what users report, and 1.0 comes after some quiet weeks of 0.9.
+The road from here: 0.8.0 brings the first UI audit's findings; the 0.8.x
+releases that follow carry the next audits, the polish and fixes for what
+users report. 0.9 then fixes only what users report, and 1.0 comes after
+some quiet weeks of 0.9.
 
 ## Install
 
