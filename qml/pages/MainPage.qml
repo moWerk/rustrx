@@ -193,312 +193,330 @@ Page {
 
         // the tabs, and at their right a filter icon that opens the sort
         // order below them
-        header: Column {
+        header: Item {
             width: parent ? parent.width : page.width
-
-            Item {
+            height: headerColumn.height
+            // the open menus lie over the first rooms: a pane of the
+            // ambience's dimmer colour, see-through a little, so the rooms
+            // behind still show (the author's wish: glass, or 90 %)
+            Rectangle {
+                visible: page.accountsOpen || page.sortOpen
+                y: tabBar.height
                 width: parent.width
-                height: tabBar.height
-                // the tabs centred on the whole page, as Silica centres them;
-                // the filter icon lies over its right edge (and gets its taps,
-                // being declared after the bar)
-                TabBar {
-                    id: tabBar
+                height: headerColumn.height - y
+                color: Theme.rgba(Theme.highlightDimmerColor, Tunables.panelOpacity)
+                // a tap between the menu's rows stays on the pane, not on a
+                // room behind it
+                MouseArea { anchors.fill: parent }
+            }
+            Column {
+                id: headerColumn
+                width: parent.width
+
+                Item {
                     width: parent.width
-                    model: tabModel
-                    delegate: TabButton {
-                        title: tabTitle(model.kind)
-                        // four tabs and the filter icon in one row: a size
-                        // smaller, so narrow phones fit them
-                        titleFontSize: tabModel.count >= Tunables.crowdedTabCount ? Math.round(Theme.fontSizeMedium * Tunables.crowdedTabScale) : Theme.fontSizeLarge
-                    }
-                }
-                // at the left, mirroring the filter icon: the shown account's
-                // picture, a fifth larger than the icon; a dot while another
-                // account has unread chats
-                MouseArea {
-                    id: accountButton
-                    anchors { left: parent.left; verticalCenter: parent.verticalCenter; verticalCenterOffset: tabBar.topMargin / 2 }
-                    width: Theme.itemSizeSmall
-                    height: Theme.itemSizeSmall
-                    // one account: nothing to switch to, so straight to its
-                    // settings (the author's wish); several: the list
-                    onClicked: {
-                        if (rustrx.accounts.length > 1) page.accountsOpen = !page.accountsOpen
-                        else pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { startTab: "account" })
-                    }
-                    OwnAvatar {
-                        id: accountAvatar
-                        anchors.centerIn: parent
-                        width: Math.round(Theme.iconSizeSmall * 1.2 * filterButton.scale_)
-                        height: width
-                        path: page.shownAccount.avatar || ""
-                        version: page.shownAccount.avatar_v || 0
-                        name: page.shownAccount.name || ""
-                        letterSize: Math.round(Theme.fontSizeExtraSmall * 1.2 * filterButton.scale_)
-                        opacity: accountButton.pressed || page.accountsOpen ? Theme.opacityHigh : 1
-                    }
-                    // not connected (after a grace, so a short drop does not
-                    // flicker): a small sync mark at the picture's lower
-                    // right; the list itself would just stop changing (0.8
-                    // audit). Connecting at the start ("idle") is no news.
-                    readonly property bool offline: rustrx.loggedIn && rustrx.syncState !== "running" && rustrx.syncState !== "idle"
-                    property bool showOffline
-                    onOfflineChanged: if (offline) offlineGrace.restart(); else { offlineGrace.stop(); showOffline = false }
-                    Component.onCompleted: if (offline) offlineGrace.start()
-                    Timer {
-                        id: offlineGrace
-                        interval: Tunables.offlineMarkDelayMs
-                        onTriggered: accountButton.showOffline = accountButton.offline
-                    }
-                    Rectangle {
-                        visible: accountButton.showOffline
-                        anchors { right: accountAvatar.right; bottom: accountAvatar.bottom; margins: -width / 4 }
-                        width: Math.round(accountAvatar.width * 0.6)
-                        height: width
-                        radius: width / 2
-                        // a backing so the mark reads on any picture
-                        color: Theme.highlightDimmerColor
-                        Image {
-                            anchors.centerIn: parent
-                            source: "image://theme/icon-s-sync?" + Theme.highlightColor
-                            sourceSize.width: Math.round(parent.width * 0.85)
-                            sourceSize.height: Math.round(parent.width * 0.85)
+                    height: tabBar.height
+                    // the tabs centred on the whole page, as Silica centres them;
+                    // the filter icon lies over its right edge (and gets its taps,
+                    // being declared after the bar)
+                    TabBar {
+                        id: tabBar
+                        width: parent.width
+                        model: tabModel
+                        delegate: TabButton {
+                            title: tabTitle(model.kind)
+                            // four tabs and the filter icon in one row: a size
+                            // smaller, so narrow phones fit them
+                            titleFontSize: tabModel.count >= Tunables.crowdedTabCount ? Math.round(Theme.fontSizeMedium * Tunables.crowdedTabScale) : Theme.fontSizeLarge
                         }
                     }
-                    Rectangle {
-                        // not in the merged view: every account's chats are in the list
-                        visible: rustrx.otherUnread > 0 && !rustrx.mergedView
-                        anchors { right: accountAvatar.right; top: accountAvatar.top; margins: -width / 3 }
-                        width: Theme.paddingMedium
-                        height: width
-                        radius: width / 2
-                        color: Theme.highlightColor
+                    // at the left, mirroring the filter icon: the shown account's
+                    // picture, a fifth larger than the icon; a dot while another
+                    // account has unread chats
+                    MouseArea {
+                        id: accountButton
+                        anchors { left: parent.left; verticalCenter: parent.verticalCenter; verticalCenterOffset: tabBar.topMargin / 2 }
+                        width: Theme.itemSizeSmall
+                        height: Theme.itemSizeSmall
+                        // one account: nothing to switch to, so straight to its
+                        // settings (the author's wish); several: the list
+                        onClicked: {
+                            if (rustrx.accounts.length > 1) page.accountsOpen = !page.accountsOpen
+                            else pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { startTab: "account" })
+                        }
+                        OwnAvatar {
+                            id: accountAvatar
+                            anchors.centerIn: parent
+                            width: Math.round(Theme.iconSizeSmall * 1.2 * filterButton.scale_)
+                            height: width
+                            path: page.shownAccount.avatar || ""
+                            version: page.shownAccount.avatar_v || 0
+                            name: page.shownAccount.name || ""
+                            letterSize: Math.round(Theme.fontSizeExtraSmall * 1.2 * filterButton.scale_)
+                            opacity: accountButton.pressed || page.accountsOpen ? Theme.opacityHigh : 1
+                        }
+                        // not connected (after a grace, so a short drop does not
+                        // flicker): a small sync mark at the picture's lower
+                        // right; the list itself would just stop changing (0.8
+                        // audit). Connecting at the start ("idle") is no news.
+                        readonly property bool offline: rustrx.loggedIn && rustrx.syncState !== "running" && rustrx.syncState !== "idle"
+                        property bool showOffline
+                        onOfflineChanged: if (offline) offlineGrace.restart(); else { offlineGrace.stop(); showOffline = false }
+                        Component.onCompleted: if (offline) offlineGrace.start()
+                        Timer {
+                            id: offlineGrace
+                            interval: Tunables.offlineMarkDelayMs
+                            onTriggered: accountButton.showOffline = accountButton.offline
+                        }
+                        Rectangle {
+                            visible: accountButton.showOffline
+                            anchors { right: accountAvatar.right; bottom: accountAvatar.bottom; margins: -width / 4 }
+                            width: Math.round(accountAvatar.width * 0.6)
+                            height: width
+                            radius: width / 2
+                            // a backing so the mark reads on any picture
+                            color: Theme.highlightDimmerColor
+                            Image {
+                                anchors.centerIn: parent
+                                source: "image://theme/icon-s-sync?" + Theme.highlightColor
+                                sourceSize.width: Math.round(parent.width * 0.85)
+                                sourceSize.height: Math.round(parent.width * 0.85)
+                            }
+                        }
+                        Rectangle {
+                            // not in the merged view: every account's chats are in the list
+                            visible: rustrx.otherUnread > 0 && !rustrx.mergedView
+                            anchors { right: accountAvatar.right; top: accountAvatar.top; margins: -width / 3 }
+                            width: Theme.paddingMedium
+                            height: width
+                            radius: width / 2
+                            color: Theme.highlightColor
+                        }
                     }
-                }
-                MouseArea {
-                    id: filterButton
-                    // centred on the tabs' row: the bar adds a top margin for a
-                    // camera cutout (Jolla Phone 2026) above it
-                    anchors { right: parent.right; verticalCenter: parent.verticalCenter; verticalCenterOffset: tabBar.topMargin / 2 }
-                    width: Theme.itemSizeSmall
-                    height: Theme.itemSizeSmall
-                    onClicked: {
-                        if (page.sortOpen) page.dropLooseFilter()
-                        page.sortOpen = !page.sortOpen
-                    }
-                    // three bars, each narrower than the one above; with four tabs
-                    // as much smaller as their titles are
-                    readonly property real scale_: tabModel.count >= Tunables.crowdedTabCount ? Math.round(Theme.fontSizeMedium * Tunables.crowdedTabScale) / Theme.fontSizeLarge : 1
-                    Column {
-                        anchors.centerIn: parent
-                        // half again as tall and wide as at first, the bars as thin
-                        spacing: Math.round(Theme.paddingSmall * 1.1 * filterButton.scale_)
-                        Repeater {
-                            model: 3
-                            Rectangle {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                width: Theme.iconSizeExtraSmall * 1.5 * filterButton.scale_ * (1 - index / 3)
-                                height: Math.max(2, Math.round(Theme.paddingSmall / 2))
-                                radius: height / 2
-                                color: filterButton.pressed || page.sortOpen
-                                       ? Theme.highlightColor
-                                       : rustrx.sortOrder !== "activity" || page.filterLocked || rustrx.hideMuted ? Theme.secondaryHighlightColor
-                                                                          : Theme.secondaryColor
+                    MouseArea {
+                        id: filterButton
+                        // centred on the tabs' row: the bar adds a top margin for a
+                        // camera cutout (Jolla Phone 2026) above it
+                        anchors { right: parent.right; verticalCenter: parent.verticalCenter; verticalCenterOffset: tabBar.topMargin / 2 }
+                        width: Theme.itemSizeSmall
+                        height: Theme.itemSizeSmall
+                        onClicked: {
+                            if (page.sortOpen) page.dropLooseFilter()
+                            page.sortOpen = !page.sortOpen
+                        }
+                        // three bars, each narrower than the one above; with four tabs
+                        // as much smaller as their titles are
+                        readonly property real scale_: tabModel.count >= Tunables.crowdedTabCount ? Math.round(Theme.fontSizeMedium * Tunables.crowdedTabScale) / Theme.fontSizeLarge : 1
+                        Column {
+                            anchors.centerIn: parent
+                            // half again as tall and wide as at first, the bars as thin
+                            spacing: Math.round(Theme.paddingSmall * 1.1 * filterButton.scale_)
+                            Repeater {
+                                model: 3
+                                Rectangle {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    width: Theme.iconSizeExtraSmall * 1.5 * filterButton.scale_ * (1 - index / 3)
+                                    height: Math.max(2, Math.round(Theme.paddingSmall / 2))
+                                    radius: height / 2
+                                    color: filterButton.pressed || page.sortOpen
+                                           ? Theme.highlightColor
+                                           : rustrx.sortOrder !== "activity" || page.filterLocked || rustrx.hideMuted ? Theme.secondaryHighlightColor
+                                                                              : Theme.secondaryColor
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            // the accounts: a tap shows one. Logging in to one more is the
-            // Account page's pulley only: a line for it here was tapped by
-            // mistake for an account (the author's find)
-            Repeater {
-                model: page.accountsOpen ? rustrx.accounts : []
-                BackgroundItem {
-                    id: accountRow
-                    width: page.width
-                    // a picture and two lines: a full row's height (the
-                    // author found the list cramped)
-                    height: Theme.itemSizeMedium
-                    onClicked: {
-                        // the switch first: closing empties the model, which
-                        // destroys this row, and with it the context the
-                        // rest of this handler would look names up in
-                        // ("app is not defined" on the phone)
-                        app.showAccount(modelData.key)
-                        page.accountsOpen = false
-                    }
-                    OwnAvatar {
-                        id: rowAvatar
-                        anchors { left: parent.left; leftMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
-                        width: Theme.iconSizeMedium
-                        height: width
-                        path: modelData.avatar || ""
-                        version: modelData.avatar_v || 0
-                        name: modelData.name || ""
-                        userId: modelData.user_id
-                        letterSize: Theme.fontSizeSmall
-                    }
-                    // the account's colour, as its rooms have it in the merged view
-                    AccountChip {
-                        visible: app.accountChips
-                        width: Math.round(rowAvatar.width * 0.34)
-                        height: width
-                        x: rowAvatar.x + rowAvatar.width - width * 0.75
-                        y: rowAvatar.y + rowAvatar.height - height * 0.75
-                        colour: app.accountColour(modelData.key)
-                    }
-                    // the list rows' recipe: paddingLarge after the picture (0.8 audit)
-                    RowTexts {
-                        anchors { left: rowAvatar.right; leftMargin: Theme.paddingLarge; right: unreadLabel.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }
-                        highlighted: accountRow.highlighted
-                        accent: modelData.shown === true
-                        text: modelData.name || modelData.user_id
-                        description: modelData.logged_in ? modelData.user_id
-                                                         //: an account whose session the server ended
-                                                         //% "Logged out. Tap to log in again."
-                                                         : qsTrId("rustrx-la-account-logged-out")
-                    }
-                    Label {
-                        id: unreadLabel
-                        anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
-                        visible: modelData.unread > 0
-                        text: modelData.unread
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: Theme.highlightColor
+                // the accounts: a tap shows one. Logging in to one more is the
+                // Account page's pulley only: a line for it here was tapped by
+                // mistake for an account (the author's find)
+                Repeater {
+                    model: page.accountsOpen ? rustrx.accounts : []
+                    BackgroundItem {
+                        id: accountRow
+                        width: page.width
+                        // a picture and two lines: a full row's height (the
+                        // author found the list cramped)
+                        height: Theme.itemSizeMedium
+                        onClicked: {
+                            // the switch first: closing empties the model, which
+                            // destroys this row, and with it the context the
+                            // rest of this handler would look names up in
+                            // ("app is not defined" on the phone)
+                            app.showAccount(modelData.key)
+                            page.accountsOpen = false
+                        }
+                        OwnAvatar {
+                            id: rowAvatar
+                            anchors { left: parent.left; leftMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                            width: Theme.iconSizeMedium
+                            height: width
+                            path: modelData.avatar || ""
+                            version: modelData.avatar_v || 0
+                            name: modelData.name || ""
+                            userId: modelData.user_id
+                            letterSize: Theme.fontSizeSmall
+                        }
+                        // the account's colour, as its rooms have it in the merged view
+                        AccountChip {
+                            visible: app.accountChips
+                            width: Math.round(rowAvatar.width * 0.34)
+                            height: width
+                            x: rowAvatar.x + rowAvatar.width - width * 0.75
+                            y: rowAvatar.y + rowAvatar.height - height * 0.75
+                            colour: app.accountColour(modelData.key)
+                        }
+                        // the list rows' recipe: paddingLarge after the picture (0.8 audit)
+                        RowTexts {
+                            anchors { left: rowAvatar.right; leftMargin: Theme.paddingLarge; right: unreadLabel.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }
+                            highlighted: accountRow.highlighted
+                            accent: modelData.shown === true
+                            text: modelData.name || modelData.user_id
+                            description: modelData.logged_in ? modelData.user_id
+                                                             //: an account whose session the server ended
+                                                             //% "Logged out. Tap to log in again."
+                                                             : qsTrId("rustrx-la-account-logged-out")
+                        }
+                        Label {
+                            id: unreadLabel
+                            anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                            visible: modelData.unread > 0
+                            text: modelData.unread
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.highlightColor
+                        }
                     }
                 }
-            }
-            // room below the last account before the line
-            Item {
-                visible: page.accountsOpen
-                width: 1
-                height: Theme.paddingLarge
-            }
-            Separator {
-                visible: page.accountsOpen
-                x: Theme.horizontalPageMargin
-                width: page.width - 2 * x
-                color: Theme.secondaryColor
-                horizontalAlignment: Qt.AlignLeft
-            }
+                // room below the last account before the line
+                Item {
+                    visible: page.accountsOpen
+                    width: 1
+                    height: Theme.paddingLarge
+                }
+                Separator {
+                    visible: page.accountsOpen
+                    x: Theme.horizontalPageMargin
+                    width: page.width - 2 * x
+                    color: Theme.secondaryColor
+                    horizontalAlignment: Qt.AlignLeft
+                }
 
-            // one of three orders (a radio: the current one filled), then two
-            // switches that combine with any order; the menu stays open, a
-            // tap on the filter icon closes it
-            Repeater {
-                model: page.sortOpen ? [
-                    //: room list order
-                    //% "By activity"
-                    { key: "activity", text: qsTrId("rustrx-me-sort-activity") },
-                    //% "Unread first"
-                    { key: "unread", text: qsTrId("rustrx-me-sort-unread") },
-                    //% "Alphabetical"
-                    { key: "name", text: qsTrId("rustrx-me-sort-name") }
-                ] : []
-                BackgroundItem {
-                    id: orderRow
-                    readonly property bool chosen: rustrx.sortOrder === modelData.key
+                // one of three orders (a radio: the current one filled), then two
+                // switches that combine with any order; the menu stays open, a
+                // tap on the filter icon closes it
+                Repeater {
+                    model: page.sortOpen ? [
+                        //: room list order
+                        //% "By activity"
+                        { key: "activity", text: qsTrId("rustrx-me-sort-activity") },
+                        //% "Unread first"
+                        { key: "unread", text: qsTrId("rustrx-me-sort-unread") },
+                        //% "Alphabetical"
+                        { key: "name", text: qsTrId("rustrx-me-sort-name") }
+                    ] : []
+                    BackgroundItem {
+                        id: orderRow
+                        readonly property bool chosen: rustrx.sortOrder === modelData.key
+                        width: page.width
+                        height: Theme.itemSizeSmall
+                        onClicked: rustrx.sortOrder = modelData.key
+                        Label {
+                            anchors { right: radio.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }
+                            text: modelData.text
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: orderRow.chosen || orderRow.highlighted ? Theme.highlightColor : Theme.primaryColor
+                        }
+                        // Silica's radio look: a dot in a ring, lit when chosen
+                        Image {
+                            id: radio
+                            anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                            source: "image://theme/icon-m-dot?" + (orderRow.chosen ? Theme.highlightColor : Theme.secondaryColor)
+                            sourceSize.width: Theme.iconSizeSmall
+                            sourceSize.height: Theme.iconSizeSmall
+                            opacity: orderRow.chosen ? 1.0 : Theme.opacityLow
+                        }
+                    }
+                }
+                Separator {
+                    visible: page.sortOpen
+                    x: Theme.horizontalPageMargin
+                    width: page.width - 2 * x
+                    color: Theme.secondaryColor
+                    horizontalAlignment: Qt.AlignRight
+                }
+                Repeater {
+                    model: page.sortOpen ? [
+                        //: room list option, with any order
+                        //% "Favs on top"
+                        { key: "favsOnTop", text: qsTrId("rustrx-me-sort-favs-on-top") },
+                        //% "Low priority at the bottom"
+                        { key: "lowLast", text: qsTrId("rustrx-me-sort-low-last") },
+                        //% "Hide muted"
+                        { key: "hideMuted", text: qsTrId("rustrx-me-sort-hide-muted") }
+                    ] : []
+                    BackgroundItem {
+                        id: optionRow
+                        readonly property bool on: rustrx[modelData.key] === true
+                        width: page.width
+                        height: Theme.itemSizeSmall
+                        onClicked: rustrx[modelData.key] = !on
+                        Label {
+                            anchors { right: box.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }
+                            text: modelData.text
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: optionRow.on || optionRow.highlighted ? Theme.highlightColor : Theme.primaryColor
+                        }
+                        // on or off: Silica's check in a circle (as at the search),
+                        // lit while on
+                        Image {
+                            id: box
+                            anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
+                            source: "image://theme/icon-m-acknowledge?" + (optionRow.on ? Theme.highlightColor : Theme.secondaryColor)
+                            sourceSize.width: Theme.iconSizeSmall
+                            sourceSize.height: Theme.iconSizeSmall
+                            opacity: optionRow.on ? 1.0 : Theme.opacityLow
+                        }
+                    }
+                }
+                Separator {
+                    visible: page.sortOpen
+                    x: Theme.horizontalPageMargin
+                    width: page.width - 2 * x
+                    color: Theme.secondaryColor
+                    horizontalAlignment: Qt.AlignRight
+                }
+                // a search: from the second letter the lists narrow while typing;
+                // the check mark keeps it (then a cross removes it), else opening a
+                // room or closing the menu drops it
+                Item {
+                    visible: page.sortOpen
                     width: page.width
-                    height: Theme.itemSizeSmall
-                    onClicked: rustrx.sortOrder = modelData.key
-                    Label {
-                        anchors { right: radio.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }
-                        text: modelData.text
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: orderRow.chosen || orderRow.highlighted ? Theme.highlightColor : Theme.primaryColor
+                    height: visible ? searchField.height : 0
+                    TextField {
+                        id: searchField
+                        anchors { left: parent.left; right: lockButton.left }
+                        //% "Search"
+                        placeholderText: qsTrId("rustrx-ph-room-search")
+                        label: ""
+                        readOnly: page.filterLocked
+                        inputMethodHints: Qt.ImhNoPredictiveText
+                        text: page.filterText
+                        onTextChanged: page.filterText = text
+                        EnterKey.iconSource: "image://theme/icon-m-enter-accept"
+                        EnterKey.enabled: text.trim().length >= Tunables.minSearchChars
+                        EnterKey.onClicked: page.lockFilter()
+                        // a hidden field keeps its focus in QML and took the typing
+                        // with the menu closed: with the menu it lets go, keyboard too
+                        onVisibleChanged: if (!visible && activeFocus) { focus = false; Qt.inputMethod.hide() }
                     }
-                    // Silica's radio look: a dot in a ring, lit when chosen
-                    Image {
-                        id: radio
-                        anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
-                        source: "image://theme/icon-m-dot?" + (orderRow.chosen ? Theme.highlightColor : Theme.secondaryColor)
-                        sourceSize.width: Theme.iconSizeSmall
-                        sourceSize.height: Theme.iconSizeSmall
-                        opacity: orderRow.chosen ? 1.0 : Theme.opacityLow
+                    IconButton {
+                        id: lockButton
+                        anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin - Theme.paddingMedium; verticalCenter: searchField.verticalCenter; verticalCenterOffset: -Theme.paddingSmall }
+                        enabled: page.filterLocked || searchField.text.trim().length >= Tunables.minSearchChars
+                        icon.source: page.filterLocked ? "image://theme/icon-m-clear" : "image://theme/icon-m-acknowledge"
+                        onClicked: page.filterLocked ? page.clearFilter() : page.lockFilter()
                     }
-                }
-            }
-            Separator {
-                visible: page.sortOpen
-                x: Theme.horizontalPageMargin
-                width: page.width - 2 * x
-                color: Theme.secondaryColor
-                horizontalAlignment: Qt.AlignRight
-            }
-            Repeater {
-                model: page.sortOpen ? [
-                    //: room list option, with any order
-                    //% "Favs on top"
-                    { key: "favsOnTop", text: qsTrId("rustrx-me-sort-favs-on-top") },
-                    //% "Low priority at the bottom"
-                    { key: "lowLast", text: qsTrId("rustrx-me-sort-low-last") },
-                    //% "Hide muted"
-                    { key: "hideMuted", text: qsTrId("rustrx-me-sort-hide-muted") }
-                ] : []
-                BackgroundItem {
-                    id: optionRow
-                    readonly property bool on: rustrx[modelData.key] === true
-                    width: page.width
-                    height: Theme.itemSizeSmall
-                    onClicked: rustrx[modelData.key] = !on
-                    Label {
-                        anchors { right: box.left; rightMargin: Theme.paddingMedium; verticalCenter: parent.verticalCenter }
-                        text: modelData.text
-                        font.pixelSize: Theme.fontSizeSmall
-                        color: optionRow.on || optionRow.highlighted ? Theme.highlightColor : Theme.primaryColor
-                    }
-                    // on or off: Silica's check in a circle (as at the search),
-                    // lit while on
-                    Image {
-                        id: box
-                        anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin; verticalCenter: parent.verticalCenter }
-                        source: "image://theme/icon-m-acknowledge?" + (optionRow.on ? Theme.highlightColor : Theme.secondaryColor)
-                        sourceSize.width: Theme.iconSizeSmall
-                        sourceSize.height: Theme.iconSizeSmall
-                        opacity: optionRow.on ? 1.0 : Theme.opacityLow
-                    }
-                }
-            }
-            Separator {
-                visible: page.sortOpen
-                x: Theme.horizontalPageMargin
-                width: page.width - 2 * x
-                color: Theme.secondaryColor
-                horizontalAlignment: Qt.AlignRight
-            }
-            // a search: from the second letter the lists narrow while typing;
-            // the check mark keeps it (then a cross removes it), else opening a
-            // room or closing the menu drops it
-            Item {
-                visible: page.sortOpen
-                width: page.width
-                height: visible ? searchField.height : 0
-                TextField {
-                    id: searchField
-                    anchors { left: parent.left; right: lockButton.left }
-                    //% "Search"
-                    placeholderText: qsTrId("rustrx-ph-room-search")
-                    label: ""
-                    readOnly: page.filterLocked
-                    inputMethodHints: Qt.ImhNoPredictiveText
-                    text: page.filterText
-                    onTextChanged: page.filterText = text
-                    EnterKey.iconSource: "image://theme/icon-m-enter-accept"
-                    EnterKey.enabled: text.trim().length >= Tunables.minSearchChars
-                    EnterKey.onClicked: page.lockFilter()
-                    // a hidden field keeps its focus in QML and took the typing
-                    // with the menu closed: with the menu it lets go, keyboard too
-                    onVisibleChanged: if (!visible && activeFocus) { focus = false; Qt.inputMethod.hide() }
-                }
-                IconButton {
-                    id: lockButton
-                    anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin - Theme.paddingMedium; verticalCenter: searchField.verticalCenter; verticalCenterOffset: -Theme.paddingSmall }
-                    enabled: page.filterLocked || searchField.text.trim().length >= Tunables.minSearchChars
-                    icon.source: page.filterLocked ? "image://theme/icon-m-clear" : "image://theme/icon-m-acknowledge"
-                    onClicked: page.filterLocked ? page.clearFilter() : page.lockFilter()
                 }
             }
         }
