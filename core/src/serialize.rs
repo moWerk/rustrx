@@ -323,21 +323,70 @@ pub(crate) fn listed(room: &Room) -> bool {
     matches!(room.state(), RoomState::Joined | RoomState::Invited)
 }
 
+/// The core's order of the list: invitations first, then by the last
+/// activity, the id breaking ties.
+fn room_order(r: &Value) -> (bool, std::cmp::Reverse<u64>, &str) {
+    (r["state"] != "invited", std::cmp::Reverse(r["ts"].as_u64().unwrap_or(0)), r["room_id"].as_str().unwrap_or(""))
+}
+
 /// Invitations first, then by the last activity; the id breaks ties, so
 /// rooms without a timestamp come in the same order in every list.
-/// Favourites and the tabs' own orders are the UI's (RoomLists).
-pub(crate) fn sorted_rooms(mut rooms: Vec<Value>) -> Value {
-    rooms.sort_by(|a, b| {
-        let key = |r: &Value| {
-            (
-                r["state"] != "invited",
-                std::cmp::Reverse(r["ts"].as_u64().unwrap_or(0)),
-                r["room_id"].as_str().unwrap_or("").to_owned(),
-            )
-        };
-        key(a).cmp(&key(b))
-    });
-    Value::Array(rooms)
+/// Favourites and the tabs' own orders are the UI's (RoomLists). Borrowed
+/// keys: a String per comparison was most of the sort.
+pub(crate) fn sorted_rooms<'a>(rooms: impl IntoIterator<Item = &'a Value>) -> Vec<&'a Value> {
+    let mut rooms: Vec<&Value> = rooms.into_iter().collect();
+    rooms.sort_by(|a, b| room_order(a).cmp(&room_order(b)));
+    rooms
+}
+
+/// The room list's stream as sent (protocol: `rooms`): each event has the
+/// ids of all rooms in the list's order, and only the rows new or changed
+/// since the stream's last event, all of them when `full`.
+pub(crate) struct RoomsDiff {
+    stream: u64,
+    seq: u64,
+    full: bool,
+    order: Vec<String>,
+}
+
+impl RoomsDiff {
+    pub(crate) fn new(stream: u64) -> Self {
+        RoomsDiff { stream, seq: 0, full: true, order: Vec::new() }
+    }
+
+    /// The next pass sends every row (the UI asked, or a full rebuild).
+    pub(crate) fn resync(&mut self) {
+        self.full = true;
+    }
+
+    /// The event's fields for these rows (in the list's order,
+    /// sorted_rooms), or None when no row changed and the order is the
+    /// same; `changed` tells the rows made anew since the last pass that
+    /// differ from what was sent.
+    pub(crate) fn pass(&mut self, sorted: &[&Value], changed: impl Fn(&str) -> bool) -> Option<Map<String, Value>> {
+        let full = std::mem::take(&mut self.full);
+        let mut items = Map::new();
+        let mut order = Vec::with_capacity(sorted.len());
+        for r in sorted {
+            let id = r["room_id"].as_str().unwrap_or("");
+            order.push(id.to_owned());
+            if full || changed(id) {
+                items.insert(id.to_owned(), (*r).clone());
+            }
+        }
+        if !full && items.is_empty() && order == self.order {
+            return None;
+        }
+        self.order = order;
+        self.seq += 1;
+        let mut out = Map::new();
+        out.insert("stream".into(), json!(self.stream));
+        out.insert("seq".into(), json!(self.seq));
+        out.insert("full".into(), json!(full));
+        out.insert("order".into(), json!(self.order));
+        out.insert("items".into(), Value::Object(items));
+        Some(out)
+    }
 }
 
 fn membership_text(change: Option<MembershipChange>) -> &'static str {
@@ -797,6 +846,10 @@ mod tests {
         json!({"room_id": id, "state": state, "ts": ts})
     }
 
+    fn in_order(rooms: Vec<Value>) -> Value {
+        Value::Array(sorted_rooms(&rooms).into_iter().cloned().collect())
+    }
+
     /// Invitations first, then the latest activity; favourites are not
     /// pinned (the UI has a tab for them).
     /// Planted-bug: drop the `Reverse` (oldest first), or compare
@@ -812,7 +865,7 @@ mod tests {
         ];
         let mut rooms = rooms;
         rooms[1]["is_fav"] = json!(true);
-        assert_eq!(ids(sorted_rooms(rooms)), ["!inv-new", "!inv-old", "!new", "!old", "!fav"]);
+        assert_eq!(ids(in_order(rooms)), ["!inv-new", "!inv-old", "!new", "!old", "!fav"]);
     }
 
     /// Equal times sort by id, so the list does not shuffle between two
@@ -822,9 +875,9 @@ mod tests {
     #[test]
     fn rooms_with_equal_times_sort_by_id() {
         let rooms = vec![room("!c", "joined", json!(5)), room("!b", "joined", json!(5)), room("!a", "joined", json!(5))];
-        assert_eq!(ids(sorted_rooms(rooms)), ["!a", "!b", "!c"]);
+        assert_eq!(ids(in_order(rooms)), ["!a", "!b", "!c"]);
         let rooms = vec![room("!c", "joined", Value::Null), room("!b", "joined", Value::Null), room("!a", "joined", Value::Null)];
-        assert_eq!(ids(sorted_rooms(rooms)), ["!a", "!b", "!c"]);
+        assert_eq!(ids(in_order(rooms)), ["!a", "!b", "!c"]);
     }
 
     /// A room without a usable time counts as never active (last among its
@@ -843,11 +896,61 @@ mod tests {
             json!(null),
             json!("not a room"),
         ];
-        let sorted = ids(sorted_rooms(rooms));
+        let sorted = ids(in_order(rooms));
         // the invitation without an id; then by time; then all the "never"s by id
         // (the id-less non-objects sort as "" first among those)
         assert_eq!(sorted, ["?", "!no-state", "!ts", "?", "?", "!neg-ts", "!no-ts", "!str-ts"]);
-        assert_eq!(sorted_rooms(vec![]), json!([]));
+        assert_eq!(in_order(vec![]), json!([]));
+    }
+
+    fn item_ids(ev: &Map<String, Value>) -> Vec<String> {
+        let mut ids: Vec<String> = ev["items"].as_object().unwrap().keys().cloned().collect();
+        ids.sort();
+        ids
+    }
+
+    /// The first pass sends every row, marked full, in the list's order; a
+    /// pass with nothing changed sends nothing; a changed row goes out
+    /// alone, with the whole order.
+    /// Planted-bug: put every row into `items` on a pass that is not full.
+    #[test]
+    fn rooms_diff_sends_only_changed_rows() {
+        let mut d = RoomsDiff::new(4);
+        let mut rows = vec![room("!a", "joined", json!(1)), room("!b", "joined", json!(2))];
+        let first = d.pass(&sorted_rooms(&rows), |_| false).unwrap();
+        assert_eq!(first["full"], json!(true));
+        assert_eq!(first["stream"], json!(4));
+        assert_eq!(first["seq"], json!(1));
+        assert_eq!(first["order"], json!(["!b", "!a"]));
+        assert_eq!(item_ids(&first), ["!a", "!b"]);
+        assert_eq!(d.pass(&sorted_rooms(&rows), |_| false), None);
+        rows[0]["ts"] = json!(3);
+        let next = d.pass(&sorted_rooms(&rows), |id| id == "!a").unwrap();
+        assert_eq!(next["full"], json!(false));
+        assert_eq!(next["seq"], json!(2));
+        assert_eq!(next["order"], json!(["!a", "!b"]));
+        assert_eq!(item_ids(&next), ["!a"]);
+        assert_eq!(next["items"]["!a"]["ts"], json!(3));
+    }
+
+    /// A room that went is told by the order alone; a resync sends every
+    /// row again, even when nothing changed.
+    /// Planted-bug: return None when no row changed (a left room stays in
+    /// the UI's list).
+    #[test]
+    fn rooms_diff_removal_and_resync() {
+        let mut d = RoomsDiff::new(1);
+        let rows = vec![room("!a", "joined", json!(1)), room("!b", "joined", json!(2))];
+        d.pass(&sorted_rooms(&rows), |_| false);
+        let gone = d.pass(&sorted_rooms(&rows[..1]), |_| false).unwrap();
+        assert_eq!(gone["order"], json!(["!a"]));
+        assert!(item_ids(&gone).is_empty());
+        d.resync();
+        let again = d.pass(&sorted_rooms(&rows[..1]), |_| false).unwrap();
+        assert_eq!(again["full"], json!(true));
+        assert_eq!(again["seq"], json!(3));
+        assert_eq!(item_ids(&again), ["!a"]);
+        assert_eq!(d.pass(&sorted_rooms(&rows[..1]), |_| false), None);
     }
 
     fn msg(v: Value) -> MessageType {

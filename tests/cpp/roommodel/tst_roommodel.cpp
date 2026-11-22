@@ -76,6 +76,18 @@ struct Mirror
     QList<QVector<int>> changes;
 };
 
+// a core `rooms` event: the order, and the rows sent
+QVariantMap roomsEvent(qint64 stream, qint64 seq, bool full, const QStringList &order, const QVariantList &rows)
+{
+    QVariantMap items;
+    for (const QVariant &r : rows)
+        items.insert(r.toMap().value("room_id").toString(), r);
+    QVariantList ids;
+    for (const QString &id : order)
+        ids << id;
+    return { { "stream", stream }, { "seq", seq }, { "full", full }, { "order", ids }, { "items", items } };
+}
+
 int role(const RoomModel &m, const char *name)
 {
     return m.roleNames().key(QByteArray(name));
@@ -344,6 +356,112 @@ private slots:
         const QVariantList m3 = RoomLists::mergeAccounts({ { 1, { room("a", { { "name", "A" } }) } } }, &cache);
         QCOMPARE(m3.at(0).toMap().value("name").toString(), QStringLiteral("A"));
         QCOMPARE(m3.at(0).toMap().value("uid").toString(), QStringLiteral("1/a"));
+    }
+
+    // The order and only the changed rows: the rows not sent stay the
+    // same maps, a sent one is new, a room not in the order goes.
+    // Planted-bug: applyRooms takes the rows of `items` only (the rows not
+    // sent drop out of the list).
+    void deltaKeepsUnsentRows()
+    {
+        QTemporaryDir dir;
+        QSettings s(dir.filePath("s.ini"), QSettings::IniFormat);
+        RoomLists lists(&s);
+        QCOMPARE(lists.applyRooms(roomsEvent(3, 1, true, { "a", "b", "c" }, rooms({ "a", "b", "c" }))), RoomLists::RoomsApplied);
+        const QVariantList first = lists.lastRooms();
+        QCOMPARE(lists.lastChanged(), 3);
+        QCOMPARE(lists.applyRooms(roomsEvent(3, 2, false, { "b", "a" }, { room("b", { { "preview", "x" } }) })), RoomLists::RoomsApplied);
+        const QVariantList second = lists.lastRooms();
+        QCOMPARE(second.size(), 2);
+        QCOMPARE(second.at(0).toMap().value("preview").toString(), QStringLiteral("x"));
+        QVERIFY(second.at(1).toMap().isSharedWith(first.at(0).toMap()));
+        QCOMPARE(lists.lastChanged(), 1);
+        QCOMPARE(keysOf(*lists.rooms()), QStringList({ "b", "a" }));
+        QVERIFY(lists.roomInfo("c").isEmpty());
+        // a full event (a resync) with the same rows keeps them as they were
+        QCOMPARE(lists.applyRooms(roomsEvent(3, 3, true, { "b", "a" }, { room("b", { { "preview", "x" } }), room("a") })), RoomLists::RoomsApplied);
+        QVERIFY(lists.lastRooms().at(0).toMap().isSharedWith(second.at(0).toMap()));
+        QVERIFY(lists.lastRooms().at(1).toMap().isSharedWith(first.at(0).toMap()));
+        QCOMPARE(lists.lastChanged(), 0);
+    }
+
+    // A skipped event, or a room the lists do not have, is not applied and
+    // asks for everything once; a full one applies and may ask again; an
+    // earlier stream's event is dropped; a later stream starts at its full one.
+    // Planted-bug: applyRooms applies an event after a gap in `seq`.
+    // Planted-bug: m_resyncAsked is not reset by a full event (the next
+    // gap is never asked about).
+    void gapsAndUnknownRoomsAskOnce()
+    {
+        QTemporaryDir dir;
+        QSettings s(dir.filePath("s.ini"), QSettings::IniFormat);
+        RoomLists lists(&s);
+        // nothing yet: a delta cannot be applied
+        QCOMPARE(lists.applyRooms(roomsEvent(5, 2, false, { "a" }, {})), RoomLists::RoomsResync);
+        QCOMPARE(lists.applyRooms(roomsEvent(5, 3, false, { "a" }, {})), RoomLists::RoomsDropped);
+        QCOMPARE(lists.applyRooms(roomsEvent(5, 4, true, { "a" }, rooms({ "a" }))), RoomLists::RoomsApplied);
+        // seq 5 missed
+        QCOMPARE(lists.applyRooms(roomsEvent(5, 6, false, { "a" }, { room("a", { { "unread", 1 } }) })), RoomLists::RoomsResync);
+        QCOMPARE(lists.applyRooms(roomsEvent(5, 7, false, { "a" }, {})), RoomLists::RoomsDropped);
+        QCOMPARE(lists.lastRooms().at(0).toMap().value("unread").toInt(), 0);
+        QCOMPARE(lists.applyRooms(roomsEvent(5, 8, true, { "a" }, { room("a", { { "unread", 1 } }) })), RoomLists::RoomsApplied);
+        QCOMPARE(lists.lastRooms().at(0).toMap().value("unread").toInt(), 1);
+        // a room the lists never had
+        QCOMPARE(lists.applyRooms(roomsEvent(5, 9, false, { "z", "a" }, {})), RoomLists::RoomsResync);
+        QCOMPARE(keysOf(*lists.rooms()), QStringList({ "a" }));
+        QCOMPARE(lists.applyRooms(roomsEvent(5, 10, true, { "z", "a" }, rooms({ "z", "a" }))), RoomLists::RoomsApplied);
+        // an earlier stream's late event, then a new stream (a new login)
+        QCOMPARE(lists.applyRooms(roomsEvent(4, 99, true, { "old" }, rooms({ "old" }))), RoomLists::RoomsDropped);
+        QCOMPARE(lists.applyRooms(roomsEvent(6, 2, false, { "a" }, {})), RoomLists::RoomsResync);
+        QCOMPARE(lists.applyRooms(roomsEvent(6, 1, true, { "a" }, rooms({ "a" }))), RoomLists::RoomsApplied);
+        QCOMPARE(lists.applyRooms(roomsEvent(6, 2, false, { "a" }, {})), RoomLists::RoomsApplied);
+        QCOMPARE(keysOf(*lists.rooms()), QStringList({ "a" }));
+        // logged out: a late event of that login's stream is dropped, the
+        // next login's stream starts afresh
+        // Planted-bug: clear() forgets the streams before (the rooms of the
+        // account logged out of come back).
+        lists.clear();
+        QCOMPARE(lists.applyRooms(roomsEvent(6, 3, true, { "a" }, rooms({ "a" }))), RoomLists::RoomsDropped);
+        QCOMPARE(keysOf(*lists.rooms()), QStringList());
+        QCOMPARE(lists.applyRooms(roomsEvent(9, 1, true, { "b" }, rooms({ "b" }))), RoomLists::RoomsApplied);
+        QCOMPARE(keysOf(*lists.rooms()), QStringList({ "b" }));
+    }
+
+    // A delta's unchanged rows reach the merged view as before: its cache
+    // hands out the same merged row, the changed one is merged anew.
+    // Planted-bug: applyRooms copies the rows it keeps (the merge cache
+    // misses every row).
+    void deltaKeepsTheMergeCache()
+    {
+        QTemporaryDir dir;
+        QSettings s(dir.filePath("s.ini"), QSettings::IniFormat);
+        RoomLists lists(&s);
+        lists.applyRooms(roomsEvent(1, 1, true, { "a", "b" }, rooms({ "a", "b" })));
+        RoomLists::MergeCache cache;
+        const QVariantList m1 = RoomLists::mergeAccounts({ { 0, lists.lastRooms() } }, &cache);
+        lists.applyRooms(roomsEvent(1, 2, false, { "a", "b" }, { room("a", { { "name", "A" } }) }));
+        const QVariantList m2 = RoomLists::mergeAccounts({ { 0, lists.lastRooms() } }, &cache);
+        QVERIFY(m1.at(1).toMap().isSharedWith(m2.at(1).toMap()));
+        QCOMPARE(m2.at(0).toMap().value("name").toString(), QStringLiteral("A"));
+    }
+
+    // A watched list hears of the one changed row only.
+    // Planted-bug: applyRooms passes the sent rows on for every room.
+    void deltaTellsOneRow()
+    {
+        QTemporaryDir dir;
+        QSettings s(dir.filePath("s.ini"), QSettings::IniFormat);
+        RoomLists lists(&s);
+        Mirror view(*lists.rooms());
+        lists.applyRooms(roomsEvent(1, 1, true, { "a", "b", "c" }, rooms({ "a", "b", "c" })));
+        view.reset();
+        lists.applyRooms(roomsEvent(1, 2, false, { "a", "b", "c" }, { room("b", { { "preview", "new" } }) }));
+        QCOMPARE(view.changes.size(), 1);
+        QCOMPARE(view.inserts + view.removes + view.moves, 0);
+        view.reset();
+        // a resync with the same rows tells nothing
+        lists.applyRooms(roomsEvent(1, 3, true, { "a", "b", "c" }, { room("a"), room("b", { { "preview", "new" } }), room("c") }));
+        QCOMPARE(view.changes.size(), 0);
     }
 };
 

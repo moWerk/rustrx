@@ -59,11 +59,12 @@ ListItem {
     readonly property bool hasUnread: model.notifications > 0 || model.unread > 0
     // a favourite with something unread glows (Settings): a band across the
     // row breathes with the app's one breath (app.favGlow), so all glowing
-    // rows breathe together; a glowing row on screen counts itself in, which
-    // keeps the breath running only while one is seen: its list shown (the
-    // page active, its tab current: the view's glowShown) and the row within
-    // the view's visible part, not only in its cache buffer. Only glowing
-    // rows read the view's position (the && stops the others first).
+    // rows breathe together; a glowing row on screen counts itself in, and
+    // one coming into sight starts a few breaths (then the glow holds still):
+    // its list shown (the page active, its tab current: the view's
+    // glowShown) and the row within the view's visible part, not only in its
+    // cache buffer. Only glowing rows read the view's position (the && stops
+    // the others first).
     readonly property bool favGlow: app.highlightFavs && model.is_fav === true && hasUnread && !invited
     readonly property bool glowing: favGlow && ListView.view !== null && ListView.view.glowShown !== false
                                     && y + height > ListView.view.contentY && y < ListView.view.contentY + ListView.view.height
@@ -75,11 +76,19 @@ ListItem {
     }
     Component.onCompleted: {
         if (glowing && !counted) { counted = true; app.favGlowRows += 1 }
+        unreadSumBefore = unreadSum
         if (!app.perfDelegateSeen) { app.perfDelegateSeen = true; rustrx.perf("delegate") }
     }
     Component.onDestruction: if (counted) app.favGlowRows -= 1
+    // a glowing row on screen with something new breathes again
+    readonly property int unreadSum: favGlow ? model.notifications + model.unread : 0
+    property int unreadSumBefore
+    onUnreadSumChanged: {
+        if (counted && unreadSum > unreadSumBefore) app.breatheFavs()
+        unreadSumBefore = unreadSum
+    }
     // the band: the page's whole width, brightest in the row's middle
-    // (3 % at rest, 12 % at the height of a breath), fading to nothing
+    // (3 % at a breath's low, 12 % at its height), fading to nothing
     // above and below. Made for favourites only; the gradient is fixed at
     // the peak and the breath scales its opacity (the same alpha, without
     // rebuilding the gradient every frame).

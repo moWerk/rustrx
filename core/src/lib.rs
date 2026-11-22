@@ -53,9 +53,10 @@ impl Emitter {
             let ser = t.map(|t| t.elapsed());
             (self.cb)(self.ctx.0, s.as_ptr());
             if let (Some(t), Some(ser)) = (t, ser) {
+                // a list's length, or the items a delta carries (an object by id)
                 let n = ["items", "rooms", "packs", "members"]
                     .iter()
-                    .find_map(|k| value[*k].as_array().map(Vec::len))
+                    .find_map(|k| value[*k].as_array().map(Vec::len).or_else(|| value[*k].as_object().map(|o| o.len())))
                     .unwrap_or(0);
                 tracing::debug!(target: "rustrx::perf", ev = value["ev"].as_str().unwrap_or(""), n,
                                 bytes = s.as_bytes().len(), ser_us = ser.as_micros() as u64,

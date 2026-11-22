@@ -71,8 +71,6 @@ struct Account {
     bool restoring = false;
     // no room list of this login yet
     bool firstRooms = true;
-    // the last `rooms` text's hash, for perf: rooms same=
-    uint perfHash = 0;
     QString userId;
     QString homeserver;
     QString syncState = QStringLiteral("idle");

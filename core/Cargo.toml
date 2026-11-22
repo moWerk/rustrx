@@ -36,6 +36,9 @@ matrix-sdk-store-encryption = "=0.19.1"
 # the crypto store's trait, to drop a classic sync's to-device position
 # before sliding sync sends it (in the tree through matrix-sdk)
 matrix-sdk-base = { version = "=0.19.1", default-features = false }
+# the store's key as a key (Base64Variant, session.rs; in the tree through
+# matrix-sdk's sqlite store)
+matrix-sdk-sqlite = { version = "=0.19.1", default-features = false }
 
 [profile.release]
 opt-level = 2

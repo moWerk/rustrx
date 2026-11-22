@@ -200,6 +200,10 @@ impl Core {
             Search { term } => self.search(&term).await,
             SearchRooms { term, server } => self.search_rooms(&term, given(&server)).await,
             RefreshRooms => self.refresh_rooms().await,
+            RoomsResync => {
+                self.rooms_resync();
+                Ok(())
+            }
 
             // --- encryption (verification.rs, account.rs) ---
             VerificationRequestSelf => self.verification_request_self().await,

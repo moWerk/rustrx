@@ -170,8 +170,15 @@ ListItem {
     property bool gifAnimating
     readonly property bool gifWanted: isGif && inView && !gifDone && (gifTapped || app.settings.gifAutoplay)
     onInViewChanged: if (!inView) { gifTapped = false; gifDone = false }
+    // while the chat moves GIFs hold their frame (paused: playing false
+    // would start them over) and one that comes into view meanwhile starts
+    // once the chat stops (Qt 5.6 drops paused when a GIF starts)
+    readonly property bool listMoving: isGif && !!msg.ListView.view && msg.ListView.view.moving
+    property bool gifRun
+    function updateGifRun() { gifRun = gifWanted && (gifRun || !listMoving) }
+    onListMovingChanged: updateGifRun()
     // the moving GIF needs the full file: fetched when it is to play
-    onGifWantedChanged: fetchGif()
+    onGifWantedChanged: { updateGifRun(); fetchGif() }
     property bool gifAsked
     function fetchGif() {
         if (gifAsked || !gifWanted || !eventId.length || model.media_path && model.media_path.length) return
@@ -312,6 +319,7 @@ ListItem {
     }
     Component.onCompleted: {
         requestPicture()
+        updateGifRun()
         fetchGif()
         syncSpoilers()
     }
@@ -661,7 +669,8 @@ ListItem {
                                             cache: false
                                             fillMode: Image.PreserveAspectFit
                                             source: "file://" + model.media_path
-                                            playing: msg.gifWanted
+                                            playing: msg.gifRun
+                                            paused: msg.gifRun && msg.listMoving
                                             // no looping: it stops on its last frame
                                             onCurrentFrameChanged: if (!app.settings.gifLoop && frameCount > 1 && currentFrame === frameCount - 1) msg.gifDone = true
                                             // one that ends by itself (its own loop count) counts as done; looping, it starts again

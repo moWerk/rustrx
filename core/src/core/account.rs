@@ -223,7 +223,56 @@ impl Core {
         std::fs::remove_dir_all(&media).ok();
         std::fs::create_dir_all(&media).ok();
         let client = self.client().await?;
-        client.media().clean().await?;
+        // clean() only applies the retention policy, and none is set: it
+        // removed nothing. For this one clean an expiry of zero takes every
+        // cached picture and file; what the send queue still has to upload
+        // is stored outside the policy and stays. The policy is put back.
+        let media = client.media();
+        let kept = kept_retention_policy(media.media_retention_policy().await?);
+        media.set_media_retention_policy(sweep_policy(kept)).await?;
+        let cleaned = media.clean().await;
+        let restored = media.set_media_retention_policy(kept).await;
+        cleaned?;
+        restored?;
         self.storage_info().await
+    }
+}
+
+/// The policy for clearing the SDK's media cache: everything the policy
+/// covers has expired, and no automatic clean starts meanwhile.
+fn sweep_policy(kept: matrix_sdk::media::MediaRetentionPolicy) -> matrix_sdk::media::MediaRetentionPolicy {
+    kept.with_last_access_expiry(Some(std::time::Duration::ZERO)).with_cleanup_frequency(None)
+}
+
+/// The policy to put back: a sweep's own, left when the app ended in the
+/// middle of one, is the SDK's empty default again.
+fn kept_retention_policy(p: matrix_sdk::media::MediaRetentionPolicy) -> matrix_sdk::media::MediaRetentionPolicy {
+    if p == sweep_policy(p) && p.last_access_expiry == Some(std::time::Duration::ZERO) {
+        matrix_sdk::media::MediaRetentionPolicy::empty()
+    } else {
+        p
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use matrix_sdk::media::MediaRetentionPolicy;
+
+    #[test]
+    fn clear_media_sweeps_everything_and_puts_the_policy_back() {
+        // Planted-bug: a sweep that keeps the cleanup frequency, or a leftover
+        // sweep policy put back as it is
+        let empty = MediaRetentionPolicy::empty();
+        let sweep = sweep_policy(empty);
+        assert!(sweep.has_limitations());
+        assert_eq!(sweep.cleanup_frequency, None);
+        let now = std::time::SystemTime::now();
+        assert!(sweep.has_content_expired(now, now));
+        assert_eq!(kept_retention_policy(empty), empty);
+        assert_eq!(kept_retention_policy(sweep), empty);
+        let default = MediaRetentionPolicy::default();
+        assert_eq!(kept_retention_policy(default), default);
+        assert!(sweep_policy(default).has_content_expired(now, now));
     }
 }

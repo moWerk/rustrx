@@ -133,6 +133,22 @@ pub(crate) const CRYPTO_DB: &str = "matrix-sdk-crypto.sqlite3";
 pub(crate) const NEXT_BATCH_TOKEN_KEY: &str = "next_batch_token";
 /// Marks a store that was made with a passphrase.
 pub(crate) const ENCRYPTED_MARKER: &str = "rustrx-encrypted";
+/// The SDK's other databases in the store (matrix-sdk-sqlite 0.19.1,
+/// event_cache_store.rs and media_store.rs; the state store's name is
+/// matrix_sdk::STATE_STORE_DATABASE_NAME).
+pub(crate) const EVENT_CACHE_DB: &str = "matrix-sdk-event-cache.sqlite3";
+pub(crate) const MEDIA_DB: &str = "matrix-sdk-media.sqlite3";
+/// Before a database's file name: that database's cipher is wrapped under
+/// the key itself (HKDF), no longer under its PBKDF2 (session.rs, CB3).
+/// Its own file, never a line in ENCRYPTED_MARKER: builds before 0.8.2
+/// remove the store when that file is not the bare fingerprint.
+pub(crate) const KEY_BASED_MARKER: &str = "rustrx-key-based-";
+/// The key's fingerprint in a stable form (FNV-1a, session.rs), beside
+/// ENCRYPTED_MARKER, whose std hash may change with the toolchain.
+pub(crate) const KEY_FINGERPRINT_FILE: &str = "rustrx-key-fingerprint";
+/// The SDK's media cache (the media database) at most this big; uploads
+/// waiting in the send queue are not counted and never removed.
+pub(crate) const MEDIA_CACHE_MAX_BYTES: u64 = 100 * 1024 * 1024;
 pub(crate) const MEDIA_DIR: &str = "media";
 /// Inside MEDIA_DIR.
 pub(crate) const EMOTE_DIR: &str = "emotes";

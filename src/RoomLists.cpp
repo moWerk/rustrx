@@ -19,6 +19,7 @@
 #include "RoomModel.h"
 
 #include <QCollator>
+#include <QDebug>
 #include <QScopedPointer>
 #include <QSettings>
 #include <QVector>
@@ -291,6 +292,65 @@ void RoomLists::setRooms(const QVariantList &rooms)
     distributeRooms(m_lastRooms);
 }
 
+// Every stream starts full; its next events have to follow one by one
+// (`seq`), and each room in `order` has to be known, else nothing is
+// applied and the whole list is asked for again. Rows not sent keep their
+// QVariant, so the models and the merged view compare them by pointer; a
+// full event's rows are compared once here, as setRooms does (room ids
+// stay the same across streams, a resync rebinds nothing unchanged).
+RoomLists::Applied RoomLists::applyRooms(const QVariantMap &ev)
+{
+    const qint64 stream = ev.value(QStringLiteral("stream")).toLongLong();
+    const qint64 seq = ev.value(QStringLiteral("seq")).toLongLong();
+    const bool full = ev.value(QStringLiteral("full")).toBool();
+    const QVariantMap items = ev.value(QStringLiteral("items")).toMap();
+    const QVariantList order = ev.value(QStringLiteral("order")).toList();
+    if ((m_stream != 0 && stream < m_stream) || stream < m_streamFloor)
+        return RoomsDropped;
+    const auto resync = [this](const QString &why) {
+        if (m_resyncAsked)
+            return RoomsDropped;
+        qInfo().noquote() << "rooms:" << why << ", all again";
+        m_resyncAsked = true;
+        return RoomsResync;
+    };
+    if (!full && (stream != m_stream || seq != m_seq + 1))
+        return resync(QStringLiteral("stream %1 event %2 after %3 %4").arg(stream).arg(seq).arg(m_stream).arg(m_seq));
+    for (const QVariant &v : order) {
+        const QString id = v.toString();
+        if (!items.contains(id) && !m_lastByKey.contains(id))
+            return resync(QStringLiteral("an unknown room ") + id);
+    }
+    QVariantList kept;
+    kept.reserve(order.size());
+    QHash<QString, QVariant> byKey;
+    byKey.reserve(order.size());
+    int changed = 0;
+    for (const QVariant &v : order) {
+        const QString id = v.toString();
+        const auto sent = items.constFind(id);
+        const auto last = m_lastByKey.constFind(id);
+        if (sent == items.constEnd()) {
+            kept.append(*last);
+        } else if (last != m_lastByKey.constEnd() && *last == *sent) {
+            kept.append(*last);
+        } else {
+            kept.append(*sent);
+            ++changed;
+        }
+        byKey.insert(id, kept.last());
+    }
+    m_stream = stream;
+    m_seq = seq;
+    if (full)
+        m_resyncAsked = false;
+    m_lastChanged = changed;
+    m_lastByKey.swap(byKey);
+    m_lastRooms = kept;
+    distributeRooms(m_lastRooms);
+    return RoomsApplied;
+}
+
 QVariantList RoomLists::mergeAccounts(const QList<QPair<int, QVariantList>> &accounts, MergeCache *cache)
 {
     QVariantList merged;
@@ -475,6 +535,10 @@ void RoomLists::clear()
     // a filter or tab setting changed later must not bring them back
     m_lastRooms.clear();
     m_lastByKey.clear();
+    m_streamFloor = qMax(m_streamFloor, m_stream + 1);
+    m_stream = m_seq = 0;
+    m_resyncAsked = false;
+    m_lastChanged = 0;
     m_pendingTargets.clear();
     m_targetsDirty = false;
     m_rooms->setRooms({});

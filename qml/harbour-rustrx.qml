@@ -121,21 +121,67 @@ ApplicationWindow {
     }
     // favourites with new messages glow in the lists (highlightFavs).
     // The glow's one breath, shared by every glowing row so they breathe
-    // together: three seconds, while a glowing row is shown and Rustrx is
-    // in front (rows count themselves in favGlowRows)
+    // together: three seconds. Rows on screen count themselves in
+    // favGlowRows; a row coming into sight (a new unread favourite, the
+    // list shown again, scrolled to) or Rustrx coming to the front starts a
+    // few breaths (Tunables.favGlowBreaths), then the glow holds still at
+    // favGlowRest: nothing runs per frame while no row breathes
     property int favGlowRows: 0
     // the first RoomDelegate marks perf: delegate, the others only read this
     property bool perfDelegateSeen
-    property real favGlow: 0
-    SequentialAnimation on favGlow {
-        running: app.highlightFavs && app.favGlowRows > 0 && Qt.application.active
-        loops: Animation.Infinite
+    property real favGlow: Tunables.favGlowRest
+    readonly property bool favGlowShown: highlightFavs && favGlowRows > 0 && Qt.application.active
+    property int favGlowRowsBefore
+    // from none, favGlowShown starts it
+    onFavGlowRowsChanged: {
+        if (favGlowRowsBefore > 0 && favGlowRows > favGlowRowsBefore) breatheFavs()
+        favGlowRowsBefore = favGlowRows
+    }
+    onFavGlowShownChanged: {
+        if (favGlowShown) { breatheFavs(); return }
+        favBreathe.stop()
+        favGlow = Tunables.favGlowRest
+    }
+    // a start while breathing adds a round after the one running, unless
+    // that one began only just (the rows of a list shown count in one by one)
+    property bool favGlowAgain
+    property real favBreatheBegan
+    function breatheFavs() {
+        if (!favGlowShown) return
+        if (favBreathe.running) {
+            if (Date.now() - favBreatheBegan > Tunables.favGlowPulseMs) favGlowAgain = true
+            return
+        }
+        favGlowAgain = false
+        favBreatheBegan = Date.now()
+        favBreathe.start()
+    }
+    // from the rest down to the low, the breaths, up to the rest again: the
+    // first and last steps are the parts of a fall and a rise below the
+    // rest, so the curve is the breath's own (their time: the cube root)
+    SequentialAnimation {
+        id: favBreathe
+        NumberAnimation {
+            target: app; property: "favGlow"; to: 0
+            duration: Tunables.favGlowPulseMs * Math.pow(Tunables.favGlowRest, 1 / 3)
+            easing.type: Easing.OutCubic
+        }
         // longer low than high: a slow rise that hurries to the peak, a quick
         // fall that lingers near the bottom
-        NumberAnimation { from: 0; to: 1; duration: Tunables.favGlowPulseMs; easing.type: Easing.InCubic }
-        NumberAnimation { from: 1; to: 0; duration: Tunables.favGlowPulseMs; easing.type: Easing.OutCubic }
-        onStopped: app.favGlow = 0
+        SequentialAnimation {
+            loops: Tunables.favGlowBreaths
+            NumberAnimation { target: app; property: "favGlow"; from: 0; to: 1; duration: Tunables.favGlowPulseMs; easing.type: Easing.InCubic }
+            NumberAnimation { target: app; property: "favGlow"; from: 1; to: 0; duration: Tunables.favGlowPulseMs; easing.type: Easing.OutCubic }
+        }
+        NumberAnimation {
+            target: app; property: "favGlow"; from: 0; to: Tunables.favGlowRest
+            duration: Tunables.favGlowPulseMs * Math.pow(Tunables.favGlowRest, 1 / 3)
+            easing.type: Easing.InCubic
+        }
+        onStopped: if (app.favGlowAgain && app.favGlowShown) favBreatheAgain.restart()
     }
+    // the next round after the stop, not inside it
+    Timer { id: favBreatheAgain; interval: 0; onTriggered: app.breatheFavs() }
     // the emoji used most: Service.qml's list, which the notifications'
     // buttons use too (read again when the counts change)
     property var favouriteEmoji: service.favouriteEmoji()

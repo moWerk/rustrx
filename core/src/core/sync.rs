@@ -5,6 +5,8 @@
 use super::*;
 use std::collections::HashSet;
 
+use crate::serialize::RoomsDiff;
+
 use matrix_sdk::notification_settings::NotificationSettings;
 use tokio::sync::mpsc;
 
@@ -19,22 +21,34 @@ pub(super) struct ListSeen {
     pub(super) knocks_watched: HashSet<OwnedRoomId>,
 }
 
-/// The core's order, as serialize.rs sorted_rooms has it: invitations
-/// first, then by the last activity, the id breaking ties.
-fn room_order(r: &Value) -> (bool, std::cmp::Reverse<u64>, &str) {
-    (r["state"] != "invited", std::cmp::Reverse(r["ts"].as_u64().unwrap_or(0)), r["room_id"].as_str().unwrap_or(""))
-}
-
-/// The new rows into the cache; whether any differed from the one before.
-fn take_rows(cache: &mut HashMap<OwnedRoomId, Value>, rows: Vec<(OwnedRoomId, Value)>) -> bool {
-    let mut changed = false;
+/// The new rows into the cache; the ids of those that differed from the
+/// one before go into `changed`; whether any did.
+fn take_rows(cache: &mut HashMap<OwnedRoomId, Value>, rows: Vec<(OwnedRoomId, Value)>, changed: &mut HashSet<OwnedRoomId>) -> bool {
+    let mut any = false;
     for (id, row) in rows {
         if cache.get(&id) != Some(&row) {
-            cache.insert(id, row);
-            changed = true;
+            cache.insert(id.clone(), row);
+            changed.insert(id);
+            any = true;
         }
     }
-    changed
+    any
+}
+
+/// Each core's ask for its room list in full ("rooms_resync",
+/// "refresh_rooms"), by the core's address: one per account, kept as
+/// long as the process (the cores are never freed). A permit waits for
+/// a list task that is busy or not yet running.
+fn rooms_resync_for(core: &Core) -> Arc<tokio::sync::Notify> {
+    static ASKS: std::sync::Mutex<Vec<(usize, Arc<tokio::sync::Notify>)>> = std::sync::Mutex::new(Vec::new());
+    let key = core as *const Core as usize;
+    let mut asks = ASKS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((_, n)) = asks.iter().find(|(k, _)| *k == key) {
+        return n.clone();
+    }
+    let n = Arc::new(tokio::sync::Notify::new());
+    asks.push((key, n.clone()));
+    n
 }
 
 /// Two requests for pictures as one: the rooms of both, or every room
@@ -216,8 +230,16 @@ impl Core {
     /// a lagged stream, or the first update ROOM_LIST_SWEEP after the
     /// last full pass, rebuilds the whole list (and catches what the stream
     /// missed). Pictures and the latest-event listeners have tasks of their
-    /// own, so that neither holds the list back.
+    /// own, so that neither holds the list back. Each run is a stream of
+    /// its own: the first event full, then the order and the changed rows
+    /// (RoomsDiff); a full rebuild that changed something, and the UI's ask
+    /// (rooms_resync), send everything again.
     pub(crate) async fn rooms_task(&'static self, client: Client) {
+        static STREAMS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let mut diff = RoomsDiff::new(STREAMS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1);
+        let resync = rooms_resync_for(self);
+        // an ask from before this login: the first list is full anyway
+        resync.notified().now_or_never();
         let mut rx = client.room_info_notable_update_receiver();
         let avatar_dir = self.data_dir.join(AVATAR_DIR);
         let t = std::time::Instant::now();
@@ -229,7 +251,7 @@ impl Core {
             build_rows(rooms, &avatar_dir, &settings, &HashMap::new()).await.into_iter().collect()
         };
         tracing::info!(ms = t.elapsed().as_millis() as u64, rooms = cache.len(), "startup: first room list");
-        self.emit_rooms_list(&cache, t, true, cache.len(), true);
+        self.emit_rooms_list(&mut diff, &cache, &HashSet::new(), t, true, cache.len());
         // the helpers: what they are asked, and the rooms whose picture came
         let (avatar_tx, avatar_rx) = mpsc::unbounded_channel::<Option<HashSet<OwnedRoomId>>>();
         let (pictures_tx, mut pictures) = mpsc::unbounded_channel::<OwnedRoomId>();
@@ -244,6 +266,8 @@ impl Core {
             // the rooms the updates named, and those whose picture came
             let mut changed: HashSet<OwnedRoomId> = HashSet::new();
             let mut full = false;
+            // the UI asked for everything: sent even when nothing changed
+            let mut asked = false;
             tokio::select! {
                 update = rx.recv() => match update {
                     Ok(u) => {
@@ -254,6 +278,10 @@ impl Core {
                 },
                 Some(id) = pictures.recv() => {
                     changed.insert(id);
+                }
+                _ = resync.notified() => {
+                    full = true;
+                    asked = true;
                 }
             }
             tokio::time::sleep(ROOM_LIST_BATCH).await;
@@ -276,14 +304,20 @@ impl Core {
             }
             let built = std::time::Instant::now();
             let settings = client.notification_settings().await;
-            let mut dirty = false;
             let rebuilt;
+            // the rows to send: those that differ from the ones sent (a
+            // full rebuild that changed any sends all)
+            let mut differ: HashSet<OwnedRoomId> = HashSet::new();
             if full {
                 let rooms: Vec<Room> = client.rooms().into_iter().filter(crate::serialize::listed).collect();
                 let rows: HashMap<OwnedRoomId, Value> =
                     build_rows(rooms, &avatar_dir, &settings, &HashMap::new()).await.into_iter().collect();
                 rebuilt = rows.len();
-                dirty = rows != cache;
+                // what the stream missed is sent in full (the UI's copy is
+                // checked against it as well)
+                if asked || rows != cache {
+                    diff.resync();
+                }
                 cache = rows;
                 last_full = std::time::Instant::now();
             } else {
@@ -291,16 +325,18 @@ impl Core {
                 for id in &changed {
                     match client.get_room(id).filter(crate::serialize::listed) {
                         Some(room) => rooms.push(room),
-                        None => dirty |= cache.remove(id).is_some(),
+                        None => {
+                            cache.remove(id);
+                        }
                     }
                 }
                 let rows = build_rows(rooms, &avatar_dir, &settings, &cache).await;
                 rebuilt = rows.len();
-                dirty |= take_rows(&mut cache, rows);
+                take_rows(&mut cache, rows, &mut differ);
             }
-            // nothing the list shows changed: nothing is sent (the UI parsed
-            // and compared the whole list for it)
-            self.emit_rooms_list(&cache, built, full, rebuilt, dirty);
+            // nothing the list shows changed: nothing is sent (RoomsDiff
+            // compares the order; a removal is the order alone)
+            self.emit_rooms_list(&mut diff, &cache, &differ, built, full, rebuilt);
             Self::log_counts(&client);
             // only what changed is looked at again: on a full rebuild every
             // room, else the rooms the update named (the list's cost no
@@ -314,23 +350,36 @@ impl Core {
         }
     }
 
-    /// The cached rows sorted out as "rooms" when `send`; perf: how long the
-    /// pass since `built` took, how many rows it made anew, and whether it
-    /// sent the list (not when no row changed).
-    fn emit_rooms_list(&self, cache: &HashMap<OwnedRoomId, Value>, built: std::time::Instant, full: bool, rebuilt: usize, send: bool) {
+    /// The cached rows as "rooms": their order and the rows in `changed`
+    /// (all on a full event), nothing when neither changed; perf: how long
+    /// the pass since `built` took, how many rows it made anew (`full`: a
+    /// full rebuild), how many it sent and whether it sent anything.
+    fn emit_rooms_list(&self, diff: &mut RoomsDiff, cache: &HashMap<OwnedRoomId, Value>, changed: &HashSet<OwnedRoomId>,
+                       built: std::time::Instant, full: bool, rebuilt: usize) {
         let build = built.elapsed();
-        let rooms = send.then(|| {
-            let mut rows: Vec<&Value> = cache.values().collect();
-            // borrowed keys: sorted_rooms made a String per comparison
-            rows.sort_by(|a, b| room_order(a).cmp(&room_order(b)));
-            Value::Array(rows.into_iter().cloned().collect())
-        });
+        let changed: HashSet<&str> = changed.iter().map(|id| id.as_str()).collect();
+        let fields = diff.pass(&sorted_rooms(cache.values()), |id| changed.contains(id));
+        let (sent, event_full, items) = match &fields {
+            Some(f) => (true, f["full"] == true, f["items"].as_object().map_or(0, |m| m.len())),
+            None => (false, false, 0),
+        };
         tracing::debug!(target: "rustrx::perf", full, rooms = cache.len(), rebuilt, reused = cache.len().saturating_sub(rebuilt),
-                        sent = send, build_us = build.as_micros() as u64, sort_us = (built.elapsed() - build).as_micros() as u64,
-                        "rooms_build");
-        if let Some(rooms) = rooms {
-            self.emit(json!({"ev": "rooms", "rooms": rooms}));
+                        sent, event_full, items, build_us = build.as_micros() as u64,
+                        sort_us = (built.elapsed() - build).as_micros() as u64, "rooms_build");
+        if let Some(fields) = fields {
+            let mut ev = json!({"ev": "rooms"});
+            if let Value::Object(ev) = &mut ev {
+                ev.extend(fields);
+            }
+            self.emit(ev);
         }
+    }
+
+    /// The UI lost track of the room list (a skipped event, a row it does
+    /// not have; "rooms_resync"), or a test wants it built anew
+    /// ("refresh_rooms"): the list task rebuilds it and sends it in full.
+    pub(crate) fn rooms_resync(&self) {
+        rooms_resync_for(self).notify_one();
     }
 
     /// One journal line per room with anything unread: the server's counts
@@ -576,11 +625,14 @@ mod tests {
     #[test]
     fn equal_rows_change_nothing() {
         let mut cache = HashMap::from([(id("!a:x"), json!({"room_id": "!a:x", "ts": 1}))]);
-        assert!(!take_rows(&mut cache, vec![(id("!a:x"), json!({"room_id": "!a:x", "ts": 1}))]));
-        assert!(take_rows(&mut cache, vec![(id("!a:x"), json!({"room_id": "!a:x", "ts": 2}))]));
+        let mut changed = HashSet::new();
+        assert!(!take_rows(&mut cache, vec![(id("!a:x"), json!({"room_id": "!a:x", "ts": 1}))], &mut changed));
+        assert!(changed.is_empty());
+        assert!(take_rows(&mut cache, vec![(id("!a:x"), json!({"room_id": "!a:x", "ts": 2}))], &mut changed));
         assert_eq!(cache[&id("!a:x")]["ts"], 2);
-        assert!(take_rows(&mut cache, vec![(id("!b:x"), json!({"room_id": "!b:x"}))]));
-        assert!(!take_rows(&mut cache, vec![]));
+        assert!(take_rows(&mut cache, vec![(id("!b:x"), json!({"room_id": "!b:x"}))], &mut changed));
+        assert!(!take_rows(&mut cache, vec![], &mut changed));
+        assert_eq!(changed, HashSet::from([id("!a:x"), id("!b:x")]));
     }
 
     // Planted-bug: a request for some rooms after one for every room narrows it.
@@ -590,23 +642,6 @@ mod tests {
         assert_eq!(join_asks(some(&["!a:x"]), some(&["!b:x"])), some(&["!a:x", "!b:x"]));
         assert_eq!(join_asks(None, some(&["!b:x"])), None);
         assert_eq!(join_asks(some(&["!a:x"]), None), None);
-    }
-
-    // Planted-bug: the list's own sort differs from sorted_rooms (invitations
-    // no longer first).
-    #[test]
-    fn list_order_is_sorted_rooms_order() {
-        let rows = vec![
-            json!({"room_id": "!b", "ts": 5, "state": "joined"}),
-            json!({"room_id": "!a", "ts": 5, "state": "joined"}),
-            json!({"room_id": "!i", "ts": 1, "state": "invited"}),
-            json!({"room_id": "!n", "state": "joined"}),
-            json!({"room_id": "!z", "ts": 9, "state": "joined"}),
-        ];
-        let mut mine: Vec<&Value> = rows.iter().collect();
-        mine.sort_by(|a, b| room_order(a).cmp(&room_order(b)));
-        let mine = Value::Array(mine.into_iter().cloned().collect());
-        assert_eq!(mine, sorted_rooms(rows));
     }
 
     #[test]

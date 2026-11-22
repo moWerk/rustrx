@@ -763,8 +763,6 @@ void Rustrx::eventCallback(void *ctx, const char *json)
                  || type == QLatin1String("thread_timeline"))) {
         ev.insert(QStringLiteral("perf_bytes"), raw.size());
         ev.insert(QStringLiteral("perf_parse_us"), parse.nsecsElapsed() / 1000);
-        if (type == QLatin1String("rooms"))
-            ev.insert(QStringLiteral("perf_hash"), qHash(raw));
         ev.insert(QStringLiteral("perf_rx"), Perf::ms());
     }
     self->m_handleEvent.invoke(self, Qt::QueuedConnection, Q_ARG(QVariantMap, ev));
@@ -1465,11 +1463,17 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
         if (shown)
             emit syncStateChanged();
     } else if (type == QLatin1String("rooms")) {
-        const bool first = a->firstRooms;
-        a->firstRooms = false;
         QElapsedTimer apply;
         apply.start();
-        a->lists->setRooms(ev.value("rooms").toList());
+        // the order and the changed rooms; a gap or a room not known asks
+        // the core for the whole list (once) and applies nothing
+        const RoomLists::Applied applied = a->lists->applyRooms(ev);
+        if (applied == RoomLists::RoomsResync)
+            commandTo(a->key, { { "cmd", "rooms_resync" } });
+        if (applied != RoomLists::RoomsApplied)
+            return;
+        const bool first = a->firstRooms;
+        a->firstRooms = false;
         // the rows as the lists keep them: unchanged ones shared with the
         // last event, which the merged view's cache and lists rely on
         a->lastRooms = a->lists->lastRooms();
@@ -1478,15 +1482,16 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
         const qint64 mergedUs = apply.nsecsElapsed() / 1000 - listsUs;
         refreshAllTargets();
         if (Perf::on()) {
-            const uint hash = ev.value("perf_hash").toUInt();
+            // bytes: the event as sent (the order and the changed rows)
             qCDebug(Perf::category).noquote().nospace() << "perf: rooms t=" << Perf::ms() << " account=" << a->key
-                    << " rooms=" << a->lastRooms.size() << " bytes=" << ev.value("perf_bytes").toInt()
+                    << " rooms=" << a->lastRooms.size() << " changed=" << a->lists->lastChanged()
+                    << " sent=" << ev.value("items").toMap().size() << " full=" << ev.value("full").toBool()
+                    << " bytes=" << ev.value("perf_bytes").toInt()
                     << " parse_us=" << ev.value("perf_parse_us").toLongLong()
                     << " queued_ms=" << Perf::ms() - ev.value("perf_rx").toLongLong()
                     << " lists_us=" << listsUs << " merged_us=" << mergedUs
                     << " targets_us=" << apply.nsecsElapsed() / 1000 - listsUs - mergedUs
-                    << " same=" << (hash == a->perfHash ? 1 : 0) << " merged_view=" << (m_mergedView ? 1 : 0);
-            a->perfHash = hash;
+                    << " merged_view=" << (m_mergedView ? 1 : 0);
         }
         if (first && shown) {
             Perf::mark("rooms_applied", -1, QStringLiteral("rooms=%1").arg(a->lastRooms.size()));

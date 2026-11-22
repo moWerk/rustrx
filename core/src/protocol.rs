@@ -221,6 +221,8 @@ pub(crate) enum Command {
     /// none is named), by part of a name or address: "room_search_results".
     SearchRooms { term: String, server: Option<String> },
     RefreshRooms,
+    /// The UI lost track of the room list's stream: "rooms" in full.
+    RoomsResync,
 
     /// The users this account ignores: "ignored_users".
     IgnoredUsers,
@@ -375,7 +377,7 @@ mod tests {
         "join_room", "leave_room", "join_by_id_or_alias", "room_preview", "knock", "room_link",
         "set_join_rule", "space_open", "space_close", "space_add_child", "space_remove_child",
         "space_leave", "create_dm", "create_room", "room_members", "set_room_name",
-        "set_room_avatar", "set_own_avatar", "set_room_topic", "invite", "search", "search_rooms", "refresh_rooms", "ignored_users", "user_info", "kick", "ban", "unban",
+        "set_room_avatar", "set_own_avatar", "set_room_topic", "invite", "search", "search_rooms", "refresh_rooms", "rooms_resync", "ignored_users", "user_info", "kick", "ban", "unban",
         "room_settings", "set_user_level", "set_level", "set_history_visibility", "set_guest_access",
         "enable_encryption", "set_directory_visibility", "set_aliases", "add_alias", "remove_alias",
         "set_server_acl", "upgrade_room", "pin", "report_room", "report_user",

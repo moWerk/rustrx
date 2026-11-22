@@ -18,6 +18,225 @@ fn todevice_check_rearm(store: &std::path::Path) {
     std::fs::remove_file(store.join(TODEVICE_CHECKED_MARKER)).ok();
 }
 
+/// How the store's key opens the store. Until 0.8.2 it went in as a
+/// passphrase, and every open of each database ran PBKDF2 (200,000 rounds)
+/// over it, 300 to 390 ms per start on the phones (CB3, ST5). The key is 32
+/// random bytes from sailfish-secrets as 64 hex characters, which are also
+/// valid unpadded base64 (48 bytes): the SDK's high-entropy route takes
+/// those bytes, opens a database whose cipher is still under the PBKDF2 of
+/// their base64 (the hex string again) one last time, and rewraps it under
+/// the HKDF of the bytes in one row write; every later open is the HKDF.
+/// Each database does this for itself at its own open, so a crash between
+/// two leaves a mix that the next start opens and finishes.
+/// Security: what encrypts the data are each database's own random
+/// encryption key and MAC seed (XChaCha20-Poly1305 for the values, keyed
+/// BLAKE3 for the lookup keys), unchanged. Only their wrapping changes:
+/// PBKDF2 with a salt per database becomes HKDF-SHA256 without salt, so
+/// the four databases (and every account, which share the key) are
+/// wrapped under one key, each export with a fresh random 192-bit nonce.
+/// Stretching adds nothing to 256 random bits. session.json's seal is an HKDF of the hex text itself,
+/// so its wrapping key differs from the stores'.
+/// A build before this one opens a rewrapped database with "KdfMismatch":
+/// a failed restore (Retry), the store left alone; nothing in those builds
+/// removes it on that error, and this build opens it again.
+enum StoreSecret {
+    /// the key's bytes as the SDK's high-entropy passphrase
+    Key(Vec<u8>),
+    /// a key of another shape (not from SecretStore): as before
+    Passphrase(String),
+}
+
+impl StoreSecret {
+    fn of(key: &str) -> StoreSecret {
+        use matrix_sdk_base::crypto::vodozemac::{base64_decode, base64_encode};
+        // only SecretStore's shape (256 random bits as hex) is known to be
+        // random; the SDK turns the bytes back into the passphrase with
+        // unpadded standard base64, so they must come back unchanged
+        if key.len() != 64 || !key.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return StoreSecret::Passphrase(key.to_owned());
+        }
+        match base64_decode(key) {
+            Ok(bytes) if base64_encode(&bytes) == key => StoreSecret::Key(bytes),
+            _ => StoreSecret::Passphrase(key.to_owned()),
+        }
+    }
+}
+
+/// The SDK's low-memory settings: a connection pool of one per physical
+/// core (the default is four per core, per store, 32 on an 8-core phone)
+/// and 500 KB of page cache each (2 MB). Every opener of the store goes
+/// through here, so all of them open it the same way.
+fn store_config(dir: &std::path::Path, secret: Option<&StoreSecret>) -> matrix_sdk::SqliteStoreConfig {
+    let config = matrix_sdk::SqliteStoreConfig::with_low_memory_config(dir);
+    match secret {
+        Some(StoreSecret::Key(bytes)) => {
+            config.high_entropy_passphrase(Some(bytes), matrix_sdk_sqlite::Base64Variant::Unpadded)
+        }
+        Some(StoreSecret::Passphrase(p)) => config.passphrase(Some(p)),
+        None => config,
+    }
+}
+
+/// The store's four databases (the builder opens them all).
+const STORE_DBS: [&str; 4] = [matrix_sdk::STATE_STORE_DATABASE_NAME, EVENT_CACHE_DB, MEDIA_DB, CRYPTO_DB];
+
+/// The databases opened key-based that have no marker yet, with whether
+/// each was there before (rewrapped) or not (made key-based).
+fn key_based_unmarked(store: &std::path::Path, dbs: &[&'static str]) -> Vec<(&'static str, bool)> {
+    dbs.iter()
+        .filter(|db| !store.join(format!("{KEY_BASED_MARKER}{db}")).exists())
+        .map(|db| (*db, store.join(db).exists()))
+        .collect()
+}
+
+/// After an open succeeded: each of `dbs` is key-based now. The markers
+/// only record that (and log it once); the open never depends on them, as
+/// the high-entropy route handles either state.
+fn mark_key_based(store: &std::path::Path, dbs: &[(&'static str, bool)]) {
+    for (db, existed) in dbs {
+        if !store.join(db).exists() {
+            continue;
+        }
+        if std::fs::write(store.join(format!("{KEY_BASED_MARKER}{db}")), b"").is_ok() {
+            if *existed {
+                tracing::info!("store: key migrated, {db} wrapped under the key, no more PBKDF2");
+            } else {
+                tracing::info!("store: {db} made key-based");
+            }
+        }
+    }
+}
+
+/// The SDK's media cache had no limit (its default policy is empty): it
+/// grows to MEDIA_CACHE_MAX_BYTES, the longest unused go first, and the
+/// rest of the policy is the SDK's own default (files over 20 MiB are not
+/// cached, none kept unused for 60 days, a clean-up a day at the next
+/// media call). Uploads waiting in the send queue are kept whatever the
+/// policy (IgnoreMediaRetentionPolicy::Yes, matrix-sdk send_queue/upload.rs).
+/// The policy is kept in the media database: written only when it differs.
+async fn limit_media_cache(client: &Client) {
+    let policy = matrix_sdk::media::MediaRetentionPolicy::new().with_max_cache_size(Some(MEDIA_CACHE_MAX_BYTES));
+    let media = client.media();
+    if media.media_retention_policy().await.ok() == Some(policy) {
+        return;
+    }
+    match media.set_media_retention_policy(policy).await {
+        Ok(()) => tracing::info!(max = MEDIA_CACHE_MAX_BYTES, "media cache: limit set"),
+        Err(e) => tracing::warn!("media cache: limit not set: {e}"),
+    }
+}
+
+/// The fingerprint of builds before 0.8.2, in ENCRYPTED_MARKER: std's
+/// DefaultHasher, not stable across Rust releases.
+fn legacy_fingerprint(key: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    key.hash(&mut h);
+    format!("{:016x}", h.finish())
+}
+
+/// The stable fingerprint (KEY_FINGERPRINT_FILE): FNV-1a 64 of the key,
+/// fixed here, so no toolchain changes it. It tells one key from another;
+/// 64 bits of hash cannot give back a 256-bit key.
+fn stable_fingerprint(key: &str) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in b"rustrx-store-key\0".iter().chain(key.as_bytes()) {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("fnv1a64:{h:016x}")
+}
+
+/// What the store's marks say of the key.
+#[derive(Debug, PartialEq)]
+enum KeyCheck {
+    /// the stable fingerprint fits
+    Fits,
+    /// no stable one yet, the old one fits
+    OldFits,
+    /// no well-formed stable one (none, cut short, of a form this build
+    /// does not know), and the old one does not fit: not a proof, the old
+    /// hash may have changed
+    Unproven,
+    /// the stable fingerprint, well-formed, is another key's (still
+    /// proven by the open before the store goes: prove_store_key)
+    Lost,
+}
+
+impl KeyCheck {
+    fn of(store: &std::path::Path, old_mark: &str, key: &str) -> KeyCheck {
+        if let Some(stable) = read_stable_fingerprint(store) {
+            return if stable == stable_fingerprint(key) { KeyCheck::Fits } else { KeyCheck::Lost };
+        }
+        if old_mark.trim() == legacy_fingerprint(key) {
+            KeyCheck::OldFits
+        } else {
+            KeyCheck::Unproven
+        }
+    }
+}
+
+/// The store's cipher did not decrypt under the key: its AEAD tag proves
+/// another key (not a busy or broken database, nor an unknown format).
+fn key_refused(e: &matrix_sdk_sqlite::OpenStoreError) -> bool {
+    matches!(e, matrix_sdk_sqlite::OpenStoreError::InitCipher(matrix_sdk_store_encryption::Error::Encryption(_)))
+}
+
+/// The stable fingerprint when the file holds one in this build's form
+/// (the prefix and 16 hex digits); anything else counts as none.
+fn read_stable_fingerprint(store: &std::path::Path) -> Option<String> {
+    let raw = std::fs::read_to_string(store.join(KEY_FINGERPRINT_FILE)).ok()?;
+    let mark = raw.trim();
+    let digits = mark.strip_prefix("fnv1a64:")?;
+    (digits.len() == 16 && digits.bytes().all(|b| b.is_ascii_hexdigit())).then(|| mark.to_owned())
+}
+
+/// After the store opened with `key`: the key is the store's, and the
+/// stable fingerprint is written where it does not say so (written whole
+/// or not at all: a temporary file, then renamed).
+fn confirm_store_key(store: &std::path::Path, key: &str) {
+    if !store.join(ENCRYPTED_MARKER).exists() || read_stable_fingerprint(store).as_deref() == Some(&stable_fingerprint(key)) {
+        return;
+    }
+    let tmp = store.join(format!("{KEY_FINGERPRINT_FILE}.tmp"));
+    if std::fs::write(&tmp, stable_fingerprint(key)).is_ok() && std::fs::rename(&tmp, store.join(KEY_FINGERPRINT_FILE)).is_ok() {
+        tracing::info!("store: the key opened it, stable fingerprint written");
+    }
+}
+
+/// For a store whose stable fingerprint does not say the key fits
+/// (KeyCheck other than Fits): one database opened with the secret
+/// settles it. It opens: the key is the store's, the stable fingerprint
+/// is written. Its cipher's seal (AEAD) refuses the key: proof of another
+/// key, the store goes and false is returned (the caller asks for the
+/// secret again, which makes a new store). Any other failure is an error
+/// and removes nothing. No fingerprint alone ever removes a store.
+async fn prove_store_key(dir: &std::path::Path, secret: &StoreSecret, key: &str) -> Result<bool> {
+    if !dir.join(ENCRYPTED_MARKER).exists() || read_stable_fingerprint(dir).as_deref() == Some(&stable_fingerprint(key)) {
+        return Ok(true);
+    }
+    let config = store_config(dir, Some(secret));
+    let opened = if dir.join(matrix_sdk::STATE_STORE_DATABASE_NAME).exists() {
+        matrix_sdk::SqliteStateStore::open_with_config(&config).await.map(drop)
+    } else if dir.join(CRYPTO_DB).exists() {
+        matrix_sdk::SqliteCryptoStore::open_with_config(&config).await.map(drop)
+    } else {
+        Ok(())
+    };
+    match opened {
+        Ok(()) => {
+            confirm_store_key(dir, key);
+            Ok(true)
+        }
+        Err(e) if key_refused(&e) => {
+            tracing::warn!("store: encrypted with a key that is gone (its seal refuses this one); it cannot be read and goes");
+            std::fs::remove_dir_all(dir).ok();
+            Ok(false)
+        }
+        Err(e) => Err(anyhow!("the store did not open: {e}")),
+    }
+}
+
 /// One login at a time: held from a login's start to its end (after_login
 /// included), let go on every way out.
 pub(crate) struct LoginGuard(&'static Core);
@@ -116,13 +335,20 @@ impl Core {
         if !todevice_check_needed(&dir) {
             return;
         }
-        let passphrase = match self.store_passphrase() {
-            Ok(p) => p,
+        let secret = match self.store_secret() {
+            Ok(s) => s,
             Err(_) => return, // the client's build says why
         };
-        let config = matrix_sdk::SqliteStoreConfig::with_low_memory_config(dir.clone()).passphrase(passphrase.as_deref());
+        let unmarked = if secret.is_some() { key_based_unmarked(&dir, &[CRYPTO_DB]) } else { Vec::new() };
+        let config = store_config(&dir, secret.as_ref());
         let store = match matrix_sdk::SqliteCryptoStore::open_with_config(&config).await {
-            Ok(s) => s,
+            Ok(s) => {
+                if let (true, Some(key)) = (secret.is_some(), crate::store_key()) {
+                    confirm_store_key(&dir, key);
+                }
+                mark_key_based(&dir, &unmarked);
+                s
+            }
             Err(e) => {
                 tracing::warn!("to-device position: the store did not open: {e}");
                 return;
@@ -155,30 +381,36 @@ impl Core {
         }
     }
 
+    /// The store's secret (store_passphrase), in the form the store opens with.
+    fn store_secret(&self) -> Result<Option<StoreSecret>> {
+        Ok(self.store_passphrase()?.as_deref().map(StoreSecret::of))
+    }
+
     pub(crate) async fn build_client(&self, server: &str, with_store: bool) -> Result<Client> {
         self.build_client_with(server, with_store, None).await
     }
 
-    /// `known`: the sync flavour from a previous login, which skips discovery.
     /// The passphrase for the store, if it is (to be) encrypted. A new store
-    /// is encrypted when sailfish-secrets gave a key; a file in it marks it,
-    /// with a fingerprint of the key (a hash; the key cannot be read from
-    /// it). A store from before stays as it is.
+    /// is encrypted when sailfish-secrets gave a key; files in it mark it,
+    /// with fingerprints of the key (hashes; the key cannot be read from
+    /// them). A store from before stays as it is.
     /// - no key now (sailfish-secrets locked before the first unlock, or not
     ///   reachable): nothing is removed; the store cannot open this time
     /// - a key that is not the store's (the secret was lost and made anew):
-    ///   the store can never be read again and goes
+    ///   the store can never be read again and goes, but only when a
+    ///   database's seal refuses the key (prove_store_key, before the
+    ///   client is built); the fingerprints only say whether to look. The
+    ///   stable one is KEY_FINGERPRINT_FILE; the old one in
+    ///   ENCRYPTED_MARKER is std's DefaultHasher, which Rust may change with
+    ///   any toolchain: a match there is taken and the stable one written; a
+    ///   mismatch there proves nothing either.
+    ///   ENCRYPTED_MARKER keeps the old form: builds before 0.8.2 remove the
+    ///   store when that file is anything else.
     fn store_passphrase(&self) -> Result<Option<String>> {
         let dir = self.data_dir.join(STORE_DIR);
         let marker = dir.join(ENCRYPTED_MARKER);
         let existing = std::fs::read_dir(&dir).map(|mut d| d.next().is_some()).unwrap_or(false);
         let key = crate::store_key();
-        let fingerprint = |k: &str| {
-            use std::hash::{Hash, Hasher};
-            let mut h = std::collections::hash_map::DefaultHasher::new();
-            k.hash(&mut h);
-            format!("{:016x}", h.finish())
-        };
         if existing {
             let Ok(mark) = std::fs::read_to_string(&marker) else {
                 tracing::info!("store: unencrypted (made before sailfish-secrets was used)");
@@ -187,18 +419,32 @@ impl Core {
             let Some(key) = key else {
                 bail!("the encrypted store's key is not available (sailfish-secrets locked or unreachable)");
             };
-            if mark.trim() == fingerprint(key) {
-                tracing::info!("store: encrypted, key from sailfish-secrets");
-                return Ok(Some(key.to_owned()));
+            match KeyCheck::of(&dir, &mark, key) {
+                KeyCheck::Fits => tracing::info!("store: encrypted, key from sailfish-secrets"),
+                KeyCheck::OldFits => {
+                    tracing::info!("store: encrypted, key from sailfish-secrets (old fingerprint)");
+                    confirm_store_key(&dir, key);
+                }
+                KeyCheck::Unproven => {
+                    tracing::warn!("store: encrypted, its old fingerprint does not fit (another toolchain's hash?); opened with the key, nothing removed");
+                }
+                KeyCheck::Lost => {
+                    tracing::warn!("store: encrypted, its fingerprint is another key's; the open proves it (prove_store_key)");
+                }
             }
-            tracing::warn!("store: encrypted with a key that is gone; it cannot be read and goes");
-            std::fs::remove_dir_all(&dir).ok();
+            return Ok(Some(key.to_owned()));
         }
         let Some(key) = key else { return Ok(None) };
-        std::fs::create_dir_all(&dir).ok();
-        std::fs::write(&marker, fingerprint(key)).ok();
+        Ok(Some(self.new_encrypted_store(&dir, key)))
+    }
+
+    /// Marks a new store as encrypted with `key`; its passphrase.
+    fn new_encrypted_store(&self, dir: &std::path::Path, key: &str) -> String {
+        std::fs::create_dir_all(dir).ok();
+        std::fs::write(dir.join(ENCRYPTED_MARKER), legacy_fingerprint(key)).ok();
+        confirm_store_key(dir, key);
         tracing::info!("store: new and encrypted, key from sailfish-secrets");
-        Ok(Some(key.to_owned()))
+        key.to_owned()
     }
 
     /// How the local store is kept, for the account's security status:
@@ -219,9 +465,17 @@ impl Core {
         }
     }
 
+    /// `known`: the sync flavour from a previous login, which skips discovery.
     pub(crate) async fn build_client_with(&self, server: &str, with_store: bool, known: Option<bool>) -> Result<Client> {
         tracing::info!(%server, with_store, ?known, "client: building");
-        let passphrase = if with_store { self.store_passphrase()? } else { None };
+        let mut secret = if with_store { self.store_secret()? } else { None };
+        let store_dir = self.data_dir.join(STORE_DIR);
+        if let (Some(s), Some(key)) = (secret.as_ref(), crate::store_key()) {
+            if !prove_store_key(&store_dir, s, key).await? {
+                secret = self.store_secret()?;
+            }
+        }
+        let unmarked = if secret.is_some() { key_based_unmarked(&store_dir, &STORE_DBS) } else { Vec::new() };
         let make = |version: VersionBuilder| {
             let mut b = Client::builder()
                 .sliding_sync_version_builder(version)
@@ -238,13 +492,7 @@ impl Core {
                 .cross_process_store_config(matrix_sdk::cross_process_lock::CrossProcessLockConfig::SingleProcess)
                 .user_agent(USER_AGENT);
             if with_store {
-                // the SDK's low-memory settings: a connection pool of one per
-                // physical core (the default is four per core, per store, 32
-                // on an 8-core phone) and 500 KB of page cache each (2 MB).
-                // The passphrase as before, so the store opens as it was.
-                let config = matrix_sdk::SqliteStoreConfig::with_low_memory_config(self.data_dir.join(STORE_DIR))
-                    .passphrase(passphrase.as_deref());
-                b = b.sqlite_store_with_config_and_cache_path(config, None::<&std::path::Path>);
+                b = b.sqlite_store_with_config_and_cache_path(store_config(&store_dir, secret.as_ref()), None::<&std::path::Path>);
             }
             if server.starts_with("http://") || server.starts_with("https://") {
                 b.homeserver_url(server)
@@ -266,6 +514,14 @@ impl Core {
             }
         };
         tracing::info!("client: built");
+        if with_store {
+            // the builder opened all four databases with the secret
+            if let (true, Some(key)) = (secret.is_some(), crate::store_key()) {
+                confirm_store_key(&store_dir, key);
+            }
+            mark_key_based(&store_dir, &unmarked);
+            limit_media_cache(&client).await;
+        }
         // a picture or file on its way shows how much of it is uploaded
         client.send_queue().enable_upload_progress(true);
         Ok(client)
@@ -953,5 +1209,210 @@ mod tests {
         todevice_check_rearm(store);
         assert!(todevice_check_needed(store));
         std::fs::remove_dir_all(&d).ok();
+    }
+
+    const HEX_KEY: &str = "00112233445566778899aabbccddeeff0123456789abcdeffedcba9876543210";
+
+    fn temp_store(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("rustrx-{name}-{}", std::process::id()));
+        std::fs::remove_dir_all(&d).ok();
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    // Planted-bug: StoreSecret::of takes every key as Key (a key the SDK
+    // would base64 into another passphrase), or none.
+    #[test]
+    fn store_secret_shape() {
+        use matrix_sdk_base::crypto::vodozemac::base64_encode;
+        let StoreSecret::Key(bytes) = StoreSecret::of(HEX_KEY) else { panic!("hex from SecretStore is a key") };
+        assert_eq!(bytes.len(), 48);
+        assert_eq!(base64_encode(&bytes), HEX_KEY, "the SDK's passphrase is the hex again");
+        let upper = HEX_KEY.to_uppercase();
+        assert!(matches!(StoreSecret::of(&upper), StoreSecret::Key(ref b) if base64_encode(b) == upper));
+        // shapes that would not come back unchanged stay passphrases
+        let short = &HEX_KEY[..60];
+        let not_hex = HEX_KEY.replace('0', "g");
+        for other in ["", "abc", "not-base64!", short, not_hex.as_str()] {
+            assert!(matches!(StoreSecret::of(other), StoreSecret::Passphrase(ref p) if p == other), "{other:?}");
+        }
+    }
+
+    // A store made with the passphrase (every build before 0.8.2), two of
+    // its databases rewrapped (a crash after them), then all four: each
+    // opens whatever state it is in, the data stays readable, and the
+    // passphrase no longer opens it (an older build: KdfMismatch, the store
+    // left as it is). Planted-bug: store_config gives the Key secret as
+    // .key(bytes) (the PBKDF2 store does not open), or as .passphrase.
+    #[test]
+    fn store_key_migration() {
+        use matrix_sdk::{SqliteCryptoStore, SqliteEventCacheStore, SqliteMediaStore, SqliteStateStore};
+        use matrix_sdk_base::crypto::store::CryptoStore;
+        use matrix_sdk_base::StateStore;
+        let dir = temp_store("keymig");
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        rt.block_on(async {
+            let old = matrix_sdk::SqliteStoreConfig::with_low_memory_config(&dir).passphrase(Some(HEX_KEY));
+            let t = std::time::Instant::now();
+            let crypto = SqliteCryptoStore::open_with_config(&old).await.unwrap();
+            crypto.set_custom_value("rustrx-test", b"crypto".to_vec()).await.unwrap();
+            drop(crypto);
+            let state = SqliteStateStore::open_with_config(&old).await.unwrap();
+            state.set_custom_value(b"rustrx-test", b"state".to_vec()).await.unwrap();
+            drop(state);
+            drop(SqliteEventCacheStore::open_with_config(&old).await.unwrap());
+            drop(SqliteMediaStore::open_with_config(&old).await.unwrap());
+            eprintln!("four PBKDF2 opens: {} ms", t.elapsed().as_millis());
+            for db in STORE_DBS {
+                assert!(dir.join(db).exists(), "{db} made");
+            }
+
+            let secret = StoreSecret::of(HEX_KEY);
+            let new = store_config(&dir, Some(&secret));
+            // the crash in between: only crypto and state rewrapped
+            let unmarked = key_based_unmarked(&dir, &[CRYPTO_DB, matrix_sdk::STATE_STORE_DATABASE_NAME]);
+            assert_eq!(unmarked.len(), 2);
+            assert!(unmarked.iter().all(|(_, existed)| *existed));
+            drop(SqliteCryptoStore::open_with_config(&new).await.unwrap());
+            drop(SqliteStateStore::open_with_config(&new).await.unwrap());
+            mark_key_based(&dir, &unmarked);
+            // the next start: two rewrapped, two still under the PBKDF2
+            let unmarked = key_based_unmarked(&dir, &STORE_DBS);
+            assert_eq!(unmarked.iter().map(|(db, _)| *db).collect::<Vec<_>>(), vec![EVENT_CACHE_DB, MEDIA_DB]);
+            let t = std::time::Instant::now();
+            let crypto = SqliteCryptoStore::open_with_config(&new).await.unwrap();
+            let state = SqliteStateStore::open_with_config(&new).await.unwrap();
+            drop(SqliteEventCacheStore::open_with_config(&new).await.unwrap());
+            drop(SqliteMediaStore::open_with_config(&new).await.unwrap());
+            eprintln!("mixed state, two rewrapped now: {} ms", t.elapsed().as_millis());
+            mark_key_based(&dir, &unmarked);
+            assert!(key_based_unmarked(&dir, &STORE_DBS).is_empty(), "all four marked");
+            assert_eq!(crypto.get_custom_value("rustrx-test").await.unwrap().as_deref(), Some(&b"crypto"[..]));
+            assert_eq!(state.get_custom_value(b"rustrx-test").await.unwrap().as_deref(), Some(&b"state"[..]));
+            drop(crypto);
+            drop(state);
+
+            // every later open: no derivation, the same data
+            let t = std::time::Instant::now();
+            let crypto = SqliteCryptoStore::open_with_config(&new).await.unwrap();
+            drop(SqliteStateStore::open_with_config(&new).await.unwrap());
+            drop(SqliteEventCacheStore::open_with_config(&new).await.unwrap());
+            drop(SqliteMediaStore::open_with_config(&new).await.unwrap());
+            eprintln!("four key-based opens: {} ms", t.elapsed().as_millis());
+            assert_eq!(crypto.get_custom_value("rustrx-test").await.unwrap().as_deref(), Some(&b"crypto"[..]));
+            drop(crypto);
+
+            // an older build (the passphrase): refused, nothing changed
+            assert!(SqliteCryptoStore::open_with_config(&old).await.is_err());
+            assert!(SqliteMediaStore::open_with_config(&old).await.is_err());
+            let crypto = SqliteCryptoStore::open_with_config(&new).await.unwrap();
+            assert_eq!(crypto.get_custom_value("rustrx-test").await.unwrap().as_deref(), Some(&b"crypto"[..]));
+            // a wrong key opens nothing, and its refusal is the proof
+            // prove_store_key removes a store on
+            let other = StoreSecret::of("ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100");
+            let Err(e) = SqliteCryptoStore::open_with_config(&store_config(&dir, Some(&other))).await else { panic!("opened") };
+            assert!(key_refused(&e), "{e}");
+            let wrong_old = matrix_sdk::SqliteStoreConfig::with_low_memory_config(&dir).passphrase(Some("ffee"));
+            let Err(e) = SqliteCryptoStore::open_with_config(&wrong_old).await else { panic!("opened") };
+            assert!(!key_refused(&e), "KdfMismatch (an older build's way) is no proof: {e}");
+        });
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // Planted-bug: stable_fingerprint changes (every store's stable mark
+    // stops fitting and the store goes), KeyCheck::of reads an old
+    // mismatch or an unknown form as Lost.
+    #[test]
+    fn store_key_fingerprints() {
+        assert_eq!(stable_fingerprint(HEX_KEY), "fnv1a64:65c236ea15dec421", "fixed for good");
+        assert_ne!(stable_fingerprint(HEX_KEY), stable_fingerprint(&HEX_KEY.replace('0', "1")));
+        let dir = temp_store("keyfp");
+        let old = legacy_fingerprint(HEX_KEY);
+        assert_eq!(KeyCheck::of(&dir, &old, HEX_KEY), KeyCheck::OldFits);
+        assert_eq!(KeyCheck::of(&dir, &format!("{old}\n"), HEX_KEY), KeyCheck::OldFits);
+        // another toolchain's DefaultHasher: no proof either way
+        assert_eq!(KeyCheck::of(&dir, "0123456789abcdef", HEX_KEY), KeyCheck::Unproven);
+        std::fs::write(dir.join(KEY_FINGERPRINT_FILE), "sha3:whatever").unwrap();
+        assert_eq!(KeyCheck::of(&dir, "0123456789abcdef", HEX_KEY), KeyCheck::Unproven, "an unknown form is no proof");
+        std::fs::write(dir.join(KEY_FINGERPRINT_FILE), stable_fingerprint(HEX_KEY)).unwrap();
+        assert_eq!(KeyCheck::of(&dir, "0123456789abcdef", HEX_KEY), KeyCheck::Fits, "the stable one decides");
+        std::fs::write(dir.join(KEY_FINGERPRINT_FILE), stable_fingerprint("another key")).unwrap();
+        assert_eq!(KeyCheck::of(&dir, &old, HEX_KEY), KeyCheck::Lost, "the same form, another key");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // The one way a store goes: a database's seal refusing the key.
+    // Planted-bug: prove_store_key removes on any open error, or on a
+    // fingerprint alone; confirm_store_key keeps a cut-short file.
+    #[test]
+    fn store_key_proof() {
+        use matrix_sdk::SqliteStateStore;
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let secret = StoreSecret::of(HEX_KEY);
+        let other_key = "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100";
+        async fn make(name: &str, secret: &StoreSecret) -> std::path::PathBuf {
+            let dir = temp_store(name);
+            std::fs::write(dir.join(ENCRYPTED_MARKER), "0123456789abcdef").unwrap(); // another toolchain's hash
+            drop(SqliteStateStore::open_with_config(&store_config(&dir, Some(secret))).await.unwrap());
+            dir
+        }
+        rt.block_on(async {
+            // the right key, no stable fingerprint: kept, the stable one written
+            let dir = make("proof-right", &secret).await;
+            assert!(prove_store_key(&dir, &secret, HEX_KEY).await.unwrap());
+            assert_eq!(read_stable_fingerprint(&dir), Some(stable_fingerprint(HEX_KEY)));
+            assert!(dir.join(matrix_sdk::STATE_STORE_DATABASE_NAME).exists());
+            // a cut-short or empty stable file: no proof either way, rewritten
+            for bad in ["fnv1a64:65c2", "", "fnv1a64:zzzzzzzzzzzzzzzz"] {
+                std::fs::write(dir.join(KEY_FINGERPRINT_FILE), bad).unwrap();
+                assert_eq!(KeyCheck::of(&dir, "0123456789abcdef", HEX_KEY), KeyCheck::Unproven, "{bad:?}");
+                assert!(prove_store_key(&dir, &secret, HEX_KEY).await.unwrap(), "{bad:?}");
+                assert_eq!(read_stable_fingerprint(&dir), Some(stable_fingerprint(HEX_KEY)), "{bad:?}");
+            }
+            std::fs::remove_dir_all(&dir).ok();
+
+            // another key: the seal refuses it, the store goes
+            let dir = make("proof-wrong", &secret).await;
+            let other = StoreSecret::of(other_key);
+            assert!(!prove_store_key(&dir, &other, other_key).await.unwrap());
+            assert!(!dir.exists(), "removed");
+
+            // a well-formed stable fingerprint of another key: still opened
+            // first; the right key behind it keeps the store
+            let dir = make("proof-lost-mark", &secret).await;
+            std::fs::write(dir.join(KEY_FINGERPRINT_FILE), stable_fingerprint(other_key)).unwrap();
+            assert_eq!(KeyCheck::of(&dir, "x", HEX_KEY), KeyCheck::Lost);
+            assert!(prove_store_key(&dir, &secret, HEX_KEY).await.unwrap());
+            assert!(dir.join(matrix_sdk::STATE_STORE_DATABASE_NAME).exists());
+            assert_eq!(read_stable_fingerprint(&dir), Some(stable_fingerprint(HEX_KEY)));
+            std::fs::remove_dir_all(&dir).ok();
+
+            // a broken database is no proof: an error, nothing removed
+            let dir = temp_store("proof-broken");
+            std::fs::write(dir.join(ENCRYPTED_MARKER), "0123456789abcdef").unwrap();
+            std::fs::write(dir.join(matrix_sdk::STATE_STORE_DATABASE_NAME), b"not a database, not at all, just bytes").unwrap();
+            assert!(prove_store_key(&dir, &secret, HEX_KEY).await.is_err());
+            assert!(dir.join(matrix_sdk::STATE_STORE_DATABASE_NAME).exists() && dir.join(ENCRYPTED_MARKER).exists());
+            std::fs::remove_dir_all(&dir).ok();
+        });
+    }
+
+    // A new store with the key: made key-based at once, no PBKDF2 ever.
+    #[test]
+    fn store_key_new_store() {
+        use matrix_sdk::SqliteCryptoStore;
+        let dir = temp_store("keynew");
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        rt.block_on(async {
+            let unmarked = key_based_unmarked(&dir, &[CRYPTO_DB]);
+            assert_eq!(unmarked, vec![(CRYPTO_DB, false)]);
+            let new = store_config(&dir, Some(&StoreSecret::of(HEX_KEY)));
+            drop(SqliteCryptoStore::open_with_config(&new).await.unwrap());
+            mark_key_based(&dir, &unmarked);
+            assert!(dir.join(format!("{KEY_BASED_MARKER}{CRYPTO_DB}")).exists());
+            let old = matrix_sdk::SqliteStoreConfig::with_low_memory_config(&dir).passphrase(Some(HEX_KEY));
+            assert!(SqliteCryptoStore::open_with_config(&old).await.is_err(), "never under the PBKDF2");
+        });
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

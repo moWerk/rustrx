@@ -297,8 +297,22 @@ Page {
     function maybePaginate(atTop) {
         if (paginating || atStart || !inTimeline || list.count === 0) return
         if (!atTop && !(positioned && list.moving && list.contentY - list.originY < 2 * list.height)) return
-        paginating = true
-        rustrx.command({ cmd: "paginate_back", room_id: roomId, count: scrollPage })
+        if (!pageSoon.running) pageSoon.start()
+    }
+    // asked for one turn later, never inside the list's own layout that
+    // called maybePaginate (atYEnd, contentY): paginating sets the footer's
+    // height, which changes the content height that the PushUpMenu's
+    // _contentDeficit and the bottom margin it sets are made of, so the
+    // footer's height and _contentDeficit were written again while being
+    // written (the two binding loops in the log)
+    Timer {
+        id: pageSoon
+        interval: 0
+        onTriggered: {
+            if (page.paginating || page.atStart || !page.inTimeline || list.count === 0) return
+            page.paginating = true
+            rustrx.command({ cmd: "paginate_back", room_id: page.roomId, count: page.scrollPage })
+        }
     }
     Timer {
         id: moreLater

@@ -69,8 +69,17 @@ public:
     QString roomFilter() const { return m_roomFilter; }
     void setRoomFilter(const QString &text);
 
-    // the core's `rooms` event
+    // the whole list at once (the merged view, tests): rows equal to the
+    // last ones are kept as those
     void setRooms(const QVariantList &rooms);
+    // the core's `rooms` event: the order and only the new or changed rows
+    // (docs/PROTOCOL.md, "Room list events"); RoomsResync: not applied, the
+    // core is to send the whole list (`rooms_resync`); RoomsDropped: an old
+    // event, or one after the resync was asked already
+    enum Applied { RoomsApplied, RoomsDropped, RoomsResync };
+    Applied applyRooms(const QVariantMap &ev);
+    // the rows the last applied event changed, for perf: lines
+    int lastChanged() const { return m_lastChanged; }
     // for the merged view (all accounts in one list): sorts, filters and
     // counts only; no notifications, no invitation bookkeeping, no settings
     // written but the tabs' own
@@ -122,6 +131,14 @@ private:
     QVariantList m_lastRooms;   // as the core sent them, for a new order
     // the same rows by row key, for the next event's compare
     QHash<QString, QVariant> m_lastByKey;
+    // the core's room list stream: the last event applied, and whether a
+    // resync was asked since (once, until a full event comes)
+    qint64 m_stream = 0;
+    qint64 m_seq = 0;
+    // logged out: the streams before are over (a late event is dropped)
+    qint64 m_streamFloor = 0;
+    bool m_resyncAsked = false;
+    int m_lastChanged = 0;
     // the share targets, sorted only when read while no view shows them
     mutable QVariantList m_pendingTargets;
     mutable bool m_targetsDirty = false;

@@ -3207,6 +3207,7 @@ dependencies = [
  "futures-util",
  "matrix-sdk",
  "matrix-sdk-base",
+ "matrix-sdk-sqlite",
  "matrix-sdk-store-encryption",
  "matrix-sdk-ui",
  "mime",

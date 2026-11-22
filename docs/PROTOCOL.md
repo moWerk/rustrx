@@ -18,7 +18,7 @@ UI. They talk through six C functions (`src/rustrx_core.h`) and JSON:
   given: running commands are aborted, the session is saved, the client's
   stores close and the core's threads stop. No command runs afterwards.
 
-**Version 3** (since 0.8.2: a timeline goes out as its order plus only the changed items; version 2, since 0.4.7, was one name per concept). The core sends `"proto": 3` with `ready` and `logged_in`
+**Version 3** (since 0.8.2: a timeline, and the room list, go out as their order plus only the changed items or rooms; version 2, since 0.4.7, was one name per concept). The core sends `"proto": 3` with `ready` and `logged_in`
 (`PROTO` in `core/src/consts.rs`); the bridge warns in the log when it expects
 another (`kProto` in `src/Keys.h`). Both halves ship in one package, so a
 mismatch means a build mix-up, not an upgrade path.
@@ -72,7 +72,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `set_presence` | `online` (offline is set at every login, before the first sync) | |
 | `get_media` | `room_id`, `event_id`, `thumb?`, `dest_dir?` (a copy for other apps) | `media` |
 | `fetch_emote` | `mxc` (a custom emoji's address) | `emote` |
-| `image_packs` | `room_id` | `image_packs` |
+| `image_packs` | `room_id` | `image_packs`; a second one later when the kept packs, asked again in the background, changed |
 | `room_preview` | `room_or_alias`, `via?` | `room_preview` |
 | `knock` | `room_or_alias`, `reason?`, `via?` | `knocked` |
 | `room_link` | `room_id` | `room_link` |
@@ -105,7 +105,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `search` | `term` | `search_results` |
 | `search_rooms` | `term`, `server?` (a server's public directory; the own one without) | `room_search_results` |
 | `set_room_avatar` | `room_id`, `path`, `w?`, `h?` (a prepared picture) | `rooms` (through the sync) |
-| `refresh_rooms` | | `rooms` (for tests: `tools/test/dev.sh`) |
+| `refresh_rooms` | | `rooms`, built anew and full (for tests: `tools/test/dev.sh`) |
+| `rooms_resync` | | `rooms`, full (the UI lost track of the list's stream: see "Room list events") |
 
 ### Encryption
 | cmd | fields | answered by |
@@ -194,7 +195,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `server_features` | `device_login` (the account service logs devices in by a code), `qr_rendezvous` (the server keeps the QR rendezvous); once after every `logged_in` |
 | `open_url` | `url` (SSO: to open in the browser) |
 | `sync_state` | `state` (`idle`, `running`, `offline`, `error`, `terminated`), `message?` |
-| `rooms` | `rooms`: room objects, invitations first, then by activity; the whole list each time, sent only when a row or the set of rooms changed (an update that changes nothing in the rows sends nothing) |
+| `rooms` | `stream`, `seq`, `full`, `order`, `items`: see "Room list events" below |
 | `timeline` | `room_id`, `stream`, `seq`, `full`, `order`, `items`: see "Timeline events" below |
 | `paginated` | `room_id`, `at_start` |
 | `draft` | `room_id`, `thread_root?` (a thread's), `text` (what was being written there; "" for none) |
@@ -261,6 +262,27 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 `state` (`joined`, `invited`), `is_dm`, `dm_user` (the person of a direct chat), `is_fav`, `is_low`, `encrypted`,
 `unread`, `joined_members`, `notifications`, `highlights`, `ts` (last activity, ms), `latest_event_id`,
 `preview`, `preview_sender`.
+
+### Room list events
+`rooms` comes when a room of the list changed, came or went, and not
+when nothing the list shows changed. `order` holds every room's
+`room_id`, invitations first, then by activity (the id breaking ties);
+`items` maps a room id to its room object (above), for the rooms new or
+changed since the stream's last event only, all of them when `full`. A
+room that went is in `order` no more. Each run of the core's room list
+(every login, and the session restarted by `set_classic_sync`) is a new
+stream: `stream` grows with each one in the process, `seq` counts its
+events from 1. The first event of a stream is `full`, as is the one
+after a full rebuild that changed something (a lagged update stream,
+the sweep every 10 minutes), after `rooms_resync` and after
+`refresh_rooms`. The UI keeps the rooms by id and drops what `order` no
+longer names; room ids are stable across streams, so a `full` event
+needs no new row for a room that did not change. An event of an earlier
+stream is old and dropped; one that skips a `seq`, comes from a later
+stream before its full one, or names a room the UI does not have, is not
+applied, and the UI sends `rooms_resync` (once, until a full event
+comes). Until 0.8.2 (version 3) `rooms` carried the whole list as an
+array each time.
 
 ### Timeline events
 `timeline` and `thread_timeline` come on every change of the open
