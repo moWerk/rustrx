@@ -182,6 +182,8 @@ QtObject {
     readonly property int readScanMs: 400
     // the emoji panel slides in and out
     readonly property int panelSlideMs: 250
+    // the main page's menus slide out from under the tabs and back this fast
+    readonly property int menuSlideMs: 200
     // the chat's place is put back once the keyboard is still: the first
     // wait, then the wait after each of its steps
     readonly property int anchorFirstMs: 300
