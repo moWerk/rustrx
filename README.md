@@ -182,6 +182,7 @@ its own, and shows them apart or all in one list.
 ## How it is built
 
 [review-and-architecture-hints.md](review-and-architecture-hints.md) is the map for reviewers.
+[security-review-guide.md](security-review-guide.md) is where a security review starts.
 
 `core/` is a Rust crate that wraps matrix-rust-sdk behind six C functions
 (`core/src/lib.rs`). Commands go in as JSON, events come back as JSON on one
