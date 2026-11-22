@@ -118,6 +118,17 @@ def test_every_emitted_event_is_handled():
     assert not set(emitted_events()) - handled_events()
 
 
+def test_every_recovery_key_emitter_sends_the_field_the_ui_reads():
+    """The dialog reads "recovery_key"; a reset that sent "key" showed an
+    empty recovery key. Planted-bug: send "key" in recovery_reset."""
+    ui = read("src/Rustrx.cpp")
+    assert 'ev.value("recovery_key")' in ui
+    emits = [m for f in RUST for m in re.findall(r'json!\(\{"ev": "recovery_key"[^}]*\}', f.read_text())]
+    assert emits
+    for e in emits:
+        assert '"recovery_key": ' in e[len('json!({"ev": "recovery_key"'):], e
+
+
 def test_every_handled_event_is_emitted():
     """A handler for an event the core never sends is a renamed event or
     dead code. Planted-bug: rename the "rooms" dispatch in Rustrx.cpp."""
