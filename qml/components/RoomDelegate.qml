@@ -60,7 +60,10 @@ ListItem {
         counted = glowing
         app.favGlowRows += glowing ? 1 : -1
     }
-    Component.onCompleted: if (glowing && !counted) { counted = true; app.favGlowRows += 1 }
+    Component.onCompleted: {
+        if (glowing && !counted) { counted = true; app.favGlowRows += 1 }
+        if (!app.perfDelegateSeen) { app.perfDelegateSeen = true; rustrx.perf("delegate") }
+    }
     Component.onDestruction: if (counted) app.favGlowRows -= 1
     // the band: the page's whole width, brightest in the row's middle
     // (3 % at rest, 12 % at the height of a breath), fading to nothing
@@ -106,8 +109,10 @@ ListItem {
         ListView.view.currentIndex = index   // the list keeps this row in view on return
         if (model.is_space)
             pageStack.push(Qt.resolvedUrl("../pages/SpacePage.qml"), { spaceId: model.room_id, spaceName: model.name })
-        else
+        else {
+            rustrx.perf("room_push")
             pageStack.push(Qt.resolvedUrl("../pages/RoomPage.qml"), { roomId: model.room_id, roomName: model.name })
+        }
     }
 
     // the room's picture, or its initial where it has none

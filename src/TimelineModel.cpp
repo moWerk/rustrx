@@ -15,8 +15,10 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "TimelineModel.h"
+#include "Perf.h"
 #include "Twemoji.h"
 
+#include <QElapsedTimer>
 #include <QImageReader>
 #include <QRegularExpression>
 #include <QSet>
@@ -674,6 +676,9 @@ QVariantMap TimelineModel::get(int row) const
 // (a reset used to throw a reader back to the newest message).
 void TimelineModel::setItems(const QVariantList &items)
 {
+    QElapsedTimer took;
+    took.start();
+    int removed = 0, moved = 0, inserted = 0, changed = 0;
     QVariantList target;
     target.reserve(items.size());
     for (int i = items.size() - 1; i >= 0; --i)
@@ -695,6 +700,7 @@ void TimelineModel::setItems(const QVariantList &items)
     for (int i = m_items.size() - 1; i >= 0; --i) {
         if (!wanted.contains(idOf(m_items.at(i)))) {
             forget(m_items.at(i));
+            ++removed;
             beginRemoveRows(QModelIndex(), i, i);
             m_items.removeAt(i);
             endRemoveRows();
@@ -705,6 +711,7 @@ void TimelineModel::setItems(const QVariantList &items)
     auto update = [&](int i) {
         if (m_items.at(i) == target.at(i))
             return;
+        ++changed;
         const QVector<int> roles = changedRoles(m_items.at(i).toMap(), target.at(i).toMap());
         forget(m_items.at(i));
         m_items[i] = target.at(i);
@@ -731,12 +738,14 @@ void TimelineModel::setItems(const QVariantList &items)
             beginMoveRows(QModelIndex(), from, from, QModelIndex(), i);
             m_items.move(from, i);
             endMoveRows();
+            ++moved;
             update(i);
         } else {
             forget(target.at(i));
             beginInsertRows(QModelIndex(), i, i);
             m_items.insert(i, target.at(i));
             endInsertRows();
+            ++inserted;
             if (!askAll)
                 ask << i;
         }
@@ -750,6 +759,9 @@ void TimelineModel::setItems(const QVariantList &items)
     }
     if (m_items.size() != before)
         emit countChanged();
+    qCDebug(Perf::category).noquote().nospace() << "perf: set_items items=" << m_items.size() << " changed=" << changed
+            << " inserted=" << inserted << " removed=" << removed << " moved=" << moved
+            << " us=" << took.nsecsElapsed() / 1000;
 }
 
 void TimelineModel::setMediaPath(const QString &eventId, bool thumb, const QString &path)

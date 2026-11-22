@@ -28,6 +28,7 @@
 #include "CallRoute.h"
 #include "CallState.h"
 #include "Keys.h"
+#include "Perf.h"
 #include "Wipe.h"
 #include "rustrx_core.h"
 #include <sailfishapp.h>
@@ -159,7 +160,9 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     connect(m_media, &Media::shrinkingChanged, this, &Rustrx::shrinkingVideosChanged);
     // the first account's push; startAccount wires it and makes the others'
     m_push = new UnifiedPush(dataDir, this);
+    Perf::mark("unifiedpush");
     m_voip = new Voip(this);
+    Perf::mark("voip");
     // a call's events go to the account it is on
     connect(m_voip, &Voip::command, this, [this](const QVariantMap &cmd) { commandTo(m_voipKey, cmd); });
     m_voip->setRelayOnly(callsRelayOnly());
@@ -196,6 +199,15 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
         command({ { "cmd", "fetch_emote" }, { "mxc", mxc } });
     });
     m_since.start();
+    m_settle = new QTimer(this);
+    m_settle->setSingleShot(true);
+    m_settle->setInterval(Keys::kPerfSettleMs);
+    connect(m_settle, &QTimer::timeout, this, [this]() {
+        Perf::mark("settled", Perf::ms() - Keys::kPerfSettleMs, QStringLiteral("rooms=%1").arg(m_settleCount));
+        Perf::summary();
+        m_settle->deleteLater();
+        m_settle = nullptr;
+    });
     QDir().mkpath(dataDir);
     // the store's key from sailfish-secrets, if it works here; without it the
     // store stays unencrypted (community ports without sailfish-secrets)
@@ -237,7 +249,9 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
         startAccount(key, more.filePath(QString::number(key)));
     if (Account *last = account(m_settings.value(QLatin1String(Keys::kShownAccount), 0).toInt()))
         m_cur = last;
-    qInfo().noquote() << "startup:" << m_accounts.size() << "accounts, cores started after" << m_since.elapsed() << "ms";
+    qInfo().noquote() << "startup:" << m_accounts.size() << "accounts, cores started after" << m_since.elapsed() << "ms,"
+                      << Perf::ms() << "ms since main";
+    Perf::mark("cores");
 
     QDBusConnection bus = QDBusConnection::sessionBus();
     // the share sheet calls /share/<method>, the method named in the desktop
@@ -668,6 +682,28 @@ void Rustrx::shareTo(int key, const QString &roomId, const QStringList &files, c
         commandTo(key, { { "cmd", "send_text" }, { "room_id", roomId }, { "body", text } });
 }
 
+void Rustrx::perf(const QString &step)
+{
+    // a room's steps are no start-up steps: a line of their own
+    if (step.startsWith(QLatin1String("room_"))) {
+        qCDebug(Perf::category).noquote().nospace() << "perf: " << step << " t=" << Perf::ms()
+                << " open_ms=" << (m_roomPerf.isValid() ? m_roomPerf.elapsed() : -1);
+        return;
+    }
+    Perf::mark(step.toLatin1().constData());
+}
+
+// the line before setItems' own: what the core sent and how long it waited
+void Rustrx::perfEvent(const QVariantMap &ev, const char *what) const
+{
+    if (!Perf::on())
+        return;
+    qCDebug(Perf::category).noquote().nospace() << "perf: " << what << " t=" << Perf::ms()
+            << " items=" << ev.value("items").toList().size() << " bytes=" << ev.value("perf_bytes").toInt()
+            << " parse_us=" << ev.value("perf_parse_us").toLongLong()
+            << " queued_ms=" << Perf::ms() - ev.value("perf_rx").toLongLong();
+}
+
 QString Rustrx::coreVersion() const
 {
     return QString::fromUtf8(rustrx_version());
@@ -676,7 +712,12 @@ QString Rustrx::coreVersion() const
 // tokio thread: parse here, hand the map to the GUI thread
 void Rustrx::eventCallback(void *ctx, const char *json)
 {
-    const QJsonDocument doc = QJsonDocument::fromJson(QByteArray(json));
+    const bool perf = Perf::on();
+    QElapsedTimer parse;
+    if (perf)
+        parse.start();
+    const QByteArray raw(json);
+    const QJsonDocument doc = QJsonDocument::fromJson(raw);
     if (!doc.isObject())
         return;
     QMutexLocker lock(&s_lock);
@@ -686,6 +727,21 @@ void Rustrx::eventCallback(void *ctx, const char *json)
     // whose core it came from: its account (fixed from its start on)
     QVariantMap ev = doc.object().toVariantMap();
     ev.insert(QStringLiteral("account"), static_cast<const Account *>(ctx)->key);
+    const QString type = ev.value(QStringLiteral("ev")).toString();
+    if (type == QLatin1String("rooms")) {
+        static QAtomicInt seen;
+        if (!seen.load() && seen.testAndSetRelaxed(0, 1))
+            Perf::mark("rooms_received", -1, QStringLiteral("account=%1").arg(static_cast<const Account *>(ctx)->key));
+    }
+    // the big events carry their size, parse time and arrival for handleEvent's perf: lines
+    if (perf && (type == QLatin1String("rooms") || type == QLatin1String("timeline")
+                 || type == QLatin1String("thread_timeline"))) {
+        ev.insert(QStringLiteral("perf_bytes"), raw.size());
+        ev.insert(QStringLiteral("perf_parse_us"), parse.nsecsElapsed() / 1000);
+        if (type == QLatin1String("rooms"))
+            ev.insert(QStringLiteral("perf_hash"), qHash(raw));
+        ev.insert(QStringLiteral("perf_rx"), Perf::ms());
+    }
     self->m_handleEvent.invoke(self, Qt::QueuedConnection, Q_ARG(QVariantMap, ev));
 }
 
@@ -876,6 +932,9 @@ void Rustrx::probeServer(const QString &user, const QString &homeserver)
 void Rustrx::openRoom(const QString &roomId)
 {
     if (m_openRoomId != roomId) {
+        m_roomPerf.start();
+        m_roomPerfStage = 1;
+        qCDebug(Perf::category).noquote().nospace() << "perf: room_open t=" << Perf::ms() << " room=" << roomId;
         m_timeline->clear();
         m_openRoomId = roomId;
         emit openRoomChanged();
@@ -1031,6 +1090,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         const QString line = ev.value("line").toString();
         if (line.contains(QLatin1String(" WARN ")) || line.contains(QLatin1String(" ERROR ")))
             qWarning().noquote() << "core:" << line;
+        else if (line.contains(QLatin1String(" rustrx::perf: ")))
+            qCDebug(Perf::category).noquote() << "core:" << line;
         else
             qInfo().noquote() << "core:" << line;
         return;
@@ -1040,7 +1101,8 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         return;
     if (type == QLatin1String("ready") || type == QLatin1String("logged_in") || type == QLatin1String("sync_state")
             || (type == QLatin1String("rooms") && a->firstRooms))
-        qInfo().noquote() << "startup:" << type << "account" << a->key << "after" << m_since.elapsed() << "ms";
+        qInfo().noquote() << "startup:" << type << "account" << a->key << "after" << m_since.elapsed() << "ms,"
+                          << Perf::ms() << "ms since main";
     if ((type == QLatin1String("ready") || type == QLatin1String("logged_in"))
             && ev.value("proto").toInt() != Keys::kProto)
         qWarning() << "core speaks protocol" << ev.value("proto").toInt() << "the UI expects" << Keys::kProto;
@@ -1051,8 +1113,21 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     if (type == QLatin1String("server_info")) {
         emit serverInfo(ev);
     } else if (type == QLatin1String("timeline")) {
-        if (ev.value("room_id").toString() == m_openRoomId)
+        if (ev.value("room_id").toString() == m_openRoomId) {
+            const int before = m_timeline->rowCount();
+            perfEvent(ev, "timeline");
             m_timeline->setItems(ev.value("items").toList());
+            if (m_roomPerfStage == 1) {
+                m_roomPerfStage = 2;
+                qCDebug(Perf::category).noquote().nospace() << "perf: room_snapshot t=" << Perf::ms()
+                        << " open_ms=" << m_roomPerf.elapsed() << " items=" << ev.value("items").toList().size();
+            }
+            if (m_roomPerfStage == 2 && before == 0 && m_timeline->rowCount() > 0) {
+                m_roomPerfStage = 0;
+                qCDebug(Perf::category).noquote().nospace() << "perf: room_rows t=" << Perf::ms()
+                        << " open_ms=" << m_roomPerf.elapsed() << " rows=" << m_timeline->rowCount();
+            }
+        }
     } else if (type == QLatin1String("media")) {
         if (ev.value("exported").toBool())
             emit mediaExported(ev.value("event_id").toString(), ev.value("path").toString());
@@ -1071,8 +1146,10 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     } else if (type == QLatin1String("thread_list")) {
         emit threadList(ev.value("room_id").toString(), ev.value("threads").toList(), ev.value("loading").toBool());
     } else if (type == QLatin1String("thread_timeline")) {
-        if (ev.value("thread_root").toString() == m_threadRoot)
+        if (ev.value("thread_root").toString() == m_threadRoot) {
+            perfEvent(ev, "thread_timeline");
             m_thread->setItems(ev.value("items").toList());
+        }
     } else if (type == QLatin1String("space_rooms")) {
         emit spaceRooms(ev.value("space_id").toString(), ev.value("rooms").toList(), ev.value("loading").toBool());
     } else if (type == QLatin1String("room_preview")) {
@@ -1084,6 +1161,9 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     } else if (type == QLatin1String("calls_allowed")) {
         emit callsAllowed(ev.value("room_id").toString());
     } else if (type == QLatin1String("image_packs")) {
+        if (ev.value("room_id").toString() == m_openRoomId)
+            qCDebug(Perf::category).noquote().nospace() << "perf: room_packs t=" << Perf::ms()
+                    << " open_ms=" << m_roomPerf.elapsed() << " packs=" << ev.value("packs").toList().size();
         emit imagePacks(ev.value("room_id").toString(), ev.value("packs").toList());
     } else if (type == QLatin1String("emote_added")) {
         emit emoteAdded(ev.value("shortcode").toString());
@@ -1338,11 +1418,33 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
         const bool first = a->firstRooms;
         a->firstRooms = false;
         a->lastRooms = ev.value("rooms").toList();
+        QElapsedTimer apply;
+        apply.start();
         a->lists->setRooms(a->lastRooms);
+        const qint64 listsUs = apply.nsecsElapsed() / 1000;
         refreshMerged();
+        const qint64 mergedUs = apply.nsecsElapsed() / 1000 - listsUs;
         refreshAllTargets();
-        if (first && shown)
+        if (Perf::on()) {
+            const uint hash = ev.value("perf_hash").toUInt();
+            qCDebug(Perf::category).noquote().nospace() << "perf: rooms t=" << Perf::ms() << " account=" << a->key
+                    << " rooms=" << a->lastRooms.size() << " bytes=" << ev.value("perf_bytes").toInt()
+                    << " parse_us=" << ev.value("perf_parse_us").toLongLong()
+                    << " queued_ms=" << Perf::ms() - ev.value("perf_rx").toLongLong()
+                    << " lists_us=" << listsUs << " merged_us=" << mergedUs
+                    << " targets_us=" << apply.nsecsElapsed() / 1000 - listsUs - mergedUs
+                    << " same=" << (hash == a->perfHash ? 1 : 0) << " merged_view=" << (m_mergedView ? 1 : 0);
+            a->perfHash = hash;
+        }
+        if (first && shown) {
+            Perf::mark("rooms_applied", -1, QStringLiteral("rooms=%1").arg(a->lastRooms.size()));
             emit roomsLoadedChanged();
+        }
+        // settled: the shown list's length unchanged for kPerfSettleMs (the window's start only)
+        if (shown && m_settle && !m_handover.standIn() && !m_handover.pushWake() && a->lastRooms.size() != m_settleCount) {
+            m_settleCount = a->lastRooms.size();
+            m_settle->start();
+        }
     } else if (type == QLatin1String("knock_requests")) {
         a->lists->setKnockRequests(ev);
     } else if (type == QLatin1String("reply_sent")) {

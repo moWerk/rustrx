@@ -78,13 +78,19 @@ impl Core {
     /// The packs offered in a room: the user's own, the ones the user
     /// enabled everywhere, the room's own. Answered by "image_packs".
     pub(crate) async fn image_packs(&'static self, room_id: &str) -> Result<()> {
+        let t = std::time::Instant::now();
+        // perf: the requests made and the bytes they brought
+        let (mut requests, mut bytes, mut state_events) = (2, 0, 0);
         let client = self.client().await?;
         let account = client.account();
         let mut packs = Vec::new();
 
         let user = account.fetch_account_data(GlobalAccountDataEventType::from(USER_EMOTES)).await;
         match user {
-            Ok(Some(raw)) => packs.extend(pack_json("user", "user", &raw_value(&raw))),
+            Ok(Some(raw)) => {
+                bytes += raw.json().get().len();
+                packs.extend(pack_json("user", "user", &raw_value(&raw)))
+            }
             Ok(None) => {}
             Err(e) => tracing::info!("packs: own pack: {e}"),
         }
@@ -92,6 +98,7 @@ impl Core {
         // other rooms' packs the user turned on for every room
         let mut seen = std::collections::HashSet::new();
         if let Ok(Some(raw)) = account.fetch_account_data(GlobalAccountDataEventType::from(EMOTE_ROOMS)).await {
+            bytes += raw.json().get().len();
             let v = raw_value(&raw);
             if let Some(rooms) = v.get("rooms").and_then(Value::as_object) {
                 for (rid, keys) in rooms {
@@ -99,8 +106,10 @@ impl Core {
                     for key in keys.as_object().map(|k| k.keys().cloned().collect::<Vec<_>>()).unwrap_or_default() {
                         let request = get_state_event_for_key::v3::Request::new(
                             rid.clone(), StateEventType::from(ROOM_EMOTES), key.clone());
+                        requests += 1;
                         match client.send(request).await {
                             Ok(r) => {
+                                bytes += r.event_or_content.get().len();
                                 let content: Value = serde_json::from_str(r.event_or_content.get()).unwrap_or(Value::Null);
                                 if let Some(p) = pack_json(&format!("{rid}/{key}"), "global", &content) {
                                     seen.insert(format!("{rid}/{key}"));
@@ -116,9 +125,12 @@ impl Core {
 
         // the room's own packs (one per state key)
         let room = self.room(room_id).await?;
+        requests += 1;
         match client.send(get_state_events::v3::Request::new(room.room_id().to_owned())).await {
             Ok(r) => {
+                state_events = r.room_state.len();
                 for ev in r.room_state {
+                    bytes += ev.json().get().len();
                     let v = raw_value(&ev);
                     if v.get("type").and_then(Value::as_str) != Some(ROOM_EMOTES) {
                         continue;
@@ -137,6 +149,8 @@ impl Core {
         }
 
         tracing::info!(room = %room_id, packs = packs.len(), "packs");
+        tracing::debug!(target: "rustrx::perf", packs = packs.len(), requests, bytes, state_events,
+                        ms = t.elapsed().as_millis() as u64, "image_packs");
         self.emit(json!({"ev": "image_packs", "room_id": room_id, "packs": packs}));
         Ok(())
     }

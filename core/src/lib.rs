@@ -44,8 +44,23 @@ impl Emitter {
         if !LIVE.load(Ordering::Acquire) {
             return;
         }
+        // perf: the big events' size, their serialising and the UI's parse
+        // (never "log": its line would come back here)
+        let perf = tracing::enabled!(target: "rustrx::perf", tracing::Level::DEBUG)
+            && matches!(value["ev"].as_str(), Some("timeline" | "thread_timeline" | "rooms" | "image_packs" | "members"));
+        let t = perf.then(std::time::Instant::now);
         if let Ok(s) = CString::new(value.to_string()) {
+            let ser = t.map(|t| t.elapsed());
             (self.cb)(self.ctx.0, s.as_ptr());
+            if let (Some(t), Some(ser)) = (t, ser) {
+                let n = ["items", "rooms", "packs", "members"]
+                    .iter()
+                    .find_map(|k| value[*k].as_array().map(Vec::len))
+                    .unwrap_or(0);
+                tracing::debug!(target: "rustrx::perf", ev = value["ev"].as_str().unwrap_or(""), n,
+                                bytes = s.as_bytes().len(), ser_us = ser.as_micros() as u64,
+                                callback_us = (t.elapsed() - ser).as_micros() as u64, "emit");
+            }
         }
     }
 }
@@ -155,8 +170,10 @@ pub extern "C" fn rustrx_start(data_dir: *const c_char, cb: EventCallback, ctx: 
     let dir = unsafe { CStr::from_ptr(data_dir) }.to_string_lossy().into_owned();
     // The sandbox drops stderr, so log lines travel as events and the UI
     // hands them to the journal. Once per process.
-    let filter = tracing_subscriber::EnvFilter::try_from_env("RUSTRX_LOG")
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,rustrx=info,matrix_sdk_crypto::backups=error"));
+    // RUSTRX_PERF=1 (set by the app for its perf-log flag too): the perf: lines
+    let perf = if std::env::var("RUSTRX_PERF").as_deref() == Ok("1") { ",rustrx::perf=debug" } else { "" };
+    let rules = std::env::var("RUSTRX_LOG").unwrap_or_else(|_| "warn,rustrx=info,matrix_sdk_crypto::backups=error".into());
+    let filter = tracing_subscriber::EnvFilter::new(format!("{rules}{perf}"));
     let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_ansi(false)

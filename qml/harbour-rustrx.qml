@@ -106,6 +106,8 @@ ApplicationWindow {
     // together: three seconds, while a glowing row is shown and Rustrx is
     // in front (rows count themselves in favGlowRows)
     property int favGlowRows: 0
+    // the first RoomDelegate marks perf: delegate, the others only read this
+    property bool perfDelegateSeen
     property real favGlow: 0
     SequentialAnimation on favGlow {
         running: app.highlightFavs && app.favGlowRows > 0 && Qt.application.active
@@ -862,6 +864,7 @@ ApplicationWindow {
             pageStack.push(Qt.resolvedUrl("pages/SpacePage.qml"), { spaceId: roomId, spaceName: info.name || "" }, PageStackAction.Immediate)
             return
         }
+        rustrx.perf("room_push")
         pageStack.push(Qt.resolvedUrl("pages/RoomPage.qml"),
                        { roomId: roomId, roomName: rustrx.roomInfo(roomId).name || "" }, PageStackAction.Immediate)
         // a call's page went with the pop: back on top of the room
@@ -876,6 +879,7 @@ ApplicationWindow {
     Connections { target: debugMinimize; onValueChanged: if (debugMinimize.value === true) app.deactivate() }
 
     Component.onCompleted: {
+        rustrx.perf("qml_completed")
         // the old "Round avatars" switch, off: square corners, once
         if (!cfg.roundAvatars) { cfg.avatarCorners = 0; cfg.roundAvatars = true }
         applyClosedMode(); route()

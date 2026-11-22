@@ -183,11 +183,13 @@ impl Core {
         let mut started = Some(started);
         let mut reactions_changed = state_reactions.as_ref().map(|s| s.subscribe());
         loop {
+            let pass = std::time::Instant::now();
             Self::fetch_replied(timeline, &items, &mut replies_asked);
             if let Some(shared) = &state_reactions {
                 Self::fetch_state_reactions(room, shared, &items);
             }
             Self::receipt_names(room, &items, &mut names).await;
+            let prep = pass.elapsed();
             let mut json = items_json(&items, own, &names);
             if let Some(shared) = &state_reactions {
                 shared.put_into(&mut json, own.as_str());
@@ -207,6 +209,8 @@ impl Core {
                     }
                 }
             }
+            tracing::debug!(target: "rustrx::perf", items = items.len(), prep_us = prep.as_micros() as u64,
+                            json_us = (pass.elapsed() - prep).as_micros() as u64, "timeline_pass");
             emit(json);
             if let Some(started) = started.take() {
                 started();
@@ -330,6 +334,7 @@ impl Core {
     }
 
     pub(crate) async fn open_room(&'static self, room_id: &str) -> Result<()> {
+        let t = std::time::Instant::now();
         let seq = {
             let mut st = self.state.lock().await;
             st.open_seq += 1;
@@ -343,6 +348,7 @@ impl Core {
                                           "text": draft.map(|d| d.plain_text).unwrap_or_default()})),
             Err(e) => tracing::warn!("draft: not loaded: {e}"),
         }
+        let draft = t.elapsed();
         let own = client.user_id().context("no user id")?.to_owned();
         let room_id = room.room_id().to_owned();
         // bound first: the lock is not held across the subscription
@@ -353,6 +359,8 @@ impl Core {
         // every message, thread replies too (marked by their thread_root);
         // the thread's page shows a thread alone, its root a summary
         let timeline = Self::build_timeline(&room, TimelineFocus::Live { hide_threaded_events: false }, true).await?;
+        tracing::debug!(target: "rustrx::perf", draft_ms = draft.as_millis() as u64,
+                        built_ms = t.elapsed().as_millis() as u64, "open_room");
         let mut st = self.state.lock().await;
         if st.open_seq != seq {
             // a close or another open came while this one was building

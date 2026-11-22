@@ -158,7 +158,7 @@ impl Core {
             }
         }
         tracing::info!(ms = t.elapsed().as_millis() as u64, rooms = cache.len(), "startup: first room list");
-        self.emit(json!({"ev": "rooms", "rooms": sorted_rooms(cache.values().cloned().collect())}));
+        self.emit_rooms_list(&cache, t, true, cache.len());
         Self::listen_latest(&client, &mut seen).await;
         self.watch_knocks(&client, None, &mut seen).await;
         let mut avatars_new = self.fetch_avatars(&client, None, &mut seen).await;
@@ -191,18 +191,22 @@ impl Core {
             if last_full.elapsed() > ROOM_LIST_FULL_REBUILD {
                 full = true;
             }
+            let built = std::time::Instant::now();
+            let mut rebuilt = 0;
             let settings = client.notification_settings().await;
             if full {
                 cache.clear();
                 for room in client.rooms().into_iter().filter(crate::serialize::listed) {
                     cache.insert(room.room_id().to_owned(), room_json(&room, &avatar_dir, &settings).await);
                 }
+                rebuilt = cache.len();
                 last_full = std::time::Instant::now();
             } else {
                 for id in &changed {
                     match client.get_room(id).filter(crate::serialize::listed) {
                         Some(room) => {
                             cache.insert(id.clone(), room_json(&room, &avatar_dir, &settings).await);
+                            rebuilt += 1;
                         }
                         None => {
                             cache.remove(id);
@@ -210,7 +214,7 @@ impl Core {
                     }
                 }
             }
-            self.emit(json!({"ev": "rooms", "rooms": sorted_rooms(cache.values().cloned().collect())}));
+            self.emit_rooms_list(&cache, built, full, rebuilt);
             Self::log_counts(&client);
             // only what changed is looked at again: on a full rebuild every
             // room, else the rooms the update named (the list's cost no
@@ -223,6 +227,17 @@ impl Core {
             self.watch_knocks(&client, only, &mut seen).await;
             avatars_new = self.fetch_avatars(&client, only, &mut seen).await;
         }
+    }
+
+    /// The cached rows sorted out as "rooms"; perf: how long the pass since
+    /// `built` took and how many rows it made anew.
+    fn emit_rooms_list(&self, cache: &HashMap<OwnedRoomId, Value>, built: std::time::Instant, full: bool, rebuilt: usize) {
+        let build = built.elapsed();
+        let rooms = sorted_rooms(cache.values().cloned().collect());
+        tracing::debug!(target: "rustrx::perf", full, rooms = cache.len(), rebuilt, reused = cache.len() - rebuilt,
+                        build_us = build.as_micros() as u64, sort_us = (built.elapsed() - build).as_micros() as u64,
+                        "rooms_build");
+        self.emit(json!({"ev": "rooms", "rooms": rooms}));
     }
 
     /// One journal line per room with anything unread: the server's counts

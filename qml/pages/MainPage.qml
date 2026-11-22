@@ -147,7 +147,7 @@ Page {
         onSeparateFavsChanged: page.buildTabs()
         onSeparateSpacesChanged: page.buildTabs()
     }
-    Component.onCompleted: buildTabs()
+    Component.onCompleted: { buildTabs(); rustrx.perf("mainpage") }
 
     // the filter menu under the tabs; it closes whenever this page is left
     property bool sortOpen

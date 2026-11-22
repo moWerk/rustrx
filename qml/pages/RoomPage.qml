@@ -389,6 +389,7 @@ Page {
             return
         }
         positioned = true
+        rustrx.perf("room_positioned")
         if (markerRow >= 0) {
             viewAt("readmarker", markerRow, ListView.Center)
         } else if (seekPages > 0) {

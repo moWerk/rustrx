@@ -239,6 +239,7 @@ impl Core {
 
     /// Answered by "members".
     pub(crate) async fn room_members(&self, room_id: &str) -> Result<()> {
+        let t = std::time::Instant::now();
         let room = self.room(room_id).await?;
         let members: Vec<Value> = room
             .members(RoomMemberships::ACTIVE | RoomMemberships::BAN)
@@ -256,6 +257,7 @@ impl Core {
                        "membership": m.membership().to_string()})
             })
             .collect();
+        tracing::debug!(target: "rustrx::perf", members = members.len(), ms = t.elapsed().as_millis() as u64, "room_members");
         self.emit(json!({"ev": "members", "room_id": room.room_id().as_str(), "members": members}));
         Ok(())
     }
@@ -376,6 +378,7 @@ impl Core {
 
     /// The whole room list once more: "rooms".
     pub(crate) async fn refresh_rooms(&self) -> Result<()> {
+        let t = std::time::Instant::now();
         let client = self.client().await?;
         let dir = self.data_dir.join(AVATAR_DIR);
         let settings = client.notification_settings().await;
@@ -383,6 +386,8 @@ impl Core {
         for room in client.rooms().into_iter().filter(crate::serialize::listed) {
             rooms.push(room_json(&room, &dir, &settings).await);
         }
+        tracing::debug!(target: "rustrx::perf", full = true, rooms = rooms.len(), rebuilt = rooms.len(), reused = 0,
+                        refresh = true, build_us = t.elapsed().as_micros() as u64, "rooms_build");
         self.emit(json!({"ev": "rooms", "rooms": sorted_rooms(rooms)}));
         Ok(())
     }

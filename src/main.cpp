@@ -40,6 +40,7 @@
 #include "Voip.h"
 #include "DebugLog.h"
 #include "FrameStats.h"
+#include "Perf.h"
 #include "KeyboardSlide.h"
 #include "Twemoji.h"
 #include <QSettings>
@@ -67,6 +68,7 @@ static bool waitForNameToGo(QDBusConnection &bus)
 
 int main(int argc, char *argv[])
 {
+    Perf::clock().start();
     // before any thread: few malloc arenas (Keys.h)
     mallopt(M_ARENA_MAX, Keys::kMallocArenas);
 
@@ -87,7 +89,16 @@ int main(int argc, char *argv[])
     app->setApplicationName(QStringLiteral("harbour-rustrx"));
     // the debug log (Settings): the app and the stand-in each their own file
     DebugLog::install(QLatin1String(standIn ? Keys::kLogBackground : pushWake ? Keys::kLogPush : Keys::kLogApp));
+    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    // the core reads the same variable for its own perf: lines
+    if (qgetenv(Keys::kEnvPerf) == "1" || QFile::exists(dataDir + QLatin1Char('/') + QLatin1String(Keys::kPerfFlag))) {
+        QLoggingCategory::setFilterRules(QStringLiteral("rustrx.perf.debug=true"));
+        qputenv(Keys::kEnvPerf, "1");
+    }
+    Perf::mark("main", 0);
+    Perf::mark("app");
     Twemoji::init(SailfishApp::pathTo(QStringLiteral("qml/twemoji")).toLocalFile());
+    Perf::mark("twemoji");
     DebugLog::setEnabled(QSettings(Rustrx::settingsFile(), QSettings::IniFormat).value(QLatin1String(Keys::kDebugLog), Keys::kDebugLogDefault).toBool());
 
     qmlRegisterUncreatableType<RoomModel>("Rustrx", 1, 0, "RoomModel", "owned by rustrx");
@@ -99,7 +110,6 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonType(QUrl::fromLocalFile(SailfishApp::pathTo(QStringLiteral("qml/singletons/Tunables.qml")).toLocalFile()),
                              "Rustrx", 1, 0, "Tunables");
 
-    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     // the stand-in is the fallback: not wanted while push works
     if (standIn && (!QFile::exists(Rustrx::backgroundFlagPath()) || UnifiedPush::activeOnDisk(dataDir)))
         return 0;
@@ -157,8 +167,10 @@ int main(int argc, char *argv[])
         }
     }
 
+    Perf::mark("bus");
     // ~/.local/share/harbour-rustrx/harbour-rustrx: session, store, media
     Rustrx rustrx(dataDir);
+    Perf::mark("rustrx");
     // at the end the core stops first, then the name (the store's lock)
     // goes, so the next Rustrx never opens a store this one still writes
     QObject::connect(app.data(), &QCoreApplication::aboutToQuit, [&bus, &rustrx]() {
@@ -173,6 +185,7 @@ int main(int argc, char *argv[])
     rustrx.firstPush()->exportConnector();
     if (!standIn)
         rustrx.takeHandover();
+    Perf::mark("connector");
     // before the window, so it outlives the QML that uses it
     VoiceRecorder voice;
 
@@ -186,6 +199,7 @@ int main(int argc, char *argv[])
     QScopedPointer<QObject> service(serviceComponent.create());
     if (!service)
         qWarning() << "Service.qml:" << serviceComponent.errors();
+    Perf::mark("service");
 
     if (pushWake) {
         // gone 30 s after the last push, after 2 minutes at the most
@@ -212,6 +226,13 @@ int main(int argc, char *argv[])
     KeyboardSlide keyboardSlide;
     // the window lives as long as the process (see Service.qml)
     QScopedPointer<QQuickView> view(SailfishApp::createView());
+    Perf::mark("view");
+    // the first frame is StartPage's (render thread, so direct and once)
+    static QAtomicInt framed;
+    QObject::connect(view.data(), &QQuickWindow::frameSwapped, view.data(), []() {
+        if (!framed.load() && framed.testAndSetRelaxed(0, 1))
+            Perf::mark("frame");
+    }, Qt::DirectConnection);
     view->engine()->setNetworkAccessManagerFactory(&localOnly);
     view->rootContext()->setContextProperty(QStringLiteral("rustrx"), &rustrx);
     view->rootContext()->setContextProperty(QStringLiteral("voice"), &voice);
@@ -219,6 +240,7 @@ int main(int argc, char *argv[])
     view->rootContext()->setContextProperty(QStringLiteral("service"), service.data());
     view->rootContext()->setContextProperty(QStringLiteral("appVersion"), QStringLiteral(APP_VERSION));
     view->setSource(SailfishApp::pathToMainQml());
+    Perf::mark("qml");
     // frame timing in the log, for comparing builds: RUSTRX_FRAMES=1
     if (qgetenv("RUSTRX_FRAMES") == "1")
         new FrameStats(view.data());
@@ -229,6 +251,7 @@ int main(int argc, char *argv[])
     });
     QObject::connect(&rustrx, &Rustrx::closeRequested, view.data(), &QWindow::close);
     view->show();
+    Perf::mark("show");
     const int rc = app->exec();
     // closed in background mode: the stand-in takes over (it waits for this
     // process to be gone)

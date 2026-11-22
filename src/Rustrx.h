@@ -35,6 +35,7 @@ class UnifiedPush;
 class Voip;
 class CallRoute;
 class CallState;
+class QTimer;
 
 // One account: its core (librustrx's number for it), its folder and the
 // state its events bring. Every account's core runs; the app shows one.
@@ -70,6 +71,8 @@ struct Account {
     bool restoring = false;
     // no room list of this login yet
     bool firstRooms = true;
+    // the last `rooms` text's hash, for perf: rooms same=
+    uint perfHash = 0;
     QString userId;
     QString homeserver;
     QString syncState = QStringLiteral("idle");
@@ -271,6 +274,8 @@ public:
     Q_INVOKABLE void openThread(const QString &roomId, const QString &root);
     Q_INVOKABLE void closeThread();
     QVariantList knockRequests() const;
+    // a start-up step from QML on the perf: clock (Perf.h)
+    Q_INVOKABLE void perf(const QString &step);
     QString coreVersion() const;
     bool downscaleImages() const;
     void setDownscaleImages(bool on);
@@ -654,6 +659,13 @@ private:
     TimelineModel *m_thread;
     QString m_threadRoot;
     QElapsedTimer m_since;   // start-up timing in the journal
+    // perf: lines of the room being opened: 1 until its first snapshot, 2 until rows show
+    void perfEvent(const QVariantMap &ev, const char *what) const;
+    QElapsedTimer m_roomPerf;
+    int m_roomPerfStage = 0;
+    // perf: settled, once per window start
+    QTimer *m_settle = nullptr;
+    int m_settleCount = -1;
 };
 
 #endif

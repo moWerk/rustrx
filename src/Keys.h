@@ -125,6 +125,11 @@ static const char kBackgroundFlag[] = "background";
 // in the data folder: push state, the dev command flag, the debug logs
 static const char kPushStateFile[] = "push.json";
 static const char kDevCommandsFlag[] = "dev-commands";
+// the perf: markers (Perf.h) on, as RUSTRX_PERF=1 does
+static const char kPerfFlag[] = "perf-log";
+static const char kEnvPerf[] = "RUSTRX_PERF";
+// the room list counts as settled once its length kept this long (perf: settled)
+static const int kPerfSettleMs = 500;
 static const char kLogDir[] = "logs";
 // in the cache folder: pictures prepared for sending, recordings, shares
 static const char kOutgoingDir[] = "outgoing";
