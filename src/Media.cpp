@@ -21,6 +21,7 @@
 #include "Png.h"
 
 #include <QDateTime>
+#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -28,11 +29,14 @@
 #include <QImageReader>
 #include <QMimeDatabase>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QRunnable>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QUrl>
+
+#include <limits>
 
 // pictures prepared for sending (scaled, thumbnails, avatars)
 static QString outgoingDir()
@@ -106,6 +110,32 @@ void Media::setDownscaleImages(bool on)
         return;
     m_settings->setValue(QLatin1String(Keys::kDownscaleImages), on);
     emit settingsChanged();
+}
+
+int Media::videoTier() const
+{
+    return qBound(0, m_settings->value(QLatin1String(Keys::kVideoTier), Keys::kVideoTierDefault).toInt(),
+                  int(sizeof Keys::kVideoTierEdge / sizeof *Keys::kVideoTierEdge));
+}
+
+void Media::setVideoTier(int tier)
+{
+    tier = qBound(0, tier, int(sizeof Keys::kVideoTierEdge / sizeof *Keys::kVideoTierEdge));
+    if (tier == videoTier())
+        return;
+    m_settings->setValue(QLatin1String(Keys::kVideoTier), tier);
+    emit settingsChanged();
+}
+
+QVariantMap Media::shrinking() const
+{
+    QVariantMap rooms;
+    for (const Outgoing &o : m_outgoing) {
+        const QString room = o.cmd.value("room_id").toString();
+        if (o.shrink && !rooms.contains(room))
+            rooms.insert(room, o.percent);
+    }
+    return rooms;
 }
 
 int Media::metadataLevel() const
@@ -186,12 +216,13 @@ void Media::setOwnAvatar(const QString &path)
         emit command({{"cmd", "set_own_avatar"}, {"path", out}});
 }
 
-// prepared files the core has long read: away, before they pile up
-static void sweepOutgoing()
+// prepared files the core has long read: away, before they pile up; those
+// of sends still waiting (behind a long video's re-encode) stay
+static void sweepOutgoing(const QSet<QString> &waiting)
 {
     const QDateTime before = QDateTime::currentDateTime().addMSecs(-Keys::kOutgoingKeepMs);
     for (const QFileInfo &f : QDir(outgoingDir()).entryInfoList(QDir::Files | QDir::NoDotAndDotDot)) {
-        if (f.lastModified() < before)
+        if (f.lastModified() < before && !waiting.contains(f.filePath()))
             QFile::remove(f.filePath());
     }
 }
@@ -199,7 +230,10 @@ static void sweepOutgoing()
 void Media::sendFile(const QString &roomId, const QString &path, const QString &caption,
                      const QString &threadRoot, int account)
 {
-    sweepOutgoing();
+    QSet<QString> waiting;
+    for (const Outgoing &o : m_outgoing)
+        waiting << o.cmd.value("path").toString() << o.cmd.value("thumb_path").toString();
+    sweepOutgoing(waiting);
     const QString p = localPath(path);
     QVariantMap cmd{{"cmd", "send_file"}, {"room_id", roomId}, {"path", p}};
     // taken off again by Rustrx, which sends it to that account
@@ -271,19 +305,140 @@ void Media::sendFile(const QString &roomId, const QString &path, const QString &
     cmd.insert("mime", mime);
     m_outgoing.append({ cmd, nullptr });
     if (mime.startsWith(QLatin1String("video/"))) {
-        const QString stem = outgoingDir() + "/" + QString::number(QDateTime::currentMSecsSinceEpoch());
+        // several shared at once come within the same millisecond
+        const QString stem = outgoingDir() + "/" + QString::number(QDateTime::currentMSecsSinceEpoch())
+                + "-v" + QString::number(++m_lastVideo);
+        Outgoing &item = m_outgoing.last();
+        item.original = p;
         if (level >= 1) {
-            // a copy is stripped, and the send waits for it (videoStripped)
+            // a copy is stripped, and the send waits for it (videoStripped);
+            // a smaller one is made from that copy, as GStreamer carries the
+            // title and other tags over into the WebM
             const int id = ++m_lastStrip;
-            m_outgoing.last().strip = id;
+            item.strip = id;
             const QString suffix = QFileInfo(p).suffix();
             const QString out = stem + "-" + QString::number(id) + "." + (suffix.isEmpty() ? QStringLiteral("mp4") : suffix);
             m_strips.start(new VideoStrip(this, id, p, out, stem, level));
-        } else {
-            prepareVideo(m_outgoing.last(), stem);
+        } else if (!shrinkVideo(item, stem)) {
+            prepareVideo(item, stem, p);
         }
     }
     sendInOrder();
+}
+
+// The video re-encoded smaller, in VP8 and Opus (WebM): every phone can do
+// that in software, faster than the video plays at 720p. Upright
+// (videoflip reads the rotation, so the target is the shape Mp4::read
+// gives) and never larger than it was. If it fails, takes too long or the
+// tool is missing, the video goes as it is (stripped, when it was).
+bool Media::shrinkVideo(Outgoing &item, const QString &stem)
+{
+    const int tier = videoTier();
+    if (tier <= 0)
+        return false;
+    const QString in = item.cmd.value("path").toString();
+    QFile file(in);
+    if (!file.open(QIODevice::ReadOnly))
+        return false;
+    // qtdemux reads what Mp4.h reads; anything else goes as it is
+    const Mp4::Info info = Mp4::read(file);
+    if (info.width <= 0 || info.height <= 0 || info.durationMs <= 0)
+        return false;
+    const int edge = Keys::kVideoTierEdge[tier - 1];
+    const int bitrate = Keys::kVideoTierBitrate[tier - 1];
+    // already this small: a re-encode would only lose quality
+    const qint64 sound = info.audio ? Keys::kVideoShrinkAudioBitrate : 0;
+    if (file.size() * 8 * 1000 / info.durationMs <= bitrate + sound)
+        return false;
+    file.close();
+    const double scale = qMin(1.0, double(edge) / qMax(info.width, info.height));
+    auto even = [](double v) { return qMax(2, qRound(v / 2) * 2); };
+    const int w = even(info.width * scale);
+    const int h = even(info.height * scale);
+    const QString out = stem + "-small.webm";
+
+    // one argument per word: gst-launch escapes each one's spaces itself
+    QStringList args{
+        "-q", "filesrc", "location=" + in, "!", "qtdemux", "name=d",
+        "d.video_0", "!", "queue", "!", "decodebin", "force-sw-decoders=true", "!", "videoconvert", "!",
+        "videoflip", "video-direction=auto", "!", "videoscale", "!",
+        QString("video/x-raw,width=%1,height=%2,pixel-aspect-ratio=1/1").arg(w).arg(h), "!",
+        "videoconvert", "!", "progressreport", "update-freq=1", "!", "queue", "!",
+        "vp8enc", "deadline=1", "cpu-used=8", "threads=8", "end-usage=cbr",
+        "target-bitrate=" + QString::number(bitrate), "!",
+        "webmmux", "name=m", "!", "filesink", "location=" + out };
+    // only with a sound track: a branch without one waits for it forever
+    if (info.audio)
+        args << "d.audio_0" << "!" << "queue" << "!" << "decodebin" << "!" << "audioconvert" << "!"
+             << "audioresample" << "!" << "opusenc" << "bitrate=" + QString::number(Keys::kVideoShrinkAudioBitrate)
+             << "!" << "m.";
+
+    auto *proc = new QProcess(this);
+    item.shrink = proc;
+    const qint64 durationMs = info.durationMs;
+    auto done = [this, proc, in, out, stem, w, h, durationMs](bool ok) {
+        bool failed = false;
+        for (Outgoing &o : m_outgoing) {
+            if (o.shrink != proc)
+                continue;
+            o.shrink = nullptr;
+            const qint64 size = QFileInfo(out).size();
+            if (ok && size > 0 && size < QFileInfo(in).size()) {
+                o.cmd.insert("path", out);
+                o.cmd.insert("mime", QStringLiteral("video/webm"));
+                o.cmd.insert("w", w);
+                o.cmd.insert("h", h);
+                o.cmd.insert("duration_ms", durationMs);
+                // the stripped copy is not needed any more
+                if (in != o.original)
+                    QFile::remove(in);
+                // the frame from the original, which thumbnaild-video surely
+                // reads (a new JPEG, nothing of the file's metadata in it)
+                prepareVideo(o, stem, o.original);
+            } else {
+                QFile::remove(out);
+                if (!ok) {
+                    failed = true;
+                    qWarning() << "video not made smaller:" << proc->exitStatus() << proc->exitCode()
+                               << proc->errorString() << proc->readAllStandardError().right(400);
+                }
+                prepareVideo(o, stem, in);
+            }
+            break;
+        }
+        proc->deleteLater();
+        emit shrinkingChanged();
+        if (failed)
+            emit errorOccurred(QStringLiteral("send_file"), QStringLiteral("the video could not be made smaller, it goes as it is"));
+        sendInOrder();
+    };
+    connect(proc, static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(&QProcess::finished), this,
+            [done](int code, QProcess::ExitStatus status) { done(status == QProcess::NormalExit && code == 0); });
+    connect(proc, &QProcess::errorOccurred, this, [done](QProcess::ProcessError e) {
+        if (e == QProcess::FailedToStart)
+            done(false);
+    });
+    // progressreport's lines: "progressreport0 (00:00:05): 5 / 60 seconds ( 8.3 %)"
+    connect(proc, &QProcess::readyReadStandardOutput, this, [this, proc]() {
+        static const QRegularExpression seconds(QStringLiteral("(\\d+) / (\\d+) seconds"));
+        int percent = -1;
+        while (proc->canReadLine()) {
+            const QRegularExpressionMatch m = seconds.match(QString::fromLatin1(proc->readLine()));
+            if (m.hasMatch() && m.captured(2).toInt() > 0)
+                percent = qBound(0, m.captured(1).toInt() * 100 / m.captured(2).toInt(), 100);
+        }
+        for (Outgoing &o : m_outgoing) {
+            if (o.shrink == proc && percent >= 0 && o.percent != percent) {
+                o.percent = percent;
+                emit shrinkingChanged();
+            }
+        }
+    });
+    proc->start(QLatin1String(Keys::kVideoShrinkTool), args);
+    const qint64 limit = durationMs * Keys::kVideoShrinkFactor + Keys::kVideoShrinkSlackMs;
+    QTimer::singleShot(int(qMin(limit, qint64(std::numeric_limits<int>::max()))), proc, [proc]() { proc->kill(); });
+    emit shrinkingChanged();
+    return true;
 }
 
 void Media::videoStripped(int id, bool ok, const QString &out, const QString &stem)
@@ -294,7 +449,8 @@ void Media::videoStripped(int id, bool ok, const QString &out, const QString &st
         if (ok) {
             m_outgoing[i].strip = 0;
             m_outgoing[i].cmd.insert("path", out);
-            prepareVideo(m_outgoing[i], stem);
+            if (!shrinkVideo(m_outgoing[i], stem))
+                prepareVideo(m_outgoing[i], stem, out);
         } else {
             // never the original instead: it says what the setting keeps back
             // (a format Mp4.h does not know, a damaged file, a full disk)
@@ -309,7 +465,7 @@ void Media::videoStripped(int id, bool ok, const QString &out, const QString &st
 
 // videos go out the way other clients send them: with their size, their
 // length and a frame as thumbnail, so the other side shows a preview
-void Media::prepareVideo(Outgoing &item, const QString &stem)
+void Media::prepareVideo(Outgoing &item, const QString &stem, const QString &frameFrom)
 {
     QVariantMap &cmd = item.cmd;
     const QString path = cmd.value("path").toString();
@@ -355,13 +511,14 @@ void Media::prepareVideo(Outgoing &item, const QString &stem)
     // upright (the helper reads the rotation), within the picture thumbnail's box
     frame->start(QLatin1String(Keys::kVideoFrameTool),
                  { "-w", QString::number(Keys::kThumbEdge), "-h", QString::number(Keys::kThumbEdge),
-                   "-o", thumbPath, path });
+                   "-o", thumbPath, frameFrom });
     QTimer::singleShot(Keys::kVideoFrameMs, frame, [frame]() { frame->kill(); });
 }
 
 void Media::sendInOrder()
 {
-    while (!m_outgoing.isEmpty() && !m_outgoing.first().frame && !m_outgoing.first().strip)
+    while (!m_outgoing.isEmpty() && !m_outgoing.first().frame && !m_outgoing.first().strip
+           && !m_outgoing.first().shrink)
         emit command(m_outgoing.takeFirst().cmd);
 }
 

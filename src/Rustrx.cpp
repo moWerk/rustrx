@@ -156,6 +156,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     connect(m_media, &Media::errorOccurred, this, &Rustrx::errorOccurred);
     connect(m_media, &Media::emoteReady, this, &Rustrx::emoteReady);
     connect(m_media, &Media::settingsChanged, this, &Rustrx::settingsChanged);
+    connect(m_media, &Media::shrinkingChanged, this, &Rustrx::shrinkingVideosChanged);
     // the first account's push; startAccount wires it and makes the others'
     m_push = new UnifiedPush(dataDir, this);
     m_voip = new Voip(this);
@@ -475,6 +476,21 @@ int Rustrx::metadataLevel() const
 void Rustrx::setMetadataLevel(int level)
 {
     m_media->setMetadataLevel(level);
+}
+
+int Rustrx::videoTier() const
+{
+    return m_media->videoTier();
+}
+
+void Rustrx::setVideoTier(int tier)
+{
+    m_media->setVideoTier(tier);
+}
+
+QVariantMap Rustrx::shrinkingVideos() const
+{
+    return m_media->shrinking();
 }
 
 bool Rustrx::debugLog() const
@@ -939,7 +955,9 @@ void Rustrx::setOwnAvatar(const QString &path)
 void Rustrx::sendFile(const QString &roomId, const QString &path, const QString &caption,
                       const QString &threadRoot)
 {
-    m_media->sendFile(roomId, path, caption, threadRoot);
+    // the account named now: a video made smaller goes minutes later, when
+    // another account may be shown
+    m_media->sendFile(roomId, path, caption, threadRoot, m_cur->key);
 }
 
 void Rustrx::sendVoice(const QString &roomId, const QString &path, qint64 durationMs, const QString &caption)

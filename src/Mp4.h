@@ -12,7 +12,8 @@
 // the first video track's, turned when the track is rotated (the phone's
 // camera stores portrait videos sideways with a 90 degree matrix). Only
 // box headers are read until the header ("moov") is found, wherever it
-// sits; the picture data is skipped, not read.
+// sits; the picture data is skipped, not read. audio: some track's handler
+// is "soun", so a re-encode knows whether to take a sound track along.
 // strip() takes what a video says about itself out of the same header, in
 // place: nothing is moved, because the header points into the file by
 // offset; a box that goes becomes a "free" box of zeros of the same size.
@@ -22,6 +23,7 @@ struct Info {
     int width = 0;
     int height = 0;
     qint64 durationMs = -1;
+    bool audio = false;
 };
 
 namespace detail {
@@ -113,15 +115,24 @@ inline Info fromMoov(const QByteArray &b)
             const quint64 dur = v1 ? u64(b, s + 24) : u32(b, s + 16);
             if (scale > 0)
                 info.durationMs = qint64(dur * 1000 / scale);
-        } else if (type == "trak" && info.width == 0) {
+        } else if (type == "trak") {
             boxes(b, s, e, [&](const QByteArray &t2, int, int s2, int e2) {
-                if (t2 != "tkhd")
+                if (t2 == "mdia") {
+                    // hdlr: version and flags, pre_defined, then the handler type
+                    boxes(b, s2, e2, [&](const QByteArray &t3, int, int s3, int e3) {
+                        if (t3 == "hdlr" && s3 + 12 <= e3 && b.mid(s3 + 8, 4) == "soun")
+                            info.audio = true;
+                        return true;
+                    });
+                    return true;
+                }
+                if (t2 != "tkhd" || info.width > 0)
                     return true;
                 const bool v1 = quint8(b.at(s2)) == 1;
                 // the matrix, then width and height (16.16), at the box's end
                 const int matrix = s2 + (v1 ? 52 : 40);
                 if (matrix + 44 > e2)
-                    return false;
+                    return true;
                 const int w = int(u32(b, matrix + 36) >> 16);
                 const int h = int(u32(b, matrix + 40) >> 16);
                 if (w > 0 && h > 0) {
@@ -130,7 +141,8 @@ inline Info fromMoov(const QByteArray &b)
                     info.width = turned ? h : w;
                     info.height = turned ? w : h;
                 }
-                return false;
+                // on to mdia, which follows
+                return true;
             });
         }
         return true;

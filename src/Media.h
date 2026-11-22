@@ -50,6 +50,12 @@ public:
     // 1 the place, 2 all metadata (Keys::kMetadataLevel)
     int metadataLevel() const;
     void setMetadataLevel(int level);
+    // videos sent smaller: 0 as they are, 1 to 4 Large to Tiny (Keys::kVideoTierEdge)
+    int videoTier() const;
+    void setVideoTier(int tier);
+    // the rooms with a video being made smaller: room id -> percent done
+    // (-1 not known yet); shrinkingChanged when it changes
+    QVariantMap shrinking() const;
 
     // a custom emoji's cached picture (file://), or "" while it is fetched
     // (emoteReady follows)
@@ -74,6 +80,7 @@ signals:
     void errorOccurred(const QString &cmd, const QString &message);
     void emoteReady(const QString &mxc, const QString &path);
     void settingsChanged();
+    void shrinkingChanged();
 
 private slots:
     // a video copy's stripping (VideoStrip, off the GUI thread) ended
@@ -83,18 +90,26 @@ private:
     // an avatar picture upright, at most 512 px, in the cache; its path and size
     QString prepareAvatar(const QString &path, const QString &cmd, QSize *size);
     // files go to the core in the order they were sent; one waiting for its
-    // video's stripped copy or frame holds back those after it
+    // video's smaller or stripped copy or its frame holds back those after it
     struct Outgoing {
         QVariantMap cmd;
         QProcess *frame = nullptr;
         int strip = 0;   // the stripping's id while it runs
+        QProcess *shrink = nullptr;
+        int percent = -1;   // how far the shrinking is
+        QString original = QString();   // a video's own file, for its frame
     };
-    // a video's size and length into item's command, and its frame taken: the
-    // command waits in the queue until the frame is there (or not)
-    void prepareVideo(Outgoing &item, const QString &stem);
+    // the video in item's command (the original or its stripped copy) made
+    // smaller as videoTier says, into a WebM; false when it goes as it is
+    // (tier 0, no MP4 header to size it by, already small enough)
+    bool shrinkVideo(Outgoing &item, const QString &stem);
+    // a video's size and length into item's command, and a frame taken from
+    // frameFrom: the command waits in the queue until the frame is there (or not)
+    void prepareVideo(Outgoing &item, const QString &stem, const QString &frameFrom);
     void sendInOrder();
     QList<Outgoing> m_outgoing;
     int m_lastStrip = 0;
+    int m_lastVideo = 0;
     // copying a video takes seconds; its destructor waits for a running one
     QThreadPool m_strips;
 

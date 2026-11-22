@@ -357,7 +357,15 @@ Page {
                      : typingNames.length > 2
                      //% "Several people are typing…"
                      ? qsTrId("rustrx-la-typing-many")
-                     : ""
+                     // a video re-encoded before it goes (Settings, App)
+                     : rustrx.shrinkingVideos[page.roomId] === undefined
+                     ? ""
+                     : rustrx.shrinkingVideos[page.roomId] >= 0
+                     //: %1 how much is done, in percent
+                     //% "Making the video smaller: %1 %"
+                     ? qsTrId("rustrx-la-video-shrinking-pct").arg(rustrx.shrinkingVideos[page.roomId])
+                     //% "Making the video smaller…"
+                     : qsTrId("rustrx-la-video-shrinking")
         MouseArea { anchors.fill: parent; onClicked: pageStack.navigateForward() }
     }
 

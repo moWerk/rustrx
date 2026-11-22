@@ -312,6 +312,29 @@ SilicaFlickable {
             onClicked: rustrx.downscaleImages = !rustrx.downscaleImages
         }
 
+        // re-encoded in the phone (src/Media.cpp shrinkVideo); the original
+        // goes when that fails or the video is small enough already
+        ChoiceBox {
+            //% "Send smaller videos"
+            label: qsTrId("rustrx-la-video-tier")
+            //% "Smaller videos are sent as WebM. iPhone apps do not play WebM in the chat, they show it as a file."
+            description: qsTrId("rustrx-la-video-tier-hint")
+            value: Math.max(0, Math.min(4, rustrx.videoTier))
+            choices: [
+                //% "Original"
+                { value: 0, text: qsTrId("rustrx-me-video-original") },
+                //% "Large"
+                { value: 1, text: qsTrId("rustrx-me-video-large") },
+                //% "Medium"
+                { value: 2, text: qsTrId("rustrx-me-video-medium") },
+                //% "Small"
+                { value: 3, text: qsTrId("rustrx-me-video-small") },
+                //% "Tiny"
+                { value: 4, text: qsTrId("rustrx-me-video-tiny") }
+            ]
+            onChosen: rustrx.videoTier = value
+        }
+
         // GIFs move while in view, once or on a loop (the author's ask,
         // 0.8); a tap and the full screen play them either way
         TextSwitch {

@@ -33,6 +33,9 @@ static const char kDebugLog[] = "debugLog";
 static const bool kDebugLogDefault = true;
 static const char kDownscaleImages[] = "downscaleImages";
 static const bool kDownscaleImagesDefault = true;
+// videos sent smaller: 0 as they are, else a row of kVideoTierEdge
+static const char kVideoTier[] = "videoTier";
+static const int kVideoTierDefault = 0;
 // what goes out of a picture or video before it is sent (Exif.h, Png.h,
 // Mp4.h): 0 nothing, 1 the place, 2 all metadata
 static const char kMetadataLevel[] = "metadataLevel";
@@ -127,7 +130,8 @@ static const char kLogDir[] = "logs";
 static const char kOutgoingDir[] = "outgoing";
 // prepared files are swept after this long: the core reads a file when the
 // send_file command arrives, so an hour leaves room for a send held behind
-// a long video's copy (a stripped video is as large as the original)
+// a long video's copy (a stripped video is as large as the original); the
+// files of sends still waiting are kept however long they wait
 static const qint64 kOutgoingKeepMs = 60 * 60 * 1000;
 static const char kVoiceDir[] = "voice";
 static const char kSharedDir[] = "shared";
@@ -184,6 +188,19 @@ static const int kThumbJpegQuality = 80;
 // video goes without
 static const char kVideoFrameTool[] = "/usr/bin/thumbnaild-video";
 static const int kVideoFrameMs = 5000;
+// a video sent smaller is re-encoded by GStreamer's own tool (VP8 and Opus
+// in WebM; the phones' hardware H.264 encoders take no file input on
+// hybris and ignore the bitrate on mainline): per tier from Large to Tiny
+// the longest side and the video's bitrate (bit/s), the sound's bitrate;
+// it may take kVideoShrinkFactor times the video's length plus
+// kVideoShrinkSlackMs before the original goes instead
+static const char kVideoShrinkTool[] = "/usr/bin/gst-launch-1.0";
+static const int kVideoTierEdge[] = { 1280, 960, 640, 480 };
+static const int kVideoTierBitrate[] = { 2500000, 1500000, 800000, 400000 };
+static_assert(sizeof kVideoTierEdge == sizeof kVideoTierBitrate, "a bitrate for every tier");
+static const int kVideoShrinkAudioBitrate = 96000;
+static const int kVideoShrinkFactor = 3;
+static const int kVideoShrinkSlackMs = 30000;
 // a custom emoji's size until QML binds emoteSize (core: height="32" in sent HTML)
 static const int kDefaultEmoteSize = 32;
 // the longest reaction key shown before it is cut with an ellipsis

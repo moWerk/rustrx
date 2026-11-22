@@ -171,6 +171,10 @@ class Rustrx : public QObject
     Q_PROPERTY(QString coreVersion READ coreVersion CONSTANT)
     Q_PROPERTY(bool downscaleImages READ downscaleImages WRITE setDownscaleImages NOTIFY settingsChanged)
     Q_PROPERTY(int metadataLevel READ metadataLevel WRITE setMetadataLevel NOTIFY settingsChanged)
+    // videos sent smaller: 0 as they are, 1 to 4 Large to Tiny (Keys::kVideoTierEdge)
+    Q_PROPERTY(int videoTier READ videoTier WRITE setVideoTier NOTIFY settingsChanged)
+    // the rooms with a video being made smaller: room id -> percent done (-1 not known)
+    Q_PROPERTY(QVariantMap shrinkingVideos READ shrinkingVideos NOTIFY shrinkingVideosChanged)
     // the order of the room lists: "activity", "unread" (unread first) or "name"
     // the tab the filter menu works on: its order and switches are its own
     Q_PROPERTY(QString currentTab READ currentTab WRITE setCurrentTab NOTIFY settingsChanged)
@@ -272,6 +276,9 @@ public:
     void setDownscaleImages(bool on);
     int metadataLevel() const;
     void setMetadataLevel(int level);
+    int videoTier() const;
+    void setVideoTier(int tier);
+    QVariantMap shrinkingVideos() const;
     QString currentTab() const;
     void setCurrentTab(const QString &kind);
     QString sortOrder() const;
@@ -392,6 +399,7 @@ public:
 
 signals:
     void callDarkChanged();
+    void shrinkingVideosChanged();
     // a dev command for the UI (see dev())
     void devUi(const QVariantMap &request);
     void stateChanged();

@@ -542,6 +542,9 @@ ApplicationWindow {
         //: lead-in of an error for an action without its own name
         //% "That did not work."
                                : qsTrId("rustrx-no-err-lead-any")
+        // no failure of the send: the original goes instead (Media.cpp shrinkVideo)
+        //% "The video could not be made smaller. It is sent as it is."
+        if (/could not be made smaller/.test(m)) return qsTrId("rustrx-no-err-video-smaller")
         // the join page's sentences (JoinPage.problemText before)
         //: %1 the own homeserver, like tchncs.de
         //% "The moderators of this room do not let people from your server (%1) in."

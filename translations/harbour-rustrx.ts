@@ -953,6 +953,47 @@
         <source>Photos larger than 2048 pixels are scaled down before sending.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-video-tier">
+        <source>Send smaller videos</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-video-tier-hint">
+        <source>Smaller videos are sent as WebM. iPhone apps do not play WebM in the chat, they show it as a file.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-video-original">
+        <source>Original</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-video-large">
+        <source>Large</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-video-medium">
+        <source>Medium</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-video-small">
+        <source>Small</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-me-video-tiny">
+        <source>Tiny</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-video-shrinking-pct">
+        <source>Making the video smaller: %1 %</source>
+        <extracomment>%1 how much is done, in percent</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-video-shrinking">
+        <source>Making the video smaller…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-err-video-smaller">
+        <source>The video could not be made smaller. It is sent as it is.</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-la-notify-text">
         <source>Message text in notifications</source>
         <translation type="unfinished"></translation>

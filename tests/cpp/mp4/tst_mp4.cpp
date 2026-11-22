@@ -5,7 +5,8 @@
 // levelOneTakesOnlyThePlace fails; zero the times at level 1 too: the same
 // fails; leave mdhd's times (v1, 64 bit) at level 2: levelTwoTakesAll
 // fails. B10, planted-bug: compare a 64-bit box size signed again:
-// aHugeBoxSizeIsRefused hangs.
+// aHugeBoxSizeIsRefused hangs. Info::audio, planted-bug: stop at a
+// track's tkhd again: soundIsSeen fails (mdia follows tkhd).
 #include <QBuffer>
 #include <QtTest>
 #include "Mp4.h"
@@ -197,6 +198,37 @@ private slots:
         QCOMPARE(f.mid(f.indexOf("mdhd") + 8, 16), QByteArray(16, '\0'));
         // the time scale and length after them stay
         QCOMPARE(at32(f, f.indexOf("mdhd") + 24), 1000u);
+    }
+
+    // a track's mdia with its handler: "vide" or "soun"
+    static QByteArray mdia(const char *handler)
+    {
+        QByteArray h(8, '\0');
+        h += QByteArray(handler, 4);
+        return box("mdia", box("mdhd", QByteArray(24, '\0')) + box("hdlr", h + QByteArray(13, '\0')));
+    }
+
+    void soundIsSeen()
+    {
+        // the camera's order: the sound first, without a size
+        const QByteArray withSound = box("moov", mvhd(1000, 49220)
+                + box("trak", tkhd(0x10000, 0, 0, 0) + mdia("soun"))
+                + box("trak", tkhd(0, 0x10000, 2560, 1440) + mdia("vide")));
+        Mp4::Info i = info(file(withSound, true));
+        QVERIFY(i.audio);
+        QCOMPARE(i.width, 1440);
+        QCOMPARE(i.height, 2560);
+        QCOMPARE(i.durationMs, qint64(49220));
+        // the video first, the sound after it
+        const QByteArray soundLast = box("moov", mvhd(1000, 1000)
+                + box("trak", tkhd(0x10000, 0, 1920, 1080) + mdia("vide"))
+                + box("trak", tkhd(0x10000, 0, 0, 0) + mdia("soun")));
+        i = info(file(soundLast, false));
+        QVERIFY(i.audio);
+        QCOMPARE(i.width, 1920);
+        const QByteArray silent = box("moov", mvhd(1000, 1000)
+                + box("trak", tkhd(0x10000, 0, 1920, 1080) + mdia("vide")));
+        QVERIFY(!info(file(silent, true)).audio);
     }
 
     void levelZeroLeavesIt()
