@@ -59,17 +59,10 @@ Page {
     readonly property string avatarRounding: debugAvatarRounding.value.length ? debugAvatarRounding.value : Tunables.avatarRounding
 
     // measured once for every room row: the height of a preview line (to
-    // centre the state icons on it) and one digit of the unread badge, at
-    // the size the badge's pill is measured for
+    // centre the state icons on it)
     // (the font of a Label as the preview has it, family and all)
     Label { id: previewFont; visible: false; font.pixelSize: Theme.fontSizeSmall * Tunables.metaTextScale }
     FontMetrics { id: previewMetrics; font: previewFont.font }
-    TextMetrics {
-        id: badgeDigit
-        font.family: app.semiboldFontFamily
-        font.pixelSize: Theme.fontSizeExtraSmall
-        text: "0"
-    }
     // the key may hold a room id or a room name; names are looked up in the list
     Instantiator {
         id: debugRooms
@@ -780,7 +773,6 @@ Page {
                 delegate: RoomDelegate {
                     avatarRounding: page.avatarRounding
                     previewLineHeight: previewMetrics.height
-                    badgeDigitWidth: badgeDigit.advanceWidth
                 }
 
                 // the first sync takes a moment: a spinner first, the text after

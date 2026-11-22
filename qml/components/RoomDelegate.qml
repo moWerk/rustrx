@@ -35,9 +35,8 @@ ListItem {
     // the picture: 10 % smaller than the large icon size
     readonly property int avatarSize: Math.round(Theme.iconSizeLarge * Tunables.avatarScale)
     // from the page, measured once for all rows: the height of the
-    // preview's first line, and one digit of the badge
+    // preview's first line
     property real previewLineHeight
-    property real badgeDigitWidth
     // how the picture is rounded (Tunables.avatarRounding, the page's debug
     // override): "layer" a layer with RoundMask, "texture" RoundMaskTexture
     // over the hidden Image, "provider" pre-rounded by image://rxavatar,
@@ -237,8 +236,15 @@ ListItem {
                 // pill grows to the left (it is anchored at the right). The digit
                 // is measured (by the page) at the size the digits had, so the
                 // pill keeps its geometry while the digits shrink inside it
-                // (item is gone for a moment while the badge unloads)
-                width: height + Math.max(0, badgeLabel.text.length - 1) * (item ? item.badgeDigitWidth : 0)
+                // (measured here: inside the Loader's component "item" is the
+                // Loader's own item, not the row, and the pill stayed a circle)
+                width: height + Math.max(0, badgeLabel.text.length - 1) * digitWidth.advanceWidth
+                TextMetrics {
+                    id: digitWidth
+                    font.family: app.semiboldFontFamily
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    text: "0"
+                }
                 // the circle keeps this size; the digits grew into its padding
                 height: Theme.iconSizeSmall
                 radius: height / 2
