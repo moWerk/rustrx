@@ -80,7 +80,7 @@ SilicaFlickable {
         // and the release notes credit them (README's Credits keeps the same list)
         Label {
             readonly property var names: ["davodego", "doctorflynt", "dodoradio", "finceptum", "Fuzzillogic", "JimKnopfIoT",
-                                          "Luna-Terra-CG", "MrHappy", "poetaster", "projectmoon", "Tealk"]
+                                          "lowxorx", "Luna-Terra-CG", "MrHappy", "poetaster", "projectmoon", "Tealk"]
             x: Theme.horizontalPageMargin
             width: parent.width - 2 * x
             horizontalAlignment: Text.AlignHCenter
