@@ -97,9 +97,10 @@ QtObject {
     readonly property int favGlowPulseMs: 1500
     // breaths when a glowing favourite comes into sight, then the glow holds
     // still at favGlowRest of a breath's height (0: its low, 1: its peak;
+    // the author: at rest it sits in the lowest 5 %, barely to be seen;
     // under favSparkleFrom the sparkle rests unlit)
-    readonly property int favGlowBreaths: 3
-    readonly property real favGlowRest: 0.5
+    readonly property int favGlowBreaths: 5
+    readonly property real favGlowRest: 0.05
     // the star's sparkle shows in the breath's last quarter
     readonly property real favSparkleFrom: 0.75
     readonly property string favStarColor: "#ffd54a"
