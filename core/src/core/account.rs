@@ -23,7 +23,7 @@ impl Core {
     pub(crate) async fn recovery_reset(&self) -> Result<()> {
         let client = self.client().await?;
         let key = client.encryption().recovery().reset_key().await?;
-        self.emit(json!({"ev": "recovery_key", "key": key}));
+        self.emit(json!({"ev": "recovery_key", "recovery_key": key}));
         Ok(())
     }
 
@@ -52,7 +52,7 @@ impl Core {
         }
         tracing::info!("identity reset: done, setting up the backup");
         let key = recovery.enable().wait_for_backups_to_upload().await?;
-        self.emit(json!({"ev": "recovery_key", "key": key}));
+        self.emit(json!({"ev": "recovery_key", "recovery_key": key}));
         Ok(())
     }
 

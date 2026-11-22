@@ -316,8 +316,12 @@ void Media::sendFile(const QString &roomId, const QString &path, const QString &
             // title and other tags over into the WebM
             const int id = ++m_lastStrip;
             item.strip = id;
+            // the copy's name is made here only: its suffix, too, can come
+            // from outside, and the copy may go on to gst-launch
+            static const QRegularExpression plainSuffix(QStringLiteral("^[A-Za-z0-9]{1,8}$"));
             const QString suffix = QFileInfo(p).suffix();
-            const QString out = stem + "-" + QString::number(id) + "." + (suffix.isEmpty() ? QStringLiteral("mp4") : suffix);
+            const QString out = stem + "-" + QString::number(id) + "."
+                    + (plainSuffix.match(suffix).hasMatch() ? suffix : QStringLiteral("mp4"));
             m_strips.start(new VideoStrip(this, id, p, out, stem, level));
         } else if (!shrinkVideo(item, stem)) {
             prepareVideo(item, stem, p);
@@ -356,10 +360,20 @@ bool Media::shrinkVideo(Outgoing &item, const QString &stem)
     const int w = even(info.width * scale);
     const int h = even(info.height * scale);
     const QString out = stem + "-small.webm";
+    // gst-launch parses its arguments again as one pipeline description, so
+    // no file name from outside reaches it (a shared file's, an exported
+    // one named after a message): the video goes in by a link named here
+    const QString source = stem + "-source.mp4";
+    static const QRegularExpression plain(QStringLiteral("^[A-Za-z0-9/._-]+$"));
+    if (!plain.match(source).hasMatch() || !plain.match(out).hasMatch())
+        return false;
+    QFile::remove(source);
+    if (!QFile::link(QFileInfo(in).absoluteFilePath(), source))
+        return false;
 
-    // one argument per word: gst-launch escapes each one's spaces itself
+    // one argument per word, every one of them made here
     QStringList args{
-        "-q", "filesrc", "location=" + in, "!", "qtdemux", "name=d",
+        "-q", "filesrc", "location=" + source, "!", "qtdemux", "name=d",
         "d.video_0", "!", "queue", "!", "decodebin", "force-sw-decoders=true", "!", "videoconvert", "!",
         "videoflip", "video-direction=auto", "!", "videoscale", "!",
         QString("video/x-raw,width=%1,height=%2,pixel-aspect-ratio=1/1").arg(w).arg(h), "!",
@@ -376,7 +390,8 @@ bool Media::shrinkVideo(Outgoing &item, const QString &stem)
     auto *proc = new QProcess(this);
     item.shrink = proc;
     const qint64 durationMs = info.durationMs;
-    auto done = [this, proc, in, out, stem, w, h, durationMs](bool ok) {
+    auto done = [this, proc, in, out, source, stem, w, h, durationMs](bool ok) {
+        QFile::remove(source);
         bool failed = false;
         for (Outgoing &o : m_outgoing) {
             if (o.shrink != proc)
