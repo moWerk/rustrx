@@ -173,8 +173,10 @@ fn message_preview(msg: &MessageType) -> String {
 }
 
 /// `settings`: the account's notification settings, made once for a whole
-/// room list (building them reads and parses the push rules).
-pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path, settings: &NotificationSettings) -> Value {
+/// room list (building them reads and parses the push rules). `prev`: the
+/// room's last row, if any: an invitation keeps its `inviter_known` (a scan
+/// of every joined room).
+pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path, settings: &NotificationSettings, prev: Option<&Value>) -> Value {
     let name = match room.cached_display_name() {
         Some(n) => n.to_string(),
         None => match room.display_name().await {
@@ -241,11 +243,16 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path, setting
     let (inviter, inviter_known) = if room.state() == RoomState::Invited {
         match room.invite_details().await.ok() {
             Some(i) => {
-                let mut known = false;
-                for r in room.client().joined_rooms() {
-                    if matches!(r.get_member_no_sync(&i.inviter_id).await, Ok(Some(m)) if *m.membership() == matrix_sdk::ruma::events::room::member::MembershipState::Join) {
-                        known = true;
-                        break;
+                // once per invitation (until a full pass): a stranger's was a
+                // store read for every joined room on every pass naming it
+                let kept = prev.filter(|p| p["state"] == "invited").and_then(|p| p["inviter_known"].as_bool());
+                let mut known = kept.unwrap_or(false);
+                if kept.is_none() {
+                    for r in room.client().joined_rooms() {
+                        if matches!(r.get_member_no_sync(&i.inviter_id).await, Ok(Some(m)) if *m.membership() == matrix_sdk::ruma::events::room::member::MembershipState::Join) {
+                            known = true;
+                            break;
+                        }
                     }
                 }
                 let name = match i.inviter {
@@ -288,6 +295,8 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path, setting
         "is_fav": room.is_favourite(),
         "is_low": room.is_low_priority(),
         "unread": room.num_unread_messages(),
+        // how big the room is, for the room page (its member list loads later)
+        "joined_members": room.joined_members_count(),
         // the server's counts, or the ones computed here from the push rules
         // and read receipts when those are higher (the server's stayed at 0
         // for a room set to "all messages")
@@ -556,7 +565,7 @@ fn content_json(o: &mut Map<String, Value>, content: &TimelineItemContent, own: 
     }
 }
 
-pub(crate) fn item_json(item: &Arc<TimelineItem>, own: &UserId, names: &HashMap<OwnedUserId, String>) -> Value {
+pub(crate) fn item_json(item: &TimelineItem, own: &UserId, names: &HashMap<OwnedUserId, String>) -> Value {
     let mut o = Map::new();
     put(&mut o, "id", item.unique_id().0.as_str());
     match item.kind() {
@@ -636,12 +645,142 @@ pub(crate) fn item_json(item: &Arc<TimelineItem>, own: &UserId, names: &HashMap<
     Value::Object(o)
 }
 
-pub(crate) fn items_json<'a>(
-    items: impl IntoIterator<Item = &'a Arc<TimelineItem>>,
-    own: &UserId,
-    names: &HashMap<OwnedUserId, String>,
-) -> Value {
-    Value::Array(items.into_iter().map(|i| item_json(i, own, names)).collect())
+/// Whether an item's JSON names readers other than us (read_by, which
+/// takes their display names from `names`).
+pub(crate) fn has_other_readers(item: &TimelineItem, own: &UserId) -> bool {
+    item.as_event().map_or(false, |e| e.read_receipts().keys().any(|u| u.as_str() != own.as_str()))
+}
+
+/// A thread root's latest reply, for the unread check: (root, latest, its
+/// time, whether it is our own), as `content_json` puts it into `thread`.
+pub(crate) fn thread_latest(item: &TimelineItem, own: &UserId) -> Option<(String, String, u64, bool)> {
+    let e = item.as_event()?;
+    let root = e.event_id()?.to_string();
+    let summary = e.content().as_msglike()?.thread_summary.as_ref()?;
+    let TimelineDetails::Ready(latest) = &summary.latest_event else { return None };
+    let matrix_sdk_ui::timeline::TimelineEventItemId::EventId(id) = &latest.identifier else { return None };
+    Some((root, id.to_string(), ms(latest.timestamp), latest.sender == own))
+}
+
+/// What the core puts on an item besides its own JSON: our read receipt,
+/// a thread's unread mark, a state row's reactions (state_reactions.rs),
+/// a reply's original fetched in an earlier open (timeline.rs).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct Extras {
+    pub(crate) own_read: bool,
+    pub(crate) thread_unread: Option<bool>,
+    pub(crate) reactions: Option<Value>,
+    pub(crate) reply: Option<Value>,
+}
+
+impl Extras {
+    fn put_on(&self, base: &Value) -> Value {
+        let mut v = base.clone();
+        if self.own_read {
+            v["own_read"] = Value::Bool(true);
+        }
+        if let (Some(u), Some(t)) = (self.thread_unread, v.get_mut("thread")) {
+            t["unread"] = Value::Bool(u);
+        }
+        if let Some(r) = &self.reactions {
+            v["reactions"] = r.clone();
+        }
+        if let Some(r) = &self.reply {
+            v["reply_to"] = r.clone();
+        }
+        v
+    }
+}
+
+struct Sent<T> {
+    /// the item it was made from: the SDK's items never change, a change
+    /// is a new one (kept, not its address, so a freed one cannot match)
+    item: Arc<T>,
+    /// made with these reader names (`names_ver`) when it shows readers
+    names_ver: Option<u64>,
+    base: Value,
+    extras: Extras,
+}
+
+/// One timeline stream's last snapshot as sent, per item id: each pass
+/// sends the order of all ids and only the items that are new or changed
+/// (protocol: `timeline`). An item is made into JSON again only when the
+/// SDK replaced it or the reader names it shows were learned since; the
+/// extras are compared on their own. `T` is the SDK's TimelineItem (any
+/// type in the tests: the SDK makes its items only itself).
+pub(crate) struct TimelineDiff<T> {
+    stream: u64,
+    seq: u64,
+    full: bool,
+    names_ver: u64,
+    sent: HashMap<String, Sent<T>>,
+    order: Vec<String>,
+}
+
+impl<T> TimelineDiff<T> {
+    pub(crate) fn new(stream: u64) -> Self {
+        TimelineDiff { stream, seq: 0, full: true, names_ver: 0, sent: HashMap::new(), order: Vec::new() }
+    }
+
+    /// The next pass sends every item (the UI asked, or the SDK reset the
+    /// timeline).
+    pub(crate) fn resync(&mut self) {
+        self.full = true;
+    }
+
+    /// Reader names were learned: items showing readers are made again.
+    pub(crate) fn names_changed(&mut self) {
+        self.names_ver += 1;
+    }
+
+    /// The event's fields for these items, oldest first, or None when
+    /// nothing changed. `make` gives an item's JSON and whether it shows
+    /// reader names; `extras` what goes on top.
+    pub(crate) fn pass(
+        &mut self,
+        items: &[(String, Arc<T>)],
+        mut make: impl FnMut(&T) -> (Value, bool),
+        mut extras: impl FnMut(&T, &Value) -> Extras,
+    ) -> Option<Value> {
+        let full = std::mem::take(&mut self.full);
+        let mut changed = Map::new();
+        let mut order = Vec::with_capacity(items.len());
+        for (id, item) in items {
+            order.push(id.clone());
+            let fresh = self.sent.get(id).map_or(false, |s| {
+                Arc::ptr_eq(&s.item, item) && s.names_ver.map_or(true, |v| v == self.names_ver)
+            });
+            if fresh {
+                let s = self.sent.get_mut(id).expect("looked up");
+                let x = extras(item, &s.base);
+                if x != s.extras {
+                    s.extras = x;
+                    changed.insert(id.clone(), s.extras.put_on(&s.base));
+                } else if full {
+                    changed.insert(id.clone(), s.extras.put_on(&s.base));
+                }
+                continue;
+            }
+            let (base, uses_names) = make(item);
+            let x = extras(item, &base);
+            let names_ver = uses_names.then_some(self.names_ver);
+            let same = self.sent.get(id).map_or(false, |s| s.base == base && s.extras == x);
+            if !same || full {
+                changed.insert(id.clone(), x.put_on(&base));
+            }
+            self.sent.insert(id.clone(), Sent { item: item.clone(), names_ver, base, extras: x });
+        }
+        if self.sent.len() != order.len() {
+            let keep: std::collections::HashSet<&String> = order.iter().collect();
+            self.sent.retain(|id, _| keep.contains(id));
+        }
+        if !full && changed.is_empty() && order == self.order {
+            return None;
+        }
+        self.order = order;
+        self.seq += 1;
+        Some(json!({"stream": self.stream, "seq": self.seq, "full": full, "order": self.order, "items": changed}))
+    }
 }
 
 #[cfg(test)]
@@ -841,5 +980,173 @@ mod send_error_tests {
         assert!(send_error_too_large("the server returned an error: [413] <non-json bytes>"));
         assert!(send_error_too_large("[400 / M_TOO_LARGE] too big"));
         assert!(!send_error_too_large("error sending request: operation timed out"));
+    }
+}
+
+#[cfg(test)]
+mod timeline_diff_tests {
+    use super::*;
+
+    /// A stand-in for the SDK's items: its JSON is the string, and "@" in
+    /// it means it shows reader names (made with the current `names`).
+    type Item = Arc<String>;
+
+    fn item(s: &str) -> Item {
+        Arc::new(s.to_owned())
+    }
+
+    struct Run {
+        diff: TimelineDiff<String>,
+        made: usize,
+        names: String,
+        own_read: String,
+    }
+
+    impl Run {
+        fn new() -> Self {
+            Run { diff: TimelineDiff::new(7), made: 0, names: "anna".into(), own_read: String::new() }
+        }
+
+        fn pass(&mut self, items: &[(&str, &Item)]) -> Option<Value> {
+            let list: Vec<(String, Item)> = items.iter().map(|(id, i)| (id.to_string(), (*i).clone())).collect();
+            let (made, names, own_read) = (&mut self.made, &self.names, &self.own_read);
+            self.diff.pass(
+                &list,
+                |s| {
+                    *made += 1;
+                    let uses = s.contains('@');
+                    let body = if uses { s.replace('@', names) } else { s.clone() };
+                    (json!({ "body": body }), uses)
+                },
+                |s, _| Extras { own_read: *s == *own_read, ..Default::default() },
+            )
+        }
+    }
+
+    fn changed(v: &Value) -> Vec<String> {
+        let mut ids: Vec<String> = v["items"].as_object().unwrap().keys().cloned().collect();
+        ids.sort();
+        ids
+    }
+
+    /// The first pass sends everything, marked full; the same items again
+    /// send nothing and are not made again.
+    /// Planted-bug: compare by value instead of `Arc::ptr_eq` (every pass
+    /// makes all items again: `made` grows).
+    #[test]
+    fn the_first_pass_is_full_and_an_unchanged_one_is_none() {
+        let mut r = Run::new();
+        let (a, b) = (item("a"), item("b"));
+        let first = r.pass(&[("1", &a), ("2", &b)]).unwrap();
+        assert_eq!(first["full"], json!(true));
+        assert_eq!(first["stream"], json!(7));
+        assert_eq!(first["seq"], json!(1));
+        assert_eq!(first["order"], json!(["1", "2"]));
+        assert_eq!(first["items"]["2"], json!({"body": "b"}));
+        assert_eq!(r.made, 2);
+        assert_eq!(r.pass(&[("1", &a), ("2", &b)]), None);
+        assert_eq!(r.made, 2);
+    }
+
+    /// A replaced item goes out alone, with the whole order; an item the
+    /// SDK replaced with the same JSON does not go out.
+    /// Planted-bug: send every item on a change (`changed` has both).
+    #[test]
+    fn only_changed_items_go_out() {
+        let mut r = Run::new();
+        let (a, b) = (item("a"), item("b"));
+        r.pass(&[("1", &a), ("2", &b)]);
+        let b2 = item("b edited");
+        let next = r.pass(&[("1", &a), ("2", &b2)]).unwrap();
+        assert_eq!(next["full"], json!(false));
+        assert_eq!(next["seq"], json!(2));
+        assert_eq!(next["order"], json!(["1", "2"]));
+        assert_eq!(changed(&next), ["2"]);
+        assert_eq!(next["items"]["2"], json!({"body": "b edited"}));
+        let same = item("b edited");
+        assert_eq!(r.pass(&[("1", &a), ("2", &same)]), None);
+    }
+
+    /// New items, a page of older ones, and removals: the order says it,
+    /// the items carry only the new ones.
+    /// Planted-bug: return None when no item changed (a removal never
+    /// reaches the UI).
+    #[test]
+    fn order_changes_go_out_without_items() {
+        let mut r = Run::new();
+        let (a, b, c, old) = (item("a"), item("b"), item("c"), item("old"));
+        r.pass(&[("1", &a), ("2", &b)]);
+        let grown = r.pass(&[("0", &old), ("1", &a), ("2", &b), ("3", &c)]).unwrap();
+        assert_eq!(grown["order"], json!(["0", "1", "2", "3"]));
+        assert_eq!(changed(&grown), ["0", "3"]);
+        let removed = r.pass(&[("0", &old), ("2", &b), ("3", &c)]).unwrap();
+        assert_eq!(removed["order"], json!(["0", "2", "3"]));
+        assert!(changed(&removed).is_empty());
+        // a removed id coming back is new again
+        let back = r.pass(&[("0", &old), ("1", &a), ("2", &b), ("3", &c)]).unwrap();
+        assert_eq!(changed(&back), ["1"]);
+    }
+
+    /// Our read receipt moving changes the two rows it moves between, not
+    /// their JSON.
+    /// Planted-bug: compare only the base JSON (the move is never sent).
+    #[test]
+    fn extras_alone_change_a_row() {
+        let mut r = Run::new();
+        let (a, b) = (item("a"), item("b"));
+        r.own_read = "a".into();
+        assert_eq!(r.pass(&[("1", &a), ("2", &b)]).unwrap()["items"]["1"], json!({"body": "a", "own_read": true}));
+        r.own_read = "b".into();
+        let moved = r.pass(&[("1", &a), ("2", &b)]).unwrap();
+        assert_eq!(changed(&moved), ["1", "2"]);
+        assert_eq!(moved["items"]["1"], json!({"body": "a"}));
+        assert_eq!(moved["items"]["2"], json!({"body": "b", "own_read": true}));
+        assert_eq!(r.made, 2);
+    }
+
+    /// Names learned after the first pass: the items showing readers are
+    /// made again, the others not.
+    /// Planted-bug: drop the `names_ver` check (the localparts stay).
+    #[test]
+    fn learned_names_remake_reader_rows_only() {
+        let mut r = Run::new();
+        let (a, b) = (item("read by @"), item("b"));
+        r.pass(&[("1", &a), ("2", &b)]);
+        assert_eq!(r.made, 2);
+        r.names = "Anna K.".into();
+        r.diff.names_changed();
+        let named = r.pass(&[("1", &a), ("2", &b)]).unwrap();
+        assert_eq!(changed(&named), ["1"]);
+        assert_eq!(named["items"]["1"], json!({"body": "read by Anna K."}));
+        assert_eq!(r.made, 3);
+        assert_eq!(r.pass(&[("1", &a), ("2", &b)]), None);
+    }
+
+    /// A resync sends every item again, full, without making them anew.
+    /// Planted-bug: forget to clear `full` after a pass (every pass full).
+    #[test]
+    fn a_resync_sends_everything_once() {
+        let mut r = Run::new();
+        let (a, b) = (item("a"), item("b"));
+        r.pass(&[("1", &a), ("2", &b)]);
+        r.diff.resync();
+        let again = r.pass(&[("1", &a), ("2", &b)]).unwrap();
+        assert_eq!(again["full"], json!(true));
+        assert_eq!(changed(&again), ["1", "2"]);
+        assert_eq!(r.made, 2);
+        assert_eq!(r.pass(&[("1", &a), ("2", &b)]), None);
+    }
+
+    /// The extras land where the UI reads them.
+    #[test]
+    fn extras_are_put_on() {
+        let base = json!({"body": "x", "thread": {"count": 2}, "reply_to": {"event_id": "$o", "pending": true}});
+        let x = Extras { own_read: true, thread_unread: Some(true), reactions: Some(json!([{"key": "👋"}])),
+                         reply: Some(json!({"event_id": "$o", "body": "hi"})) };
+        assert_eq!(x.put_on(&base), json!({"body": "x", "own_read": true, "thread": {"count": 2, "unread": true},
+                                            "reactions": [{"key": "👋"}], "reply_to": {"event_id": "$o", "body": "hi"}}));
+        // no thread: no unread mark of its own
+        let plain = Extras { thread_unread: Some(false), ..Default::default() }.put_on(&json!({"body": "x"}));
+        assert_eq!(plain, json!({"body": "x"}));
     }
 }

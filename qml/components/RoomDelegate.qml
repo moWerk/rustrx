@@ -34,13 +34,22 @@ ListItem {
     readonly property real nameSize: Theme.fontSizeMedium * Tunables.roomNameScale
     // the picture: 10 % smaller than the large icon size
     readonly property int avatarSize: Math.round(Theme.iconSizeLarge * Tunables.avatarScale)
+    // from the page, measured once for all rows: the height of the
+    // preview's first line, and one digit of the badge
+    property real previewLineHeight
+    property real badgeDigitWidth
+    // how the picture is rounded (Tunables.avatarRounding, the page's debug
+    // override): "layer" a layer with RoundMask, "texture" RoundMaskTexture
+    // over the hidden Image, "provider" pre-rounded by image://rxavatar,
+    // "off" square
+    property string avatarRounding: Tunables.avatarRounding
 
     // the room's account in the merged view (all accounts in one list), else
     // -1: the shown account's own list
     readonly property int account: model.account !== undefined && model.account !== null ? model.account : -1
     readonly property bool otherAccount: account >= 0 && account !== rustrx.accountKey
-    readonly property string accountMark: rustrx.mergedView && !app.accountChips && rustrx.accounts.length > 1
-                                          && account >= 0 ? app.accountShort(account) : ""
+    readonly property string accountMark: rustrx.mergedView && !app.accountChips && account >= 0
+                                          ? (rustrx.accountMarks[account] || "") : ""
     // a command for the room's own account
     function send(c) {
         if (account >= 0) rustrx.commandTo(account, c)
@@ -50,10 +59,14 @@ ListItem {
     readonly property bool hasUnread: model.notifications > 0 || model.unread > 0
     // a favourite with something unread glows (Settings): a band across the
     // row breathes with the app's one breath (app.favGlow), so all glowing
-    // rows breathe together; a shown glowing row counts itself in, which
-    // keeps the breath running only while one is on screen
+    // rows breathe together; a glowing row on screen counts itself in, which
+    // keeps the breath running only while one is seen: its list shown (the
+    // page active, its tab current: the view's glowShown) and the row within
+    // the view's visible part, not only in its cache buffer. Only glowing
+    // rows read the view's position (the && stops the others first).
     readonly property bool favGlow: app.highlightFavs && model.is_fav === true && hasUnread && !invited
-    readonly property bool glowing: favGlow && visible
+    readonly property bool glowing: favGlow && ListView.view !== null && ListView.view.glowShown !== false
+                                    && y + height > ListView.view.contentY && y < ListView.view.contentY + ListView.view.height
     property bool counted
     onGlowingChanged: {
         if (glowing === counted) return
@@ -67,15 +80,20 @@ ListItem {
     Component.onDestruction: if (counted) app.favGlowRows -= 1
     // the band: the page's whole width, brightest in the row's middle
     // (3 % at rest, 12 % at the height of a breath), fading to nothing
-    // above and below
-    Rectangle {
+    // above and below. Made for favourites only; the gradient is fixed at
+    // the peak and the breath scales its opacity (the same alpha, without
+    // rebuilding the gradient every frame).
+    Loader {
         anchors.fill: parent
-        visible: item.favGlow
         z: -1
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: "transparent" }
-            GradientStop { position: 0.5; color: Theme.rgba(Theme.primaryColor, Tunables.favGlowBase + Tunables.favGlowAmp * app.favGlow) }
-            GradientStop { position: 1.0; color: "transparent" }
+        active: item.favGlow
+        sourceComponent: Rectangle {
+            opacity: (Tunables.favGlowBase + Tunables.favGlowAmp * app.favGlow) / (Tunables.favGlowBase + Tunables.favGlowAmp)
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.5; color: Theme.rgba(Theme.primaryColor, Tunables.favGlowBase + Tunables.favGlowAmp) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
         }
     }
 
@@ -129,13 +147,13 @@ ListItem {
         radius: width * app.avatarRadius
         // behind a picture nothing: one with transparency (dodoradio's, the
         // AsteroidOS room) shows the list through it, not a circle
-        color: picture.visible
+        color: picture.ready
                ? "transparent"
                : Theme.rgba(item.highlighted ? Theme.highlightColor : Theme.primaryColor, Theme.opacityFaint)
 
         Label {
             anchors.centerIn: parent
-            visible: !picture.visible
+            visible: !picture.ready
             text: model.name ? model.name.charAt(0).toUpperCase() : "?"
             font.pixelSize: Theme.fontSizeLarge
             color: item.highlighted ? Theme.highlightColor : Theme.primaryColor
@@ -143,8 +161,11 @@ ListItem {
 
         Image {
             id: picture
+            readonly property bool ready: status === Image.Ready
+            readonly property bool rounded: app.avatarRadius > 0 && item.avatarRounding !== "off"
             anchors.fill: parent
-            visible: status === Image.Ready
+            // under RoundMaskTexture the Image only lends its texture
+            visible: ready && !(rounded && item.avatarRounding === "texture")
             asynchronous: true
             fillMode: Image.PreserveAspectCrop
             sourceSize.width: avatarSize
@@ -152,84 +173,96 @@ ListItem {
             // the version makes a changed picture load past Qt's image cache
             // a stranger's invitation without its picture, if so set
             source: model.avatar_path && !(invited && model.inviter_known !== true && !app.strangerInvites)
-                    ? "file://" + model.avatar_path + "?v=" + (model.avatar_v || 0) : ""
+                    ? (rounded && item.avatarRounding === "provider"
+                       ? "image://rxavatar/" + model.avatar_path + "?v=" + (model.avatar_v || 0) + "&r=" + Math.round(app.avatarRadius * 1000)
+                       : "file://" + model.avatar_path + "?v=" + (model.avatar_v || 0))
+                    : ""
             // clip: true would cut a square; the rounding is a mask
-            layer.enabled: app.avatarRadius > 0
+            layer.enabled: rounded && item.avatarRounding === "layer"
             layer.effect: RoundMask { radius: app.avatarRadius }
         }
-
-        // the badge's shadow, offset a little further than the digits' shadow,
-        // soft at its edge: three pills, each a little larger, stacked to
-        // about 42 % black in the middle (no blur in plain Qt Quick 2.6)
-        Repeater {
-            model: 3
-            Rectangle {
-                readonly property real spread: index * 0.96
-                visible: badge.visible
-                x: badge.x + 1.5 - spread
-                y: badge.y + 3 - spread
-                width: badge.width + 2 * spread
-                height: badge.height + 2 * spread
-                radius: height / 2
-                color: Theme.rgba("black", 0.17)
-            }
+        Loader {
+            anchors.fill: picture
+            active: picture.ready && picture.rounded && item.avatarRounding === "texture"
+            sourceComponent: RoundMaskTexture { sourceImage: picture; radius: app.avatarRadius }
         }
 
-        // unread badge, top right of the picture
-        Rectangle {
-            id: badge
-            anchors {
-                right: parent.right
-                top: parent.top
-                rightMargin: -Theme.paddingSmall / 2
-                topMargin: -Theme.paddingSmall / 2
-            }
-            visible: !invited && (model.notifications > 0 || model.unread > 0)
-            // one digit: a circle; every further digit adds one digit's width to
-            // the straight middle only, so the ends stay half circles and the
-            // pill grows to the left (it is anchored at the right)
-            width: height + Math.max(0, badgeLabel.text.length - 1) * digitWidth.advanceWidth
-            // measured at the size the digits had, so the pill keeps its
-            // geometry while the digits shrink inside it
-            TextMetrics {
-                id: digitWidth
-                font.family: app.semiboldFontFamily
-                font.pixelSize: Theme.fontSizeExtraSmall
-                text: "0"
-            }
-            // the circle keeps this size; the digits grew into its padding
-            height: Theme.iconSizeSmall
-            radius: height / 2
-            // a shade (10 %) darker than the ambience's highlight colours, so the
-            // white digits stand out; a mention gets the brighter one
-            color: Qt.darker(model.highlights > 0 ? Theme.highlightColor : Theme.secondaryHighlightColor, 1.1)
-
-            // a soft shadow under the digits, one label behind the other
-            Label {
-                anchors.centerIn: badgeLabel
-                anchors.horizontalCenterOffset: 1
-                anchors.verticalCenterOffset: 2
-                text: badgeLabel.text
-                font: badgeLabel.font
-                color: Theme.rgba("black", 0.5)
+        // the unread badge with its shadow, made only for rows with something
+        // unread
+        Loader {
+            anchors.fill: parent
+            active: !invited && hasUnread
+            sourceComponent: badgeComponent
+        }
+    }
+    Component {
+        id: badgeComponent
+        Item {
+            // the badge's shadow, offset a little further than the digits' shadow,
+            // soft at its edge: three pills, each a little larger, stacked to
+            // about 42 % black in the middle (no blur in plain Qt Quick 2.6)
+            Repeater {
+                model: 3
+                Rectangle {
+                    readonly property real spread: index * 0.96
+                    x: badge.x + 1.5 - spread
+                    y: badge.y + 3 - spread
+                    width: badge.width + 2 * spread
+                    height: badge.height + 2 * spread
+                    radius: height / 2
+                    color: Theme.rgba("black", 0.17)
+                }
             }
 
-            Label {
-                id: badgeLabel
-                anchors.centerIn: parent
-                // digits have no descender; the text box's share for it pushed
-                // them low in Sail Sans. Source Sans 3 sits higher, and the
-                // shadow below the digits adds visual weight: 1 px down
-                // centres digits and shadow together (the author's eye)
-                anchors.verticalCenterOffset: 1 - Math.round(font.pixelSize * 0.04)
-                text: model.notifications > 0 ? model.notifications : model.unread
-                // a tenth smaller than the size the pill is measured for: more
-                // room around the digits inside it
-                font.pixelSize: Math.round(Theme.fontSizeExtraSmall * Tunables.badgeTextScale)
-                // the file is the Semibold cut: asking for bold on top of it
-                // would make Qt embolden it again
-                font.family: app.semiboldFontFamily
-                color: "white"
+            // unread badge, top right of the picture
+            Rectangle {
+                id: badge
+                anchors {
+                    right: parent.right
+                    top: parent.top
+                    rightMargin: -Theme.paddingSmall / 2
+                    topMargin: -Theme.paddingSmall / 2
+                }
+                // one digit: a circle; every further digit adds one digit's width to
+                // the straight middle only, so the ends stay half circles and the
+                // pill grows to the left (it is anchored at the right). The digit
+                // is measured (by the page) at the size the digits had, so the
+                // pill keeps its geometry while the digits shrink inside it
+                width: height + Math.max(0, badgeLabel.text.length - 1) * item.badgeDigitWidth
+                // the circle keeps this size; the digits grew into its padding
+                height: Theme.iconSizeSmall
+                radius: height / 2
+                // a shade (10 %) darker than the ambience's highlight colours, so the
+                // white digits stand out; a mention gets the brighter one
+                color: Qt.darker(model.highlights > 0 ? Theme.highlightColor : Theme.secondaryHighlightColor, 1.1)
+
+                // a soft shadow under the digits, one label behind the other
+                Label {
+                    anchors.centerIn: badgeLabel
+                    anchors.horizontalCenterOffset: 1
+                    anchors.verticalCenterOffset: 2
+                    text: badgeLabel.text
+                    font: badgeLabel.font
+                    color: Theme.rgba("black", 0.5)
+                }
+
+                Label {
+                    id: badgeLabel
+                    anchors.centerIn: parent
+                    // digits have no descender; the text box's share for it pushed
+                    // them low in Sail Sans. Source Sans 3 sits higher, and the
+                    // shadow below the digits adds visual weight: 1 px down
+                    // centres digits and shadow together (the author's eye)
+                    anchors.verticalCenterOffset: 1 - Math.round(font.pixelSize * 0.04)
+                    text: model.notifications > 0 ? model.notifications : model.unread
+                    // a tenth smaller than the size the pill is measured for: more
+                    // room around the digits inside it
+                    font.pixelSize: Math.round(Theme.fontSizeExtraSmall * Tunables.badgeTextScale)
+                    // the file is the Semibold cut: asking for bold on top of it
+                    // would make Qt embolden it again
+                    font.family: app.semiboldFontFamily
+                    color: "white"
+                }
             }
         }
     }
@@ -274,7 +307,7 @@ ListItem {
                 id: statusIcons
                 spacing: Theme.paddingSmall
                 // centred on the preview's first line
-                y: (firstLine.height - height) / 2
+                y: (item.previewLineHeight - height) / 2
                 // a call is running in the room: the plain handset, as the
                 // room page shows it (the incoming-call arrow read as "someone
                 // is calling you", 0.8 audit)
@@ -312,9 +345,6 @@ ListItem {
                 }
             }
 
-            // the height of one line of the preview, to centre the icons on it
-            FontMetrics { id: firstLine; font: preview.font }
-
             Label {
                 id: preview
                 // what the first line leaves free for the icons
@@ -323,6 +353,11 @@ ListItem {
                 wrapMode: Text.Wrap
                 maximumLineCount: Math.max(1, Math.min(Tunables.previewLinesMax, app.previewLines))
                 truncationMode: TruncationMode.Fade
+                // what Silica's Fade does here (the last of several lines
+                // elided, one line cut), but not decided from lineCount:
+                // that read the layout its own choice changes, a binding
+                // loop on _elideText in every row at start
+                elide: maximumLineCount > 1 ? Text.ElideRight : Text.ElideNone
                 font.pixelSize: Theme.fontSizeSmall * Tunables.metaTextScale
                 color: item.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
                 textFormat: Text.StyledText
@@ -367,14 +402,16 @@ ListItem {
         sourceSize.height: Theme.iconSizeExtraSmall
     }
     // its sparkle at the top of each breath of the glow: a lighter star over
-    // it, shown only in the breath's last quarter
-    Image {
+    // it, shown only in the breath's last quarter (glowing favourites only)
+    Loader {
         anchors.fill: favStar
-        visible: item.favGlow && favStar.visible
-        opacity: Math.max(0, (app.favGlow - Tunables.favSparkleFrom) / (1 - Tunables.favSparkleFrom))
-        source: "image://theme/icon-s-favorite?" + Tunables.favSparkleColor
-        sourceSize.width: Theme.iconSizeExtraSmall
-        sourceSize.height: Theme.iconSizeExtraSmall
+        active: item.favGlow && favStar.visible
+        sourceComponent: Image {
+            opacity: Math.max(0, (app.favGlow - Tunables.favSparkleFrom) / (1 - Tunables.favSparkleFrom))
+            source: "image://theme/icon-s-favorite?" + Tunables.favSparkleColor
+            sourceSize.width: Theme.iconSizeExtraSmall
+            sourceSize.height: Theme.iconSizeExtraSmall
+        }
     }
 
     // how long ago the last activity was, coarser the older: 1m..59m, 1h..24h, 1d..365d, then years
@@ -414,17 +451,13 @@ ListItem {
         }
     }
 
-    // what the model renders the name and the preview with, from the labels'
-    // own sizes and the preview's lines (one line: the breaks become spaces)
+    // what the models render the name with (one size for every list), from
+    // the label's own size, and the preview's lines (one line: the breaks
+    // become spaces)
     Binding {
         target: item.ListView.view ? item.ListView.view.model : null
         property: "nameEmojiSize"
         value: Math.round(nameLabel.font.pixelSize * Tunables.emojiScaleList)
-    }
-    Binding {
-        target: item.ListView.view ? item.ListView.view.model : null
-        property: "previewEmojiSize"
-        value: Math.round(preview.font.pixelSize * Tunables.emojiScaleList)
     }
     Binding {
         target: item.ListView.view ? item.ListView.view.model : null

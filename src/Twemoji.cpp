@@ -15,17 +15,54 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Twemoji.h"
+#include "Perf.h"
 #include <QSet>
 #include <QStringList>
 
+#include <QAtomicInt>
 #include <QDir>
+#include <QDirIterator>
+#include <QElapsedTimer>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QRegularExpression>
+#include <QRunnable>
+#include <QThreadPool>
 #include <QVector>
 
 namespace {
 
 QString s_dir;
 QSet<QString> s_names;   // file names without ".png": "1f600", "1f468-200d-1f4bb"
+// the names are read once, on a worker thread from the start or by the
+// first lookup, whichever comes first
+QMutex s_loadLock;
+QAtomicInt s_loaded;
+
+void loadNames()
+{
+    if (s_loaded.loadAcquire())
+        return;
+    QMutexLocker lock(&s_loadLock);
+    if (s_loaded.load())
+        return;
+    QElapsedTimer t;
+    t.start();
+    s_names.clear();
+    // in directory order: a set needs none
+    QDirIterator it(s_dir, { QStringLiteral("*.png") }, QDir::Files);
+    while (it.hasNext()) {
+        it.next();
+        const QString f = it.fileName();
+        s_names.insert(f.left(f.size() - 4));
+    }
+    s_loaded.storeRelease(1);
+    Perf::mark("twemoji", -1, QStringLiteral("names=%1 ms=%2").arg(s_names.size()).arg(t.elapsed()));
+}
+
+struct NameLoader : QRunnable {
+    void run() override { loadNames(); }
+};
 
 // the longest emoji sequence Twemoji has (family with skin tones)
 const int kMaxLength = 10;
@@ -133,17 +170,23 @@ QString inText(const QString &text, int height)
 
 namespace Twemoji {
 
+void start(const QString &dir)
+{
+    s_dir = dir;
+    s_loaded.storeRelease(0);
+    QThreadPool::globalInstance()->start(new NameLoader);
+}
+
 void init(const QString &dir)
 {
     s_dir = dir;
-    s_names.clear();
-    const QStringList files = QDir(dir).entryList({ QStringLiteral("*.png") }, QDir::Files);
-    for (const QString &f : files)
-        s_names.insert(f.left(f.size() - 4));
+    s_loaded.storeRelease(0);
+    loadNames();
 }
 
 QString url(const QString &emoji)
 {
+    loadNames();
     const QVector<uint> cps = emoji.toUcs4();
     if (cps.isEmpty())
         return QString();
@@ -161,6 +204,7 @@ QString url(const QString &emoji)
 
 QString inHtml(const QString &html, int height)
 {
+    loadNames();
     if (s_names.isEmpty() || html.isEmpty())
         return html;
     // tags and entities pass, the text between them is looked at

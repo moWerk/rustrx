@@ -18,7 +18,7 @@ UI. They talk through six C functions (`src/rustrx_core.h`) and JSON:
   given: running commands are aborted, the session is saved, the client's
   stores close and the core's threads stop. No command runs afterwards.
 
-**Version 2** (since 0.4.7: one name per concept). The core sends `"proto": 2` with `ready` and `logged_in`
+**Version 3** (since 0.8.2: a timeline goes out as its order plus only the changed items; version 2, since 0.4.7, was one name per concept). The core sends `"proto": 3` with `ready` and `logged_in`
 (`PROTO` in `core/src/consts.rs`); the bridge warns in the log when it expects
 another (`kProto` in `src/Keys.h`). Both halves ship in one package, so a
 mismatch means a build mix-up, not an upgrade path.
@@ -53,6 +53,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `save_draft` | `room_id`, `text` ("" removes it; kept in the encrypted store), `thread_root?` (a thread's draft) | |
 | `close_room` | | |
 | `paginate_back` | `room_id`, `count?` (30) | `paginated` |
+| `timeline_resync` | `room_id`, `thread_root?` (the open thread's) | the next `timeline` (`thread_timeline`) is `full`; the UI asks when an event skips one of its stream or names an id it does not have |
 | `send_text` | `room_id`, `body`, `reply_to?`, `markdown?` (true), `emotes?` (shortcode → mxc: custom emoji in the HTML), `thread_root?`, `emote?` (an m.emote, as /me sends), `mentions?` (`{user_id, name}`: the names become pills, m.mentions; "@room" in the body mentions the room) | `timeline` |
 | `notification_reply` | `room_id`, `body` (typed into a notification) | `reply_sent` once the server took it; `reply_failed` when it refused it, gave no answer within 20 seconds or anything failed before (never `error`): the message is taken back out of the queue and its text added to the room's draft (`draft`) |
 | `send_sticker` | `room_id`, `mxc`, `body`, `info?`, `thread_root?` | `timeline` |
@@ -193,8 +194,8 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `server_features` | `device_login` (the account service logs devices in by a code), `qr_rendezvous` (the server keeps the QR rendezvous); once after every `logged_in` |
 | `open_url` | `url` (SSO: to open in the browser) |
 | `sync_state` | `state` (`idle`, `running`, `offline`, `error`, `terminated`), `message?` |
-| `rooms` | `rooms`: room objects, invitations first, then by activity |
-| `timeline` | `room_id`, `items`: timeline items, oldest first, the whole list each time |
+| `rooms` | `rooms`: room objects, invitations first, then by activity; the whole list each time, sent only when a row or the set of rooms changed (an update that changes nothing in the rows sends nothing) |
+| `timeline` | `room_id`, `stream`, `seq`, `full`, `order`, `items`: see "Timeline events" below |
 | `paginated` | `room_id`, `at_start` |
 | `draft` | `room_id`, `thread_root?` (a thread's), `text` (what was being written there; "" for none) |
 | `forwarded` | `room_id`, `event_id` (the message forwarded), `to_room` (where it went: in its send queue) |
@@ -232,7 +233,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `profile` | `display_name`, `user_id`, `avatar_path` (a cached file), `avatar_v` |
 | `storage` | `store`, `media_files` (bytes), `crypto?`, `state?`, `event_cache?`, `media_cache?` |
 | `error` | `cmd`, `message` |
-| `thread_timeline` | `room_id`, `thread_root`, `items` (as `timeline`; a thread root carries `thread`: `count`, `latest_sender_name`, `latest_body`, `latest_id`, `latest_ts`, `latest_own`, `unread` (no read receipt of ours, threaded or not, reaches the latest reply)) |
+| `thread_timeline` | `room_id`, `thread_root`, `stream`, `seq`, `full`, `order`, `items` (as `timeline`; a thread root carries `thread`: `count`, `latest_sender_name`, `latest_body`, `latest_id`, `latest_ts`, `latest_own`, `unread` (no read receipt of ours, threaded or not, reaches the latest reply)) |
 | `thread_list` | `room_id`, `threads` (`root`, `latest`: `event_id`, `sender`, `sender_name`, `is_own`, `ts`, `body`; `count`, `unread`), `loading` |
 | `space_rooms` | `space_id`, `loading`, `rooms` (`room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `is_space`, `member_count`, `children`, `join_rule`, `state`, `suggested`, `via`) |
 | `room_preview` | `room_or_alias`, `ok`, and when ok: `room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `member_count`, `is_space`, `join_rule`, `state`; else `error` |
@@ -258,8 +259,28 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 ### Room object
 `room_id`, `name`, `topic`, `alias`, `avatar_path` (a cached file), `avatar_v`, `has_avatar`,
 `state` (`joined`, `invited`), `is_dm`, `dm_user` (the person of a direct chat), `is_fav`, `is_low`, `encrypted`,
-`unread`, `notifications`, `highlights`, `ts` (last activity, ms), `latest_event_id`,
+`unread`, `joined_members`, `notifications`, `highlights`, `ts` (last activity, ms), `latest_event_id`,
 `preview`, `preview_sender`.
+
+### Timeline events
+`timeline` and `thread_timeline` come on every change of the open
+timeline (coalesced, 60 ms), and not when nothing changed. `order` holds
+every item's `id`, oldest first; `items` maps an id to its item (below), for
+the items new or changed since the stream's last event only, all of them
+when `full`. Each open (`open_room`, `open_thread`) starts a new stream:
+`stream` grows with each one in the process, `seq` counts its events from 1.
+The first event of a stream is `full`, as is the one after a reset of the
+SDK's timeline and after `timeline_resync`. The UI keeps the items by id
+and drops what `order` no longer names. Ids are unique within a stream
+only: on a `full` event the UI takes every item as new. An event of an
+earlier stream is old (a room opened again) and dropped; one that skips a
+`seq`, comes from a later stream before its full one, or names an id the UI
+does not have, is not applied, and the UI sends `timeline_resync`.
+
+The first event of a room goes out before the readers' display names and
+the threads' `unread` are looked up (store reads): `read_by` has
+localparts and `unread` is false there for a moment; the next event
+carries them. `own_read` is in the first already (the room opens there).
 
 ### Timeline item
 Every item: `id` (unique, stable), `kind` (`event`, `date`, `readmarker`, `start`).
@@ -281,5 +302,11 @@ same shape. The SDK's timeline keeps none for state events, so the core
 counts them (`core/src/core/state_reactions.rs`): each state event in the
 loaded timeline gets its annotations fetched once (`/relations/{eventId}/m.annotation`,
 the first 100), the sync adds new ones and takes redacted ones away, and the
-timeline is sent again when that changes a row. The counts go when the room
-closes. Thread timelines (`thread_timeline`) leave them out.
+timeline is sent again when that changes a row. Thread timelines
+(`thread_timeline`) leave them out. The counts stay for the last 10 rooms
+opened (per account), with the reply originals the core fetched for them
+(a `reply_to` whose original is not loaded): a room opened again shows
+them, and asks again for neither while they were fetched less than 10
+minutes ago; older, they show while the counts are fetched again (and
+replaced) and the originals asked again. A failed fetch is asked again at
+the next open.

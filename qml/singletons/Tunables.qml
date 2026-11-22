@@ -49,6 +49,12 @@ QtObject {
     // pictures and bubbles
     // a room picture inside its slot (list row, room header), of the slot
     readonly property real avatarScale: 0.9
+    // how the room list rounds its pictures: "layer" (a layer with RoundMask
+    // per row), "texture" (RoundMaskTexture on the Image's own texture, no
+    // offscreen pass), "provider" (pre-rounded by image://rxavatar, a plain
+    // Image), "off" (square, for measuring). dconf debugAvatarRounding
+    // overrides it for A/B runs on the phones
+    readonly property string avatarRounding: "layer"
     // air above and below a room row, of (itemSizeMedium - iconSizeLarge)
     readonly property real roomRowMarginFactor: 1.5
     // image and video bubbles, of the screen width

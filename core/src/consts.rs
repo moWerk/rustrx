@@ -7,7 +7,7 @@ use std::time::Duration;
 /// The version of the JSON protocol between the core and the UI
 /// (docs/PROTOCOL.md), sent with "ready" and "logged_in". Must match
 /// `kProto` in src/Keys.h.
-pub(crate) const PROTO: u32 = 2;
+pub(crate) const PROTO: u32 = 3;
 
 // Names
 
@@ -28,8 +28,9 @@ pub(crate) const CLIENT_URI: &str = "https://github.com/moWerk/rustrx";
 
 /// Room list updates arriving this close together are sent as one.
 pub(crate) const ROOM_LIST_BATCH: Duration = Duration::from_millis(150);
-/// After a minute of small updates the room list is rebuilt in full.
-pub(crate) const ROOM_LIST_FULL_REBUILD: Duration = Duration::from_secs(60);
+/// The room list is rebuilt in full at the first update this long after
+/// the last full pass (and after a lagged update stream).
+pub(crate) const ROOM_LIST_FULL_REBUILD: Duration = Duration::from_secs(600);
 /// Wait before syncing again after a sync error.
 pub(crate) const SYNC_RETRY_DELAY: Duration = Duration::from_secs(5);
 /// a sync service that fails within this time of starting failed at once

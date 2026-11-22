@@ -59,6 +59,8 @@ HEADERS += src/Rustrx.h \
     src/Wipe.h \
     src/DevHook.h \
     src/Perf.h \
+    src/RoundAvatar.h \
+    src/AvatarProvider.h \
     src/ShareCopy.h \
     src/rustrx_core.h
 

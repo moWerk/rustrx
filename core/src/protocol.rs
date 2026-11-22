@@ -50,6 +50,10 @@ pub(crate) enum Command {
     CloseRoom,
     /// Older history; answered by "paginated".
     PaginateBack { room_id: String, count: Option<u16> },
+    /// The UI lost track of the open room's timeline (or of the open
+    /// thread's, with `thread_root`): the next `timeline` (`thread_timeline`)
+    /// carries every item, `full`.
+    TimelineResync { room_id: String, thread_root: Option<String> },
     /// `emotes`: the custom emoji the text uses, shortcode (without the
     /// colons) to mxc address; the formatted body gets their pictures.
     SendText {
@@ -362,7 +366,7 @@ mod tests {
     /// is a reviewed act: update this list and docs/PROTOCOL.md.
     const COMMANDS: &[&str] = &[
         "probe_server", "login_password", "login_sso", "login_oauth", "login_qr", "qr_check_code", "qr_scanned", "grant_qr", "login_cancel", "restore", "set_classic_sync", "logout",
-        "open_room", "close_room", "paginate_back", "send_text", "notification_reply", "send_sticker",
+        "open_room", "close_room", "paginate_back", "timeline_resync", "send_text", "notification_reply", "send_sticker",
         "open_thread", "close_thread", "save_draft", "retry_send", "thread_list", "close_thread_list", "mark_thread_read",
         "push_set", "push_remove", "push_check", "push_handle", "send_file", "react", "redact", "edit", "forward",
         "poll_vote", "report", "event_source", "mark_read", "typing", "set_presence", "get_media",
@@ -388,7 +392,7 @@ mod tests {
 
     /// How many fields the commands require, all together. Like COMMANDS, a
     /// change here is a change of the contract.
-    const REQUIRED_FIELDS: usize = 162;
+    const REQUIRED_FIELDS: usize = 163;
 
 
     /// The names serde knows, from its own error for an unknown tag

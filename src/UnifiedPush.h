@@ -35,6 +35,9 @@ class UnifiedPush : public QObject
     Q_OBJECT
     // a distributor is installed
     Q_PROPERTY(bool available READ available NOTIFY changed)
+    // the distributor was looked up (asked without waiting, at start and
+    // at each login): until then `available` says nothing
+    Q_PROPERTY(bool lookedUp READ lookedUp NOTIFY changed)
     // the user's switch (on unless switched off)
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY changed)
     // the homeserver pushes to us: push replaces the stand-in
@@ -60,6 +63,7 @@ public:
     static bool enabledOnDisk(const QString &dataDir);
 
     bool available() const { return !m_distributor.isEmpty(); }
+    bool lookedUp() const { return m_lookedUp; }
     bool enabled() const { return m_state.value("enabled", true).toBool(); }
     void setEnabled(bool on);
     bool active() const;
@@ -98,6 +102,7 @@ private:
     void load();
     void save();
     void findDistributor();
+    void distributorFound(QStringList names);
     void registerApp();
     void discoverGateway();
     void setPusherIfNeeded();
@@ -110,6 +115,11 @@ private:
     QString m_distributor;
     QString m_status;
     bool m_loggedIn = false;
+    bool m_lookedUp = false;
+    // a login waits for the lookup it started, then registers
+    bool m_registerWanted = false;
+    // only the newest lookup's answer counts
+    int m_lookup = 0;
     QNetworkAccessManager *m_net = nullptr;
 };
 

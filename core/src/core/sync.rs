@@ -5,17 +5,87 @@
 use super::*;
 use std::collections::HashSet;
 
+use matrix_sdk::notification_settings::NotificationSettings;
+use tokio::sync::mpsc;
+
 /// What the room list task remembers between passes, for one login (the
 /// task is aborted on logout, and this goes with it).
 #[derive(Default)]
 pub(super) struct ListSeen {
-    /// room and picture pairs tried once ("!room|mxc://..."); a new picture
-    /// of the room is tried again
-    avatars_tried: HashSet<String>,
-    /// joined rooms whose latest event is listened for
+    /// joined rooms whose latest event is listened for (or handed to the
+    /// task that registers them)
     latest_listened: HashSet<OwnedRoomId>,
     /// rooms and spaces whose requests to join are watched
     pub(super) knocks_watched: HashSet<OwnedRoomId>,
+}
+
+/// The core's order, as serialize.rs sorted_rooms has it: invitations
+/// first, then by the last activity, the id breaking ties.
+fn room_order(r: &Value) -> (bool, std::cmp::Reverse<u64>, &str) {
+    (r["state"] != "invited", std::cmp::Reverse(r["ts"].as_u64().unwrap_or(0)), r["room_id"].as_str().unwrap_or(""))
+}
+
+/// The new rows into the cache; whether any differed from the one before.
+fn take_rows(cache: &mut HashMap<OwnedRoomId, Value>, rows: Vec<(OwnedRoomId, Value)>) -> bool {
+    let mut changed = false;
+    for (id, row) in rows {
+        if cache.get(&id) != Some(&row) {
+            cache.insert(id, row);
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Two requests for pictures as one: the rooms of both, or every room
+/// (None) when either asked for every room.
+fn join_asks(a: Option<HashSet<OwnedRoomId>>, b: Option<HashSet<OwnedRoomId>>) -> Option<HashSet<OwnedRoomId>> {
+    match (a, b) {
+        (Some(mut a), Some(b)) => {
+            a.extend(b);
+            Some(a)
+        }
+        _ => None,
+    }
+}
+
+/// A task that goes when its owner does (the room list's helpers end with
+/// the room list task, which logout aborts).
+struct AbortOnDrop(JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// Rows of the room list made at once (their store reads overlap).
+const ROOM_ROWS_AT_ONCE: usize = 8;
+/// Room pictures downloaded at once, beside the room list.
+const AVATAR_FETCHES_AT_ONCE: usize = 4;
+/// Rooms whose latest event is registered before the task lets others run.
+const LATEST_LISTEN_CHUNK: usize = 8;
+/// The room list is rebuilt in full at the first update this long after the
+/// last full pass (and after a lagged update stream): a safety net for what
+/// the stream missed, not a cost of every message after a quiet minute.
+const ROOM_LIST_SWEEP: Duration = ROOM_LIST_FULL_REBUILD;
+
+/// The rows of `rooms`, made several at once (each one awaits its own
+/// store reads); `prev`: the rows before this pass (room_json).
+pub(super) async fn build_rows(
+    rooms: Vec<Room>,
+    avatar_dir: &std::path::Path,
+    settings: &NotificationSettings,
+    prev: &HashMap<OwnedRoomId, Value>,
+) -> Vec<(OwnedRoomId, Value)> {
+    futures_util::stream::iter(rooms)
+        .map(|room| async move {
+            let row = room_json(&room, avatar_dir, settings, prev.get(room.room_id())).await;
+            (room.room_id().to_owned(), row)
+        })
+        .buffer_unordered(ROOM_ROWS_AT_ONCE)
+        .collect()
+        .await
 }
 
 /// How long the sync service rests after its `fails`-th failure in a row
@@ -142,102 +212,125 @@ impl Core {
 
     /// Room list snapshots on every notable room change, coalesced.
     /// The room list: every room once, then only the rooms the update
-    /// stream names are serialised again; a lagged stream or a minute of
-    /// updates rebuilds the whole list (and catches what the stream missed).
+    /// stream names are serialised again, and sent only when a row changed;
+    /// a lagged stream, or the first update ROOM_LIST_SWEEP after the
+    /// last full pass, rebuilds the whole list (and catches what the stream
+    /// missed). Pictures and the latest-event listeners have tasks of their
+    /// own, so that neither holds the list back.
     pub(crate) async fn rooms_task(&'static self, client: Client) {
         let mut rx = client.room_info_notable_update_receiver();
         let avatar_dir = self.data_dir.join(AVATAR_DIR);
         let t = std::time::Instant::now();
-        let mut cache: HashMap<OwnedRoomId, Value> = HashMap::new();
         let mut seen = ListSeen::default();
-        {
+        let mut cache: HashMap<OwnedRoomId, Value> = {
             // the push rules once per pass, not once per room
             let settings = client.notification_settings().await;
-            for room in client.rooms().into_iter().filter(crate::serialize::listed) {
-                cache.insert(room.room_id().to_owned(), room_json(&room, &avatar_dir, &settings).await);
-            }
-        }
+            let rooms: Vec<Room> = client.rooms().into_iter().filter(crate::serialize::listed).collect();
+            build_rows(rooms, &avatar_dir, &settings, &HashMap::new()).await.into_iter().collect()
+        };
         tracing::info!(ms = t.elapsed().as_millis() as u64, rooms = cache.len(), "startup: first room list");
-        self.emit_rooms_list(&cache, t, true, cache.len());
-        Self::listen_latest(&client, &mut seen).await;
+        self.emit_rooms_list(&cache, t, true, cache.len(), true);
+        // the helpers: what they are asked, and the rooms whose picture came
+        let (avatar_tx, avatar_rx) = mpsc::unbounded_channel::<Option<HashSet<OwnedRoomId>>>();
+        let (pictures_tx, mut pictures) = mpsc::unbounded_channel::<OwnedRoomId>();
+        let (latest_tx, latest_rx) = mpsc::unbounded_channel::<Vec<OwnedRoomId>>();
+        let _avatars = AbortOnDrop(self.rt.spawn(self.avatars_task(client.clone(), avatar_rx, pictures_tx)));
+        let _latest = AbortOnDrop(self.rt.spawn(Self::latest_task(client.clone(), latest_rx)));
+        Self::listen_latest(&client, &cache, &mut seen, &latest_tx);
         self.watch_knocks(&client, None, &mut seen).await;
-        let mut avatars_new = self.fetch_avatars(&client, None, &mut seen).await;
+        avatar_tx.send(None).ok();
         let mut last_full = std::time::Instant::now();
         loop {
+            // the rooms the updates named, and those whose picture came
             let mut changed: HashSet<OwnedRoomId> = HashSet::new();
-            // new pictures change rows the update stream does not name
-            let mut full = std::mem::take(&mut avatars_new);
-            if !full {
-                match rx.recv().await {
-                    Ok(update) => {
-                        changed.insert(update.room_id);
+            let mut full = false;
+            tokio::select! {
+                update = rx.recv() => match update {
+                    Ok(u) => {
+                        changed.insert(u.room_id);
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => full = true,
                     Err(_) => break,
+                },
+                Some(id) = pictures.recv() => {
+                    changed.insert(id);
                 }
             }
             tokio::time::sleep(ROOM_LIST_BATCH).await;
             loop {
                 match rx.try_recv() {
-                    Ok(update) => {
-                        changed.insert(update.room_id);
+                    Ok(u) => {
+                        changed.insert(u.room_id);
                     }
                     Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => full = true,
                     Err(_) => break,
                 }
             }
-            // a minute of updates: everything once more, to catch what the
-            // stream missed
-            if last_full.elapsed() > ROOM_LIST_FULL_REBUILD {
+            while let Ok(id) = pictures.try_recv() {
+                changed.insert(id);
+            }
+            // long since the last full pass: everything once more, to catch
+            // what the stream missed
+            if last_full.elapsed() > ROOM_LIST_SWEEP {
                 full = true;
             }
             let built = std::time::Instant::now();
-            let mut rebuilt = 0;
             let settings = client.notification_settings().await;
+            let mut dirty = false;
+            let rebuilt;
             if full {
-                cache.clear();
-                for room in client.rooms().into_iter().filter(crate::serialize::listed) {
-                    cache.insert(room.room_id().to_owned(), room_json(&room, &avatar_dir, &settings).await);
-                }
-                rebuilt = cache.len();
+                let rooms: Vec<Room> = client.rooms().into_iter().filter(crate::serialize::listed).collect();
+                let rows: HashMap<OwnedRoomId, Value> =
+                    build_rows(rooms, &avatar_dir, &settings, &HashMap::new()).await.into_iter().collect();
+                rebuilt = rows.len();
+                dirty = rows != cache;
+                cache = rows;
                 last_full = std::time::Instant::now();
             } else {
+                let mut rooms = Vec::new();
                 for id in &changed {
                     match client.get_room(id).filter(crate::serialize::listed) {
-                        Some(room) => {
-                            cache.insert(id.clone(), room_json(&room, &avatar_dir, &settings).await);
-                            rebuilt += 1;
-                        }
-                        None => {
-                            cache.remove(id);
-                        }
+                        Some(room) => rooms.push(room),
+                        None => dirty |= cache.remove(id).is_some(),
                     }
                 }
+                let rows = build_rows(rooms, &avatar_dir, &settings, &cache).await;
+                rebuilt = rows.len();
+                dirty |= take_rows(&mut cache, rows);
             }
-            self.emit_rooms_list(&cache, built, full, rebuilt);
+            // nothing the list shows changed: nothing is sent (the UI parsed
+            // and compared the whole list for it)
+            self.emit_rooms_list(&cache, built, full, rebuilt, dirty);
             Self::log_counts(&client);
             // only what changed is looked at again: on a full rebuild every
             // room, else the rooms the update named (the list's cost no
             // longer grows with the number of rooms on every receipt)
             let only = if full { None } else { Some(&changed) };
-            let unknown = changed.iter().any(|id| !seen.latest_listened.contains(id));
-            if unknown || full {
-                Self::listen_latest(&client, &mut seen).await;
+            if full || changed.iter().any(|id| !seen.latest_listened.contains(id)) {
+                Self::listen_latest(&client, &cache, &mut seen, &latest_tx);
             }
             self.watch_knocks(&client, only, &mut seen).await;
-            avatars_new = self.fetch_avatars(&client, only, &mut seen).await;
+            avatar_tx.send(only.cloned()).ok();
         }
     }
 
-    /// The cached rows sorted out as "rooms"; perf: how long the pass since
-    /// `built` took and how many rows it made anew.
-    fn emit_rooms_list(&self, cache: &HashMap<OwnedRoomId, Value>, built: std::time::Instant, full: bool, rebuilt: usize) {
+    /// The cached rows sorted out as "rooms" when `send`; perf: how long the
+    /// pass since `built` took, how many rows it made anew, and whether it
+    /// sent the list (not when no row changed).
+    fn emit_rooms_list(&self, cache: &HashMap<OwnedRoomId, Value>, built: std::time::Instant, full: bool, rebuilt: usize, send: bool) {
         let build = built.elapsed();
-        let rooms = sorted_rooms(cache.values().cloned().collect());
-        tracing::debug!(target: "rustrx::perf", full, rooms = cache.len(), rebuilt, reused = cache.len() - rebuilt,
-                        build_us = build.as_micros() as u64, sort_us = (built.elapsed() - build).as_micros() as u64,
+        let rooms = send.then(|| {
+            let mut rows: Vec<&Value> = cache.values().collect();
+            // borrowed keys: sorted_rooms made a String per comparison
+            rows.sort_by(|a, b| room_order(a).cmp(&room_order(b)));
+            Value::Array(rows.into_iter().cloned().collect())
+        });
+        tracing::debug!(target: "rustrx::perf", full, rooms = cache.len(), rebuilt, reused = cache.len().saturating_sub(rebuilt),
+                        sent = send, build_us = build.as_micros() as u64, sort_us = (built.elapsed() - build).as_micros() as u64,
                         "rooms_build");
-        self.emit(json!({"ev": "rooms", "rooms": rooms}));
+        if let Some(rooms) = rooms {
+            self.emit(json!({"ev": "rooms", "rooms": rooms}));
+        }
     }
 
     /// One journal line per room with anything unread: the server's counts
@@ -269,64 +362,115 @@ impl Core {
     }
 
     /// The latest-event service is lazy: a room's preview is only computed
-    /// once someone listens for it. Register every joined room, once.
-    async fn listen_latest(client: &Client, seen: &mut ListSeen) {
+    /// once someone listens for it. Every joined room once, handed to
+    /// latest_task, the rooms on top of the list first.
+    fn listen_latest(client: &Client, cache: &HashMap<OwnedRoomId, Value>, seen: &mut ListSeen, to: &mpsc::UnboundedSender<Vec<OwnedRoomId>>) {
+        let mut new: Vec<OwnedRoomId> = client
+            .rooms()
+            .into_iter()
+            .filter(|r| r.state() == RoomState::Joined)
+            .map(|r| r.room_id().to_owned())
+            .filter(|id| seen.latest_listened.insert(id.clone()))
+            .collect();
+        if new.is_empty() {
+            return;
+        }
+        new.sort_by_cached_key(|id| std::cmp::Reverse(cache.get(id).and_then(|r| r["ts"].as_u64()).unwrap_or(0)));
+        to.send(new).ok();
+    }
+
+    /// Registers the rooms it is given with the latest-event service, a few
+    /// at a time with a yield between, beside the room list: each one reads
+    /// the room's event cache, and 136 in a row held the first updates back.
+    /// perf: how long each batch took.
+    async fn latest_task(client: Client, mut rx: mpsc::UnboundedReceiver<Vec<OwnedRoomId>>) {
         let latest = client.latest_events().await;
-        for room in client.rooms() {
-            if room.state() != RoomState::Joined {
-                continue;
+        while let Some(ids) = rx.recv().await {
+            let t = std::time::Instant::now();
+            for (i, id) in ids.iter().enumerate() {
+                if let Err(e) = latest.listen_to_room(id).await {
+                    tracing::info!(room = %id, "latest event: {e}");
+                }
+                if (i + 1) % LATEST_LISTEN_CHUNK == 0 {
+                    tokio::task::yield_now().await;
+                }
             }
-            if !seen.latest_listened.insert(room.room_id().to_owned()) {
-                continue;
-            }
-            if let Err(e) = latest.listen_to_room(room.room_id()).await {
-                tracing::info!(room = %room.room_id(), "latest event: {e}");
-            }
+            tracing::debug!(target: "rustrx::perf", rooms = ids.len(), ms = t.elapsed().as_millis() as u64, "listen_latest");
         }
     }
 
-    /// Cache the avatars that are missing or changed (the picture's mxc
-    /// address is kept beside it, "<room>.url"), once per picture.
-    /// Returns whether a new picture arrived (the room list then needs it).
-    async fn fetch_avatars(&self, client: &Client, only: Option<&HashSet<OwnedRoomId>>, seen: &mut ListSeen) -> bool {
+    /// Caches the avatars that are missing or changed (the picture's mxc
+    /// address is kept beside it, "<room>.url"), once per picture, for the
+    /// rooms it is asked about (None: every room), a few downloads at once.
+    /// Sends back each room whose picture arrived (its row needs it).
+    async fn avatars_task(
+        &'static self,
+        client: Client,
+        mut rx: mpsc::UnboundedReceiver<Option<HashSet<OwnedRoomId>>>,
+        arrived: mpsc::UnboundedSender<OwnedRoomId>,
+    ) {
         let avatar_dir = self.data_dir.join(AVATAR_DIR);
         let own = client.user_id().map(ToOwned::to_owned);
-        let mut fetched = false;
-        for room in client.rooms() {
-            if only.is_some_and(|o| !o.contains(room.room_id())) {
-                continue;
+        // room and picture pairs tried once ("!room|mxc://..."); a new
+        // picture of the room is tried again
+        let mut tried: HashSet<String> = HashSet::new();
+        while let Some(first) = rx.recv().await {
+            // what was asked meanwhile in one go: every room if one asked for all
+            let mut only = first;
+            while let Ok(more) = rx.try_recv() {
+                only = join_asks(only, more);
             }
-            // Rooms without a known picture are looked at again next time:
-            // a DM's peer may only become known after a later sync.
-            let Some(url) = Self::avatar_source(&room, own.as_deref()).await else { continue };
-            let file = avatar_file(&avatar_dir, &room);
-            let marker = file.with_extension("url");
-            // the cached one is this picture (a file from before the marker
-            // counts as current, as before)
-            if file.exists() {
-                match std::fs::read_to_string(&marker) {
-                    Ok(known) if known.trim() != url.as_str() => {}
-                    _ => continue,
+            let mut wanted = Vec::new();
+            for room in client.rooms() {
+                if only.as_ref().is_some_and(|o| !o.contains(room.room_id())) {
+                    continue;
                 }
-            }
-            if !seen.avatars_tried.insert(format!("{}|{}", room.room_id(), url)) {
-                continue;
-            }
-            let request = MediaRequestParameters {
-                source: MediaSource::Plain(url.clone()),
-                format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(ROOM_AVATAR_PX.into(), ROOM_AVATAR_PX.into())),
-            };
-            match client.media().get_media_content(&request, true).await {
-                Ok(bytes) => {
-                    if tokio::fs::write(&file, &bytes).await.is_ok() {
-                        tokio::fs::write(&marker, url.as_str()).await.ok();
-                        fetched = true;
+                // Rooms without a known picture are looked at again next time:
+                // a DM's peer may only become known after a later sync.
+                let Some(url) = Self::avatar_source(&room, own.as_deref()).await else { continue };
+                let file = avatar_file(&avatar_dir, &room);
+                let marker = file.with_extension("url");
+                // the cached one is this picture (a file from before the marker
+                // counts as current, as before)
+                if file.exists() {
+                    match std::fs::read_to_string(&marker) {
+                        Ok(known) if known.trim() != url.as_str() => {}
+                        _ => continue,
                     }
                 }
-                Err(e) => tracing::info!(room = %room.room_id(), "avatar: {e}"),
+                if !tried.insert(format!("{}|{}", room.room_id(), url)) {
+                    continue;
+                }
+                wanted.push((room.room_id().to_owned(), url, file, marker));
+            }
+            let client = &client;
+            let mut downloads = futures_util::stream::iter(wanted)
+                .map(|(id, url, file, marker)| async move {
+                    let request = MediaRequestParameters {
+                        source: MediaSource::Plain(url.clone()),
+                        format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(ROOM_AVATAR_PX.into(), ROOM_AVATAR_PX.into())),
+                    };
+                    match client.media().get_media_content(&request, true).await {
+                        Ok(bytes) => {
+                            if tokio::fs::write(&file, &bytes).await.is_ok() {
+                                tokio::fs::write(&marker, url.as_str()).await.ok();
+                                return Some(id);
+                            }
+                            None
+                        }
+                        Err(e) => {
+                            tracing::info!(room = %id, "avatar: {e}");
+                            None
+                        }
+                    }
+                })
+                .buffer_unordered(AVATAR_FETCHES_AT_ONCE);
+            while let Some(done) = downloads.next().await {
+                if let Some(id) = done {
+                    arrived.send(id).ok();
+                }
             }
         }
-        fetched
     }
 
     /// The room's own picture, or for a direct chat the other person's.
@@ -422,6 +566,48 @@ impl Core {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn id(s: &str) -> OwnedRoomId {
+        OwnedRoomId::try_from(s).unwrap()
+    }
+
+    // Planted-bug: take_rows reports a change for a row equal to the cached one
+    // (every quiet update sent the whole list again).
+    #[test]
+    fn equal_rows_change_nothing() {
+        let mut cache = HashMap::from([(id("!a:x"), json!({"room_id": "!a:x", "ts": 1}))]);
+        assert!(!take_rows(&mut cache, vec![(id("!a:x"), json!({"room_id": "!a:x", "ts": 1}))]));
+        assert!(take_rows(&mut cache, vec![(id("!a:x"), json!({"room_id": "!a:x", "ts": 2}))]));
+        assert_eq!(cache[&id("!a:x")]["ts"], 2);
+        assert!(take_rows(&mut cache, vec![(id("!b:x"), json!({"room_id": "!b:x"}))]));
+        assert!(!take_rows(&mut cache, vec![]));
+    }
+
+    // Planted-bug: a request for some rooms after one for every room narrows it.
+    #[test]
+    fn picture_requests_join() {
+        let some = |ids: &[&str]| Some(ids.iter().map(|s| id(s)).collect::<HashSet<_>>());
+        assert_eq!(join_asks(some(&["!a:x"]), some(&["!b:x"])), some(&["!a:x", "!b:x"]));
+        assert_eq!(join_asks(None, some(&["!b:x"])), None);
+        assert_eq!(join_asks(some(&["!a:x"]), None), None);
+    }
+
+    // Planted-bug: the list's own sort differs from sorted_rooms (invitations
+    // no longer first).
+    #[test]
+    fn list_order_is_sorted_rooms_order() {
+        let rows = vec![
+            json!({"room_id": "!b", "ts": 5, "state": "joined"}),
+            json!({"room_id": "!a", "ts": 5, "state": "joined"}),
+            json!({"room_id": "!i", "ts": 1, "state": "invited"}),
+            json!({"room_id": "!n", "state": "joined"}),
+            json!({"room_id": "!z", "ts": 9, "state": "joined"}),
+        ];
+        let mut mine: Vec<&Value> = rows.iter().collect();
+        mine.sort_by(|a, b| room_order(a).cmp(&room_order(b)));
+        let mine = Value::Array(mine.into_iter().cloned().collect());
+        assert_eq!(mine, sorted_rooms(rows));
+    }
 
     #[test]
     fn sync_rests_longer_each_time_up_to_the_most() {

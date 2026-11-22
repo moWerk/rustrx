@@ -19,6 +19,7 @@
 #include "RoomModel.h"
 
 #include <QCollator>
+#include <QScopedPointer>
 #include <QSettings>
 #include <QVector>
 #include <algorithm>
@@ -172,7 +173,8 @@ void RoomLists::sortRooms(QVariantList &rooms, const QString &kind) const
     QVector<int> index(rooms.size());
     for (int i = 0; i < index.size(); ++i)
         index[i] = i;
-    QCollator collator;
+    // made only for the order by name (a QCollator per sort, used or not)
+    QScopedPointer<QCollator> collator(byName ? new QCollator : nullptr);
     std::stable_sort(index.begin(), index.end(), [&](int ia, int ib) {
         const Key &a = keys.at(ia), &b = keys.at(ib);
         if (a.invited != b.invited)
@@ -185,7 +187,7 @@ void RoomLists::sortRooms(QVariantList &rooms, const QString &kind) const
         if (byUnread)
             return a.unread > b.unread;
         if (byName)
-            return collator.compare(a.name, b.name) < 0;
+            return collator->compare(a.name, b.name) < 0;
         return false;
     });
     QVariantList sorted;
@@ -230,6 +232,19 @@ void RoomLists::setKnockRequests(const QVariantMap &ev)
     emit knockRequestsChanged();
 }
 
+RoomModel *RoomLists::targets() const
+{
+    // sorted and handed over when something reads it (the room pickers)
+    if (m_targetsDirty) {
+        m_targetsDirty = false;
+        QVariantList rows = m_pendingTargets;
+        m_pendingTargets.clear();
+        sortRooms(rows, QStringLiteral("rooms"));
+        m_targets->setRooms(rows);
+    }
+    return m_targets;
+}
+
 QVariantMap RoomLists::roomInfo(const QString &roomId) const
 {
     return m_roomsById.value(roomId);
@@ -248,22 +263,62 @@ QVariantMap RoomLists::firstUnread() const
     return QVariantMap();
 }
 
-void RoomLists::setRooms(const QVariantList &rooms)
+// as RoomModel's: the uid in the merged view, the room id otherwise
+static QString rowKey(const QVariant &v)
 {
-    distributeRooms(rooms);
+    const QVariantMap room = v.toMap();
+    const QString uid = room.value(QStringLiteral("uid")).toString();
+    return uid.isEmpty() ? room.value(QStringLiteral("room_id")).toString() : uid;
 }
 
-QVariantList RoomLists::mergeAccounts(const QList<QPair<int, QVariantList>> &accounts)
+void RoomLists::setRooms(const QVariantList &rooms)
+{
+    // A row equal to the last one is passed on as the last one: every list
+    // then compares it by pointer (one deep compare here instead of one in
+    // each model, the fresh parse shares nothing).
+    QVariantList kept;
+    kept.reserve(rooms.size());
+    QHash<QString, QVariant> byKey;
+    byKey.reserve(rooms.size());
+    for (const QVariant &v : rooms) {
+        const QString key = rowKey(v);
+        const auto it = m_lastByKey.constFind(key);
+        kept.append(it != m_lastByKey.constEnd() && *it == v ? *it : v);
+        byKey.insert(key, kept.last());
+    }
+    m_lastByKey.swap(byKey);
+    m_lastRooms = kept;
+    distributeRooms(m_lastRooms);
+}
+
+QVariantList RoomLists::mergeAccounts(const QList<QPair<int, QVariantList>> &accounts, MergeCache *cache)
 {
     QVariantList merged;
+    MergeCache next;
     for (const auto &account : accounts) {
         for (const QVariant &v : account.second) {
-            QVariantMap r = v.toMap();
+            const QVariantMap source = v.toMap();
+            const QString uid = QString::number(account.first) + QLatin1Char('/') + source.value("room_id").toString();
+            // the row of the last call when its source is the same (RoomLists
+            // passes unchanged rows on as they were: a pointer compare)
+            if (cache) {
+                const auto it = cache->constFind(uid);
+                if (it != cache->constEnd() && it->first == v) {
+                    merged.append(it->second);
+                    next.insert(uid, *it);
+                    continue;
+                }
+            }
+            QVariantMap r = source;
             r.insert(QStringLiteral("account"), account.first);
-            r.insert(QStringLiteral("uid"), QString::number(account.first) + QLatin1Char('/') + r.value("room_id").toString());
+            r.insert(QStringLiteral("uid"), uid);
             merged.append(r);
+            if (cache)
+                next.insert(uid, qMakePair(v, merged.last()));
         }
     }
+    if (cache)
+        cache->swap(next);
     // the core's own order (serialize.rs sorted_rooms), across accounts
     struct Key {
         bool invited;
@@ -305,19 +360,16 @@ void RoomLists::distributeRooms(const QVariantList &rooms)
     int unread = 0, chats = 0;
     m_roomsById.clear();
     for (const QVariant &v : rooms) {
-        QVariantMap r = v.toMap();
+        // no copies: the rows go on as they came (the section is a role)
+        const QVariantMap r = v.toMap();
         const QString id = r.value("room_id").toString();
         const bool invited = isInvited(r);
         const bool fav = r.value("is_fav").toBool();
-        //: list section for pending invitations
-        //% "Invitations"
-        r.insert("section", invited ? qtTrId("rustrx-se-invitations") : QString());
         m_roomsById.insert(id, r);
         // a joined space goes to the spaces only (an invitation to one stays
         // with the invitations)
         if (r.value("is_space").toBool() && !invited) {
-            r.insert("section", QString());
-            spaces.append(r);
+            spaces.append(v);
             continue;
         }
         // the same number the row badge shows
@@ -336,23 +388,20 @@ void RoomLists::distributeRooms(const QVariantList &rooms)
         if (shown) {
             if (r.value("is_dm").toBool()) {
                 if (!(mutedRoom && hidePeople))
-                    dms.append(r);
+                    dms.append(v);
             } else if (!(mutedRoom && hideRooms)) {
-                groups.append(r);
+                groups.append(v);
             }
             // the one list keeps the core's order (by activity) across rooms
             // and people; joining the two lists would put every room first
             if (!(mutedRoom && hideAll))
-                everything.append(r);
+                everything.append(v);
         }
         if (!invited)
-            targets.append(r);
-        if (shown && fav && !invited && !(mutedRoom && hideFavs)) {
-            // the Favs tab mixes rooms and people, by activity, no sections
-            QVariantMap f = r;
-            f.insert("section", QString());
-            favs.append(f);
-        }
+            targets.append(v);
+        // the Favs tab mixes rooms and people, by activity, no sections
+        if (shown && fav && !invited && !(mutedRoom && hideFavs))
+            favs.append(v);
         if (m_displayOnly)
             continue;
         // notifications while running: a room gained notifications (count:
@@ -404,8 +453,16 @@ void RoomLists::distributeRooms(const QVariantList &rooms)
     m_all->setRooms(everything);
     sortRooms(spaces, QStringLiteral("spaces"));
     m_spaces->setRooms(spaces);
-    sortRooms(targets, QStringLiteral("rooms"));
-    m_targets->setRooms(targets);
+    // what the pickers offer: only while one shows it, else when read
+    if (m_targets->watched()) {
+        m_targetsDirty = false;
+        m_pendingTargets.clear();
+        sortRooms(targets, QStringLiteral("rooms"));
+        m_targets->setRooms(targets);
+    } else {
+        m_pendingTargets = targets;
+        m_targetsDirty = true;
+    }
     if (unread != m_unreadTotal || chats != m_unreadChats) {
         m_unreadTotal = unread;
         m_unreadChats = chats;
@@ -417,6 +474,9 @@ void RoomLists::clear()
 {
     // a filter or tab setting changed later must not bring them back
     m_lastRooms.clear();
+    m_lastByKey.clear();
+    m_pendingTargets.clear();
+    m_targetsDirty = false;
     m_rooms->setRooms({});
     m_people->setRooms({});
     m_favourites->setRooms({});

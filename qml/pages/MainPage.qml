@@ -53,6 +53,23 @@ Page {
     DebugValue { id: debugSortOpen; name: "debugSortOpen"; defaultValue: false; onValueChanged: page.sortOpen = value === true }
     DebugValue { id: debugAccountsOpen; name: "debugAccountsOpen"; defaultValue: false; onValueChanged: page.accountsOpen = value === true }
     property bool debugDone
+    // the room list's picture rounding (Tunables.avatarRounding) for A/B
+    // runs: "layer", "texture", "provider" or "off"
+    DebugValue { id: debugAvatarRounding; name: "debugAvatarRounding"; defaultValue: "" }
+    readonly property string avatarRounding: debugAvatarRounding.value.length ? debugAvatarRounding.value : Tunables.avatarRounding
+
+    // measured once for every room row: the height of a preview line (to
+    // centre the state icons on it) and one digit of the unread badge, at
+    // the size the badge's pill is measured for
+    // (the font of a Label as the preview has it, family and all)
+    Label { id: previewFont; visible: false; font.pixelSize: Theme.fontSizeSmall * Tunables.metaTextScale }
+    FontMetrics { id: previewMetrics; font: previewFont.font }
+    TextMetrics {
+        id: badgeDigit
+        font.family: app.semiboldFontFamily
+        font.pixelSize: Theme.fontSizeExtraSmall
+        text: "0"
+    }
     // the key may hold a room id or a room name; names are looked up in the list
     Instantiator {
         id: debugRooms
@@ -553,39 +570,43 @@ Page {
                         }
                         // a search: from the second letter the lists narrow while typing;
                         // the check mark keeps it (then a cross removes it), else opening a
-                        // room or closing the menu drops it
-                        Item {
-                            visible: page.shownMenu === "sort"
+                        // room or closing the menu drops it. Made only while the
+                        // filter menu is out.
+                        Loader {
                             width: page.width
-                            height: visible ? searchField.height : 0
-                            TextField {
-                                id: searchField
-                                anchors { left: parent.left; right: lockButton.left }
-                                //% "Search"
-                                placeholderText: qsTrId("rustrx-ph-room-search")
-                                label: ""
-                                readOnly: page.filterLocked
-                                inputMethodHints: Qt.ImhNoPredictiveText
-                                text: page.filterText
-                                onTextChanged: page.filterText = text
-                                onActiveFocusChanged: page.searching = activeFocus
-                                EnterKey.iconSource: "image://theme/icon-m-enter-accept"
-                                EnterKey.enabled: text.trim().length >= Tunables.minSearchChars
-                                EnterKey.onClicked: page.lockFilter()
-                                // a hidden field keeps its focus in QML and took the typing
-                                // with the menu closed: with the menu it lets go, keyboard too
-                                onVisibleChanged: if (!visible && activeFocus) { focus = false; Qt.inputMethod.hide() }
-                                // the keyboard goes as the menu starts up; the field keeps
-                                // its focus (and the menu its fold) until the rows go
-                                readonly property bool closing: page.shownMenu === "sort" && !page.sortOpen
-                                onClosingChanged: if (closing && activeFocus) Qt.inputMethod.hide()
-                            }
-                            IconButton {
-                                id: lockButton
-                                anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin - Theme.paddingMedium; verticalCenter: searchField.verticalCenter; verticalCenterOffset: -Theme.paddingSmall }
-                                enabled: page.filterLocked || searchField.text.trim().length >= Tunables.minSearchChars
-                                icon.source: page.filterLocked ? "image://theme/icon-m-clear" : "image://theme/icon-m-acknowledge"
-                                onClicked: page.filterLocked ? page.clearFilter() : page.lockFilter()
+                            active: page.shownMenu === "sort"
+                            // a field that goes with focus may not say so: the
+                            // fold and the keyboard go with it
+                            onActiveChanged: if (!active && page.searching) { page.searching = false; Qt.inputMethod.hide() }
+                            sourceComponent: Item {
+                                width: page.width
+                                height: searchField.height
+                                TextField {
+                                    id: searchField
+                                    anchors { left: parent.left; right: lockButton.left }
+                                    //% "Search"
+                                    placeholderText: qsTrId("rustrx-ph-room-search")
+                                    label: ""
+                                    readOnly: page.filterLocked
+                                    inputMethodHints: Qt.ImhNoPredictiveText
+                                    text: page.filterText
+                                    onTextChanged: page.filterText = text
+                                    onActiveFocusChanged: page.searching = activeFocus
+                                    EnterKey.iconSource: "image://theme/icon-m-enter-accept"
+                                    EnterKey.enabled: text.trim().length >= Tunables.minSearchChars
+                                    EnterKey.onClicked: page.lockFilter()
+                                    // the keyboard goes as the menu starts up; the field keeps
+                                    // its focus (and the menu its fold) until the rows go
+                                    readonly property bool closing: page.shownMenu === "sort" && !page.sortOpen
+                                    onClosingChanged: if (closing && activeFocus) Qt.inputMethod.hide()
+                                }
+                                IconButton {
+                                    id: lockButton
+                                    anchors { right: parent.right; rightMargin: Theme.horizontalPageMargin - Theme.paddingMedium; verticalCenter: searchField.verticalCenter; verticalCenterOffset: -Theme.paddingSmall }
+                                    enabled: page.filterLocked || searchField.text.trim().length >= Tunables.minSearchChars
+                                    icon.source: page.filterLocked ? "image://theme/icon-m-clear" : "image://theme/icon-m-acknowledge"
+                                    onClicked: page.filterLocked ? page.clearFilter() : page.lockFilter()
+                                }
                             }
                         }
                     }
@@ -594,6 +615,7 @@ Page {
         }
 
         delegate: TabItem {
+            id: tabItem
             flickable: list
 
             readonly property bool isRooms: model.kind === "rooms"
@@ -607,6 +629,9 @@ Page {
                 model: isAll ? rustrx.all : isRooms ? rustrx.rooms : isFavs ? rustrx.favourites
                      : isSpaces ? rustrx.spaces : rustrx.people
                 currentIndex: -1
+                // the list is in front (its tab current, the page active):
+                // only then do its favourites' glow keep the breath running
+                readonly property bool glowShown: page.status === PageStatus.Active && tabItem.isCurrentItem
 
                 // A list at its top stays at its top when rows arrive or move
                 // there (the first sync, a new message, the sort order); the
@@ -687,58 +712,76 @@ Page {
 
                     Item { width: 1; height: tabs.tabBarHeight + Theme.paddingMedium }
 
+                    // each banner is made only while it shows
+
                     // people asking to join a room or space we may invite to
-                    BannerItem {
-                        visible: rustrx.knockRequests.length > 0
-                        onClicked: pageStack.push(Qt.resolvedUrl("KnockPage.qml"))
-                        //: %n open requests to join rooms or spaces
-                        //% "%n requests to join. Tap to answer."
-                        text: qsTrId("rustrx-la-banner-knocks", rustrx.knockRequests.length)
+                    Loader {
+                        width: parent.width
+                        active: rustrx.knockRequests.length > 0
+                        sourceComponent: BannerItem {
+                            onClicked: pageStack.push(Qt.resolvedUrl("KnockPage.qml"))
+                            //: %n open requests to join rooms or spaces
+                            //% "%n requests to join. Tap to answer."
+                            text: qsTrId("rustrx-la-banner-knocks", rustrx.knockRequests.length)
+                        }
                     }
 
                     // the server notifies of nothing for this account (its
                     // rule switched off elsewhere): the Account tab says
                     // why and switches it on
-                    BannerItem {
-                        visible: rustrx.notificationsOff
-                        onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { startTab: "account" })
-                        //% "Notifications are off for this account on your server. Tap to switch them on."
-                        text: qsTrId("rustrx-la-banner-notifications-off")
+                    Loader {
+                        width: parent.width
+                        active: rustrx.notificationsOff
+                        sourceComponent: BannerItem {
+                            onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { startTab: "account" })
+                            //% "Notifications are off for this account on your server. Tap to switch them on."
+                            text: qsTrId("rustrx-la-banner-notifications-off")
+                        }
                     }
 
                     // a classic call runs while the user is in the chats: back to it
-                    BannerItem {
-                        visible: rustrx.voip.state !== "idle" && rustrx.voip.state !== "incoming"
-                        onClicked: app.showVoip()
-                        //: %1 the other person
-                        //% "Call with %1. Tap to return to it."
-                        text: qsTrId("rustrx-la-call-return").arg(rustrx.voip.peerName || "")
+                    Loader {
+                        width: parent.width
+                        active: rustrx.voip.state !== "idle" && rustrx.voip.state !== "incoming"
+                        sourceComponent: BannerItem {
+                            onClicked: app.showVoip()
+                            //: %1 the other person
+                            //% "Call with %1. Tap to return to it."
+                            text: qsTrId("rustrx-la-call-return").arg(rustrx.voip.peerName || "")
+                        }
                     }
 
                     // one line while this phone cannot read encrypted rooms
-                    BannerItem {
-                        visible: rustrx.verificationState === "unverified" || rustrx.recoveryState === "incomplete"
-                        // unverified: "Tap to verify it" starts the verification (it
-                        // only opened the settings; 0.8 audit), whose page offers
-                        // the recovery key to someone without another device;
-                        // the missing key: the settings' encryption part
-                        onClicked: {
-                            if (rustrx.verificationState === "unverified") {
-                                rustrx.command({ cmd: "verification_request_self" })
-                                pageStack.push(Qt.resolvedUrl("VerificationPage.qml"), { waiting: true })
-                            } else {
-                                pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { showEncryption: true })
+                    Loader {
+                        width: parent.width
+                        active: rustrx.verificationState === "unverified" || rustrx.recoveryState === "incomplete"
+                        sourceComponent: BannerItem {
+                            // unverified: "Tap to verify it" starts the verification (it
+                            // only opened the settings; 0.8 audit), whose page offers
+                            // the recovery key to someone without another device;
+                            // the missing key: the settings' encryption part
+                            onClicked: {
+                                if (rustrx.verificationState === "unverified") {
+                                    rustrx.command({ cmd: "verification_request_self" })
+                                    pageStack.push(Qt.resolvedUrl("VerificationPage.qml"), { waiting: true })
+                                } else {
+                                    pageStack.push(Qt.resolvedUrl("SettingsPage.qml"), { showEncryption: true })
+                                }
                             }
+                            text: rustrx.verificationState === "unverified"
+                                  //% "This phone is not verified. Tap to verify it."
+                                  ? qsTrId("rustrx-la-banner-unverified")
+                                  //% "Older encrypted messages need the recovery key. Tap to enter it."
+                                  : qsTrId("rustrx-la-banner-recovery")
                         }
-                        text: rustrx.verificationState === "unverified"
-                              //% "This phone is not verified. Tap to verify it."
-                              ? qsTrId("rustrx-la-banner-unverified")
-                              //% "Older encrypted messages need the recovery key. Tap to enter it."
-                              : qsTrId("rustrx-la-banner-recovery")
                     }
                 }
 
-                delegate: RoomDelegate { }
+                delegate: RoomDelegate {
+                    avatarRounding: page.avatarRounding
+                    previewLineHeight: previewMetrics.height
+                    badgeDigitWidth: badgeDigit.advanceWidth
+                }
 
                 // the first sync takes a moment: a spinner first, the text after
                 // a spinner only until the first room list is in; an empty tab
@@ -784,11 +827,14 @@ Page {
 
     // after the TabView: children go in the order they were made, and the
     // TabView must go before its model (else it reaches into a dead context
-    // when the window is deleted in background mode)
+    // when the window is deleted in background mode). It holds the default
+    // settings' tabs, as buildTabs makes them: it finds them in place, and
+    // no tab is built and dropped at the start.
     ListModel {
         id: tabModel
         ListElement { kind: "rooms" }
         ListElement { kind: "people" }
         ListElement { kind: "favs" }
+        ListElement { kind: "spaces" }
     }
 }

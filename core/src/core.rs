@@ -55,7 +55,7 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use crate::consts::*;
-use crate::serialize::{avatar_file, items_json, member_name, profile_name, raw_value, room_json, room_name, sorted_rooms};
+use crate::serialize::{avatar_file, member_name, profile_name, raw_value, room_json, room_name, sorted_rooms};
 use crate::protocol::{given, Command};
 use crate::Emitter;
 
@@ -207,6 +207,7 @@ mod account;
 mod call;
 mod commands;
 mod knock;
+mod media_cache;
 mod moderation;
 mod packs;
 mod push;

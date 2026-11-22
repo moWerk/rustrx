@@ -5,11 +5,22 @@
 
 use super::*;
 
+/// Commands sent many times a minute while a room is used.
+pub(crate) const FREQUENT_COMMANDS: &[&str] =
+    &["paginate_back", "mark_read", "get_media", "typing", "fetch_emote", "save_draft", "image_packs"];
+
 impl Core {
     pub(crate) fn dispatch(&'static self, v: Value) {
         let cmd = v.get("cmd").and_then(Value::as_str).unwrap_or("").to_owned();
         let room = v.get("room_id").and_then(Value::as_str).unwrap_or("").to_owned();
-        tracing::info!(%cmd, %room, "command");
+        // the ones a scroll or the composer sends many of at debug: they were
+        // most of the log (every line also a write in the UI's log file);
+        // one that fails is logged with its error all the same
+        if FREQUENT_COMMANDS.contains(&cmd.as_str()) {
+            tracing::debug!(%cmd, %room, "command");
+        } else {
+            tracing::info!(%cmd, %room, "command");
+        }
         // the shape is checked before anything runs (protocol.rs)
         let command: Command = match crate::protocol::parse(v) {
             Ok(c) => c,
@@ -80,6 +91,7 @@ impl Core {
                 Ok(())
             }
             PaginateBack { room_id, count } => self.paginate_back(&room_id, count).await,
+            TimelineResync { room_id, thread_root } => self.timeline_resync(&room_id, given(&thread_root)).await,
             SendText { room_id, body, reply_to, markdown, emotes, thread_root, emote, mentions } => {
                 self.send_text(&room_id, &body, given(&reply_to), markdown.unwrap_or(true), emotes.as_ref(),
                                given(&thread_root), emote.unwrap_or(false), mentions.as_deref().unwrap_or(&[]))

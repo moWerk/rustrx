@@ -18,8 +18,10 @@
 #include "Voip.h"
 #include "AecFrames.h"
 #include "Keys.h"
+#include "Perf.h"
 
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QEventLoop>
 #include <QDebug>
 #include <QRegularExpression>
@@ -77,10 +79,22 @@ QStringList Voip::mids(const QString &sdp)
     return out;
 }
 
+// GStreamer at the first call, not at every start (it read its registry
+// and checked every plugin before the window came, in every process; the
+// voice recorder moved to first use for the same reason)
+static void ensureGst()
+{
+    if (gst_is_initialized())
+        return;
+    QElapsedTimer t;
+    t.start();
+    gst_init(nullptr, nullptr);
+    qInfo().noquote() << "voip: GStreamer set up in" << t.elapsed() << "ms";
+    Perf::mark("gst", -1, QStringLiteral("ms=%1").arg(t.elapsed()));
+}
+
 Voip::Voip(QObject *parent) : QObject(parent)
 {
-    if (!gst_is_initialized())
-        gst_init(nullptr, nullptr);
     m_candidateTimer.setSingleShot(true);
     m_candidateTimer.setInterval(Keys::kVoipCandidateBatchMs);
     connect(&m_candidateTimer, &QTimer::timeout, this, &Voip::flushCandidates);
@@ -524,6 +538,8 @@ void Voip::handleEvent(const QVariantMap &ev)
 bool Voip::startPipeline()
 {
     stopPipeline();
+    // every GStreamer object of a call is made below
+    ensureGst();
     m_pipeGen.ref();
     const QString source = m_testTone
             ? QStringLiteral("audiotestsrc is-live=true wave=sine freq=%1 volume=0.3").arg(m_toneHz)

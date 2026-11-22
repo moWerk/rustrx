@@ -243,8 +243,10 @@ Column {
     onRoomIdChanged: { members = []; membersAsked = false; picked = [] }
     Connections {
         target: rustrx
-        // mentions offer only those in the room (the list has the invited and banned too)
-        onMembers: if (roomId === composer.roomId) composer.members = members.filter(function (m) { return !m.membership || m.membership === "join" })
+        // mentions offer only those in the room (the list has the invited and
+        // banned too); only once asked, so a list the info page asked for is
+        // not held twice
+        onMembers: if (composer.membersAsked && roomId === composer.roomId) composer.members = members.filter(function (m) { return !m.membership || m.membership === "join" })
     }
     function suggestions() {
         if (!mentioning) return []

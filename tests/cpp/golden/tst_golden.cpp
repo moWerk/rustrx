@@ -145,7 +145,6 @@ private slots:
         t.model.setEmoteSize(kEmote);
         t.model.setSmallEmojiSize(kSmall);
         rooms.setNameEmojiSize(kName);
-        rooms.setPreviewEmojiSize(kPreview);
         QFile f(QStringLiteral(RUSTRX_ROOT "/tests/cpp/golden/plain-texts.json"));
         QVERIFY(f.open(QIODevice::ReadOnly));
         QJsonParseError error;

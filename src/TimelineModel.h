@@ -31,6 +31,9 @@
 // across snapshots because the core only reports them once. body_html,
 // caption_html and thread_html are a row's plain texts as StyledText, and
 // each reaction carries its key as one ("label"), all made once per row.
+// The core sends a timeline as the order of its ids and only the items new
+// or changed since its last event (applyTimeline); the items are kept here
+// by id between events.
 class TimelineModel : public QAbstractListModel
 {
     Q_OBJECT
@@ -47,8 +50,16 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
+    // the whole timeline, oldest first
     void setItems(const QVariantList &items);
+    // a "timeline" or "thread_timeline" event (docs/PROTOCOL.md); true when
+    // it could not be applied and the core is to send everything again
+    // (timeline_resync), asked once until that comes
+    bool applyTimeline(const QVariantMap &ev);
     void setMediaPath(const QString &eventId, bool thumb, const QString &path);
+    // the media folder was emptied: the paths forgotten; returns the rows'
+    // pictures that had one (event id, thumbnail or not), to ask again
+    QVector<QPair<QString, bool>> clearMediaPaths();
     // a custom emoji's picture arrived in the cache
     void setEmotePath(const QString &mxc, const QString &path);
     // the cache was emptied: ask again when shown
@@ -111,6 +122,7 @@ private:
     QString cachedThread(const QVariantMap &item) const;
     void forget(const QVariant &item);
     QVector<int> changedRoles(const QVariantMap &from, const QVariantMap &to) const;
+    void apply(const QVector<QString> &ids, const QVariantList &target, const QSet<QString> *changed);
     QVariantMap withMedia(QVariantMap item) const;
     QString renderHtml(const QString &html, int emojiHeight = 0, bool spoilersShown = false) const;
     QVariantList renderReactions(const QVariantList &reactions) const;
@@ -120,6 +132,18 @@ private:
     QVariant renderReply(const QVariant &reply) const;
 
     QVariantList m_items;
+    QVector<QString> m_ids;   // each row's id, as m_items
+    // the core's items by id, for the events that send only the changed
+    // ones; the stream they belong to and the last event's number
+    QHash<QString, QVariant> m_store;
+    qint64 m_stream = 0;
+    qint64 m_seq = 0;
+    bool m_resyncAsked = false;
+    // rowOfEvent's and rowOwnRead's answers, made when asked after a change
+    void indexRows() const;
+    mutable QHash<QString, int> m_rowOf;
+    mutable int m_ownReadRow = -1;
+    mutable bool m_rowsDirty = true;
     QHash<QString, QString> m_media;
     QHash<QString, QString> m_thumbs;
     QHash<int, QByteArray> m_roles;

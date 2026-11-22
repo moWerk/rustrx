@@ -18,6 +18,7 @@
 #include "Perf.h"
 #include "Twemoji.h"
 
+#include <QDebug>
 #include <QElapsedTimer>
 #include <QImageReader>
 #include <QRegularExpression>
@@ -53,7 +54,7 @@ TimelineModel::TimelineModel(QObject *parent)
                             "reactions", "reply_to", "thread_root", "thread", "mime", "size", "w", "h", "has_thumb",
                             "filename", "duration", "geo_uri", "media_path", "thumb_path", "read_by",
                             "caption", "shield", "answers", "max_selections", "ended", "upload_done", "upload_total",
-                            "emotes", "body_html", "caption_html", "thread_html", "send_error" };
+                            "emotes", "body_html", "caption_html", "thread_html", "send_error", "own_read" };
     int role = Qt::UserRole + 1;
     for (const char *n : names) {
         m_roles.insert(role, QByteArray(n));
@@ -610,14 +611,33 @@ void TimelineModel::setSmallEmojiSize(int size)
         emit dataChanged(index(0), index(m_items.size() - 1), { m_reactionsRole, m_threadHtmlRole });
 }
 
+// the rows of the events and of our read receipt, made again after the
+// rows changed and when first asked for (not on every change: a sync burst
+// changes the rows more often than anyone asks)
+void TimelineModel::indexRows() const
+{
+    if (!m_rowsDirty)
+        return;
+    m_rowOf.clear();
+    m_rowOf.reserve(m_items.size());
+    m_ownReadRow = -1;
+    for (int i = 0; i < m_items.size(); ++i) {
+        const QVariantMap m = m_items.at(i).toMap();
+        const QString eventId = m.value(QStringLiteral("event_id")).toString();
+        if (!eventId.isEmpty() && !m_rowOf.contains(eventId))
+            m_rowOf.insert(eventId, i);
+        if (m_ownReadRow < 0 && m.value(QStringLiteral("own_read")).toBool())
+            m_ownReadRow = i;
+    }
+    m_rowsDirty = false;
+}
+
 int TimelineModel::rowOfEvent(const QString &eventId) const
 {
     if (eventId.isEmpty())
         return -1;
-    for (int i = 0; i < m_items.size(); ++i)
-        if (m_items.at(i).toMap().value(QStringLiteral("event_id")).toString() == eventId)
-            return i;
-    return -1;
+    indexRows();
+    return m_rowOf.value(eventId, -1);
 }
 
 int TimelineModel::rowOfKind(const QString &kind) const
@@ -630,10 +650,8 @@ int TimelineModel::rowOfKind(const QString &kind) const
 
 int TimelineModel::rowOwnRead() const
 {
-    for (int i = 0; i < m_items.size(); ++i)
-        if (m_items.at(i).toMap().value(QStringLiteral("own_read")).toBool())
-            return i;
-    return -1;
+    indexRows();
+    return m_ownReadRow;
 }
 
 QString TimelineModel::seenEventId(int row) const
@@ -668,28 +686,102 @@ QVariantMap TimelineModel::get(int row) const
     return row >= 0 && row < m_items.size() ? withMedia(m_items.at(row).toMap()) : QVariantMap();
 }
 
-// The core sends the whole timeline, oldest first; the model holds it
-// newest first. Rows are matched by their unique id: removed rows go,
-// new ones are inserted where they belong, moved ones move, and only rows
-// whose content changed are reported. A page of older history therefore
-// arrives as an insertion at the far end and the view stays where it is
-// (a reset used to throw a reader back to the newest message).
+// The whole timeline, oldest first (the model holds it newest first);
+// every row compared in depth.
 void TimelineModel::setItems(const QVariantList &items)
+{
+    QVariantList target;
+    QVector<QString> ids;
+    target.reserve(items.size());
+    ids.reserve(items.size());
+    for (int i = items.size() - 1; i >= 0; --i) {
+        target.append(items.at(i));
+        ids.append(items.at(i).toMap().value(QStringLiteral("id")).toString());
+    }
+    apply(ids, target, nullptr);
+}
+
+// A core event: `order`, all ids oldest first, and `items`, by id, the new
+// and changed ones (all of them when `full`). Every stream starts full; its
+// next events have to follow one by one (`seq`), and each id has to be
+// known, else nothing is applied and everything is asked for again. A
+// later stream's event before its full one means one was missed; an
+// earlier stream's (an earlier open of the room) is old and dropped.
+bool TimelineModel::applyTimeline(const QVariantMap &ev)
+{
+    const qint64 stream = ev.value(QStringLiteral("stream")).toLongLong();
+    const qint64 seq = ev.value(QStringLiteral("seq")).toLongLong();
+    const bool full = ev.value(QStringLiteral("full")).toBool();
+    const QVariantMap items = ev.value(QStringLiteral("items")).toMap();
+    const QVariantList order = ev.value(QStringLiteral("order")).toList();
+    if (m_stream != 0 && stream < m_stream)
+        return false;
+    if (!full && (stream != m_stream || seq != m_seq + 1)) {
+        if (m_stream == 0 || m_resyncAsked)
+            return false;
+        qInfo() << "timeline: stream" << stream << "event" << seq << "after" << m_stream << m_seq << ", all again";
+        m_resyncAsked = true;
+        return true;
+    }
+    QVector<QString> ids;
+    ids.reserve(order.size());
+    for (int i = order.size() - 1; i >= 0; --i)
+        ids.append(order.at(i).toString());
+    if (!full) {
+        for (const QString &id : ids) {
+            if (!items.contains(id) && !m_store.contains(id)) {
+                if (m_resyncAsked)
+                    return false;
+                qInfo() << "timeline: an unknown item" << id << ", all again";
+                m_resyncAsked = true;
+                return true;
+            }
+        }
+    } else {
+        m_store.clear();
+        m_resyncAsked = false;
+    }
+    m_stream = stream;
+    m_seq = seq;
+    QSet<QString> changed;
+    for (auto it = items.constBegin(); it != items.constEnd(); ++it) {
+        m_store.insert(it.key(), it.value());
+        changed.insert(it.key());
+    }
+    QVariantList target;
+    target.reserve(ids.size());
+    for (const QString &id : ids)
+        target.append(m_store.value(id));
+    if (m_store.size() != ids.size()) {
+        QHash<QString, QVariant> kept;
+        kept.reserve(ids.size());
+        for (int i = 0; i < ids.size(); ++i)
+            kept.insert(ids.at(i), target.at(i));
+        m_store.swap(kept);
+    }
+    // a full one compares every row: the ids are the stream's, an earlier
+    // stream's rows may have the same ids for other items
+    apply(ids, target, full ? nullptr : &changed);
+    return false;
+}
+
+// Rows are matched by their unique id: removed rows go, new ones are
+// inserted where they belong, moved ones move, and only rows whose content
+// changed are reported (with `changed`, only those rows are looked at).
+// Neighbouring rows go and come in one step. A page of older history
+// therefore arrives as one insertion at the far end and the view stays
+// where it is (a reset used to throw a reader back to the newest message).
+void TimelineModel::apply(const QVector<QString> &ids, const QVariantList &target, const QSet<QString> *changedIds)
 {
     QElapsedTimer took;
     took.start();
     int removed = 0, moved = 0, inserted = 0, changed = 0;
-    QVariantList target;
-    target.reserve(items.size());
-    for (int i = items.size() - 1; i >= 0; --i)
-        target.append(items.at(i));
-
-    auto idOf = [](const QVariant &v) { return v.toMap().value(QStringLiteral("id")).toString(); };
-
     const int before = m_items.size();
+    m_rowsDirty = true;
     QSet<QString> wanted;
-    for (const QVariant &v : target)
-        wanted.insert(idOf(v));
+    wanted.reserve(ids.size());
+    for (const QString &id : ids)
+        wanted.insert(id);
     // the custom emoji are looked for in new and changed rows only (all of
     // them once after the emoji cache was emptied)
     const bool askAll = m_askAll;
@@ -698,23 +790,38 @@ void TimelineModel::setItems(const QVariantList &items)
 
     // 1. rows that are gone, from the end so the indices stay valid
     for (int i = m_items.size() - 1; i >= 0; --i) {
-        if (!wanted.contains(idOf(m_items.at(i)))) {
-            forget(m_items.at(i));
-            ++removed;
-            beginRemoveRows(QModelIndex(), i, i);
-            m_items.removeAt(i);
-            endRemoveRows();
+        if (wanted.contains(m_ids.at(i)))
+            continue;
+        int first = i;
+        while (first > 0 && !wanted.contains(m_ids.at(first - 1)))
+            --first;
+        beginRemoveRows(QModelIndex(), first, i);
+        for (int j = i; j >= first; --j) {
+            forget(m_items.at(j));
+            m_items.removeAt(j);
+            m_ids.removeAt(j);
         }
+        m_rowsDirty = true;
+        endRemoveRows();
+        removed += i - first + 1;
+        i = first;
     }
+    QSet<QString> present;
+    present.reserve(m_ids.size());
+    for (const QString &id : m_ids)
+        present.insert(id);
 
     // a row with new content: rendered anew, and only its changed roles told
     auto update = [&](int i) {
+        if (changedIds && !changedIds->contains(ids.at(i)))
+            return;
         if (m_items.at(i) == target.at(i))
             return;
         ++changed;
         const QVector<int> roles = changedRoles(m_items.at(i).toMap(), target.at(i).toMap());
         forget(m_items.at(i));
         m_items[i] = target.at(i);
+        m_rowsDirty = true;
         if (!askAll)
             ask << i;
         emit dataChanged(index(i), index(i), roles);
@@ -722,33 +829,37 @@ void TimelineModel::setItems(const QVariantList &items)
 
     // 2. walk the target order: keep, move up, or insert
     for (int i = 0; i < target.size(); ++i) {
-        const QString id = idOf(target.at(i));
-        if (i < m_items.size() && idOf(m_items.at(i)) == id) {
+        const QString &id = ids.at(i);
+        if (i < m_ids.size() && m_ids.at(i) == id) {
             update(i);
             continue;
         }
-        int from = -1;
-        for (int j = i + 1; j < m_items.size(); ++j) {
-            if (idOf(m_items.at(j)) == id) {
-                from = j;
-                break;
-            }
-        }
+        const int from = present.contains(id) ? m_ids.indexOf(id, i + 1) : -1;
         if (from >= 0) {
             beginMoveRows(QModelIndex(), from, from, QModelIndex(), i);
             m_items.move(from, i);
+            m_ids.move(from, i);
+            m_rowsDirty = true;
             endMoveRows();
             ++moved;
             update(i);
-        } else {
-            forget(target.at(i));
-            beginInsertRows(QModelIndex(), i, i);
-            m_items.insert(i, target.at(i));
-            endInsertRows();
-            ++inserted;
-            if (!askAll)
-                ask << i;
+            continue;
         }
+        int end = i + 1;
+        while (end < target.size() && !present.contains(ids.at(end)))
+            ++end;
+        beginInsertRows(QModelIndex(), i, end - 1);
+        for (int j = i; j < end; ++j) {
+            forget(target.at(j));
+            m_items.insert(j, target.at(j));
+            m_ids.insert(j, ids.at(j));
+            if (!askAll)
+                ask << j;
+        }
+        m_rowsDirty = true;
+        endInsertRows();
+        inserted += end - i;
+        i = end - 1;
     }
     if (askAll) {
         for (const QVariant &v : target)
@@ -761,29 +872,48 @@ void TimelineModel::setItems(const QVariantList &items)
         emit countChanged();
     qCDebug(Perf::category).noquote().nospace() << "perf: set_items items=" << m_items.size() << " changed=" << changed
             << " inserted=" << inserted << " removed=" << removed << " moved=" << moved
-            << " us=" << took.nsecsElapsed() / 1000;
+            << " delta=" << (changedIds ? changedIds->size() : -1) << " us=" << took.nsecsElapsed() / 1000;
 }
 
 void TimelineModel::setMediaPath(const QString &eventId, bool thumb, const QString &path)
 {
     (thumb ? m_thumbs : m_media).insert(eventId, path);
     emit mediaChanged(eventId);
-    for (int i = 0; i < m_items.size(); ++i) {
-        if (m_items.at(i).toMap().value("event_id").toString() == eventId) {
-            emit dataChanged(index(i), index(i), { m_mediaRole, m_thumbRole });
-            break;
-        }
+    const int row = rowOfEvent(eventId);
+    if (row >= 0)
+        emit dataChanged(index(row), index(row), { m_mediaRole, m_thumbRole });
+}
+
+QVector<QPair<QString, bool>> TimelineModel::clearMediaPaths()
+{
+    QVector<QPair<QString, bool>> shown;
+    for (const QVariant &v : m_items) {
+        const QString id = v.toMap().value(QStringLiteral("event_id")).toString();
+        if (m_thumbs.contains(id))
+            shown.append(qMakePair(id, true));
+        else if (m_media.contains(id))
+            shown.append(qMakePair(id, false));
     }
+    m_media.clear();
+    m_thumbs.clear();
+    if (!m_items.isEmpty())
+        emit dataChanged(index(0), index(m_items.size() - 1), { m_mediaRole, m_thumbRole });
+    return shown;
 }
 
 void TimelineModel::clear()
 {
     m_rendered.clear();
     m_spoilersOpen.clear();
+    m_store.clear();
+    m_stream = m_seq = 0;
+    m_resyncAsked = false;
     if (m_items.isEmpty())
         return;
     beginResetModel();
     m_items.clear();
+    m_ids.clear();
+    m_rowsDirty = true;
     endResetModel();
     emit countChanged();
 }

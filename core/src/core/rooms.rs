@@ -382,10 +382,12 @@ impl Core {
         let client = self.client().await?;
         let dir = self.data_dir.join(AVATAR_DIR);
         let settings = client.notification_settings().await;
-        let mut rooms = Vec::new();
-        for room in client.rooms().into_iter().filter(crate::serialize::listed) {
-            rooms.push(room_json(&room, &dir, &settings).await);
-        }
+        let listed: Vec<Room> = client.rooms().into_iter().filter(crate::serialize::listed).collect();
+        let rooms: Vec<Value> = super::sync::build_rows(listed, &dir, &settings, &HashMap::new())
+            .await
+            .into_iter()
+            .map(|(_, row)| row)
+            .collect();
         tracing::debug!(target: "rustrx::perf", full = true, rooms = rooms.len(), rebuilt = rooms.len(), reused = 0,
                         refresh = true, build_us = t.elapsed().as_micros() as u64, "rooms_build");
         self.emit(json!({"ev": "rooms", "rooms": sorted_rooms(rooms)}));

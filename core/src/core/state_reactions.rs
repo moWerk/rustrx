@@ -6,7 +6,11 @@
 //! state events in the loaded timeline get their annotations fetched once,
 //! the sync adds new ones and takes redacted ones away, and the timeline is
 //! sent again when that changes anything.
-//! (part of `impl Core`; the open room holds its counts, gone at close)
+//! The counts, and the reply originals fetched for the room's timeline,
+//! are kept for the last KEPT_ROOMS rooms opened: a room opened again
+//! shows them at once and asks nothing. Fetched longer than KEPT_FRESH
+//! ago (nothing watches a closed room), they show while the counts are
+//! fetched again and replaced. (part of `impl Core`)
 
 use super::*;
 use matrix_sdk::event_handler::EventHandlerDropGuard;
@@ -23,6 +27,13 @@ const STATE_REACTIONS_FETCH: u32 = 100;
 /// Fetches running at once: paging back through a room full of joins would
 /// otherwise ask the server for all of them in the same moment.
 const STATE_REACTIONS_PARALLEL: usize = 4;
+/// Rooms whose counts and reply originals stay after their close.
+const KEPT_ROOMS: usize = 10;
+/// How long after their fetch those are taken as they are at an open;
+/// later, the counts are fetched again and the reply originals asked again.
+pub(crate) const KEPT_FRESH: std::time::Duration = std::time::Duration::from_secs(600);
+/// Reply originals kept per room, the oldest fetched going first.
+const KEPT_REPLIES: usize = 200;
 
 /// One m.reaction (m.annotation), read from an event's JSON.
 #[derive(Clone, Debug, PartialEq)]
@@ -72,6 +83,12 @@ pub(crate) struct StateReactions {
     /// "target key" of our own reactions being sent or redacted: a second
     /// tap meanwhile would send the same annotation twice
     busy: HashSet<String>,
+    /// tracked targets to fetch again (kept past KEPT_FRESH): their counts
+    /// show meanwhile, and the answer replaces them
+    refetch: HashSet<String>,
+    /// targets whose fetch failed: asked again at the next open, not on
+    /// every pass (a server answering 429 would get them all again)
+    failed: HashSet<String>,
 }
 
 impl StateReactions {
@@ -86,6 +103,43 @@ impl StateReactions {
 
     pub(crate) fn tracks(&self, target: &str) -> bool {
         self.targets.contains_key(target)
+    }
+
+    /// Whether the target's annotations are to be fetched now: new here,
+    /// or kept too long. `Some(true)`: the answer replaces its counts.
+    pub(crate) fn to_fetch(&mut self, target: &str) -> Option<bool> {
+        if self.track(target) {
+            return Some(false);
+        }
+        self.refetch.remove(target).then_some(true)
+    }
+
+    /// A fetch failed: asked again at the next open (the counts are kept
+    /// now, so a failure would last).
+    pub(crate) fn fetch_failed(&mut self, target: &str) {
+        self.failed.insert(target.to_owned());
+    }
+
+    /// An open: the failed targets are fetched again when next seen.
+    pub(crate) fn reopened(&mut self) {
+        self.refetch.extend(self.failed.drain());
+    }
+
+    /// Every tracked target is fetched again when next seen.
+    pub(crate) fn stale(&mut self) {
+        self.refetch = self.targets.keys().cloned().collect();
+        self.failed.clear();
+    }
+
+    /// The fetched annotations of a target in place of its counts; true
+    /// when that changed them.
+    pub(crate) fn replace(&mut self, target: &str, found: &[Reaction]) -> bool {
+        let Some(before) = self.targets.get(target).cloned() else { return false };
+        self.targets.insert(target.to_owned(), Vec::new());
+        for r in found {
+            self.add(r);
+        }
+        self.targets.get(target) != Some(&before)
     }
 
     /// True when it changed the counts. Reactions to untracked events
@@ -157,11 +211,64 @@ impl StateReactions {
     }
 }
 
-/// The open room's counts and a signal to send its timeline again.
+/// The originals of replies whose original is not loaded, as `reply_to`
+/// had them once fetched (serialize.rs), by the original's event id. Only
+/// in memory; the SDK's own details win whenever it has them.
+#[derive(Default)]
+pub(crate) struct Replies {
+    found: HashMap<String, (Value, std::time::Instant)>,
+}
+
+impl Replies {
+    /// A fetched original (`reply_to` with its sender), kept.
+    pub(crate) fn put(&mut self, reply: &Value) {
+        let Some(id) = reply["event_id"].as_str() else { return };
+        if reply["sender"].is_null() {
+            return;
+        }
+        if self.found.get(id).map_or(false, |(v, _)| v == reply) {
+            return;
+        }
+        if self.found.len() >= KEPT_REPLIES && !self.found.contains_key(id) {
+            if let Some(oldest) = self.found.iter().min_by_key(|(_, (_, at))| *at).map(|(k, _)| k.clone()) {
+                self.found.remove(&oldest);
+            }
+        }
+        self.found.insert(id.to_owned(), (reply.clone(), std::time::Instant::now()));
+    }
+
+    /// The kept original, however old.
+    pub(crate) fn get(&self, event_id: &str) -> Option<&Value> {
+        self.found.get(event_id).map(|(v, _)| v)
+    }
+
+    /// Kept and fresh: not asked again.
+    pub(crate) fn fresh(&self, event_id: &str) -> bool {
+        self.found.get(event_id).map_or(false, |(_, at)| at.elapsed() < KEPT_FRESH)
+    }
+}
+
+/// A room's counts, kept beside its timeline (see the top), with a signal
+/// to send the timeline again; and for the open room's timeline stream
+/// the reply originals and the UI's ask for everything again
+/// (`timeline_resync`).
 pub(crate) struct SharedStateReactions {
     pub(crate) counts: std::sync::Mutex<StateReactions>,
     changed: tokio::sync::watch::Sender<u64>,
     fetches: Arc<tokio::sync::Semaphore>,
+    pub(crate) replies: Arc<std::sync::Mutex<Replies>>,
+    pub(crate) resync: Arc<tokio::sync::Notify>,
+    /// when the counts were last fetched all (made, or gone stale)
+    fetched: std::sync::Mutex<std::time::Instant>,
+}
+
+type KeptRooms = Vec<(String, OwnedRoomId, Arc<SharedStateReactions>)>;
+
+/// The kept rooms, the latest opened first, by own user id and room.
+static KEPT: std::sync::Mutex<KeptRooms> = std::sync::Mutex::new(Vec::new());
+
+fn kept_rooms() -> std::sync::MutexGuard<'static, KeptRooms> {
+    KEPT.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 impl SharedStateReactions {
@@ -170,14 +277,55 @@ impl SharedStateReactions {
             counts: std::sync::Mutex::new(StateReactions::default()),
             changed: tokio::sync::watch::channel(0).0,
             fetches: Arc::new(tokio::sync::Semaphore::new(STATE_REACTIONS_PARALLEL)),
+            replies: Arc::default(),
+            resync: Arc::default(),
+            fetched: std::sync::Mutex::new(std::time::Instant::now()),
         })
+    }
+
+    /// The room's kept counts and replies for an open, else new ones.
+    /// Fetched longer than KEPT_FRESH ago: the counts are fetched again.
+    pub(crate) fn kept(own: &UserId, room_id: &RoomId) -> Arc<Self> {
+        let mut kept = kept_rooms();
+        let found = kept.iter().position(|(u, r, _)| u == own.as_str() && r == room_id);
+        let shared = match found {
+            Some(i) => kept.remove(i).2,
+            None => Self::new(),
+        };
+        kept.insert(0, (own.to_string(), room_id.to_owned(), shared.clone()));
+        kept.truncate(KEPT_ROOMS);
+        drop(kept);
+        let mut fetched = shared.fetched.lock().unwrap_or_else(|e| e.into_inner());
+        if fetched.elapsed() >= KEPT_FRESH {
+            *fetched = std::time::Instant::now();
+            shared.lock().stale();
+        } else {
+            shared.lock().reopened();
+        }
+        drop(fetched);
+        shared
+    }
+
+    /// The room's kept reply originals (a thread of an open room), without
+    /// counting as an open.
+    pub(crate) fn kept_replies(own: &UserId, room_id: &RoomId) -> Arc<std::sync::Mutex<Replies>> {
+        let kept = kept_rooms();
+        match kept.iter().find(|(u, r, _)| u == own.as_str() && r == room_id) {
+            Some((_, _, s)) => s.replies.clone(),
+            None => Arc::default(),
+        }
+    }
+
+    /// An account's kept rooms go (logout).
+    pub(crate) fn forget_account(own: &UserId) {
+        kept_rooms().retain(|(u, _, _)| u != own.as_str());
     }
 
     pub(crate) fn subscribe(&self) -> tokio::sync::watch::Receiver<u64> {
         self.changed.subscribe()
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, StateReactions> {
+    pub(crate) fn lock(&self) -> std::sync::MutexGuard<'_, StateReactions> {
         self.counts.lock().unwrap_or_else(|e| e.into_inner())
     }
 
@@ -201,19 +349,15 @@ impl SharedStateReactions {
         self.lock().tracks(target)
     }
 
-    /// The state rows in the timeline's JSON get their `reactions`.
-    pub(crate) fn put_into(&self, json: &mut Value, own: &str) {
-        let Value::Array(list) = json else { return };
-        let counts = self.lock();
-        for item in list.iter_mut() {
-            if !matches!(item["type"].as_str(), Some("membership") | Some("state")) {
-                continue;
-            }
-            let Some(id) = item["event_id"].as_str() else { continue };
-            if let Some(r) = counts.json(id, own) {
-                item["reactions"] = r;
-            }
+}
+
+impl StateReactions {
+    /// A state row's `reactions` (its timeline JSON given), None for others.
+    pub(crate) fn of_row(&self, item: &Value, own: &str) -> Option<Value> {
+        if !matches!(item["type"].as_str(), Some("membership") | Some("state")) {
+            return None;
         }
+        self.json(item["event_id"].as_str()?, own)
     }
 }
 
@@ -234,9 +378,7 @@ impl Core {
                 continue;
             }
             let Some(id) = event.event_id().map(ToOwned::to_owned) else { continue };
-            if !shared.lock().track(id.as_str()) {
-                continue;
-            }
+            let Some(replace) = shared.lock().to_fetch(id.as_str()) else { continue };
             let (room, shared) = (room.clone(), shared.clone());
             tokio::spawn(async move {
                 let Ok(_permit) = shared.fetches.clone().acquire_owned().await else { return };
@@ -249,13 +391,21 @@ impl Core {
                 };
                 match room.relations(id.clone(), opts).await {
                     Ok(found) => {
-                        for ev in &found.chunk {
-                            if let Some(r) = reaction_of(&raw_value(ev.raw())) {
-                                shared.add(&r);
+                        let found: Vec<Reaction> = found.chunk.iter().filter_map(|ev| reaction_of(&raw_value(ev.raw()))).collect();
+                        if replace {
+                            if shared.lock().replace(id.as_str(), &found) {
+                                shared.bump();
+                            }
+                        } else {
+                            for r in &found {
+                                shared.add(r);
                             }
                         }
                     }
-                    Err(e) => tracing::info!(event = %id, "state reactions: not fetched: {e}"),
+                    Err(e) => {
+                        shared.lock().fetch_failed(id.as_str());
+                        tracing::info!(event = %id, "state reactions: not fetched: {e}");
+                    }
                 }
             });
         }
@@ -415,15 +565,79 @@ mod tests {
         shared.lock().track("$msg");
         shared.add(&reaction_of(&reaction("$1", "@a:x", "$join", "👋")).unwrap());
         shared.add(&reaction_of(&reaction("$2", "@a:x", "$msg", "👋")).unwrap());
-        let mut items = json!([
+        let items = json!([
             {"kind": "event", "type": "membership", "event_id": "$join"},
             {"kind": "event", "type": "text", "event_id": "$msg"},
             {"kind": "date"},
         ]);
-        shared.put_into(&mut items, "@a:x");
-        assert_eq!(items[0]["reactions"], json!([{"key": "👋", "count": 1, "me": true}]));
-        assert!(items[1].get("reactions").is_none());
-        assert!(items[2].get("reactions").is_none());
+        let counts = shared.lock();
+        assert_eq!(counts.of_row(&items[0], "@a:x"), Some(json!([{"key": "👋", "count": 1, "me": true}])));
+        assert_eq!(counts.of_row(&items[1], "@a:x"), None);
+        assert_eq!(counts.of_row(&items[2], "@a:x"), None);
+    }
+
+    /// A kept room's targets are not fetched again until they go stale;
+    /// then the answer replaces the counts (a wave taken back while the
+    /// room was closed goes); a failed fetch is asked again at the next
+    /// open, not on every pass.
+    /// Planted-bug: put a failed target back at once (fetched on every pass).
+    /// Planted-bug: `add` instead of `replace` for a stale target (the
+    /// taken-back wave stays).
+    #[test]
+    fn kept_counts_are_fetched_again_once_stale() {
+        let mut c = StateReactions::default();
+        assert_eq!(c.to_fetch("$join"), Some(false));
+        assert_eq!(c.to_fetch("$join"), None);
+        let wave = reaction_of(&reaction("$1", "@a:x", "$join", "👋")).unwrap();
+        let party = reaction_of(&reaction("$2", "@b:x", "$join", "🎉")).unwrap();
+        c.add(&wave);
+        c.add(&party);
+        c.stale();
+        assert_eq!(c.to_fetch("$join"), Some(true));
+        assert_eq!(c.to_fetch("$join"), None);
+        assert!(c.replace("$join", &[party.clone()]));
+        assert_eq!(c.json("$join", "@a:x"), Some(json!([{"key": "🎉", "count": 1, "me": false}])));
+        assert!(!c.replace("$join", &[party]));
+        // failed: not asked again in this open, at the next one
+        assert_eq!(c.to_fetch("$new"), Some(false));
+        c.fetch_failed("$new");
+        assert_eq!(c.to_fetch("$new"), None);
+        c.reopened();
+        assert_eq!(c.to_fetch("$new"), Some(true));
+        assert_eq!(c.to_fetch("$new"), None);
+    }
+
+    /// Reply originals: kept by id, fresh for a while, the oldest going
+    /// when full; a quote without its sender (not fetched) is not kept.
+    #[test]
+    fn reply_originals_are_kept() {
+        let mut r = Replies::default();
+        r.put(&json!({"event_id": "$o", "pending": true}));
+        assert!(r.get("$o").is_none());
+        r.put(&json!({"event_id": "$o", "sender": "@a:x", "body": "hi"}));
+        assert_eq!(r.get("$o").unwrap()["body"], json!("hi"));
+        assert!(r.fresh("$o"));
+        for i in 0..KEPT_REPLIES {
+            r.put(&json!({"event_id": format!("$n{i}"), "sender": "@a:x"}));
+        }
+        assert_eq!(r.found.len(), KEPT_REPLIES);
+        assert!(r.get("$o").is_none());
+    }
+
+    /// The kept rooms: the same entry for the same account and room, not
+    /// another account's; the oldest go past KEPT_ROOMS.
+    #[test]
+    fn rooms_are_kept_per_account() {
+        use matrix_sdk::ruma::{room_id, user_id};
+        let (me, other) = (user_id!("@kept-me:x"), user_id!("@kept-other:x"));
+        let a = SharedStateReactions::kept(me, room_id!("!a:x"));
+        assert!(Arc::ptr_eq(&a, &SharedStateReactions::kept(me, room_id!("!a:x"))));
+        assert!(!Arc::ptr_eq(&a, &SharedStateReactions::kept(other, room_id!("!a:x"))));
+        assert!(Arc::ptr_eq(&a.replies, &SharedStateReactions::kept_replies(me, room_id!("!a:x"))));
+        SharedStateReactions::forget_account(me);
+        assert!(!Arc::ptr_eq(&a, &SharedStateReactions::kept(me, room_id!("!a:x"))));
+        SharedStateReactions::forget_account(me);
+        SharedStateReactions::forget_account(other);
     }
 
     /// A second toggle of the same key waits for the first.

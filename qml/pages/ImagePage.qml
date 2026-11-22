@@ -36,6 +36,21 @@ Page {
     // the full picture could not be fetched: no spinner forever (0.8 audit)
     property string failure
 
+    // A photo is decoded at most this large, not whole: a 12 MP one took
+    // 48 MB and its texture as much again, a 50 MP one was past many GPUs'
+    // texture limit (audit MI6). Two and a half times the screen's short
+    // side: as sharp as the screen at a double tap's zoom on a picture as
+    // wide as the screen. Zoomed in further than that, the picture is
+    // decoded again at up to deepSize, which every phone's GPU takes.
+    readonly property int fitSize: Math.ceil(Math.min(Screen.width, Screen.height) * Tunables.imageTapZoom)
+    readonly property int deepSize: 4096
+    // zoomed past what fitSize holds, once: the larger decode stays
+    property bool deepWanted
+    readonly property bool scaledDown: image.status === Image.Ready && !deep.visible
+                                       && Math.max(image.implicitWidth, image.implicitHeight) >= fitSize - 1
+    readonly property bool pastSharp: scaledDown && image.paintedWidth > image.implicitWidth * 1.1
+    onPastSharpChanged: if (pastSharp) deepWanted = true
+
     allowedOrientations: Orientation.All
 
     Component.onCompleted: if (!fullLoaded) rustrx.getMedia(roomId, eventId, false)
@@ -101,8 +116,11 @@ Page {
             asynchronous: true
             autoTransform: true
             smooth: true
-            // under a moving GIF it lets go (a transparent one showed the still through)
-            source: page.source.length && !gif.visible ? "file://" + page.source : ""
+            sourceSize.width: page.fitSize
+            sourceSize.height: page.fitSize
+            // under a moving GIF it lets go (a transparent one showed the still
+            // through), and under the larger decode
+            source: page.source.length && !gif.visible && !deep.visible ? "file://" + page.source : ""
 
             PinchArea {
                 anchors.fill: parent
@@ -124,6 +142,22 @@ Page {
             }
         }
 
+        // the same picture decoded larger, for a deep zoom
+        Image {
+            id: deep
+            width: flick.contentWidth
+            height: flick.contentHeight
+            visible: status === Image.Ready
+            fillMode: Image.PreserveAspectFit
+            asynchronous: true
+            autoTransform: true
+            smooth: true
+            sourceSize.width: page.deepSize
+            sourceSize.height: page.deepSize
+            source: page.deepWanted && page.fullLoaded && !page.isGif && page.source.length ? "file://" + page.source : ""
+        }
+
+        // Qt 5.6's AnimatedImage ignores sourceSize: a GIF decodes at its own size
         AnimatedImage {
             id: gif
             width: flick.contentWidth

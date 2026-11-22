@@ -387,6 +387,24 @@ private slots:
         QFETCH(QString, out);
         QCOMPARE(StyledText::oneLine(in), out);
     }
+
+    // The names are read off the way to the window (0.8.2, ST14): start()
+    // hands them to a worker thread, and the first lookup waits for them.
+    // Planted-bug: url() or inHtml() without loadNames() (no picture until
+    // something else loaded the names), or start() that never loads.
+    void lazyNames()
+    {
+        s_names.clear();
+        s_loaded.storeRelease(0);
+        QCOMPARE(Twemoji::url(U("😀")), QStringLiteral("file://%1/1f600.png").arg(kDir));
+        s_names.clear();
+        s_loaded.storeRelease(0);
+        QCOMPARE(Twemoji::inHtml(U("😀"), 20), img("1f600"));
+        Twemoji::start(kDir);
+        QCOMPARE(Twemoji::inHtml(U("😀"), 20), img("1f600"));
+        QVERIFY(QThreadPool::globalInstance()->waitForDone(5000));
+        QVERIFY(s_names.size() > 3000);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestTwemoji)

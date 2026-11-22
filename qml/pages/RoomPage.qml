@@ -66,6 +66,14 @@ Page {
         if (rustrx.openRoomId === roomId) rustrx.closeRoom()
     }
 
+    // the size of Twemoji in the rows' small lines (reactions, a thread's
+    // latest reply), which the model renders; once here, not per row
+    Binding {
+        target: rustrx.timeline
+        property: "smallEmojiSize"
+        value: Math.round(Theme.fontSizeExtraSmall * Tunables.emojiScale)
+    }
+
     // the chat keeps its place across pages above it (ChatAnchor)
     ChatAnchor {
         id: anchor
@@ -136,7 +144,19 @@ Page {
     // the last read message's row: this visit's receipt, else the unread
     // line's; -1 when neither is known
     function frontierRow() {
-        return readUpTo.length ? rustrx.timeline.rowOfEvent(readUpTo) : markerRow
+        if (!readUpTo.length) return markerRow
+        if (frontierCache === -2) frontierCache = rustrx.timeline.rowOfEvent(readUpTo)
+        return frontierCache
+    }
+    // readUpTo's row, looked up once and kept until the rows change: the
+    // scroll asked for it on every frame (audit T13); -2 not looked up
+    property int frontierCache: -2
+    Connections {
+        target: rustrx.timeline
+        onRowsInserted: page.frontierCache = -2
+        onRowsRemoved: page.frontierCache = -2
+        onRowsMoved: page.frontierCache = -2
+        onModelReset: page.frontierCache = -2
     }
     function frontierInView() {
         var f = frontierRow()
@@ -269,13 +289,21 @@ Page {
         showComposer()
     }
 
+    // Scrolling back: the next older page is asked for while the top is
+    // still about two screens away, so a fling runs on instead of stopping
+    // at the top to wait for it (audit T3); at the top itself as before.
+    // The unread seek and the jumps page on their own.
+    readonly property int scrollPage: 50
+    function maybePaginate(atTop) {
+        if (paginating || atStart || !inTimeline || list.count === 0) return
+        if (!atTop && !(positioned && list.moving && list.contentY - list.originY < 2 * list.height)) return
+        paginating = true
+        rustrx.command({ cmd: "paginate_back", room_id: roomId, count: scrollPage })
+    }
     Timer {
         id: moreLater
         interval: 0
-        onTriggered: if (list.atYEnd && !page.paginating && !page.atStart && list.count > 0) {
-            page.paginating = true
-            rustrx.command({ cmd: "paginate_back", room_id: page.roomId })
-        }
+        onTriggered: if (list.atYEnd) page.maybePaginate(true)
     }
 
     Connections {
@@ -422,7 +450,7 @@ Page {
         unreadAbove = top >= 0 && f > top ? f : -1
     }
     onMarkerRowChanged: checkMarker()
-    onReadUpToChanged: checkMarker()
+    onReadUpToChanged: { frontierCache = -2; checkMarker() }
     Connections {
         target: rustrx.timeline
         onCountChanged: {
@@ -513,7 +541,7 @@ Page {
         spacing: Theme.paddingSmall
         clip: true
 
-        onContentYChanged: { trace.logY(); page.checkMarker(); page.readSoon() }
+        onContentYChanged: { trace.logY(); page.checkMarker(); page.readSoon(); page.maybePaginate(false) }
         onOriginYChanged: trace.log("oy")
         onContentHeightChanged: trace.logContentHeight()
         onHeightChanged: trace.log("h")
@@ -523,12 +551,7 @@ Page {
         }
 
         // the oldest end is at the top in this layout
-        onAtYEndChanged: {
-            if (atYEnd && count > 0 && !paginating && !atStart && page.inTimeline) {
-                paginating = true
-                rustrx.command({ cmd: "paginate_back", room_id: roomId })
-            }
-        }
+        onAtYEndChanged: if (atYEnd) page.maybePaginate(true)
 
         // with an empty message an entry sends on its own; with a message
         // drafted it attaches: the text goes along as the caption

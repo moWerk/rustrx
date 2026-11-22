@@ -238,6 +238,7 @@ Item {
     property var roomPending: ({})
     function noteKey(account, roomId) { return account + "/" + roomId }
     function roomNote(account, roomId) {
+        takeOverOld()
         var k = noteKey(account, roomId)
         var n = roomNotifications[k]
         if (!n) {
@@ -271,6 +272,7 @@ Item {
     // an invitation: a banner, also while Rustrx is in front (they are easy
     // to miss in the list); a tap opens it, where it is accepted or declined
     function notifyInvite(account, roomId, roomName, inviter, direct) {
+        takeOverOld()
         console.log("notify: invitation, account", account)
         var n = roomNote(account, roomId)
         var who = inviter.length ? inviter : roomName
@@ -318,6 +320,7 @@ Item {
     // ends, or the room is opened. A group call's start only notifies.
     property var ringing: ({})
     function ringCall(account, roomId, roomName, senderName, ring, eventId, expiresMs) {
+        takeOverOld()
         stopRinging(roomId)
         var n = ringComponent.createObject(service, { roomId: roomId, eventId: eventId, ring: ring, account: account })
         // who calls and from where stays inside Rustrx when chat names do (Privacy)
@@ -399,6 +402,7 @@ Item {
     // a pushed message (a process woken for it): the room's line, as a
     // message seen by the sync would make it; text as Settings has it
     function notifyPush(account, roomId, eventId, roomName, senderName, body, isDm) {
+        takeOverOld()
         console.log("notify: push, account", account)
         var n = roomNote(account, roomId)
         var pending = (roomPending[noteKey(account, roomId)] || 0) + 1
@@ -422,6 +426,7 @@ Item {
     // newcomer and how many came; a tap opens the room, reading it ends it
     property var joinNotes: ({})
     function notifyJoin(account, roomId, roomName, name) {
+        takeOverOld()
         var k = noteKey(account, roomId)
         var n = joinNotes[k]
         if (!n) {
@@ -470,6 +475,7 @@ Item {
     }
 
     function notifyKnock(account, roomName, isSpace, name, reason) {
+        takeOverOld()
         var n = knockNotes[account]
         if (!n) {
             n = knockComponent.createObject(service, { account: account })
@@ -515,6 +521,7 @@ Item {
     // the room's line, a tap opens the room with the text as its draft
     // (kept: the core added it there)
     function notifyReplyFailed(account, roomId, kept) {
+        takeOverOld()
         console.log("notify: reply not sent, account", account)
         var n = roomNote(account, roomId)
         var name = chatDetails ? (rustrx.roomInfoIn(account, roomId).name || "") : ""
@@ -537,6 +544,7 @@ Item {
     }
 
     function closeNotification(account, roomId) {
+        takeOverOld()
         var k = noteKey(account, roomId)
         delete roomPending[k]
         var n = roomNotifications[k]
@@ -594,10 +602,18 @@ Item {
         ]
     }
 
-    Component.onCompleted: {
-        // an earlier process's notifications (the stand-in's, or a killed
-        // run's): room lines are taken over, so a new message updates them and
-        // opening the room closes them; the stand-in's line goes
+    // an earlier process's notifications (the stand-in's, or a killed
+    // run's): room lines are taken over, so a new message updates them and
+    // opening the room closes them; the stand-in's line goes. Asking for
+    // them blocks on the home screen: the window-less processes call this
+    // at once, the app after its first frame (main.cpp); a room's line
+    // needed before then (every publish) takes them over first, or the takeover
+    // would close or adopt a line this process has just posted
+    property bool oldTakenOver
+    function takeOverOld() {
+        if (oldTakenOver) return
+        oldTakenOver = true
+        rustrx.perf("notes_taken")
         var old = standInNote.notifications()
         for (var i = 0; i < old.length; i++) {
             var first = old[i].remoteActions.length ? old[i].remoteActions[0] : {}
@@ -607,6 +623,11 @@ Item {
             else
                 old[i].close()
         }
+    }
+
+    Component.onCompleted: {
+        // before its own line, which would be taken for an old one
+        if (rustrx.standIn) takeOverOld()
         // the line can be switched off (Settings); the stand-in runs either way
         if (rustrx.standIn && cfg.showBackgroundLine) standInNote.publish()
     }

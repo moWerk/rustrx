@@ -98,6 +98,9 @@ class Rustrx : public QObject
     // Keys::kInterface; Q_CLASSINFO takes a literal only
     Q_CLASSINFO("D-Bus Interface", "net.mowerk.harbour_rustrx")
     Q_PROPERTY(bool ready READ ready NOTIFY stateChanged)
+    // the shown account had a saved session when the app started: the main
+    // page is the first page, before the core has restored it
+    Q_PROPERTY(bool sessionSaved READ sessionSaved CONSTANT)
     // the first room list of this login has arrived (empty or not)
     Q_PROPERTY(bool roomsLoaded READ roomsLoaded NOTIFY roomsLoadedChanged)
     Q_PROPERTY(bool loggedIn READ loggedIn NOTIFY stateChanged)
@@ -150,6 +153,10 @@ class Rustrx : public QObject
     // they were added: { key, user_id, name, avatar, avatar_v, logged_in,
     // shown, unread }
     Q_PROPERTY(QVariantList accounts READ accounts NOTIFY accountsChanged)
+    // with two or more accounts: each one's short name (its user id's local
+    // part) by its key as a string, for the merged view's rows; changes
+    // only with the accounts, not with their unread counts
+    Q_PROPERTY(QVariantMap accountMarks READ accountMarks NOTIFY accountMarksChanged)
     // the shown account's key (Account::key)
     Q_PROPERTY(int accountKey READ accountKey NOTIFY shownAccountChanged)
     // unread chats in the accounts not shown (the account button's dot)
@@ -212,6 +219,7 @@ public:
     ~Rustrx();
 
     bool ready() const { return m_cur->ready; }
+    bool sessionSaved() const { return m_sessionSaved; }
     bool roomsLoaded() const { return !m_cur->firstRooms; }
     bool loggedIn() const { return m_cur->loggedIn; }
     bool loggingIn() const { return m_cur->loggingIn; }
@@ -231,6 +239,7 @@ public:
     bool restoreFailed() const { return m_cur->restoreFailed; }
     bool restoring() const { return m_cur->restoring; }
     QVariantList accounts() const;
+    QVariantMap accountMarks() const { return m_accountMarks; }
     int accountKey() const { return m_cur->key; }
     int otherUnread() const;
     bool mergedView() const { return m_mergedView; }
@@ -518,6 +527,7 @@ signals:
     void inviteGone(const QString &roomId, int account);
     // the accounts or their unread counts changed
     void accountsChanged();
+    void accountMarksChanged();
     // another account is shown: its lists replace the others
     void shownAccountChanged();
     void mergedViewChanged();
@@ -624,6 +634,7 @@ private:
     Account *m_cur = nullptr;
     // the merged view's list (display only) and its switches
     RoomLists *m_merged = nullptr;
+    bool m_sessionSaved = false;
     bool m_mergedView = false;
     bool m_colourAccounts = true;
     // the lists the tabs show: the merged one while it is on
@@ -632,6 +643,11 @@ private:
     void refreshMerged();
     // allTargets fed anew, while followed
     void refreshAllTargets();
+    // the merged rows of refreshMerged and refreshAllTargets, kept for the next
+    QHash<QString, QPair<QVariant, QVariant>> m_mergeCache;
+    // accountMarks made again from accounts()
+    void updateAccountMarks();
+    QVariantMap m_accountMarks;
     RoomModel *allTargets() const { return m_allTargets; }
     RoomModel *m_allTargets = nullptr;
     int m_allTargetsFollowers = 0;
@@ -658,6 +674,9 @@ private:
     TimelineModel *m_timeline;
     TimelineModel *m_thread;
     QString m_threadRoot;
+    // the account "clear_media" went to: the rows' picture paths go when
+    // its answer comes; -1 for none
+    int m_mediaClearAccount = -1;
     QElapsedTimer m_since;   // start-up timing in the journal
     // perf: lines of the room being opened: 1 until its first snapshot, 2 until rows show
     void perfEvent(const QVariantMap &ev, const char *what) const;

@@ -43,6 +43,8 @@ ListItem {
     signal jumpTo(string eventId)
     // shown for a moment when the chat jumped here
     property bool flash
+    // its highlight still fading out
+    property bool flashFading
     // shown in a thread's page: no thread of its own there
     property bool inThread
     // for the text selection's header (the More page)
@@ -56,6 +58,8 @@ ListItem {
     readonly property bool isEvent: model.kind === "event"
     readonly property bool own: model.is_own === true
     readonly property string msgType: model.type || "text"
+    // state changes and membership: one quiet line, no bubble
+    readonly property bool plainLine: msgType === "membership" || msgType === "state"
     readonly property bool isMedia: msgType === "image" || msgType === "video" || msgType === "sticker"
     readonly property bool isFile: msgType === "file" || msgType === "audio"
     readonly property color mainColor: own || highlighted ? Theme.highlightColor : Theme.primaryColor
@@ -152,6 +156,8 @@ ListItem {
     // a still JPEG, so the moving one is the full file (the author, 0.8)
     readonly property bool isGif: msgType === "image" && model.mime === "image/gif"
     readonly property bool inView: {
+        // first: other rows take no dependency on the scroll (audit T12)
+        if (!isGif) return false
         var v = msg.ListView.view
         if (!v || !msg.visible || !Qt.application.active) return false
         return msg.y + msg.height > v.contentY && msg.y < v.contentY + v.height
@@ -185,14 +191,15 @@ ListItem {
         rustrx.exportMedia(roomId, model.event_id)
     }
 
-    // audio plays in place once the file is in the cache; only audio rows
-    // carry a player
+    // audio plays in place once the file is in the cache; an audio row gets
+    // its player at the first tap, not as it scrolls in (audit MI5)
     property bool wantPlay
+    property bool audioUsed
     readonly property var player: audioLoader.item
     readonly property bool playing: player !== null && player.playbackState === Audio.PlayingState
     Loader {
         id: audioLoader
-        active: msgType === "audio"
+        active: msgType === "audio" && audioUsed
         sourceComponent: Audio {
             source: model.media_path && model.media_path.length ? "file://" + model.media_path : ""
             onSourceChanged: if (msg.wantPlay && source.toString().length) { msg.wantPlay = false; play() }
@@ -242,6 +249,7 @@ ListItem {
         // a picture, file or sound still on its way has nothing to open yet
         if (!eventId.length && (isMedia || isFile || msgType === "audio")) return
         if (msgType === "audio") {
+            audioUsed = true
             if (!player) return
             if (playing) { player.pause(); return }
             if (player.source.toString().length) { player.play(); return }
@@ -280,8 +288,9 @@ ListItem {
         Qt.openUrlExternally("file://" + path.split("/").map(encodeURIComponent).join("/"))
     }
 
+    // only while this row waits for something (audit T5)
     Connections {
-        target: rustrx
+        target: exporting || wantPlay || gifAsked ? rustrx : null
         onMediaExported: {
             if (!exporting || eventId !== model.event_id) return
             exporting = false
@@ -308,20 +317,15 @@ ListItem {
     }
     onEventIdChanged: { requestPicture(); fetchGif() }
 
-    // the size of Twemoji in the small lines (reactions, a thread's latest
-    // reply), which the model renders
-    Binding {
-        target: msg.ListView.view ? msg.ListView.view.model : null
-        property: "smallEmojiSize"
-        value: Math.round(Theme.fontSizeExtraSmall * Tunables.emojiScale)
-    }
+    // the size of Twemoji in the small lines is set by the page (RoomPage,
+    // ThreadPage) on its model
 
     Loader {
         id: loader
         width: parent.width
         sourceComponent: model.kind === "date" ? dateDivider
                        : model.kind === "readmarker" ? readMarker
-                       : model.kind === "event" ? eventRow : empty
+                       : model.kind === "event" ? (plainLine ? plainRow : eventRow) : empty
     }
 
     Component { id: empty; Item { height: 0 } }
@@ -353,21 +357,15 @@ ListItem {
         }
     }
 
+    // state changes and membership as one quiet line, without a bubble:
+    // a component of its own, so these rows build no bubble (audit T5)
     Component {
-        id: eventRow
+        id: plainRow
         Column {
             width: parent.width
-
             readonly property real sideMargin: Theme.horizontalPageMargin
-            readonly property real bubbleWidth: width - sideMargin - Theme.itemSizeSmall
-            readonly property real pad: Theme.paddingMedium
-            // the widest the content of a bubble gets
-            readonly property real innerMax: bubbleWidth - 2 * pad
-            readonly property bool plainLine: msgType === "membership" || msgType === "state"
 
-            // state changes and membership as one quiet line, without a bubble
             Label {
-                visible: plainLine
                 x: sideMargin
                 width: parent.width - 2 * sideMargin
                 text: model.body || ""
@@ -380,10 +378,23 @@ ListItem {
                 readonly property real maxWidth: parent.width - 2 * sideMargin
                 readonly property real gap: Theme.paddingSmall
                 x: sideMargin
-                active: plainLine && reactionList.length > 0
+                active: reactionList.length > 0
                 visible: active
                 sourceComponent: reactionPills
             }
+        }
+    }
+
+    Component {
+        id: eventRow
+        Column {
+            width: parent.width
+
+            readonly property real sideMargin: Theme.horizontalPageMargin
+            readonly property real bubbleWidth: width - sideMargin - Theme.itemSizeSmall
+            readonly property real pad: Theme.paddingMedium
+            // the widest the content of a bubble gets
+            readonly property real innerMax: bubbleWidth - 2 * pad
 
             // the bubble: own messages at the right in the highlight colour,
             // others at the left with the sender's name on top (no avatars).
@@ -395,18 +406,28 @@ ListItem {
                 readonly property bool bare: isMedia && msgType !== "sticker" && replyTo === null
                                              && !(model.caption && model.caption.length)
                 readonly property real edge: bare ? 0 : pad
-                visible: !plainLine
                 x: own ? parent.width - width - sideMargin : sideMargin
                 width: inner.width + 2 * edge
-                height: visible ? inner.height + 2 * edge : 0
+                height: inner.height + 2 * edge
 
-                // the chat jumped here from a reply's quote: a moment of highlight
-                Rectangle {
+                // the chat jumped here from a reply's quote: a moment of
+                // highlight, made only then and kept until it has faded
+                Loader {
                     anchors.fill: parent
-                    radius: Theme.paddingLarge / 2
-                    color: Theme.rgba(Theme.highlightBackgroundColor, Theme.opacityHigh)
-                    opacity: msg.flash ? 1 : 0
-                    Behavior on opacity { FadeAnimation { duration: Tunables.jumpFlashMs } }
+                    active: msg.flash || msg.flashFading
+                    sourceComponent: Component {
+                        Rectangle {
+                            radius: Theme.paddingLarge / 2
+                            color: Theme.rgba(Theme.highlightBackgroundColor, Theme.opacityHigh)
+                            opacity: 0
+                            Behavior on opacity { FadeAnimation { duration: Tunables.jumpFlashMs } }
+                            Component.onCompleted: {
+                                msg.flashFading = true
+                                opacity = Qt.binding(function () { return msg.flash ? 1 : 0 })
+                            }
+                            onOpacityChanged: if (opacity === 0 && !msg.flash) msg.flashFading = false
+                        }
+                    }
                 }
                 Rectangle {
                     visible: !bubble.bare
@@ -496,35 +517,39 @@ ListItem {
                         id: bodyRow
                         // what goes before the text: the mention bar, a file's or a place's icon
                         readonly property real lead: (mentionBar ? spacing + Tunables.barWidth : 0)
-                                                     + (kindIcon.visible ? spacing + kindIcon.width : 0)
+                                                     + (kindIcon.active ? spacing + kindIcon.width : 0)
                         visible: !isMedia
                         width: Math.min(body.implicitWidth + lead, innerMax)
                         spacing: Theme.paddingSmall
                         Rectangle { visible: mentionBar; width: Tunables.barWidth; height: body.height; color: Theme.highlightColor }
                         // the kind of file at a glance (the system's icon for
                         // its type), a pin on a place (0.8 audit, icons)
-                        Item {
+                        Loader {
                             id: kindIcon
-                            visible: msgType === "file" || msgType === "location"
+                            active: msgType === "file" || msgType === "location"
+                            visible: active
                             anchors.verticalCenter: parent.verticalCenter
                             width: Theme.iconSizeMedium
                             height: width
                             // the file icons keep their own colours, as in the file manager
-                            HighlightImage {
-                                visible: msgType === "file"
-                                anchors.fill: parent
-                                sourceSize.width: width
-                                sourceSize.height: height
-                                source: visible ? Theme.iconForMimeType(model.mime || "") : ""
-                                highlighted: msg.highlighted
+                            sourceComponent: msgType === "file" ? fileIcon : placeIcon
+                            Component {
+                                id: fileIcon
+                                HighlightImage {
+                                    sourceSize.width: width
+                                    sourceSize.height: height
+                                    source: Theme.iconForMimeType(model.mime || "")
+                                    highlighted: msg.highlighted
+                                }
                             }
-                            Icon {
-                                visible: msgType === "location"
-                                anchors.fill: parent
-                                sourceSize.width: width
-                                sourceSize.height: height
-                                source: visible ? "image://theme/icon-m-location" : ""
-                                color: mainColor
+                            Component {
+                                id: placeIcon
+                                Icon {
+                                    sourceSize.width: width
+                                    sourceSize.height: height
+                                    source: "image://theme/icon-m-location"
+                                    color: mainColor
+                                }
                             }
                         }
                         Label {
@@ -619,28 +644,36 @@ ListItem {
                                     // what the bubble's width comes to in portrait: decoded once
                                     sourceSize.width: Math.round(Screen.width * Tunables.mediaMaxWidth)
                                     // under a moving GIF (a transparent one showed the still through)
-                                    opacity: gif.status === Image.Ready ? 0 : 1
+                                    opacity: gif.item && gif.item.status === Image.Ready ? 0 : 1
                                 }
-                                // a GIF that moves: the full file, over the still
-                                AnimatedImage {
+                                // a GIF that moves: the full file, over the still; made
+                                // only for a GIF whose file is in (audit T5). Qt 5.6's
+                                // AnimatedImage ignores sourceSize: its frames decode at
+                                // the GIF's own size (audit T15)
+                                Loader {
                                     id: gif
                                     anchors.fill: parent
-                                    visible: status === Image.Ready
-                                    asynchronous: true
-                                    cache: false
-                                    fillMode: Image.PreserveAspectFit
-                                    source: isGif && model.media_path && model.media_path.length ? "file://" + model.media_path : ""
-                                    playing: msg.gifWanted
-                                    // no looping: it stops on its last frame
-                                    onCurrentFrameChanged: if (!app.settings.gifLoop && frameCount > 1 && currentFrame === frameCount - 1) msg.gifDone = true
-                                    // one that ends by itself (its own loop count) counts as done; looping, it starts again
-                                    onPlayingChanged: if (!playing && msg.gifWanted) {
-                                        msg.gifDone = true
-                                        if (app.settings.gifLoop) gifAgain.restart()
+                                    active: isGif && !!(model.media_path && model.media_path.length)
+                                    sourceComponent: Component {
+                                        AnimatedImage {
+                                            visible: status === Image.Ready
+                                            asynchronous: true
+                                            cache: false
+                                            fillMode: Image.PreserveAspectFit
+                                            source: "file://" + model.media_path
+                                            playing: msg.gifWanted
+                                            // no looping: it stops on its last frame
+                                            onCurrentFrameChanged: if (!app.settings.gifLoop && frameCount > 1 && currentFrame === frameCount - 1) msg.gifDone = true
+                                            // one that ends by itself (its own loop count) counts as done; looping, it starts again
+                                            onPlayingChanged: if (!playing && msg.gifWanted) {
+                                                msg.gifDone = true
+                                                if (app.settings.gifLoop) gifAgain.restart()
+                                            }
+                                            Timer { id: gifAgain; interval: 0; onTriggered: msg.gifDone = false }
+                                        }
                                     }
-                                    Timer { id: gifAgain; interval: 0; onTriggered: msg.gifDone = false }
                                 }
-                                Binding { target: msg; property: "gifAnimating"; value: gif.visible && gif.playing && gif.frameCount > 1 }
+                                Binding { target: msg; property: "gifAnimating"; value: !!gif.item && gif.item.visible && gif.item.playing && gif.item.frameCount > 1 }
                                 // a GIF standing still says what it is, so a tap is expected to play it
                                 Rectangle {
                                     visible: isGif && !msg.gifAnimating
@@ -788,7 +821,7 @@ ListItem {
                     Loader {
                         readonly property real maxWidth: innerMax
                         readonly property real gap: Theme.paddingMedium
-                        active: !plainLine && reactionList.length > 0
+                        active: reactionList.length > 0
                         visible: active
                         sourceComponent: reactionPills
                     }
@@ -881,27 +914,32 @@ ListItem {
 
                     // a message the server did not take, said plainly in the
                     // error colour; a tap sends it again (0.8 audit, item 6)
-                    Row {
-                        visible: failed
+                    Loader {
+                        active: failed
+                        visible: active
                         x: parent.width - width
-                        spacing: Theme.paddingSmall
-                        Icon {
-                            id: failedMark
-                            anchors.verticalCenter: parent.verticalCenter
-                            source: "image://theme/icon-s-warning"
-                            color: Theme.errorColor
-                        }
-                        Label {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: Math.min(implicitWidth, innerMax - failedMark.width - parent.spacing)
-                            wrapMode: Text.Wrap
-                            font.pixelSize: Theme.fontSizeExtraSmall
-                            color: Theme.errorColor
-                            text: msg.tooLarge
-                                  //% "Not sent: larger than your server takes."
-                                  ? qsTrId("rustrx-la-not-sent-too-large")
-                                  //% "Not sent. Tap to send again."
-                                  : qsTrId("rustrx-la-not-sent-tap")
+                        sourceComponent: Component {
+                            Row {
+                                spacing: Theme.paddingSmall
+                                Icon {
+                                    id: failedMark
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    source: "image://theme/icon-s-warning"
+                                    color: Theme.errorColor
+                                }
+                                Label {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: Math.min(implicitWidth, innerMax - failedMark.width - parent.spacing)
+                                    wrapMode: Text.Wrap
+                                    font.pixelSize: Theme.fontSizeExtraSmall
+                                    color: Theme.errorColor
+                                    text: msg.tooLarge
+                                          //% "Not sent: larger than your server takes."
+                                          ? qsTrId("rustrx-la-not-sent-too-large")
+                                          //% "Not sent. Tap to send again."
+                                          : qsTrId("rustrx-la-not-sent-tap")
+                                }
+                            }
                         }
                     }
 
@@ -913,28 +951,39 @@ ListItem {
                         x: parent.width - width
                         spacing: Theme.paddingSmall
                         readonly property real markSize: Math.round(Theme.fontSizeExtraSmall * Tunables.emojiScale)
-                        BusyIndicator {
+                        // both made only when shown (audit T5)
+                        Loader {
                             id: busyMark
+                            active: msg.busy
+                            visible: active
                             anchors.verticalCenter: parent.verticalCenter
-                            size: BusyIndicatorSize.ExtraSmall
-                            running: msg.busy
-                            visible: running
+                            sourceComponent: Component {
+                                BusyIndicator {
+                                    size: BusyIndicatorSize.ExtraSmall
+                                    running: true
+                                }
+                            }
                         }
-                        Icon {
+                        Loader {
                             id: shieldMark
-                            visible: msg.unverified
+                            active: msg.unverified
+                            visible: active
                             anchors.verticalCenter: parent.verticalCenter
                             width: stateRow.markSize
                             height: width
-                            sourceSize.width: width
-                            sourceSize.height: height
-                            source: "image://theme/icon-s-high-importance"
-                            color: Theme.errorColor
+                            sourceComponent: Component {
+                                Icon {
+                                    sourceSize.width: width
+                                    sourceSize.height: height
+                                    source: "image://theme/icon-s-high-importance"
+                                    color: Theme.errorColor
+                                }
+                            }
                         }
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
-                            width: Math.min(implicitWidth, innerMax - (busyMark.visible ? busyMark.width + parent.spacing : 0)
-                                                                    - (shieldMark.visible ? shieldMark.width + parent.spacing : 0))
+                            width: Math.min(implicitWidth, innerMax - (busyMark.active ? busyMark.width + parent.spacing : 0)
+                                                                    - (shieldMark.active ? shieldMark.width + parent.spacing : 0))
                             truncationMode: TruncationMode.Fade
                             font.pixelSize: Theme.fontSizeTiny
                             color: dimColor
@@ -974,14 +1023,31 @@ ListItem {
     Component {
         id: reactionPills
         Flow {
-            width: Math.min(parent ? parent.maxWidth : 0, reactionMeasure.width)
+            id: pills
+            // the reactions' width in one line, summed from the chips
+            // themselves, so the bubble is no wider than they need (a hidden
+            // second set of labels measured it before, audit T5)
+            property real oneLine
+            function measure() {
+                var w = 0
+                for (var i = 0; i < pillRepeater.count; i++) {
+                    var it = pillRepeater.itemAt(i)
+                    if (it) w += (w > 0 ? spacing : 0) + it.width
+                }
+                oneLine = w
+            }
+            width: Math.min(parent ? parent.maxWidth : 0, oneLine)
             spacing: parent ? parent.gap : Theme.paddingMedium
             Repeater {
+                id: pillRepeater
                 model: reactionList
+                onItemAdded: pills.measure()
+                onItemRemoved: pills.measure()
                 // a tap toggles our own reaction with this key
                 Item {
                     width: chipRow.width
                     height: chipRow.height
+                    onWidthChanged: pills.measure()
                     Row {
                         id: chipRow
                         spacing: Theme.paddingSmall / 2
@@ -1011,21 +1077,6 @@ ListItem {
                 }
             }
 
-            // the reactions' width in one line, so the bubble is no wider
-            // than they need (not shown, so the Flow leaves it out)
-            Row {
-                id: reactionMeasure
-                visible: false
-                spacing: parent.spacing
-                Repeater {
-                    model: reactionList
-                    Label {
-                        textFormat: Text.StyledText
-                        text: (modelData.emote !== undefined ? "\u2B1C" : modelData.label) + " " + modelData.count
-                        font.pixelSize: Theme.fontSizeExtraSmall
-                    }
-                }
-            }
         }
     }
 

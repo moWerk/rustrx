@@ -22,6 +22,8 @@ pub(crate) struct OpenThread {
     pub(crate) root: OwnedEventId,
     pub(crate) timeline: Arc<Timeline>,
     task: JoinHandle<()>,
+    /// the UI's ask for the whole thread again (`timeline_resync`)
+    pub(crate) resync: Arc<tokio::sync::Notify>,
 }
 
 impl OpenThread {
@@ -52,10 +54,18 @@ impl Core {
         let room_id_owned = room.room_id().to_owned();
         let room_id_kept = room_id_owned.clone();
         let root_owned = root.clone();
+        let resync = Arc::new(tokio::sync::Notify::new());
+        let resync_kept = resync.clone();
+        // the room's reply originals (state_reactions.rs): the room is open
+        let replies = state_reactions::SharedStateReactions::kept_replies(&own, room.room_id());
         let task = self.rt.spawn(async move {
-            let emit = |items: Value| {
-                self.emit(json!({"ev": "thread_timeline", "room_id": room_id_owned.as_str(),
-                                 "thread_root": root_owned.as_str(), "items": items}));
+            let emit = |diff: Value| {
+                let mut ev = json!({"ev": "thread_timeline", "room_id": room_id_owned.as_str(),
+                                    "thread_root": root_owned.as_str()});
+                if let (Value::Object(ev), Value::Object(diff)) = (&mut ev, diff) {
+                    ev.extend(diff);
+                }
+                self.emit(ev);
             };
             // the whole thread: older replies page in after the first items
             let back = tl.clone();
@@ -64,7 +74,7 @@ impl Core {
                     let _ = back.paginate_backwards(THREAD_FILL).await;
                 });
             };
-            Self::stream_timeline(&room, &tl, &own, emit, page_in, self.threads_read.subscribe(), None).await;
+            Self::stream_timeline(&room, &tl, &own, emit, page_in, self.threads_read.subscribe(), None, replies, resync).await;
         });
         tracing::info!(room = %room_id, %root, "thread: open");
         // a close or another open during the build: this one is not wanted
@@ -74,7 +84,7 @@ impl Core {
             return Ok(());
         }
         st.thread_seq += 1;
-        if let Some(old) = st.thread.replace(OpenThread { room_id: room_id_kept, root, timeline, task }) {
+        if let Some(old) = st.thread.replace(OpenThread { room_id: room_id_kept, root, timeline, task, resync: resync_kept }) {
             old.task_handle().abort();
         }
         Ok(())

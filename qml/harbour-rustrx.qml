@@ -15,7 +15,6 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
-import QtSensors 5.2
 import Rustrx 1.0
 import Sailfish.Silica 1.0
 import "pages"
@@ -25,8 +24,14 @@ ApplicationWindow {
     id: app
 
     // The login and the main page replace each other at the bottom of the
-    // stack; everything else is pushed on top of the main page.
-    initialPage: Component { StartPage { } }
+    // stack; everything else is pushed on top of the main page. The first
+    // page is pushed in Component.onCompleted: the main page with a saved
+    // session, built with the window instead of after the restore and
+    // without a transition (0.8.2 audit, ST2); else the start page.
+    Component { id: startPage; StartPage { } }
+    // the main page was put first on a saved session, and the session has
+    // not come yet: a restore that fails leaves it as from the start page
+    property bool mainBeforeLogin
     cover: Qt.resolvedUrl("cover/CoverPage.qml")
     // portrait and landscape: the room list and the chats suit both (the
     // camera page keeps to portrait); "Lock to portrait" keeps every page
@@ -88,7 +93,11 @@ ApplicationWindow {
     property alias closedMode: cfg.closedMode
     // start in the chat that was open when the app was closed
     property alias reopenLast: cfg.reopenLast
-    property alias lastRoom: cfg.lastRoom
+    // the open chat, kept in dconf once route() has read the one from the
+    // last run: the main page, the first page now, clears it on becoming
+    // active, before the session is in
+    property string lastRoom
+    onLastRoomChanged: if (reopenTried) cfg.lastRoom = lastRoom
     property alias lastRoomAccount: cfg.lastRoomAccount
     property alias portraitOnly: cfg.portraitOnly
 
@@ -96,10 +105,19 @@ ApplicationWindow {
     // else the background stand-in (asked again at every start, so installing
     // Foghorn later moves to push)
     function applyClosedMode() {
+        // the distributor is looked up without waiting: until it is known no
+        // choice is made (an unknown one would switch push off), see below
+        if (!rustrx.push.lookedUp) return
+        closedModeApplied = true
         var m = closedMode.length ? closedMode : (rustrx.push.available ? "push" : "background")
         if (m === "push" && !rustrx.push.available) m = "background"
         rustrx.setPushEnabled(m === "push")
         rustrx.background = m === "background"
+    }
+    property bool closedModeApplied
+    Connections {
+        target: rustrx.push
+        onChanged: if (!app.closedModeApplied && rustrx.push.lookedUp) app.applyClosedMode()
     }
     // favourites with new messages glow in the lists (highlightFavs).
     // The glow's one breath, shared by every glowing row so they breathe
@@ -173,8 +191,11 @@ ApplicationWindow {
             // a QR login says it is done and waits for its Continue
             if (current === "qrLoginDone") return
             // read before the main page comes in: becoming active, it forgets the room
-            var last = !reopenTried && reopenLast && lastRoomAccount === rustrx.accountKey ? lastRoom : ""
+            var last = !reopenTried && reopenLast && lastRoomAccount === rustrx.accountKey ? cfg.lastRoom : ""
             reopenTried = true
+            // what the pages said meanwhile ("" from the main page)
+            cfg.lastRoom = lastRoom
+            mainBeforeLogin = false
             // the login's own pages (the QR login above the login page)
             // go with it; they stayed with their last text before (jp26)
             if (current === "login" || current === "start" || pageStack.find(function (p) { return p.objectName === "login" }))
@@ -193,9 +214,12 @@ ApplicationWindow {
             // started by the requests' notification
             if (knocks) showKnocks()
         } else if (rustrx.restoreFailed) {
-            // the session is there, its key did not come: the start page asks again
+            // the session is there, its key did not come: the start page asks
+            // again (at once over the main page of a start, as if it had been first)
             if (current !== "start")
-                pageStack.replaceAbove(null, Qt.resolvedUrl("pages/StartPage.qml"))
+                pageStack.replaceAbove(null, Qt.resolvedUrl("pages/StartPage.qml"), {},
+                                       mainBeforeLogin ? PageStackAction.Immediate : PageStackAction.Animated)
+            mainBeforeLogin = false
         } else if (current !== "login" && !pageStack.find(function (p) { return p.objectName === "login" })) {
             // a page above the login page is part of the login (the QR
             // scanner, the QR login, the browser's wait): left alone, or a
@@ -205,7 +229,10 @@ ApplicationWindow {
             // logged-out one was picked): the login page goes above the
             // list, and back leads to that account again (the author's
             // wish). With none, the login page is all there is
-            var main = pageStack.find(function (p) { return p.objectName === "main" })
+            // (not the main page of a start whose session did not come: that
+            // is a start without a login, as from the start page)
+            var main = mainBeforeLogin ? null : pageStack.find(function (p) { return p.objectName === "main" })
+            mainBeforeLogin = false
             if (main && otherLoggedIn() >= 0) {
                 pageStack.pop(main, PageStackAction.Immediate)
                 pageStack.push(Qt.resolvedUrl("pages/LoginPage.qml"), { stacked: true })
@@ -250,10 +277,9 @@ ApplicationWindow {
     }
     // the screen at the ear during a call on the earpiece: the call page
     // goes dark (MCE does it only for the phone app's route, see CallState)
-    ProximitySensor {
+    Loader {
         active: rustrx.voip.state !== "idle" && rustrx.voip.state !== "incoming" && !rustrx.voip.speaker
-        alwaysOn: true
-        onReadingChanged: rustrx.setCallNear(reading !== null && reading.near)
+        source: "components/CallProximity.qml"
         onActiveChanged: if (!active) rustrx.setCallNear(false)
     }
     property string lastVoipState: "idle"
@@ -767,23 +793,25 @@ ApplicationWindow {
     }
 
     // each room's permissions and settings as the core last sent them
-    // (room_settings): the message rows ask what one may do in a room
+    // (room_settings), per account and room: the message rows ask what one
+    // may do in a room, and two accounts can share one
     property var roomSettingsById: ({})
+    function roomSettingsKey(roomId) { return rustrx.accountKey + "/" + roomId }
     Connections {
         target: rustrx
         onRoomSettings: {
             var all = {}
             for (var k in app.roomSettingsById) all[k] = app.roomSettingsById[k]
-            all[settings.room_id] = settings
+            all[roomSettingsKey(settings.room_id)] = settings
             app.roomSettingsById = all
         }
     }
     function roomMay(roomId) {
-        var s = roomSettingsById[roomId]
+        var s = roomSettingsById[roomSettingsKey(roomId)]
         return s && s.may ? s.may : ({})
     }
     function roomPinned(roomId) {
-        var s = roomSettingsById[roomId]
+        var s = roomSettingsById[roomSettingsKey(roomId)]
         return s && s.pinned ? s.pinned : []
     }
 
@@ -880,6 +908,8 @@ ApplicationWindow {
 
     Component.onCompleted: {
         rustrx.perf("qml_completed")
+        mainBeforeLogin = rustrx.sessionSaved
+        pageStack.push(rustrx.sessionSaved ? Qt.resolvedUrl("pages/MainPage.qml") : startPage, {}, PageStackAction.Immediate)
         // the old "Round avatars" switch, off: square corners, once
         if (!cfg.roundAvatars) { cfg.avatarCorners = 0; cfg.roundAvatars = true }
         applyClosedMode(); route()

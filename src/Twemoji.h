@@ -26,7 +26,10 @@
 // address stands in for the character.
 namespace Twemoji {
 
-// the folder with the pictures; read once at start
+// the folder with the pictures; its names are read on a worker thread,
+// off the way to the window (the first lookup waits for them)
+void start(const QString &dir);
+// the same, read at once (the tests)
 void init(const QString &dir);
 // the picture for one emoji (a grapheme cluster), "file://…", or "" when
 // there is none

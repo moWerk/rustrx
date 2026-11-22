@@ -24,6 +24,7 @@
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
+#include <QDir>
 #include <QEvent>
 #include <QFile>
 #include <QQmlComponent>
@@ -41,6 +42,7 @@
 #include "DebugLog.h"
 #include "FrameStats.h"
 #include "Perf.h"
+#include "AvatarProvider.h"
 #include "KeyboardSlide.h"
 #include "Twemoji.h"
 #include <QSettings>
@@ -83,6 +85,18 @@ int main(int argc, char *argv[])
     const bool pushWake = qgetenv(Keys::kEnvPushWake) == "1";
     if (standIn || pushWake)
         qputenv("QT_QPA_PLATFORM", "minimal");
+    // Mesa's shader cache: in the sandbox ~/.cache is a fresh tmpfs, so it
+    // was empty at every start and the first frame compiled every shader
+    // again (520-610 ms on the Prawn's render thread, 222-289 ms with this).
+    // The app's own cache folder (CacheLocation) is kept; before the
+    // display is opened, and only where nobody chose one. hybris ignores it.
+    else if (qEnvironmentVariableIsEmpty("MESA_SHADER_CACHE_DIR")) {
+        const QByteArray xdg = qgetenv("XDG_CACHE_HOME");
+        const QString cache = (xdg.isEmpty() ? QDir::homePath() + QLatin1String("/.cache") : QString::fromLocal8Bit(xdg))
+                + QLatin1String("/net.mowerk/harbour-rustrx/mesa-shaders");
+        if (QDir().mkpath(cache))
+            qputenv("MESA_SHADER_CACHE_DIR", QFile::encodeName(cache));
+    }
 
     QScopedPointer<QGuiApplication> app(SailfishApp::application(argc, argv));
     app->setOrganizationName(QStringLiteral("net.mowerk"));
@@ -97,9 +111,9 @@ int main(int argc, char *argv[])
     }
     Perf::mark("main", 0);
     Perf::mark("app");
-    Twemoji::init(SailfishApp::pathTo(QStringLiteral("qml/twemoji")).toLocalFile());
-    Perf::mark("twemoji");
     DebugLog::setEnabled(QSettings(Rustrx::settingsFile(), QSettings::IniFormat).value(QLatin1String(Keys::kDebugLog), Keys::kDebugLogDefault).toBool());
+    // perf: twemoji when its names are in (a worker thread; after the log is set up)
+    Twemoji::start(SailfishApp::pathTo(QStringLiteral("qml/twemoji")).toLocalFile());
 
     qmlRegisterUncreatableType<RoomModel>("Rustrx", 1, 0, "RoomModel", "owned by rustrx");
     qmlRegisterUncreatableType<TimelineModel>("Rustrx", 1, 0, "TimelineModel", "owned by rustrx");
@@ -200,6 +214,11 @@ int main(int argc, char *argv[])
     if (!service)
         qWarning() << "Service.qml:" << serviceComponent.errors();
     Perf::mark("service");
+    // the notifications an earlier process left: a blocking call to the home
+    // screen, which is busy with the launch. The window-less processes take
+    // them now, the app after its first frame (or at its first notification)
+    if (service && (standIn || pushWake))
+        QMetaObject::invokeMethod(service.data(), "takeOverOld");
 
     if (pushWake) {
         // gone 30 s after the last push, after 2 minutes at the most
@@ -227,11 +246,16 @@ int main(int argc, char *argv[])
     // the window lives as long as the process (see Service.qml)
     QScopedPointer<QQuickView> view(SailfishApp::createView());
     Perf::mark("view");
-    // the first frame is StartPage's (render thread, so direct and once)
+    // the first frame, the main page's with a saved session, else StartPage's
+    // (render thread, so direct and once)
     static QAtomicInt framed;
-    QObject::connect(view.data(), &QQuickWindow::frameSwapped, view.data(), []() {
-        if (!framed.load() && framed.testAndSetRelaxed(0, 1))
+    QObject *serviceObject = service.data();
+    QObject::connect(view.data(), &QQuickWindow::frameSwapped, view.data(), [serviceObject]() {
+        if (!framed.load() && framed.testAndSetRelaxed(0, 1)) {
             Perf::mark("frame");
+            if (serviceObject)
+                QMetaObject::invokeMethod(serviceObject, "takeOverOld", Qt::QueuedConnection);
+        }
     }, Qt::DirectConnection);
     view->engine()->setNetworkAccessManagerFactory(&localOnly);
     view->rootContext()->setContextProperty(QStringLiteral("rustrx"), &rustrx);
@@ -239,6 +263,7 @@ int main(int argc, char *argv[])
     view->rootContext()->setContextProperty(QStringLiteral("keyboardSlide"), &keyboardSlide);
     view->rootContext()->setContextProperty(QStringLiteral("service"), service.data());
     view->rootContext()->setContextProperty(QStringLiteral("appVersion"), QStringLiteral(APP_VERSION));
+    view->engine()->addImageProvider(QStringLiteral("rxavatar"), new AvatarProvider);
     view->setSource(SailfishApp::pathToMainQml());
     Perf::mark("qml");
     // frame timing in the log, for comparing builds: RUSTRX_FRAMES=1

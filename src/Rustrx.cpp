@@ -159,8 +159,10 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     connect(m_media, &Media::settingsChanged, this, &Rustrx::settingsChanged);
     connect(m_media, &Media::shrinkingChanged, this, &Rustrx::shrinkingVideosChanged);
     // the first account's push; startAccount wires it and makes the others'
+    // (its distributor is asked without waiting: perf: distributor)
     m_push = new UnifiedPush(dataDir, this);
     Perf::mark("unifiedpush");
+    // (GStreamer only at the first call: perf: gst)
     m_voip = new Voip(this);
     Perf::mark("voip");
     // a call's events go to the account it is on
@@ -228,6 +230,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     connect(m_merged, &RoomLists::roomFilterChanged, this, [this]() { if (m_mergedView) emit roomFilterChanged(); });
     connect(m_merged, &RoomLists::unreadChanged, this, [this]() { if (m_mergedView) emit unreadChanged(); });
     m_allTargets = new RoomModel(this);
+    connect(this, &Rustrx::accountsChanged, this, &Rustrx::updateAccountMarks);
     m_cur = startAccount(0, dataDir);
     QDir more(dataDir + QLatin1String("/accounts"));
     QList<int> keys;
@@ -249,6 +252,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
         startAccount(key, more.filePath(QString::number(key)));
     if (Account *last = account(m_settings.value(QLatin1String(Keys::kShownAccount), 0).toInt()))
         m_cur = last;
+    m_sessionSaved = QFile::exists(m_cur->dir + QLatin1String("/session.json"));
     qInfo().noquote() << "startup:" << m_accounts.size() << "accounts, cores started after" << m_since.elapsed() << "ms,"
                       << Perf::ms() << "ms since main";
     Perf::mark("cores");
@@ -575,7 +579,7 @@ void Rustrx::refreshMerged()
     for (const Account *a : m_accounts)
         if (a->loggedIn)
             all.append({ a->key, a->lastRooms });
-    m_merged->setRooms(RoomLists::mergeAccounts(all));
+    m_merged->setRooms(RoomLists::mergeAccounts(all, &m_mergeCache));
 }
 
 void Rustrx::setMergedView(bool on)
@@ -652,6 +656,25 @@ void Rustrx::followAllTargets(bool on)
         m_allTargets->setRooms({});
 }
 
+void Rustrx::updateAccountMarks()
+{
+    QVariantMap marks;
+    const QVariantList all = accounts();
+    if (all.size() > 1) {
+        for (const QVariant &v : all) {
+            const QVariantMap a = v.toMap();
+            QString user = a.value("user_id").toString();
+            if (user.startsWith(QLatin1Char('@')))
+                user.remove(0, 1);
+            marks.insert(QString::number(a.value("key").toInt()), user.section(QLatin1Char(':'), 0, 0));
+        }
+    }
+    if (marks != m_accountMarks) {
+        m_accountMarks = marks;
+        emit accountMarksChanged();
+    }
+}
+
 void Rustrx::refreshAllTargets()
 {
     if (!m_allTargetsFollowers)
@@ -662,7 +685,7 @@ void Rustrx::refreshAllTargets()
             all.append({ a->key, a->lastRooms });
     // as each account's targets: joined rooms and chats, no spaces
     QVariantList targets;
-    for (const QVariant &v : RoomLists::mergeAccounts(all)) {
+    for (const QVariant &v : RoomLists::mergeAccounts(all, &m_mergeCache)) {
         const QVariantMap r = v.toMap();
         const QString state = r.value("state").toString();
         if (r.value("is_space").toBool() || (!state.isEmpty() && state != QLatin1String("joined")))
@@ -698,8 +721,10 @@ void Rustrx::perfEvent(const QVariantMap &ev, const char *what) const
 {
     if (!Perf::on())
         return;
+    // all the timeline's ids, the items only where new or changed
     qCDebug(Perf::category).noquote().nospace() << "perf: " << what << " t=" << Perf::ms()
-            << " items=" << ev.value("items").toList().size() << " bytes=" << ev.value("perf_bytes").toInt()
+            << " items=" << ev.value("order").toList().size() << " changed=" << ev.value("items").toMap().size()
+            << " full=" << ev.value("full").toBool() << " bytes=" << ev.value("perf_bytes").toInt()
             << " parse_us=" << ev.value("perf_parse_us").toLongLong()
             << " queued_ms=" << Perf::ms() - ev.value("perf_rx").toLongLong();
 }
@@ -837,6 +862,7 @@ void Rustrx::command(const QVariantMap &cmd)
         m_timeline->clearEmotes();
         m_thread->clearEmotes();
         m_media->clearEmotes();
+        m_mediaClearAccount = m_cur->key;
     }
     commandTo(m_cur->key, cmd);
 }
@@ -850,11 +876,17 @@ void Rustrx::commandTo(int key, const QVariantMap &cmd)
     }
     const QByteArray json = QJsonDocument(QJsonObject::fromVariantMap(cmd)).toJson(QJsonDocument::Compact);
     const int rc = rustrx_command_to(a->core, json.constData());
-    // one line per command in the journal; the password is not part of the message
+    // one line per command in the journal, the frequent ones (the core's
+    // FREQUENT_COMMANDS) only when they fail; the password is not part of the message
+    static const QStringList frequent{ QStringLiteral("paginate_back"), QStringLiteral("mark_read"),
+                                       QStringLiteral("get_media"), QStringLiteral("typing"),
+                                       QStringLiteral("fetch_emote"), QStringLiteral("save_draft"),
+                                       QStringLiteral("image_packs") };
+    const QString name = cmd.value("cmd").toString();
     if (rc)
-        qWarning().noquote() << "command" << cmd.value("cmd").toString() << "account" << key << "rc" << rc;
-    else
-        qInfo().noquote() << "command" << cmd.value("cmd").toString() << "account" << key;
+        qWarning().noquote() << "command" << name << "account" << key << "rc" << rc;
+    else if (!frequent.contains(name))
+        qInfo().noquote() << "command" << name << "account" << key;
 }
 
 void Rustrx::loginPassword(const QString &user, const QString &password, const QString &homeserver)
@@ -1116,11 +1148,12 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         if (ev.value("room_id").toString() == m_openRoomId) {
             const int before = m_timeline->rowCount();
             perfEvent(ev, "timeline");
-            m_timeline->setItems(ev.value("items").toList());
+            if (m_timeline->applyTimeline(ev))
+                command({ { "cmd", "timeline_resync" }, { "room_id", m_openRoomId } });
             if (m_roomPerfStage == 1) {
                 m_roomPerfStage = 2;
                 qCDebug(Perf::category).noquote().nospace() << "perf: room_snapshot t=" << Perf::ms()
-                        << " open_ms=" << m_roomPerf.elapsed() << " items=" << ev.value("items").toList().size();
+                        << " open_ms=" << m_roomPerf.elapsed() << " items=" << ev.value("order").toList().size();
             }
             if (m_roomPerfStage == 2 && before == 0 && m_timeline->rowCount() > 0) {
                 m_roomPerfStage = 0;
@@ -1148,7 +1181,9 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     } else if (type == QLatin1String("thread_timeline")) {
         if (ev.value("thread_root").toString() == m_threadRoot) {
             perfEvent(ev, "thread_timeline");
-            m_thread->setItems(ev.value("items").toList());
+            if (m_thread->applyTimeline(ev))
+                command({ { "cmd", "timeline_resync" }, { "room_id", ev.value("room_id").toString() },
+                          { "thread_root", m_threadRoot } });
         }
     } else if (type == QLatin1String("space_rooms")) {
         emit spaceRooms(ev.value("space_id").toString(), ev.value("rooms").toList(), ev.value("loading").toBool());
@@ -1237,6 +1272,21 @@ void Rustrx::handleEvent(const QVariantMap &ev)
     } else if (type == QLatin1String("keys_exported")) {
         emit keysExported(ev.value("path").toString());
     } else if (type == QLatin1String("storage")) {
+        // the answer to "clear_media": the files are gone, the rows on
+        // screen ask for their pictures again (they would stay broken
+        // until a restart); not before, or a path just served would go
+        if (m_mediaClearAccount == a->key) {
+            m_mediaClearAccount = -1;
+            QSet<QString> asked;
+            for (TimelineModel *model : { m_timeline, m_thread }) {
+                for (const auto &p : model->clearMediaPaths()) {
+                    const QString key = p.first + (p.second ? QLatin1String("/t") : QLatin1String("/f"));
+                    if (!asked.contains(key))
+                        m_media->getMedia(m_openRoomId, p.first, p.second);
+                    asked.insert(key);
+                }
+            }
+        }
         emit storageInfo(ev);
     } else if (type == QLatin1String("keys_imported")) {
         emit keysImported(ev.value("imported").toInt(), ev.value("total").toInt());
@@ -1417,10 +1467,12 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
     } else if (type == QLatin1String("rooms")) {
         const bool first = a->firstRooms;
         a->firstRooms = false;
-        a->lastRooms = ev.value("rooms").toList();
         QElapsedTimer apply;
         apply.start();
-        a->lists->setRooms(a->lastRooms);
+        a->lists->setRooms(ev.value("rooms").toList());
+        // the rows as the lists keep them: unchanged ones shared with the
+        // last event, which the merged view's cache and lists rely on
+        a->lastRooms = a->lists->lastRooms();
         const qint64 listsUs = apply.nsecsElapsed() / 1000;
         refreshMerged();
         const qint64 mergedUs = apply.nsecsElapsed() / 1000 - listsUs;

@@ -16,6 +16,7 @@
  */
 #include "UnifiedPush.h"
 #include "Keys.h"
+#include "Perf.h"
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -30,6 +31,7 @@
 #include <QLocale>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QSharedPointer>
 #include <QUrl>
 #include <QUuid>
 
@@ -157,17 +159,38 @@ QString UnifiedPush::gatewayHost() const
     return QUrl(m_state.value("gateway").toString()).host();
 }
 
-// a distributor running or startable (Foghorn's when there are several)
+// a distributor running or startable (Foghorn's when there are several),
+// asked without waiting: two blocking bus calls held up the window at
+// every start, once per account (0.8.2 audit, ST14). A login waits for
+// the answer before it registers.
 void UnifiedPush::findDistributor()
 {
     QDBusConnection bus = QDBusConnection::sessionBus();
-    QStringList names = bus.interface()->registeredServiceNames().value();
-    const QDBusMessage call = QDBusMessage::createMethodCall(QString::fromLatin1(Keys::kDbusService),
-            QString::fromLatin1(Keys::kDbusPath), QString::fromLatin1(Keys::kDbusService),
-            QStringLiteral("ListActivatableNames"));
-    const QDBusMessage reply = bus.call(call, QDBus::Block, Keys::kListNamesTimeoutMs);
-    if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty())
-        names += reply.arguments().first().toStringList();
+    const int lookup = ++m_lookup;
+    struct Answers {
+        int waiting = 2;
+        QStringList names;
+    };
+    QSharedPointer<Answers> answers(new Answers);
+    auto ask = [this, &bus, lookup, answers](const QString &method, int timeoutMs) {
+        const QDBusMessage call = QDBusMessage::createMethodCall(QString::fromLatin1(Keys::kDbusService),
+                QString::fromLatin1(Keys::kDbusPath), QString::fromLatin1(Keys::kDbusService), method);
+        auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(call, timeoutMs), this);
+        connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, lookup, answers](QDBusPendingCallWatcher *w) {
+            QDBusPendingReply<QStringList> reply = *w;
+            w->deleteLater();
+            if (!reply.isError())
+                answers->names += reply.value();
+            if (--answers->waiting == 0 && lookup == m_lookup)
+                distributorFound(answers->names);
+        });
+    };
+    ask(QStringLiteral("ListNames"), -1);
+    ask(QStringLiteral("ListActivatableNames"), Keys::kListNamesTimeoutMs);
+}
+
+void UnifiedPush::distributorFound(QStringList names)
+{
     // the sandbox may hide activatable names: the service files tell too
     const QStringList files = QDir(QString::fromLatin1(Keys::kDbusServicesDir))
             .entryList({ QString::fromLatin1(Keys::kDistributorPrefix) + QStringLiteral("*.service") }, QDir::Files);
@@ -180,10 +203,23 @@ void UnifiedPush::findDistributor()
         if (found.isEmpty() || n.endsWith(QLatin1String("Foghorn")))
             found = n;
     }
+    const bool first = !m_lookedUp;
+    m_lookedUp = true;
+    if (first)
+        Perf::mark("distributor");
     if (found != m_distributor) {
         m_distributor = found;
         qInfo().noquote() << "push: distributor" << (found.isEmpty() ? QStringLiteral("none") : found);
         emit changed();
+    } else if (first) {
+        emit changed();
+    }
+    if (m_registerWanted) {
+        m_registerWanted = false;
+        if (m_loggedIn && enabled() && !m_distributor.isEmpty()) {
+            registerApp();
+            setPusherIfNeeded();
+        }
     }
 }
 
@@ -234,11 +270,10 @@ void UnifiedPush::setEnabled(bool on)
 void UnifiedPush::loggedIn()
 {
     m_loggedIn = true;
+    // looked up again (one installed since the start counts); registered
+    // with the answer
+    m_registerWanted = true;
     findDistributor();
-    if (!enabled() || m_distributor.isEmpty())
-        return;
-    registerApp();
-    setPusherIfNeeded();
 }
 
 void UnifiedPush::loggedOut()

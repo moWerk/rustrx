@@ -5,6 +5,7 @@
 use super::*;
 use matrix_sdk::room::Receipts;
 use matrix_sdk::send_queue::LocalEchoContent;
+use crate::serialize::{has_other_readers, item_json, thread_latest, Extras, TimelineDiff};
 
 impl Core {
     /// A reaction the server refuses for good (sent twice, say) stays in its
@@ -117,12 +118,14 @@ impl Core {
     }
 
     /// Display names for the people whose read receipts sit on these items;
-    /// unknown members fall back to the localpart in the UI.
+    /// unknown members fall back to the localpart in the UI. True when a
+    /// name was looked up.
     pub(crate) async fn receipt_names<'a>(
         room: &Room,
         items: impl IntoIterator<Item = &'a Arc<TimelineItem>>,
         names: &mut HashMap<OwnedUserId, String>,
-    ) {
+    ) -> bool {
+        let mut learned = false;
         for item in items {
             let Some(event) = item.as_event() else { continue };
             for user in event.read_receipts().keys() {
@@ -130,23 +133,28 @@ impl Core {
                     continue;
                 }
                 names.insert(user.clone(), member_name(room, user).await);
+                learned = true;
             }
         }
+        learned
     }
 
     /// A reply whose original is not loaded (older than the loaded history,
     /// or not yet decrypted when the reply came) gets it fetched, once; the
-    /// timeline then updates with the quote.
+    /// timeline then updates with the quote. An original fetched in an
+    /// earlier open of the room shows from the kept ones and is not asked
+    /// again while fresh (state_reactions.rs, KEPT_FRESH).
     pub(crate) fn fetch_replied<'a>(
         timeline: &Arc<Timeline>,
         items: impl IntoIterator<Item = &'a Arc<TimelineItem>>,
         asked: &mut std::collections::HashSet<OwnedEventId>,
+        kept: &state_reactions::Replies,
     ) {
         for item in items {
             let Some(event) = item.as_event() else { continue };
             let Some(msg) = event.content().as_msglike() else { continue };
             let Some(reply) = &msg.in_reply_to else { continue };
-            if !matches!(reply.event, TimelineDetails::Unavailable) {
+            if !matches!(reply.event, TimelineDetails::Unavailable) || kept.fresh(reply.event_id.as_str()) {
                 continue;
             }
             let Some(id) = event.event_id().map(ToOwned::to_owned) else { continue };
@@ -163,10 +171,15 @@ impl Core {
     }
 
     /// A timeline's items on every change, coalesced per update burst, until
-    /// its stream ends. Replies get their originals fetched, read receipts
-    /// their names, state rows their reactions where `state_reactions` is
-    /// given (the room's timeline). `started` runs once, after the first
-    /// items are out.
+    /// its stream ends: each time the order of all items and those new or
+    /// changed since the last (serialize.rs, TimelineDiff), everything on
+    /// the first, after a reset by the SDK and when the UI asks (`resync`).
+    /// Replies get their originals fetched, read receipts their names,
+    /// state rows their reactions where `state_reactions` is given (the
+    /// room's timeline). The first items go out before the names and the
+    /// threads' unread marks are looked up (store reads), the next with
+    /// them. `started` runs once, after the first items are out.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn stream_timeline(
         room: &Room,
         timeline: &Arc<Timeline>,
@@ -175,50 +188,113 @@ impl Core {
         started: impl FnOnce() + Send,
         mut threads_read: tokio::sync::watch::Receiver<u64>,
         state_reactions: Option<Arc<state_reactions::SharedStateReactions>>,
+        replies: Arc<std::sync::Mutex<state_reactions::Replies>>,
+        resync: Arc<tokio::sync::Notify>,
     ) {
+        use matrix_sdk_ui::eyeball_im::VectorDiff;
+        static STREAMS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let mut diff = TimelineDiff::new(STREAMS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1);
         let mut names = HashMap::new();
         let mut replies_asked = std::collections::HashSet::new();
-        let mut unread = HashMap::new();
+        let mut unread: HashMap<String, bool> = HashMap::new();
         let (mut items, mut stream) = timeline.subscribe().await;
         let mut started = Some(started);
         let mut reactions_changed = state_reactions.as_ref().map(|s| s.subscribe());
+        let lock_replies = || replies.lock().unwrap_or_else(|e| e.into_inner());
+        let reset = |diffs: &[VectorDiff<Arc<TimelineItem>>]| {
+            diffs.iter().any(|d| matches!(d, VectorDiff::Clear | VectorDiff::Reset { .. }))
+        };
         loop {
             let pass = std::time::Instant::now();
-            Self::fetch_replied(timeline, &items, &mut replies_asked);
+            let first = started.is_some();
+            Self::fetch_replied(timeline, &items, &mut replies_asked, &lock_replies());
             if let Some(shared) = &state_reactions {
                 Self::fetch_state_reactions(room, shared, &items);
             }
-            Self::receipt_names(room, &items, &mut names).await;
-            let prep = pass.elapsed();
-            let mut json = items_json(&items, own, &names);
-            if let Some(shared) = &state_reactions {
-                shared.put_into(&mut json, own.as_str());
+            let threads: Vec<_> = items.iter().filter_map(|i| thread_latest(i, own)).collect();
+            if !first {
+                Self::receipt_names(room, &items, &mut names).await;
+                for (root, latest, ts, mine) in &threads {
+                    Self::cached_thread_unread(room, own, root, latest, *ts, *mine, &mut unread).await;
+                }
             }
             // the message our own read receipt is on (the SDK keeps our
             // receipts off the items): the room's unread count runs from
-            // there, where the unread line (m.fully_read) can lag far behind
+            // there, where the unread line (m.fully_read) can lag far behind;
+            // the room page opens there, so it is in the first items too
             let own_read = timeline.latest_user_read_receipt_timeline_event_id(own).await;
-            if let Value::Array(list) = &mut json {
-                for item in list.iter_mut() {
-                    if own_read.as_ref().is_some_and(|id| item["event_id"].as_str() == Some(id.as_str())) {
-                        item["own_read"] = Value::Bool(true);
-                    }
-                    let root = item["event_id"].as_str().map(str::to_owned);
-                    if let (Some(root), Some(thread)) = (root, item.get_mut("thread")) {
-                        Self::mark_thread_unread(room, own, &root, thread, &mut unread).await;
-                    }
+            let prep = pass.elapsed();
+            let list: Vec<(String, Arc<TimelineItem>)> = items.iter().map(|i| (i.unique_id().0.clone(), i.clone())).collect();
+            let payload = {
+                let counts = state_reactions.as_ref().map(|s| s.lock());
+                let mut kept = lock_replies();
+                let mut fetched = Vec::new();
+                let payload = diff.pass(
+                    &list,
+                    |i| {
+                        let v = item_json(i, own, &names);
+                        if v["reply_to"]["sender"].is_string() {
+                            fetched.push(v["reply_to"].clone());
+                        }
+                        (v, has_other_readers(i, own))
+                    },
+                    |_, v| {
+                        let event_id = v["event_id"].as_str();
+                        let thread_unread = v["thread"]["latest_id"].as_str().map(|latest| {
+                            let key = format!("{} {latest}", event_id.unwrap_or_default());
+                            unread.get(&key).copied().unwrap_or(false)
+                        });
+                        let reply = (v["reply_to"]["pending"] == Value::Bool(true))
+                            .then(|| v["reply_to"]["event_id"].as_str().and_then(|id| kept.get(id)).cloned())
+                            .flatten();
+                        Extras {
+                            own_read: own_read.as_ref().is_some_and(|id| event_id == Some(id.as_str())),
+                            thread_unread,
+                            reactions: counts.as_ref().and_then(|c| c.of_row(v, own.as_str())),
+                            reply,
+                        }
+                    },
+                );
+                for reply in &fetched {
+                    kept.put(reply);
                 }
-            }
-            tracing::debug!(target: "rustrx::perf", items = items.len(), prep_us = prep.as_micros() as u64,
+                payload
+            };
+            let sent = payload.as_ref().map_or(0, |p| p["items"].as_object().map_or(0, |o| o.len()));
+            let full = payload.as_ref().is_some_and(|p| p["full"] == Value::Bool(true));
+            tracing::debug!(target: "rustrx::perf", items = items.len(), sent, full, prep_us = prep.as_micros() as u64,
                             json_us = (pass.elapsed() - prep).as_micros() as u64, "timeline_pass");
-            emit(json);
+            if let Some(payload) = payload {
+                emit(payload);
+            }
             if let Some(started) = started.take() {
                 started();
+                // what the first items went out without: the next pass
+                // follows at once when it changes anything
+                let mut again = Self::receipt_names(room, &items, &mut names).await;
+                if again {
+                    diff.names_changed();
+                }
+                for (root, latest, ts, mine) in &threads {
+                    again |= Self::cached_thread_unread(room, own, root, latest, *ts, *mine, &mut unread).await;
+                }
+                if again {
+                    let mut drained = Vec::new();
+                    while let Some(Some(d)) = stream.next().now_or_never() {
+                        drained.extend(d);
+                    }
+                    if reset(&drained) {
+                        diff.resync();
+                    }
+                    items = timeline.items().await;
+                    continue;
+                }
             }
             tokio::select! {
                 next = stream.next() => {
-                    if next.is_none() {
-                        break;
+                    match next {
+                        None => break,
+                        Some(d) => if reset(&d) { diff.resync() },
                     }
                 }
                 // a thread read here: its receipt is new, nothing else
@@ -239,24 +315,17 @@ impl Core {
                         std::future::pending::<()>().await;
                     }
                 }
+                // the UI lost track (timeline_resync)
+                _ = resync.notified() => diff.resync(),
             }
             tokio::time::sleep(TIMELINE_COALESCE).await;
-            while let Some(Some(_)) = stream.next().now_or_never() {}
+            while let Some(Some(d)) = stream.next().now_or_never() {
+                if reset(&d) {
+                    diff.resync();
+                }
+            }
             items = timeline.items().await;
         }
-    }
-
-    /// Puts "unread" into a thread summary (serialize.rs): its latest reply
-    /// is someone else's and no read receipt of ours, threaded or not,
-    /// reaches it. The receipts are the server's, so a thread read in
-    /// another client counts as read here too. Remembered per latest reply.
-    pub(crate) async fn mark_thread_unread(room: &Room, own: &UserId, root: &str, thread: &mut Value,
-                                           known: &mut HashMap<String, bool>) {
-        let Some(latest) = thread["latest_id"].as_str().map(str::to_owned) else { return };
-        let unread = Self::cached_thread_unread(room, own, root, &latest,
-                                                thread["latest_ts"].as_u64().unwrap_or(0),
-                                                thread["latest_own"].as_bool().unwrap_or(false), known).await;
-        thread["unread"] = Value::Bool(unread);
     }
 
     /// `thread_unread`, remembered per thread and latest reply in `known`
@@ -295,11 +364,18 @@ impl Core {
     pub(crate) async fn timeline_task(&'static self, room: Room, timeline: Arc<Timeline>, own: OwnedUserId,
                                       reactions: Arc<state_reactions::SharedStateReactions>) {
         let room_id = room.room_id().to_owned();
-        let emit = |items: Value| self.emit(json!({"ev": "timeline", "room_id": room_id.as_str(), "items": items}));
+        let emit = |diff: Value| {
+            let mut ev = json!({"ev": "timeline", "room_id": room_id.as_str()});
+            if let (Value::Object(ev), Value::Object(diff)) = (&mut ev, diff) {
+                ev.extend(diff);
+            }
+            self.emit(ev)
+        };
         // the guard keeps the sync's reactions coming while this task lives
         let _reactions_guard = Self::watch_state_reactions(&room, &reactions);
+        let (replies, resync) = (reactions.replies.clone(), reactions.resync.clone());
         let items = Self::stream_timeline(&room, &timeline, &own, emit, || {}, self.threads_read.subscribe(),
-                                          Some(reactions));
+                                          Some(reactions), replies, resync);
         // the guard keeps the typing handler registered while this task lives
         let (_typing_guard, mut typing) = room.subscribe_to_typing_notifications();
         let typing = async {
@@ -342,23 +418,30 @@ impl Core {
         };
         let room = self.room(room_id).await?;
         let client = self.client().await?;
-        // the room's draft, from the encrypted store: "draft"
-        match room.load_composer_draft(None).await {
-            Ok(draft) => self.emit(json!({"ev": "draft", "room_id": room.room_id().as_str(),
-                                          "text": draft.map(|d| d.plain_text).unwrap_or_default()})),
-            Err(e) => tracing::warn!("draft: not loaded: {e}"),
-        }
-        let draft = t.elapsed();
+        // the room's draft, from the encrypted store: "draft", read while the
+        // subscription and the timeline are set up
+        let draft = async {
+            match room.load_composer_draft(None).await {
+                Ok(draft) => self.emit(json!({"ev": "draft", "room_id": room.room_id().as_str(),
+                                              "text": draft.map(|d| d.plain_text).unwrap_or_default()})),
+                Err(e) => tracing::warn!("draft: not loaded: {e}"),
+            }
+            t.elapsed()
+        };
         let own = client.user_id().context("no user id")?.to_owned();
         let room_id = room.room_id().to_owned();
-        // bound first: the lock is not held across the subscription
-        let service = self.state.lock().await.sync_service.clone();
-        if let Some(service) = service {
-            service.room_list_service().set_room_subscriptions(&[&room_id]).await;
-        }
-        // every message, thread replies too (marked by their thread_root);
-        // the thread's page shows a thread alone, its root a summary
-        let timeline = Self::build_timeline(&room, TimelineFocus::Live { hide_threaded_events: false }, true).await?;
+        let built = async {
+            // bound first: the lock is not held across the subscription
+            let service = self.state.lock().await.sync_service.clone();
+            if let Some(service) = service {
+                service.room_list_service().set_room_subscriptions(&[&room_id]).await;
+            }
+            // every message, thread replies too (marked by their thread_root);
+            // the thread's page shows a thread alone, its root a summary
+            Self::build_timeline(&room, TimelineFocus::Live { hide_threaded_events: false }, true).await
+        };
+        let (draft, timeline) = tokio::join!(draft, built);
+        let timeline = timeline?;
         tracing::debug!(target: "rustrx::perf", draft_ms = draft.as_millis() as u64,
                         built_ms = t.elapsed().as_millis() as u64, "open_room");
         let mut st = self.state.lock().await;
@@ -366,18 +449,38 @@ impl Core {
             // a close or another open came while this one was building
             return Ok(());
         }
-        let state_reactions = state_reactions::SharedStateReactions::new();
+        // the counts and reply originals of an earlier open, if kept
+        let state_reactions = state_reactions::SharedStateReactions::kept(&own, &room_id);
         let task = self.rt.spawn(self.timeline_task(room.clone(), timeline.clone(), own, state_reactions.clone()));
         if let Some(previous) = st.open.take() {
             previous.task.abort();
         }
         st.open = Some(OpenRoom { room_id, timeline: timeline.clone(), task, state_reactions });
         drop(st);
-        // Sliding sync brings a short window; fill the first screen.
+        // Sliding sync brings a short window; fill the first screen, and
+        // reach the unread line in the same page where the count says it
+        // is further back (the room page's seek went 30 at a time)
+        let first = first_page(room.num_unread_messages());
         let tl = timeline.clone();
         self.rt.spawn(async move {
-            let _ = tl.paginate_backwards(PAGINATE_DEFAULT).await;
+            let _ = tl.paginate_backwards(first).await;
         });
+        Ok(())
+    }
+
+    /// The UI lost track of a timeline stream (an item it does not have, a
+    /// skipped update): the open room's, or the open thread's with
+    /// `thread_root`, sends everything again.
+    pub(crate) async fn timeline_resync(&self, room_id: &str, thread_root: Option<&str>) -> Result<()> {
+        let st = self.state.lock().await;
+        let notify = match thread_root {
+            Some(root) => st.thread.as_ref().filter(|t| t.room_id == room_id && t.root == root).map(|t| t.resync.clone()),
+            None => st.open.as_ref().filter(|o| o.room_id == room_id).map(|o| o.state_reactions.resync.clone()),
+        };
+        match notify {
+            Some(n) => n.notify_one(),
+            None => tracing::debug!(room_id, "timeline_resync: not open"),
+        }
         Ok(())
     }
 
@@ -882,45 +985,76 @@ impl Core {
     }
 
     pub(crate) async fn get_media(&'static self, room_id: &str, event_id: &str, thumb: bool, dest_dir: Option<String>) -> Result<()> {
+        let t = std::time::Instant::now();
         let generation = self.generation().await;
         let room = self.room(room_id).await?;
         let client = self.client().await?;
         let tl = self.timeline_holding(&room, Some(event_id)).await?;
         let item = tl.item_by_event_id(&EventId::parse(&event_id)?).await.context("event not in timeline")?;
-        let (bytes, mime) = match item.content().as_message().map(|m| m.msgtype()) {
-            Some(MessageType::Image(c)) => (
-                Self::fetch_media(&client, c, thumb).await?,
-                c.info.as_ref().and_then(|i| i.mimetype.clone()),
-            ),
-            Some(MessageType::File(c)) => (
-                Self::fetch_media(&client, c, false).await?,
-                c.info.as_ref().and_then(|i| i.mimetype.clone()),
-            ),
-            Some(MessageType::Audio(c)) => (
-                Self::fetch_media(&client, c, false).await?,
-                c.info.as_ref().and_then(|i| i.mimetype.clone()),
-            ),
-            Some(MessageType::Video(c)) => (
-                Self::fetch_media(&client, c, thumb).await?,
-                c.info.as_ref().and_then(|i| i.mimetype.clone()),
-            ),
+        // what the event says of its file: the type, and the size where the
+        // file itself is asked (a thumbnail's own size is not known)
+        let msgtype = item.content().as_message().map(|m| m.msgtype());
+        let (mime, size) = match msgtype {
+            Some(MessageType::Image(c)) => (c.info.as_ref().and_then(|i| i.mimetype.clone()),
+                                            c.info.as_ref().and_then(|i| i.size).filter(|_| !thumb)),
+            Some(MessageType::Video(c)) => (c.info.as_ref().and_then(|i| i.mimetype.clone()),
+                                            c.info.as_ref().and_then(|i| i.size).filter(|_| !thumb)),
+            Some(MessageType::File(c)) => (c.info.as_ref().and_then(|i| i.mimetype.clone()), c.info.as_ref().and_then(|i| i.size)),
+            Some(MessageType::Audio(c)) => (c.info.as_ref().and_then(|i| i.mimetype.clone()), c.info.as_ref().and_then(|i| i.size)),
             _ => match item.content().as_sticker() {
-                Some(st) => (Self::fetch_media(&client, st.content(), false).await?, None),
+                Some(st) => (None, st.content().info.size),
                 None => bail!("no media in this event"),
             },
         };
-        let bytes = bytes.context("media not available")?;
+        let mime_ext = mime.as_deref().and_then(|m| mime_guess::get_mime_extensions_str(m).and_then(|e| e.first().copied()));
+        let safe: String = event_id.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+        let media_dir = self.data_dir.join(MEDIA_DIR);
+        let stem = format!("{safe}{}", if thumb { "-thumb" } else { "" });
+        // the file from an earlier run, under any name this function gives
+        // (below); not for an edited message, whose file may be another one
+        media_cache::swept(&media_dir).await;
+        let cached = if item.content().as_message().is_some_and(|m| m.is_edited()) {
+            None
+        } else {
+            let mut exts: Vec<&str> = MEDIA_EXTENSIONS.to_vec();
+            exts.extend(mime_ext.into_iter().chain(Some("bin")).filter(|e| !MEDIA_EXTENSIONS.contains(e)));
+            let (dir, stem) = (media_dir.clone(), stem.clone());
+            tokio::task::spawn_blocking(move || media_cache::find_existing(&dir, &stem, &exts, size.map(u64::from)))
+                .await
+                .unwrap_or(None)
+        };
+        let exported = dest_dir.is_some();
+        if let (Some(p), false) = (&cached, exported) {
+            let touched = p.clone();
+            tokio::task::spawn_blocking(move || media_cache::touch(&touched));
+            tracing::debug!(target: "rustrx::perf", cached = true, ms = t.elapsed().as_millis() as u64, "get_media");
+            self.emit(json!({"ev": "media", "room_id": room.room_id().as_str(), "event_id": event_id,
+                             "thumb": thumb, "exported": false, "path": p.to_string_lossy()}));
+            return Ok(());
+        }
+        let bytes = match &cached {
+            // a copy for other apps of a file already here (a video above
+            // the SDK cache's 20 MB was downloaded again for each)
+            Some(p) => tokio::fs::read(p).await?,
+            None => match msgtype {
+                Some(MessageType::Image(c)) => Self::fetch_media(&client, c, thumb).await?,
+                Some(MessageType::File(c)) => Self::fetch_media(&client, c, false).await?,
+                Some(MessageType::Audio(c)) => Self::fetch_media(&client, c, false).await?,
+                Some(MessageType::Video(c)) => Self::fetch_media(&client, c, thumb).await?,
+                _ => match item.content().as_sticker() {
+                    Some(st) => Self::fetch_media(&client, st.content(), false).await?,
+                    None => bail!("no media in this event"),
+                },
+            }
+            .context("media not available")?,
+        };
         // the extension from what the file is: a thumbnail is a JPEG or PNG
         // whatever the original was, and Qt picks its image reader by the
         // extension (a JPEG named .webp or .mp4 showed nothing); else the
         // message's type
-        let ext = sniff_extension(&bytes)
-            .or_else(|| mime.as_deref().and_then(|m| mime_guess::get_mime_extensions_str(m).and_then(|e| e.first().copied())))
-            .unwrap_or("bin");
-        let safe: String = event_id.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+        let ext = sniff_extension(&bytes).or(mime_ext).unwrap_or("bin");
         // "dest_dir": a copy for other apps (the data dir is private to the sandbox),
         // named after the file where the message has a name
-        let exported = dest_dir.is_some();
         let path = match dest_dir {
             Some(dir) => {
                 let original = item
@@ -943,7 +1077,7 @@ impl Core {
                 }
                 path
             }
-            None => self.data_dir.join(MEDIA_DIR).join(format!("{safe}{}.{ext}", if thumb { "-thumb" } else { "" })),
+            None => media_dir.join(format!("{stem}.{ext}")),
         };
         self.same_login(generation).await?;
         if exported {
@@ -953,8 +1087,26 @@ impl Core {
             f.write_all(&bytes).await?;
             f.flush().await?;
         } else {
-            tokio::fs::write(&path, &bytes).await?;
+            // whole or not at all: a write cut short (the app closed, the
+            // disk full) must not leave a file the lookup above would serve
+            let tmp = media_cache::temp_path(&path);
+            let written = tokio::fs::write(&tmp, &bytes).await;
+            // and not into a folder a logout emptied meanwhile
+            let written = match written {
+                Ok(()) => self.same_login(generation).await,
+                Err(e) => Err(e.into()),
+            };
+            if let Err(e) = written {
+                tokio::fs::remove_file(&tmp).await.ok();
+                return Err(e);
+            }
+            if let Err(e) = tokio::fs::rename(&tmp, &path).await {
+                tokio::fs::remove_file(&tmp).await.ok();
+                return Err(e.into());
+            }
         }
+        tracing::debug!(target: "rustrx::perf", cached = cached.is_some(), bytes = bytes.len(),
+                        ms = t.elapsed().as_millis() as u64, "get_media");
         self.emit(json!({"ev": "media", "room_id": room.room_id().as_str(), "event_id": event_id,
                          "thumb": thumb, "exported": exported,
                          "path": path.to_string_lossy()}));
@@ -1022,6 +1174,16 @@ impl Core {
 const MEDIA_EXTENSIONS: [&str; 7] = ["png", "jpg", "gif", "webp", "mp4", "webm", "ogg"];
 
 /// The file type from its first bytes, for the types the UI shows or plays.
+/// The first page of a room opened: enough to reach the unread line
+/// (`unread` messages back, state rows and dates among them), within reason.
+fn first_page(unread: u64) -> u16 {
+    let wanted = unread.saturating_mul(3) / 2 + 20;
+    wanted.clamp(PAGINATE_DEFAULT as u64, FIRST_PAGE_MAX) as u16
+}
+
+/// The largest first page (`first_page`).
+const FIRST_PAGE_MAX: u64 = 200;
+
 fn sniff_extension(bytes: &[u8]) -> Option<&'static str> {
     let b = bytes;
     if b.starts_with(&[0xFF, 0xD8, 0xFF]) {
@@ -1460,5 +1622,19 @@ mod tests {
         assert!(!receipt_moves_back(None, Some(1_000)));
         assert!(!receipt_moves_back(Some(1_000), None));
         assert!(!receipt_moves_back(None, None));
+    }
+
+    /// The first page reaches the unread line: half as much again for
+    /// state rows and dates, never less than a usual page, at most 200.
+    /// Planted-bug: drop the clamp's lower end (a room read to its end
+    /// loads 20).
+    #[test]
+    fn the_first_page_covers_the_unread() {
+        assert_eq!(first_page(0), PAGINATE_DEFAULT);
+        assert_eq!(first_page(6), PAGINATE_DEFAULT);
+        assert_eq!(first_page(40), 80);
+        assert_eq!(first_page(100), 170);
+        assert_eq!(first_page(1000), 200);
+        assert_eq!(first_page(u64::MAX), 200);
     }
 }

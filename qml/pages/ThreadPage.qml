@@ -55,6 +55,13 @@ Page {
     onStatusChanged: if (status === PageStatus.Active) markSeen()
     Connections { target: rustrx.thread; onCountChanged: page.markSeen() }
 
+    // the size of Twemoji in the rows' small lines, as in the room
+    Binding {
+        target: rustrx.thread
+        property: "smallEmojiSize"
+        value: Math.round(Theme.fontSizeExtraSmall * Tunables.emojiScale)
+    }
+
     // the emoji picker in the keyboard's place, as in the room (EmojiDock)
     function insertEmoji(emoji) {
         if (composer) composer.insert(emoji)

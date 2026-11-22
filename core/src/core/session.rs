@@ -4,6 +4,20 @@
 
 use super::*;
 
+/// In the store: its to-device position was checked for one the classic
+/// sync left (drop_classic_to_device_token).
+const TODEVICE_CHECKED_MARKER: &str = "rustrx-todevice-checked";
+
+/// The check is due: a crypto store without the marker.
+fn todevice_check_needed(store: &std::path::Path) -> bool {
+    store.join(CRYPTO_DB).exists() && !store.join(TODEVICE_CHECKED_MARKER).exists()
+}
+
+/// A classic sync ran on this store: checked again at the next sliding start.
+fn todevice_check_rearm(store: &std::path::Path) {
+    std::fs::remove_file(store.join(TODEVICE_CHECKED_MARKER)).ok();
+}
+
 /// One login at a time: held from a login's start to its end (after_login
 /// included), let go on every way out.
 pub(crate) struct LoginGuard(&'static Core);
@@ -92,17 +106,21 @@ impl Core {
     /// hours (the Prawn, 2026-11-21). A position that is not a number is
     /// dropped before the client opens the store; sliding sync then starts
     /// its to-device stream afresh, and the server sends what is left.
+    /// Checked once per store (CB7, 0.8.2): the marker says so, and goes
+    /// whenever a classic sync runs on the store (after_login), so the
+    /// next sliding start looks again. A store from a build before the
+    /// marker is checked once, then no more.
     async fn drop_classic_to_device_token(&self) {
         use matrix_sdk_base::crypto::store::CryptoStore;
         let dir = self.data_dir.join(STORE_DIR);
-        if !dir.join(CRYPTO_DB).exists() {
+        if !todevice_check_needed(&dir) {
             return;
         }
         let passphrase = match self.store_passphrase() {
             Ok(p) => p,
             Err(_) => return, // the client's build says why
         };
-        let config = matrix_sdk::SqliteStoreConfig::with_low_memory_config(dir).passphrase(passphrase.as_deref());
+        let config = matrix_sdk::SqliteStoreConfig::with_low_memory_config(dir.clone()).passphrase(passphrase.as_deref());
         let store = match matrix_sdk::SqliteCryptoStore::open_with_config(&config).await {
             Ok(s) => s,
             Err(e) => {
@@ -110,15 +128,30 @@ impl Core {
                 return;
             }
         };
-        match store.next_batch_token().await {
+        let done = match store.next_batch_token().await {
             Ok(Some(token)) if !token.is_empty() && !token.bytes().all(|b| b.is_ascii_digit()) => {
                 match store.remove_custom_value(NEXT_BATCH_TOKEN_KEY).await {
-                    Ok(()) => tracing::info!("to-device position from the classic sync dropped for sliding sync"),
-                    Err(e) => tracing::warn!("to-device position not dropped: {e}"),
+                    Ok(()) => {
+                        tracing::info!("to-device position from the classic sync dropped for sliding sync");
+                        true
+                    }
+                    Err(e) => {
+                        tracing::warn!("to-device position not dropped: {e}");
+                        false
+                    }
                 }
             }
-            Ok(_) => {}
-            Err(e) => tracing::warn!("to-device position not read: {e}"),
+            Ok(_) => true,
+            Err(e) => {
+                tracing::warn!("to-device position not read: {e}");
+                false
+            }
+        };
+        // only after the store opened and the position was read (or
+        // dropped): the store is there, so the file cannot make an empty
+        // folder look like an old unencrypted store (store_passphrase)
+        if done {
+            std::fs::write(dir.join(TODEVICE_CHECKED_MARKER), b"").ok();
         }
     }
 
@@ -263,6 +296,11 @@ impl Core {
 
     pub(crate) async fn after_login(&'static self, client: Client) -> Result<()> {
         self.save_session(&client)?;
+        // a classic sync keeps a to-device position sliding sync refuses:
+        // the next sliding start checks the store again
+        if matches!(client.sliding_sync_version(), Version::None) {
+            todevice_check_rearm(&self.data_dir.join(STORE_DIR));
+        }
         // offline until the UI says otherwise ("Show me as online"): the
         // syncs carry it, and none has run yet
         client.set_presence(matrix_sdk::ruma::presence::PresenceState::Offline, None, false).await.ok();
@@ -865,6 +903,9 @@ impl Core {
         // other command waits for the server (or its timeout) too
         let (teardown, generation) = {
             let mut st = self.state.lock().await;
+            if let Some(own) = st.client.as_ref().and_then(|c| c.user_id()) {
+                crate::core::state_reactions::SharedStateReactions::forget_account(own);
+            }
             let teardown = st.take_login();
             (teardown, st.generation)
         };
@@ -886,5 +927,31 @@ impl Core {
         self.wipe_local_data();
         self.emit(json!({"ev": "logged_out"}));
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Planted-bug: todevice_check_needed ignores the marker (always true),
+    // or todevice_check_rearm removes nothing.
+    #[test]
+    fn todevice_check_once_until_classic() {
+        let d = std::env::temp_dir().join(format!("rustrx-todevice-test-{}", std::process::id()));
+        std::fs::remove_dir_all(&d).ok();
+        std::fs::create_dir_all(&d).unwrap();
+        let store = d.as_path();
+        assert!(!todevice_check_needed(store), "no crypto store, nothing to check");
+        std::fs::write(store.join(CRYPTO_DB), b"").unwrap();
+        assert!(todevice_check_needed(store), "a store from before the marker is checked");
+        std::fs::write(store.join(TODEVICE_CHECKED_MARKER), b"").unwrap();
+        assert!(!todevice_check_needed(store), "checked once");
+        todevice_check_rearm(store);
+        assert!(todevice_check_needed(store), "a classic sync ran: checked again");
+        // re-arming without a marker is harmless
+        todevice_check_rearm(store);
+        assert!(todevice_check_needed(store));
+        std::fs::remove_dir_all(&d).ok();
     }
 }

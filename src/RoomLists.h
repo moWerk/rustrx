@@ -48,7 +48,7 @@ public:
     RoomModel *favourites() const { return m_favourites; }
     RoomModel *all() const { return m_all; }
     RoomModel *spaces() const { return m_spaces; }
-    RoomModel *targets() const { return m_targets; }
+    RoomModel *targets() const;
     int unreadTotal() const { return m_unreadTotal; }
     int unreadChats() const { return m_unreadChats; }
     const QHash<QString, QVariantMap> &roomsById() const { return m_roomsById; }
@@ -78,7 +78,12 @@ public:
     // every account's rooms in one list for the merged view, each tagged
     // with its account and a uid ("<account>/<room_id>"), in the core's
     // order (invitations first, then the last activity, then the uid)
-    static QVariantList mergeAccounts(const QList<QPair<int, QVariantList>> &accounts);
+    // cache: the merged rows of the last call by uid, with their source; a
+    // source passed on unchanged gives the same merged row
+    typedef QHash<QString, QPair<QVariant, QVariant>> MergeCache;
+    static QVariantList mergeAccounts(const QList<QPair<int, QVariantList>> &accounts, MergeCache *cache = nullptr);
+    // the last rooms as the lists hold them (unchanged rows as before)
+    const QVariantList &lastRooms() const { return m_lastRooms; }
     // the core's `knock_requests` event
     void setKnockRequests(const QVariantMap &ev);
     // logged out: the lists, requests and banners go (the unread totals in
@@ -115,6 +120,11 @@ private:
     // this account's own keys: the invitations already notified
     QString m_invitesKey;
     QVariantList m_lastRooms;   // as the core sent them, for a new order
+    // the same rows by row key, for the next event's compare
+    QHash<QString, QVariant> m_lastByKey;
+    // the share targets, sorted only when read while no view shows them
+    mutable QVariantList m_pendingTargets;
+    mutable bool m_targetsDirty = false;
     QString m_roomFilter;
     QString m_currentTab = QStringLiteral("rooms");
     // the tabs' settings as read (QSettings per room update was a file

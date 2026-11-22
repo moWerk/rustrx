@@ -44,9 +44,10 @@ HTML had an `<img>` with an `mxc://` address that Qt cannot load.
 
 Status (0.4.4, built 2026-11-15, not yet tested): use and grab are in;
 making new ones from a picture comes later. The core reads the packs
-(`image_packs`: the user's own from the account data, the enabled ones,
-the room's from its state, fetched from the server each time a room
-opens), the picker shows a tab per pack, a sticker is sent with
+(`image_packs`: the user's own and the list of enabled ones from the
+account data in the store, the enabled ones and the room's from the
+server, cached for 30 minutes per room and asked again when a pack's
+state event comes through the sync), the picker shows a tab per pack, a sticker is sent with
 `send_sticker`, `:shortcode:` in a message becomes the picture in its
 HTML (`send_text` with `emotes`), a reaction with a custom emoji has its
 mxc address as the key, and "Add :code: to my emoji" in a message's menu
@@ -89,8 +90,10 @@ Gaps:
   custom emoji there still shows as its shortcode;
 - an edit sends the body only, so a custom emoji in an edited message
   loses its picture;
-- `image_packs` reads the room's whole state at every opening (the state
-  API has no type filter): to be cached per room for the session, and
-  skipped in very large rooms, before 0.4.4 is released;
+- `image_packs` reads the room's whole state once per room and 30
+  minutes (the state API has no type filter, and the SDK's room list
+  sync has a fixed required_state without `im.ponies.room_emotes`); only
+  the pack events of it are parsed. An enabled pack the server does not
+  have (404, or 403) is remembered until that room's packs change;
 - a custom emoji reaction carries no shortcode into the timeline, so
   "Add to my emoji" names it after its picture's id.

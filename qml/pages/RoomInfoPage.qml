@@ -53,7 +53,14 @@ Page {
     }
 
     property string notifyMode: ""
-    Component.onCompleted: {
+    // Attached to every room page as it opens, so nothing is asked before
+    // the page is first swiped to: a big room's whole member list stayed off
+    // every room open (audit MI1/T1). The settings the room page asked for
+    // already show meanwhile.
+    property bool asked
+    Component.onCompleted: if (app.roomSettingsById[app.roomSettingsKey(roomId)]) settings = app.roomSettingsById[app.roomSettingsKey(roomId)]
+    onStatusChanged: if (status === PageStatus.Activating && !asked) {
+        asked = true
         rustrx.command({ cmd: "room_members", room_id: roomId })
         rustrx.command({ cmd: "get_notification_mode", room_id: roomId })
         rustrx.command({ cmd: "room_settings", room_id: roomId })
@@ -61,8 +68,9 @@ Page {
 
     Connections {
         target: rustrx
+        // only the list this page asked for (the composer asks for its own)
         onMembers: {
-            if (roomId !== page.roomId) return
+            if (roomId !== page.roomId || !page.asked) return
             memberList = members
             membersLoaded = true
         }
