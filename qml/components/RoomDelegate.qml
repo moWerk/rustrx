@@ -228,7 +228,8 @@ ListItem {
                 // pill grows to the left (it is anchored at the right). The digit
                 // is measured (by the page) at the size the digits had, so the
                 // pill keeps its geometry while the digits shrink inside it
-                width: height + Math.max(0, badgeLabel.text.length - 1) * item.badgeDigitWidth
+                // (item is gone for a moment while the badge unloads)
+                width: height + Math.max(0, badgeLabel.text.length - 1) * (item ? item.badgeDigitWidth : 0)
                 // the circle keeps this size; the digits grew into its padding
                 height: Theme.iconSizeSmall
                 radius: height / 2
