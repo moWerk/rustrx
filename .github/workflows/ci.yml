@@ -29,7 +29,8 @@ jobs:
           sudo apt-get update -q
           # calls (tests/cpp/voip): GStreamer's webrtcbin with libnice,
           # Opus and the echo canceller, as Sailfish OS ships them
-          sudo apt-get install -y -q qtbase5-dev qt5-qmake g++ make locales \
+          # the room list test runs RoomModel under a QML engine (receivers)
+          sudo apt-get install -y -q qtbase5-dev qtdeclarative5-dev qt5-qmake g++ make locales \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev \
             libspeexdsp-dev libpulse-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
             gstreamer1.0-plugins-bad gstreamer1.0-nice
