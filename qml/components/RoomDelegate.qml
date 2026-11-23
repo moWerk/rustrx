@@ -230,7 +230,8 @@ ListItem {
             readonly property real unreadFontSize: Math.round(Theme.fontSizeExtraSmall * Tunables.badgeTextScale)
             readonly property real unreadTextX: 0
             readonly property real unreadTextY: 1 - Math.round(unreadFontSize * 0.04)
-            readonly property real mentionFontSize: unreadFontSize
+            // the "@" is a large glyph: 20 % smaller than the digits (the author's)
+            readonly property real mentionFontSize: Math.round(unreadFontSize * 0.8)
             readonly property real mentionTextX: 0
             readonly property real mentionTextY: unreadTextY
             // --------------------------------------------------------------------------
