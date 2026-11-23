@@ -219,9 +219,10 @@ ListItem {
             // secondary highlight, so the white text stands out: every unread
             // pill without a mention, and the "@" circle
             readonly property color mentionColour: Qt.darker(Theme.secondaryHighlightColor, 1.1)
-            // the pill under an "@": two shades darker than that (the author's);
-            // without a mention the pill keeps the standard tone
-            readonly property color countColour: mention ? Qt.darker(mentionColour, 1.1 * 1.1) : mentionColour
+            // the pill under an "@": four shades darker than that (the author's),
+            // so the circle stands apart; without a mention the pill keeps the
+            // standard tone
+            readonly property color countColour: mention ? Qt.darker(mentionColour, 1.1 * 1.1 * 1.1 * 1.1) : mentionColour
             // the text inside: size, and nudges right (x) and down (y)
             readonly property real unreadFontSize: Math.round(Theme.fontSizeExtraSmall * Tunables.badgeTextScale)
             readonly property real unreadTextX: 0
