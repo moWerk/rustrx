@@ -241,8 +241,8 @@ ListItem {
                 Rectangle {
                     readonly property Item shape: counted ? pill : at
                     readonly property real spread: index * 0.96
-                    x: shape.x + 1.5 - spread
-                    y: shape.y + 3 - spread
+                    x: shapes.x + shape.x + 1.5 - spread
+                    y: shapes.y + shape.y + 3 - spread
                     width: shape.width + 2 * spread
                     height: shape.height + 2 * spread
                     radius: height / 2
@@ -250,91 +250,104 @@ ListItem {
                 }
             }
 
-            // the count: one digit a circle; every further digit adds one
-            // digit's width to the straight middle only, so the ends stay half
-            // circles and the pill grows to the left (it ends at the picture's
-            // top right). The digit is measured at the size the digits had, so
-            // the pill keeps its geometry while the digits shrink inside it.
-            // With a mention the pill is one circle longer, the digits left of it
-            Rectangle {
-                id: pill
-                visible: counted
-                x: parent.width - width + outRight
-                y: -outTop
-                width: height + Math.max(0, countLabel.text.length - 1) * digitWidth.advanceWidth
-                       + (mention ? mentionRoom : 0)
-                TextMetrics {
-                    id: digitWidth
-                    font.family: app.semiboldFontFamily
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    text: "0"
-                }
-                // the circle keeps this size; the digits grew into its padding
-                height: bubbleSize
-                radius: height / 2
-                color: countColour
+            // the shapes, without their texts. Both tones are see-through (the
+            // ambience's secondary highlight), so where the "@" circle lies on
+            // the pill's end the two would add up to a lighter tone: with both
+            // shown they are drawn opaque into one layer, and the layer gets
+            // the tones' see-through once
+            Item {
+                id: shapes
+                // reaching out of the picture as far as the badge does, so the
+                // layer holds all of it
+                anchors.fill: parent
+                anchors.topMargin: -outTop
+                anchors.rightMargin: -outRight
+                readonly property bool both: counted && mention
+                layer.enabled: both
+                opacity: both ? mentionColour.a : 1
 
-                // a soft shadow under the digits, one label behind the other
-                Label {
-                    anchors.centerIn: countLabel
-                    anchors.horizontalCenterOffset: 1
-                    anchors.verticalCenterOffset: 2
-                    text: countLabel.text
-                    font: countLabel.font
-                    color: Theme.rgba("black", 0.5)
+                // the count: one digit a circle; every further digit adds one
+                // digit's width to the straight middle only, so the ends stay half
+                // circles and the pill grows to the left (it ends at the picture's
+                // top right). The digit is measured at the size the digits had, so
+                // the pill keeps its geometry while the digits shrink inside it.
+                // With a mention the pill is one circle longer, the digits left of it
+                Rectangle {
+                    id: pill
+                    visible: counted
+                    x: parent.width - width
+                    width: height + Math.max(0, countLabel.text.length - 1) * digitWidth.advanceWidth
+                           + (mention ? mentionRoom : 0)
+                    // the circle keeps this size; the digits grew into its padding
+                    height: bubbleSize
+                    radius: height / 2
+                    color: shapes.both ? Qt.rgba(countColour.r, countColour.g, countColour.b, 1) : countColour
                 }
-
-                Label {
-                    id: countLabel
-                    anchors.centerIn: parent
-                    // digits have no descender; the text box's share for it pushed
-                    // them low in Sail Sans. Source Sans 3 sits higher, and the
-                    // shadow below the digits adds visual weight: 1 px down
-                    // centres digits and shadow together (the author's eye)
-                    anchors.horizontalCenterOffset: unreadTextX - (mention ? mentionRoom / 2 : 0)
-                    anchors.verticalCenterOffset: unreadTextY
-                    text: model.notifications > 0 ? model.notifications : model.unread
-                    // a tenth smaller than the size the pill is measured for: more
-                    // room around the digits inside it
-                    font.pixelSize: unreadFontSize
-                    // the file is the Semibold cut: asking for bold on top of it
-                    // would make Qt embolden it again
-                    font.family: app.semiboldFontFamily
-                    color: "white"
+                // the mention: an "@" circle flush in the pill's right end, without
+                // a shadow of its own (the pill's is under it); alone, it casts the
+                // shadow above
+                Rectangle {
+                    id: at
+                    visible: mention
+                    x: parent.width - width
+                    width: bubbleSize
+                    height: bubbleSize
+                    radius: height / 2
+                    color: shapes.both ? Qt.rgba(mentionColour.r, mentionColour.g, mentionColour.b, 1) : mentionColour
                 }
             }
+            TextMetrics {
+                id: digitWidth
+                font.family: app.semiboldFontFamily
+                font.pixelSize: Theme.fontSizeExtraSmall
+                text: "0"
+            }
 
-            // the mention: an "@" circle flush in the pill's right end, without
-            // a shadow of its own (the pill's is under it); alone, it casts the
-            // shadow above
-            Rectangle {
-                id: at
+            // the texts, over the shapes, each with a soft shadow (one label
+            // behind the other)
+            Label {
+                visible: counted
+                x: countLabel.x + 1
+                y: countLabel.y + 2
+                text: countLabel.text
+                font: countLabel.font
+                color: Theme.rgba("black", 0.5)
+            }
+            Label {
+                id: countLabel
+                visible: counted
+                // digits have no descender; the text box's share for it pushed
+                // them low in Sail Sans. Source Sans 3 sits higher, and the
+                // shadow below the digits adds visual weight: 1 px down
+                // centres digits and shadow together (the author's eye)
+                x: shapes.x + pill.x + (pill.width - (mention ? mentionRoom : 0) - width) / 2 + unreadTextX
+                y: shapes.y + pill.y + (pill.height - height) / 2 + unreadTextY
+                text: model.notifications > 0 ? model.notifications : model.unread
+                // a tenth smaller than the size the pill is measured for: more
+                // room around the digits inside it
+                font.pixelSize: unreadFontSize
+                // the file is the Semibold cut: asking for bold on top of it
+                // would make Qt embolden it again
+                font.family: app.semiboldFontFamily
+                color: "white"
+            }
+            Label {
                 visible: mention
-                x: parent.width - width + outRight
-                y: -outTop
-                width: bubbleSize
-                height: bubbleSize
-                radius: height / 2
-                color: mentionColour
-
-                Label {
-                    anchors.centerIn: atLabel
-                    anchors.horizontalCenterOffset: 1
-                    anchors.verticalCenterOffset: 2
-                    text: atLabel.text
-                    font: atLabel.font
-                    color: Theme.rgba("black", 0.5)
-                }
-                Label {
-                    id: atLabel
-                    anchors.centerIn: parent
-                    anchors.horizontalCenterOffset: mentionTextX
-                    anchors.verticalCenterOffset: mentionTextY
-                    text: "@"
-                    font.pixelSize: mentionFontSize
-                    font.family: app.semiboldFontFamily
-                    color: "white"
-                }
+                x: atLabel.x + 1
+                y: atLabel.y + 2
+                text: atLabel.text
+                font: atLabel.font
+                color: Theme.rgba("black", 0.5)
+            }
+            Label {
+                id: atLabel
+                visible: mention
+                x: shapes.x + at.x + (at.width - width) / 2 + mentionTextX
+                y: shapes.y + at.y + (at.height - height) / 2 + mentionTextY
+                text: "@"
+                font.pixelSize: mentionFontSize
+                font.family: app.semiboldFontFamily
+                color: "white"
             }
         }
     }
