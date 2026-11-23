@@ -229,10 +229,11 @@ ListItem {
             // the "@" is a large glyph: 20 % smaller than the digits (the author's)
             readonly property real mentionFontSize: Math.round(unreadFontSize * 0.8)
             readonly property real mentionTextX: 0
-            readonly property real mentionTextY: unreadTextY
+            // 2 px higher than the digits: the glyph sat low (the author's eye)
+            readonly property real mentionTextY: unreadTextY - 2
             // with a mention the pill keeps this much room right of its digits,
-            // where the "@" circle sits (the author's: one circle)
-            readonly property real mentionRoom: bubbleSize
+            // where the "@" circle sits: one circle less 6 px (the author's)
+            readonly property real mentionRoom: bubbleSize - 6
             // --------------------------------------------------------------------------
 
             // the shadow of the badge's shape (the pill, or the "@" alone):
