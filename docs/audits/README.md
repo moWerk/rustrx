@@ -12,3 +12,4 @@ recorded too, so the next audit does not measure them again.
 | [2026-11-16](2026-11-16-lifecycle-and-input.md) | Lifecycle and untrusted input, after the first tests | 0.4.7 |
 | [2026-11-18](2026-11-18-memory.md) | Memory: glibc arenas and the store pools, after a crash report | 0.4.9 |
 | [2026-11-19](2026-11-19-calls-and-lifecycle.md) | Calls, lifecycle and the night's work: the abort at every quit since 0.4.7 | 0.6 work |
+| [2026-11-22](2026-11-22-performance.md) | Performance and memory: startup, scrolling, idle and media, measured on two phones | 0.8.2 |

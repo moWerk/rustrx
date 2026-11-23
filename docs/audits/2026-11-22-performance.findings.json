@@ -1,0 +1,720 @@
+{
+ "audit": "2026-11-22 performance and memory (0.8.2)",
+ "date": "2026-11-22",
+ "baseline": "0789a74 (0.8.1-15) on the Jolla Phone 2026 (jp26) and the Pro1-X on mainline (the Prawn)",
+ "method": "LLM agents under the author's direction, not independent review: five read-only code agents (startup, room list, timeline, core and bridge, memory and images), one measurement agent on both phones (/proc per thread, smaps, frame timing, dev hook and touch), timing markers (3b356b7), fixes by agents owning files (65fd3d6, 0.8.2-1), a second round on 0.8.2-1 and fixes (662ea8e, 0.8.2-2), a third round on 0.8.2-4 (7cded38). Code report ids are kept; measurement ids carry the round (m1. for 0.8.1-15, m2. for 0.8.2-1, m3. for 0.8.2-4); merged ids under 'merged'. See 2026-11-22-performance.md.",
+ "findings": [
+  {
+   "id": "ST1",
+   "severity": "medium",
+   "area": "instrumentation (Perf.h, main.cpp, core)",
+   "status": "FIXED 3b356b7",
+   "summary": "Startup could not be split: the app's clock started late and nothing timed room opens or rooms and timeline updates.",
+   "test": "perf: lines on both phones; perf: frame matched QSG's first content frame to the ms (round two)",
+   "merged": [
+    "m1.T2"
+   ]
+  },
+  {
+   "id": "CB1",
+   "severity": "high",
+   "area": "timeline (timeline.rs, TimelineModel.cpp)",
+   "status": "FIXED 65fd3d6 (protocol 3: order plus new or changed items, timeline_resync)",
+   "summary": "Every timeline change sent, parsed and compared the whole loaded timeline.",
+   "test": "measured: Prawn chat 8 flicks newer, core thread 390 -> 1 tick, phase CPU 100 -> 57 % (0.8.1-15 -> 0.8.2-1), 60 % on 0.8.2-4; jp26 chat 8 flicks newer core 200 ticks -> about 0 (0.8.1-15 -> 0.8.2-4); set_items incremental median 1.6 to 2.9 ms; tests/cpp/timelineapply",
+   "merged": [
+    "T6"
+   ]
+  },
+  {
+   "id": "CB3",
+   "severity": "high",
+   "area": "store (session.rs)",
+   "status": "FIXED 662ea8e (high-entropy path, cipher rewrapped once; DEC3)",
+   "summary": "Each store open ran PBKDF2 with 200 000 rounds on a random key, five times per start and per push wake.",
+   "test": "measured, client built per account cold / warm: jp26 228 / 172 -> 115 / 67 ms, Prawn 399 / 377 -> 151 / 164 ms (0.8.2-1 -> 0.8.2-4); Prawn core CPU in the first 10 s 193 -> 113 ticks",
+   "merged": [
+    "ST5"
+   ]
+  },
+  {
+   "id": "CB7",
+   "severity": "medium",
+   "area": "startup (session.rs)",
+   "status": "FIXED 65fd3d6 (the to-device token check once per store)",
+   "summary": "An extra crypto store open, with its KDF, at every start.",
+   "test": ""
+  },
+  {
+   "id": "CB4",
+   "severity": "high",
+   "area": "first room list (sync.rs)",
+   "status": "FIXED 65fd3d6 (several rooms at once)",
+   "summary": "The first room list read the store about five times per room, one room at a time.",
+   "test": "measured: jp26 rooms shown cold 2.51 -> 2.00 s, warm 1.58 -> 1.25 s (0.8.1-15 in front, 0.8.2-1 behind the lock)",
+   "merged": [
+    "ST9"
+   ]
+  },
+  {
+   "id": "CB5",
+   "severity": "high",
+   "area": "room list stream (sync.rs, RoomLists.cpp, RoomModel.cpp)",
+   "status": "FIXED 65fd3d6, 662ea8e (bytes); the GUI cost per change stays open as m3.RL3",
+   "summary": "The full room list went out on every batch, a full rebuild after every quiet minute, and six deep model diffs per event on the GUI thread.",
+   "test": "measured jp26: one changed room 61.7 KB -> 3.4 KB, core parse 4 to 4.5 -> 0.6 ms (0.8.2-1 -> 0.8.2-4); 33 events in 10 min, one full (the sweep); app list matched a full refresh on both phones",
+   "merged": [
+    "CB6",
+    "ST12",
+    "RL2",
+    "m2.RL2"
+   ]
+  },
+  {
+   "id": "RL3",
+   "severity": "medium",
+   "area": "room list (RoomModel.cpp)",
+   "status": "FIXED 65fd3d6",
+   "summary": "Three keys without a role made every new message update every role of its row in every live list.",
+   "test": "tests/cpp/roommodel"
+  },
+  {
+   "id": "ST13",
+   "severity": "low",
+   "area": "room list models (RoomModel.cpp, RoomDelegate.qml)",
+   "status": "PARTLY: first fill one insert and changes as ranges (65fd3d6); the emoji-size Bindings (ST11) still in every row",
+   "summary": "The first fill inserted rows one at a time, moves went row by row, and the first delegate re-rendered every row of its model.",
+   "test": "",
+   "merged": [
+    "RL6 (grouping)",
+    "RL7",
+    "ST11"
+   ]
+  },
+  {
+   "id": "ST10",
+   "severity": "low",
+   "area": "invitations (serialize.rs)",
+   "status": "FIXED 65fd3d6 (an invitation keeps its inviter_known)",
+   "summary": "inviter_known scanned every joined room on every pass with an invitation.",
+   "test": ""
+  },
+  {
+   "id": "ST15",
+   "severity": "low",
+   "area": "latest events (sync.rs)",
+   "status": "FIXED 65fd3d6 (registered beside the room list, perf: listen_latest)",
+   "summary": "Every room's latest-event listener was registered after the first list, tying up the two workers.",
+   "test": ""
+  },
+  {
+   "id": "CB9",
+   "severity": "low",
+   "area": "avatars (sync.rs)",
+   "status": "FIXED 65fd3d6 (beside the list, four at once; a new avatar marks only its room)",
+   "summary": "The room list task waited for avatar downloads one after another.",
+   "test": ""
+  },
+  {
+   "id": "CB8",
+   "severity": "high",
+   "area": "media (timeline.rs, media_cache.rs)",
+   "status": "FIXED 65fd3d6 (files on disk served without the SDK, decryption or a rewrite; downloads through a temporary name)",
+   "summary": "A picture already on disk was read from the SDK cache, decrypted and written again after every start; videos were fetched again.",
+   "test": "measured on 0.8.2-1: all 40 get_media cached=true, 0 to 4 ms; tests/cpp/mediapaths",
+   "merged": [
+    "MI3",
+    "T9"
+   ]
+  },
+  {
+   "id": "MI4",
+   "severity": "medium",
+   "area": "media on disk",
+   "status": "PARTLY: media/ capped at 300 MB (65fd3d6), SDK media cache 100 MB and Clear media empties it (662ea8e, DEC4); below the cap new pictures still land in both caches",
+   "summary": "Media stored twice: the SDK's media store (349 MB) and media/ (323 MB) on the jp26, no limit on either.",
+   "test": "measured: jp26 media/ 323 -> 259 MB (one sweep, 0.8.2-1); jp26 SDK media store 332.4 -> 98.0 MiB, data folder 796 -> 577 MiB (0.8.2-1 -> 0.8.2-4); Prawn under the cap, both caches grew alike",
+   "merged": [
+    "m1.D1",
+    "m2.D1b"
+   ]
+  },
+  {
+   "id": "CB2",
+   "severity": "high",
+   "area": "emoji packs (packs.rs)",
+   "status": "FIXED 65fd3d6, 662ea8e; 1 to 2 small requests after a restart left (m3.P3)",
+   "summary": "Each room open fetched account data and the room's whole state from the server; after 65fd3d6 the cache still died with the process (0.9 MB, up to 8.4 s on the Prawn after a restart).",
+   "test": "measured after a restart: jp26 0.4 to 2.6 s -> 54 ms (from the store, 76 bytes), Prawn 0.8 and 8.4 s -> 163 ms (0.8.2-1 -> 0.8.2-4)",
+   "merged": [
+    "m2.P2"
+   ]
+  },
+  {
+   "id": "MI1",
+   "severity": "medium",
+   "area": "room open (RoomInfoPage.qml)",
+   "status": "FIXED 65fd3d6 (members on the info page's first swipe)",
+   "summary": "The info page was built and every member fetched on every room open.",
+   "test": "",
+   "merged": [
+    "T1"
+   ]
+  },
+  {
+   "id": "MI2",
+   "severity": "medium",
+   "area": "room open (EmojiPanel.qml)",
+   "status": "FIXED 65fd3d6 (built when first opened)",
+   "summary": "The emoji panel, grid and all, was built hidden with every room and thread page.",
+   "test": "",
+   "merged": [
+    "T2"
+   ]
+  },
+  {
+   "id": "RL1",
+   "severity": "medium",
+   "area": "rounded avatars and pictures",
+   "status": "OPEN: the A/B switch is in (dconf debugAvatarRounding: layer, texture, provider, off; 65fd3d6), the default stays layer; the Prawn run showed no difference",
+   "summary": "An offscreen layer (FBO) per rounded avatar in the list and per bare picture in a chat.",
+   "test": "needs a phone with many picture avatars and touch; tests/cpp/roundavatar for the provider path",
+   "merged": [
+    "MI7",
+    "T10"
+   ]
+  },
+  {
+   "id": "RL4",
+   "severity": "high",
+   "area": "favourite glow (harbour-rustrx.qml, RoomDelegate.qml, Tunables.qml)",
+   "status": "FIXED 65fd3d6 (only rows on screen in the shown tab), 662ea8e (rests after its breaths), 3d7eb04 (five breaths, rest in the lowest 5 %; DEC1)",
+   "summary": "With a starred unread room on screen and the app in front the window rendered at the display rate without pause.",
+   "test": "measured jp26 list in front, steady state: 55 % of one core, 90 fps, 910 wakeups/s (0.8.1-15); 42 %, 90 fps (0.8.2-1); 0.6 %, 1 frame a minute, 8 wakeups/s (0.8.2-4), after 16.3 to 16.4 s of breathing",
+   "merged": [
+    "m1.I1",
+    "m2.I1b"
+   ]
+  },
+  {
+   "id": "T5",
+   "severity": "medium",
+   "area": "chat rows (MessageDelegate.qml)",
+   "status": "FIXED 65fd3d6 (state rows without the bubble, rare parts only when needed)",
+   "summary": "About 70 QObjects per text row, a third for rare cases; a state line built the whole bubble.",
+   "test": ""
+  },
+  {
+   "id": "T3",
+   "severity": "medium",
+   "area": "pagination (RoomPage.qml)",
+   "status": "FIXED 65fd3d6 (two screens before the top)",
+   "summary": "Older messages loaded only once the view hit the very top.",
+   "test": ""
+  },
+  {
+   "id": "T4",
+   "severity": "medium",
+   "area": "opening a room (timeline.rs, RoomPage.qml)",
+   "status": "FIXED 65fd3d6 (first page sized by the unread count; first snapshot before reader names; reactions on state rows and reply originals kept for the last 10 rooms)",
+   "summary": "The unread line was sought 30 events per round trip, the first snapshot waited on a store read per receipt holder, and relations were fetched again on every open.",
+   "test": "",
+   "merged": [
+    "T7",
+    "T8"
+   ]
+  },
+  {
+   "id": "MI6",
+   "severity": "low",
+   "area": "full-screen photo (ImagePage.qml)",
+   "status": "FIXED 65fd3d6 (decoded to the screen, more only when zoomed)",
+   "summary": "The full-screen picture decoded the whole photo.",
+   "test": ""
+  },
+  {
+   "id": "T15",
+   "severity": "low",
+   "area": "GIFs (MessageDelegate.qml)",
+   "status": "PARTLY: paused while the chat moves (662ea8e, DEC2); smaller decoding not possible (dead end)",
+   "summary": "Playing GIFs decode the full file at full size.",
+   "test": "",
+   "merged": [
+    "MI8"
+   ]
+  },
+  {
+   "id": "MI5",
+   "severity": "low",
+   "area": "audio rows (MessageDelegate.qml)",
+   "status": "FIXED 65fd3d6 (a player on the first tap)",
+   "summary": "Every audio row created its own media player.",
+   "test": ""
+  },
+  {
+   "id": "ST2",
+   "severity": "medium",
+   "area": "startup (StartPage, MainPage)",
+   "status": "FIXED 65fd3d6 (the main page first when a session is saved)",
+   "summary": "The main page was made only after logged_in and replaced in with an animation; core events waited behind view creation.",
+   "test": "measured: logged_in now later by design, rooms applied 10 to 50 ms after show; first content frame jp26 cold 2.47 -> 2.19 s, Prawn cold 4.78 -> 4.17 s",
+   "merged": [
+    "ST3",
+    "ST4",
+    "m1.T1"
+   ]
+  },
+  {
+   "id": "ST6",
+   "severity": "medium",
+   "area": "startup before the window (Voip.cpp, CallProximity.qml, Service.qml, Twemoji.cpp, UnifiedPush.cpp)",
+   "status": "FIXED 65fd3d6 (GStreamer with the first call, proximity only in a call, emoji names and push distributor off the GUI thread, notifications after the first frame)",
+   "summary": "gst_init, the proximity sensor, Service.qml's D-Bus and the Twemoji listing ran before the window.",
+   "test": "Prawn CPU in the first 10 s cold 677 -> 533 ticks (with P1 and the rest of 65fd3d6)",
+   "merged": [
+    "ST7",
+    "ST8",
+    "ST14",
+    "MI10"
+   ]
+  },
+  {
+   "id": "m1.P1",
+   "severity": "medium",
+   "area": "Mesa shader cache (main.cpp)",
+   "status": "FIXED 65fd3d6 (MESA_SHADER_CACHE_DIR in the app's cache folder)",
+   "summary": "On the Prawn the sandbox's tmpfs ~/.cache lost Mesa's shader cache at every start.",
+   "test": "measured: first content frame's render 530 to 558 -> 237 to 259 ms (Prawn, 0.8.1-15 -> 0.8.2-1)"
+  },
+  {
+   "id": "m1.L1",
+   "severity": "low",
+   "area": "room row (RoomDelegate.qml)",
+   "status": "FIXED 65fd3d6",
+   "summary": "An _elideText binding loop warning per created row, 18 per start.",
+   "test": "measured: 18 -> 0 per start"
+  },
+  {
+   "id": "m1.L2",
+   "severity": "low",
+   "area": "room page (RoomPage.qml)",
+   "status": "OPEN: the _contentDeficit loop still there on 0.8.2-4, about once per room open; the footer height loop (m2.L3) FIXED 662ea8e, 0 on 0.8.2-4",
+   "summary": "_contentDeficit binding loop in the PushUpMenu, once per room open.",
+   "test": "log, round three",
+   "merged": [
+    "m2.L3 (footer height loop)"
+   ]
+  },
+  {
+   "id": "CB10",
+   "severity": "low",
+   "area": "build (core/Cargo.toml)",
+   "status": "OPEN: profile unchanged (opt-level 2, thin LTO, 16 units); to be tried alone and measured",
+   "summary": "Release profile: opt-level 2, 16 codegen units, thin LTO.",
+   "test": ""
+  },
+  {
+   "id": "CB11",
+   "severity": "low",
+   "area": "multi-account (lib.rs, session.rs)",
+   "status": "OPEN: not done",
+   "summary": "One tokio runtime and four store pools per account.",
+   "test": ""
+  },
+  {
+   "id": "CB12",
+   "severity": "low",
+   "area": "bridge (lib.rs, Rustrx.cpp)",
+   "status": "OPEN: not done",
+   "summary": "Each event copied twice on its way to C++.",
+   "test": ""
+  },
+  {
+   "id": "CB13",
+   "severity": "low",
+   "area": "log (commands.rs, Rustrx.cpp)",
+   "status": "FIXED 65fd3d6 (frequent commands logged only when they fail)",
+   "summary": "A log line and a flush per command.",
+   "test": ""
+  },
+  {
+   "id": "CB14",
+   "severity": "low",
+   "area": "room list sort (serialize.rs)",
+   "status": "FIXED 662ea8e (sorted by reference)",
+   "summary": "The sort deep-cloned every row and allocated per comparison.",
+   "test": ""
+  },
+  {
+   "id": "CB15",
+   "severity": "low",
+   "area": "verification (verification.rs)",
+   "status": "OPEN: not done",
+   "summary": "The verification handler deserializes every m.room.message in every sync.",
+   "test": ""
+  },
+  {
+   "id": "CB16",
+   "severity": "low",
+   "area": "state reactions (state_reactions.rs)",
+   "status": "OPEN: not checked",
+   "summary": "Every timeline event of the open room parsed into a full Value to find reactions.",
+   "test": ""
+  },
+  {
+   "id": "CB17",
+   "severity": "low",
+   "area": "sync state (sync.rs)",
+   "status": "OPEN: not done",
+   "summary": "sync_state sent twice at every start.",
+   "test": ""
+  },
+  {
+   "id": "RL5",
+   "severity": "low",
+   "area": "room row weight (RoomDelegate.qml)",
+   "status": "PARTLY: badge, glow and sparkle are Loaders now (65fd3d6); the rest not followed",
+   "summary": "About 15 objects and 40 bindings per row that most rows never show.",
+   "test": ""
+  },
+  {
+   "id": "RL8",
+   "severity": "low",
+   "area": "room name (RoomDelegate.qml)",
+   "status": "DECIDED: Silica's Fade kept; it adds a layer only to names that overflow",
+   "summary": "Fade truncation adds a layer to every overflowing room name.",
+   "test": ""
+  },
+  {
+   "id": "RL9",
+   "severity": "low",
+   "area": "tabs (MainPage.qml)",
+   "status": "OPEN: not followed",
+   "summary": "Visited tabs stay alive 30 s and get every update.",
+   "test": ""
+  },
+  {
+   "id": "RL10",
+   "severity": "low",
+   "area": "avatars (pixmap cache)",
+   "status": "OPEN: not followed",
+   "summary": "Scrolling back reloads avatars from disk; Qt's pixmap cache keeps 2 MB.",
+   "test": ""
+  },
+  {
+   "id": "RL11",
+   "severity": "low",
+   "area": "merged view (RoomDelegate.qml)",
+   "status": "FIXED 65fd3d6 (rustrx.accountMarks)",
+   "summary": "The account mark read rustrx.accounts per row.",
+   "test": ""
+  },
+  {
+   "id": "RL12",
+   "severity": "low",
+   "area": "room row preview",
+   "status": "OPEN: a guess, not followed",
+   "summary": "The preview's line handler.",
+   "test": ""
+  },
+  {
+   "id": "T11",
+   "severity": "low",
+   "area": "first room open per process",
+   "status": "OPEN: nothing to switch on, Qt 5.6 has no QML disk cache",
+   "summary": "RoomPage and what it loads compile on the first push.",
+   "test": ""
+  },
+  {
+   "id": "T12",
+   "severity": "low",
+   "area": "chat rows (MessageDelegate.qml)",
+   "status": "OPEN: the inView binding is still there",
+   "summary": "inView re-evaluates on every scroll frame in every row.",
+   "test": ""
+  },
+  {
+   "id": "T13",
+   "severity": "low",
+   "area": "chat (RoomPage.qml, TimelineModel)",
+   "status": "FIXED 65fd3d6 (event-to-row index, cached frontier)",
+   "summary": "checkMarker ran rowOfEvent on every scroll frame.",
+   "test": ""
+  },
+  {
+   "id": "T14",
+   "severity": "low",
+   "area": "small chat items",
+   "status": "PARTLY: own read row cached in the model (65fd3d6); the others not followed",
+   "summary": "own_read without a role, per-row Binding and Connections, reply quote formatted in JS, header rebuilt on every room-list change.",
+   "test": ""
+  },
+  {
+   "id": "MI11",
+   "severity": "low",
+   "area": "Clear media (TimelineModel.cpp, Rustrx.cpp)",
+   "status": "FIXED 65fd3d6",
+   "summary": "After Clear media, pictures seen earlier in the run stayed broken until a restart.",
+   "test": "tests/cpp/mediapaths"
+  },
+  {
+   "id": "MI12",
+   "severity": "low",
+   "area": "room permissions (harbour-rustrx.qml)",
+   "status": "FIXED 65fd3d6 (kept per account)",
+   "summary": "roomSettingsById keyed by room id only: one account's power levels overwrote another's in a shared room.",
+   "test": ""
+  },
+  {
+   "id": "MI9",
+   "severity": "low",
+   "area": "glibc (main.cpp)",
+   "status": "OPEN: measure first",
+   "summary": "malloc_trim when idle could give back the freed heap.",
+   "test": ""
+  },
+  {
+   "id": "RL6",
+   "severity": "low",
+   "area": "filter and sort (RoomModel.cpp)",
+   "status": "OPEN: resets to be measured first",
+   "summary": "Filter, sort change and mark read under 'by unread' emit one signal per row.",
+   "test": ""
+  },
+  {
+   "id": "m1.T3",
+   "severity": "medium",
+   "area": "core at startup",
+   "status": "OPEN on the jp26 (core 563 ticks cold on 0.8.2-4, 71 rooms); the Prawn's core fell 193 -> 113 ticks with the key-based stores",
+   "summary": "The core dominates startup CPU on the jp26: 6.0 s in the first 10 s for 71 rooms, 5.2 s on 0.8.2-1.",
+   "test": "per-thread ticks, cold start"
+  },
+  {
+   "id": "m1.M1",
+   "severity": "low",
+   "area": "memory per room",
+   "status": "OPEN (continues the 11-18 M4 and M5)",
+   "summary": "Memory per room opened is kept, not given back.",
+   "test": "measured: jp26 2.2 -> 1.7 MB per room (0.8.2-1); jp26 RSS after 15 rooms 271 / 246 / 247 MB (0.8.1-15 / 0.8.2-1 / 0.8.2-4, round three in front)"
+  },
+  {
+   "id": "m1.N1",
+   "severity": "low",
+   "area": "token refresh",
+   "status": "OPEN: not followed",
+   "summary": "On every start the stored access token is already expired (401, then refresh); matrix.org also refreshes every 5 min.",
+   "test": "log"
+  },
+  {
+   "id": "m2.T4",
+   "severity": "medium",
+   "area": "first snapshot (TimelineModel)",
+   "status": "OPEN: unchanged on 0.8.2-4",
+   "summary": "A room's first snapshot is a full compare in one GUI-thread block: 22 to 49 ms on the jp26, 30 to 106 ms on the Prawn.",
+   "test": "perf: set_items delta=-1; 0.8.2-4 median / p90 / max: jp26 25 / 60 / 88 ms, Prawn 33 / 125 / 174 ms"
+  },
+  {
+   "id": "m2.T5",
+   "severity": "low",
+   "area": "core timeline diff",
+   "status": "OPEN: watch",
+   "summary": "The diff's json_us grows with history: about 10 ms at 500 items, 15 ms at 900 (core thread, no frame cost).",
+   "test": "perf: timeline_pass"
+  },
+  {
+   "id": "m3.C1",
+   "severity": "high",
+   "area": "core, reopening the last room at start",
+   "status": "OPEN: being investigated",
+   "summary": "At one start on the jp26 the reopened last room, a long encrypted DM, grew from 50 to 798 timeline items in 10 s without script input; the core thread ran at about 100 % of one core for about 5.5 min; peak RSS 428 MB (other runs 296 to 345). Not seen at about 20 other starts.",
+   "test": "reopen a long encrypted DM as the last room, perf-log on, full log kept, watch the core thread"
+  },
+  {
+   "id": "m3.RL3",
+   "severity": "medium",
+   "area": "room list apply (RoomLists.cpp)",
+   "status": "OPEN: being worked on",
+   "summary": "On a one-room delta the GUI thread still pays about 12 ms (lists plus merged view, jp26, 71 rooms), with 4 of 32 events at 66 to 73 ms in 10 min: RoomLists regroups all lists.",
+   "test": "perf: rooms lists_us, merged_us"
+  },
+  {
+   "id": "m3.P3",
+   "severity": "low",
+   "area": "emoji packs (packs.rs)",
+   "status": "OPEN",
+   "summary": "After a restart 1 to 2 small requests are left: an account data kind the server lacks is asked again at every start, and a global pack whose kept state is not fresh.",
+   "test": "perf: image_packs requests after a restart"
+  },
+  {
+   "id": "m3.G2",
+   "severity": "low",
+   "area": "favourite glow",
+   "status": "OPEN: by design, an idea only",
+   "summary": "Every return to the list starts a new breath of about 16 s, about 350 frames, roughly 6 core-seconds on the jp26.",
+   "test": "idle runs, glow3"
+  },
+  {
+   "id": "REG1",
+   "severity": "low",
+   "area": "regression (RoomDelegate.qml)",
+   "status": "FIXED 71fe101",
+   "summary": "TypeError badgeDigitWidth of null each time a row's badge unloaded (new in 0.8.2-1).",
+   "test": "found by round two (m2.R1); 0 on 0.8.2-4",
+   "merged": [
+    "m2.R1"
+   ]
+  },
+  {
+   "id": "REG2",
+   "severity": "medium",
+   "area": "regression (RoomDelegate.qml, MainPage.qml)",
+   "status": "FIXED 34ce7e2",
+   "summary": "The unread badge with two or more digits stayed a circle: inside the Loader, item named the Loader's own item (the author's find).",
+   "test": ""
+  },
+  {
+   "id": "REG3",
+   "severity": "low",
+   "area": "regression (Tunables.qml)",
+   "status": "FIXED 3d7eb04",
+   "summary": "The glow rested halfway up a breath and looked frozen (the author's find).",
+   "test": ""
+  },
+  {
+   "id": "REG4",
+   "severity": "medium",
+   "area": "regression (CI)",
+   "status": "FIXED 7cded38 (qtdeclarative5-dev)",
+   "summary": "The room list test needs a QML engine; the runner had only qtbase, so every push since 65fd3d6 failed.",
+   "test": "CI"
+  },
+  {
+   "id": "SEC1",
+   "severity": "medium",
+   "area": "security (account.rs)",
+   "status": "FIXED 239ada1",
+   "summary": "A recovery key reset and an identity reset sent the key as 'key': the dialog showed an empty recovery key and could be closed as saved.",
+   "test": "test_static (18ecd5e), proved against the planted bug"
+  },
+  {
+   "id": "SEC2",
+   "severity": "medium",
+   "area": "security (Media.cpp)",
+   "status": "FIXED 239ada1 (a link with a name made by Rustrx; suffix kept only when plain)",
+   "summary": "Send smaller videos put the file's path into the gst-launch-1.0 pipeline text: an outside file name could add to the pipeline (not released).",
+   "test": ""
+  },
+  {
+   "id": "SEC3",
+   "severity": "medium",
+   "area": "security (session.rs)",
+   "status": "FIXED 662ea8e (stable fingerprint; a store is deleted only when the open proves the key wrong)",
+   "summary": "A store was deleted on a mismatch of a DefaultHasher fingerprint, which is not stable across toolchains.",
+   "test": ""
+  },
+  {
+   "id": "SEC4",
+   "severity": "low",
+   "area": "security (notification actions)",
+   "status": "OPEN: question 1 of security-review-guide.md",
+   "summary": "D-Bus caller checks for the notification actions.",
+   "test": ""
+  },
+  {
+   "id": "DEC1",
+   "severity": "low",
+   "area": "decision: glow",
+   "status": "DECIDED 3d7eb04",
+   "summary": "Five breaths, then rest in the lowest 5 % of a breath until something new starts it.",
+   "test": ""
+  },
+  {
+   "id": "DEC2",
+   "severity": "low",
+   "area": "decision: GIFs",
+   "status": "DECIDED 662ea8e",
+   "summary": "GIFs pause while a chat moves.",
+   "test": ""
+  },
+  {
+   "id": "DEC3",
+   "severity": "medium",
+   "area": "decision: store key",
+   "status": "DECIDED 662ea8e",
+   "summary": "The high-entropy path, approved if no negative security implications; checked first, tried on the Prawn's test account first. Going back below 0.8.2 needs a new login (release notes).",
+   "test": "round three: decryption works on both phones after the migration (Prawn: pictures in an encrypted DM after the install decrypted; jp26: a new encrypted text message shown as text; no decryption warning in either log)"
+  },
+  {
+   "id": "DEC4",
+   "severity": "low",
+   "area": "decision: SDK media cache",
+   "status": "DECIDED 662ea8e",
+   "summary": "The SDK media cache is capped at 100 MB.",
+   "test": ""
+  }
+ ],
+ "non_findings": [
+  {
+   "id": "NF1",
+   "what": "Scrolling on the jp26 is smooth: almost every frame 11 ms at 90 Hz, render median 1 to 2 ms, polish at most 3 ms; the few long gaps are GUI-thread stalls outside polish, some of them the pauses between gestures (0.8.1-15). Round three (0.8.2-4, touch, in front): chat 12 flicks older at 87 fps, frames over 20 ms 0.4 %, none over 34 ms."
+  },
+  {
+   "id": "NF2",
+   "what": "Chat scrolling on the Prawn is bound by the GPU and the compositor: swap 17 to 24 ms of a 24 to 29 ms frame, render 2 to 3 ms, unchanged by 0.8.2 (S1 of both measurement rounds)."
+  },
+  {
+   "id": "NF3",
+   "what": "cacheBuffer is already Theme.itemSizeMedium * 8 in SilicaListView, about six room rows above and below the screen; do not raise it before RL1 and RL5."
+  },
+  {
+   "id": "NF4",
+   "what": "Each core event's JSON is parsed on the core's thread; the GUI thread gets a QVariantMap."
+  },
+  {
+   "id": "NF5",
+   "what": "Qt 5.6 has no QML disk cache (it came in 5.8); QML compiles from source at every start, and QML_DISABLE_DISK_CACHE=1 set by firejail changes nothing."
+  },
+  {
+   "id": "NF6",
+   "what": "No booster in the start chain (invoker, booster-generic, firejail twice, exec): tap to process 0.4 to 0.7 s on the jp26, 1.5 to 1.7 s on the Prawn, before Rustrx code runs."
+  },
+  {
+   "id": "NF7",
+   "what": "The GStreamer registry is kept between starts (whitelisted into the sandbox)."
+  },
+  {
+   "id": "NF8",
+   "what": "Idle with nothing animating: 0.3 to 0.5 % of one core, 4 to 7 wakeups/s, the core's sync; no interval timers in the core."
+  },
+  {
+   "id": "NF9",
+   "what": "The 11-18 fixes hold: two glibc arenas (M1), the low-memory SQLite pools (M2)."
+  },
+  {
+   "id": "NF10",
+   "what": "Sliding-sync room subscriptions are replaced on each open, not added; the SDK event cache shrinks closed rooms."
+  },
+  {
+   "id": "NF11",
+   "what": "List and chat pictures are asynchronous with sourceSize; a GIF keeps one frame (cache: false); the pixmap cache keeps 2 MB unreferenced; no proxy models; RoomModel::data about 1 us."
+  },
+  {
+   "id": "NF12",
+   "what": "The jp26 suspends with the display off; the Prawn (mainline) does not. Rustrx with the display off: 0.3 to 0.9 % of one core per wall second."
+  },
+  {
+   "id": "NF13",
+   "what": "Pausing GIFs while the chat moves showed no measurable effect on the Prawn's chat (few GIFs in the room)."
+  },
+  {
+   "id": "NF14",
+   "what": "Room list live updates: the app's list matched a full refresh on both phones (rounds two and three)."
+  }
+ ],
+ "dead_ends": [
+  "Hardware H.264 encoders for Send smaller videos (4220011): droidvenc on hybris takes only camera frames, the V4L2 encoder on the mainline Prawn ignores the bitrate. Software WebM instead.",
+  "AnimatedImage ignores sourceSize in Qt 5.6: a GIF cannot be decoded smaller. Pausing while the chat moves is what was left (DEC2).",
+  "Avatar rounding A/B (layer, off, texture, provider) on the Prawn, n=1 each: all within noise, the edges alike. The Prawn's 8 rows cannot show the cost; no evidence yet.",
+  "GPU memory: Mali and DRM buffers show 0 kB in the process's RSS; not measured."
+ ]
+}
