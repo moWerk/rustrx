@@ -215,11 +215,13 @@ ListItem {
             readonly property real outTop: Theme.paddingSmall / 2
             // the badge's height; the "@" is a circle of it
             readonly property real bubbleSize: Theme.iconSizeSmall
-            // the "@" circle: the badge's tone, a shade (10 %) darker than the
-            // ambience's secondary highlight, so the white glyph stands out
+            // the standard badge tone, a shade (10 %) darker than the ambience's
+            // secondary highlight, so the white text stands out: every unread
+            // pill without a mention, and the "@" circle
             readonly property color mentionColour: Qt.darker(Theme.secondaryHighlightColor, 1.1)
-            // the count's pill: two shades darker than that (the author's)
-            readonly property color countColour: Qt.darker(mentionColour, 1.1 * 1.1)
+            // the pill under an "@": two shades darker than that (the author's);
+            // without a mention the pill keeps the standard tone
+            readonly property color countColour: mention ? Qt.darker(mentionColour, 1.1 * 1.1) : mentionColour
             // the text inside: size, and nudges right (x) and down (y)
             readonly property real unreadFontSize: Math.round(Theme.fontSizeExtraSmall * Tunables.badgeTextScale)
             readonly property real unreadTextX: 0
