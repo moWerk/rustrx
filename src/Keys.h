@@ -31,6 +31,9 @@ static const int kProto = 3;
 // QSettings (Rustrx::settingsFile(): ~/.config/net.mowerk/harbour-rustrx/harbour-rustrx.conf), each key with its default
 static const char kDebugLog[] = "debugLog";
 static const bool kDebugLogDefault = true;
+// a room's count rose before its newest message came: the notification
+// waits this long at most for the message it is about (RoomLists::announce)
+static const int kNotifyLatestWaitMs = 2000;
 static const char kDownscaleImages[] = "downscaleImages";
 static const bool kDownscaleImagesDefault = true;
 // videos sent smaller: 0 as they are, else a row of kVideoTierEdge

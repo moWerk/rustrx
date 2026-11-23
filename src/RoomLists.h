@@ -27,6 +27,7 @@
 #include <QPair>
 #include <QScopedPointer>
 #include <QVector>
+#include <QTimer>
 #include <functional>
 #include <QVariantList>
 #include <QVariantMap>
@@ -234,6 +235,15 @@ private:
     int m_unreadTotal = 0;
     int m_unreadChats = 0;
     QHash<QString, int> m_notificationCounts;
+    // a room's newest message as last seen, and the rooms whose count rose
+    // while it had not changed yet (the core sends the count and the newest
+    // message apart: the notification would show the one before, often
+    // one's own): told once it changes, or after kNotifyLatestWaitMs
+    QHash<QString, QString> m_latestSeen;
+    QHash<QString, QPair<QString, int>> m_awaitLatest;
+    QTimer *m_awaitTimer = nullptr;
+    void announce(const QString &id, const QString &name, int n, const QString &latest);
+    void flushAwaited();
     QHash<QString, QVariantMap> m_roomsById;
     RoomModel *m_rooms;
     RoomModel *m_people;

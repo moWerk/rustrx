@@ -619,11 +619,15 @@ void RoomLists::distributeRooms()
         const int before = m_notificationCounts.value(r.id, -1);
         const QString id = r.id, name = r.name;
         const int n = r.notifications;
+        const QString latest = r.row.toMap().value(QStringLiteral("latest_event_id")).toString();
         if (before >= 0 && n > before)
-            m_pendingSignals.append([this, id, name, n]() { emit newMessages(id, name, n); });
+            announce(id, name, n, latest);
         else if (before > 0 && n == 0)
             m_pendingSignals.append([this, id]() { emit roomRead(id); });
+        else if (m_awaitLatest.contains(id) && latest != m_latestSeen.value(id))
+            announce(id, name, n, latest);
         m_notificationCounts.insert(id, n);
+        m_latestSeen.insert(id, latest);
     }
     if (!m_displayOnly)
         notifyInvites();
@@ -713,11 +717,16 @@ void RoomLists::placeTouched(const QVector<QString> &touched, const QVector<Row>
         const int was = m_notificationCounts.value(r.id, -1);
         const QString id = r.id, name = r.name;
         const int n = r.notifications;
+        const QString latest = r.row.toMap().value(QStringLiteral("latest_event_id")).toString();
         if (was >= 0 && n > was)
-            m_pendingSignals.append([this, id, name, n]() { emit newMessages(id, name, n); });
-        else if (was > 0 && n == 0)
+            announce(id, name, n, latest);
+        else if (was > 0 && n == 0) {
+            m_awaitLatest.remove(id);
             m_pendingSignals.append([this, id]() { emit roomRead(id); });
+        } else if (m_awaitLatest.contains(id) && latest != m_latestSeen.value(id))
+            announce(id, name, n, latest);
         m_notificationCounts.insert(id, n);
+        m_latestSeen.insert(id, latest);
     }
     if (invites && !m_displayOnly)
         notifyInvites();
@@ -826,6 +835,34 @@ void RoomLists::updateTargets()
         targets();
 }
 
+// a room's count rose: told at once when its newest message changed with
+// it, else once that message arrives (or after a short wait)
+void RoomLists::announce(const QString &id, const QString &name, int n, const QString &latest)
+{
+    if (latest != m_latestSeen.value(id) || latest.isEmpty()) {
+        m_awaitLatest.remove(id);
+        m_pendingSignals.append([this, id, name, n]() { emit newMessages(id, name, n); });
+        return;
+    }
+    m_awaitLatest.insert(id, qMakePair(name, n));
+    if (!m_awaitTimer) {
+        m_awaitTimer = new QTimer(this);
+        m_awaitTimer->setSingleShot(true);
+        m_awaitTimer->setInterval(Keys::kNotifyLatestWaitMs);
+        connect(m_awaitTimer, &QTimer::timeout, this, &RoomLists::flushAwaited);
+    }
+    if (!m_awaitTimer->isActive())
+        m_awaitTimer->start();
+}
+
+void RoomLists::flushAwaited()
+{
+    const auto waiting = m_awaitLatest;
+    m_awaitLatest.clear();
+    for (auto it = waiting.cbegin(); it != waiting.cend(); ++it)
+        emit newMessages(it.key(), it.value().first, it.value().second);
+}
+
 void RoomLists::flushSignals()
 {
     if (m_pendingSignals.isEmpty()) {
@@ -866,6 +903,8 @@ void RoomLists::clear()
     m_knocksNotified.clear();
     emit knockRequestsChanged();
     m_notificationCounts.clear();
+    m_latestSeen.clear();
+    m_awaitLatest.clear();
     m_roomsById.clear();
     if (m_displayOnly)
         return;

@@ -28,6 +28,7 @@
 // Each test names the bug it exists to catch ("Planted-bug:"); it was
 // trusted only after failing against that bug planted on purpose.
 
+#include "Keys.h"
 #include "RoomLists.h"
 #include "RoomModel.h"
 
@@ -303,6 +304,7 @@ void mutate(Core &core, QSet<QString> &sent, int &next)
         // a new message: to the top, unread, maybe a notification
         r["ts"] = core.clock += 7;
         r["preview"] = QStringLiteral("message %1").arg(next++);
+        r["latest_event_id"] = QStringLiteral("$%1").arg(next++);
         r["unread"] = r.value("unread").toInt() + 1;
         if (below(2))
             r["notifications"] = r.value("notifications").toInt() + 1;
@@ -727,6 +729,31 @@ private slots:
         own.lists->setRooms({ room("!r", { { "notifications", 0 } }) });
         own.lists->setRooms({ room("!r", { { "notifications", 3 } }) });
         QCOMPARE(ownMessages, 1);
+    }
+
+    // The core sends a room's count and its newest message apart: a count
+    // that rises while the newest message is still the one before waits for
+    // it (the notification showed one's own last message, dodoradio), at
+    // most kNotifyLatestWaitMs. Planted-bug: announce at once in announce().
+    void notificationWaitsForTheNewMessage()
+    {
+        Lists l(dir("waits"), { QString(), QVariant(), QVariant() });
+        QStringList heard;
+        QObject::connect(l.lists.get(), &RoomLists::newMessages, [&](const QString &id, const QString &, int n) {
+            heard << QStringLiteral("%1:%2:%3").arg(id).arg(n).arg(l.lists->roomInfo(id).value("latest_event_id").toString());
+        });
+        l.lists->setRooms({ room("!r", { { "notifications", 0 }, { "latest_event_id", "$own" } }) });
+        l.lists->setRooms({ room("!r", { { "notifications", 1 }, { "latest_event_id", "$own" } }) });
+        QCOMPARE(heard, QStringList());
+        l.lists->setRooms({ room("!r", { { "notifications", 1 }, { "latest_event_id", "$new" } }) });
+        QCOMPARE(heard, QStringList({ "!r:1:$new" }));
+        // with the count and the message together: at once
+        l.lists->setRooms({ room("!r", { { "notifications", 2 }, { "latest_event_id", "$next" } }) });
+        QCOMPARE(heard.size(), 2);
+        // a message that never comes: told after the wait
+        l.lists->setRooms({ room("!r", { { "notifications", 3 }, { "latest_event_id", "$next" } }) });
+        QCOMPARE(heard.size(), 2);
+        QTRY_COMPARE_WITH_TIMEOUT(heard.size(), 3, Keys::kNotifyLatestWaitMs + 1000);
     }
 };
 
