@@ -202,8 +202,8 @@ ListItem {
             active: !invited && hasUnread
             sourceComponent: badgeComponent
         }
-        // a mention: an "@" in the same bubble at the bottom right, in the
-        // badge's normal colour (the author's idea), while one is unread
+        // a mention: an "@" in the same bubble at the top left, in the very
+        // colour the unread badge has (the author's idea), while one is unread
         Loader {
             readonly property bool mention: true
             anchors.fill: parent
@@ -274,7 +274,7 @@ ListItem {
                 radius: height / 2
                 // a shade (10 %) darker than the ambience's highlight colours, so the
                 // white digits stand out; a mention gets the brighter one
-                color: Qt.darker(model.highlights > 0 && !mention ? Theme.highlightColor : Theme.secondaryHighlightColor, 1.1)
+                color: Qt.darker(model.highlights > 0 ? Theme.highlightColor : Theme.secondaryHighlightColor, 1.1)
 
                 // a soft shadow under the digits, one label behind the other
                 Label {
