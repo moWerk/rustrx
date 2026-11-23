@@ -118,6 +118,9 @@ impl std::io::Write for LogWriter {
         while let Some(pos) = self.0.iter().position(|&b| b == b'\n') {
             let line: Vec<u8> = self.0.drain(..=pos).collect();
             let text = String::from_utf8_lossy(&line).trim_end().to_owned();
+            if is_expected_token_expiry(&text) {
+                continue;
+            }
             // the process's one log, through the first account's core
             if let Some(core) = core_at(0) {
                 core.emit(serde_json::json!({"ev": "log", "line": text}));
@@ -130,6 +133,14 @@ impl std::io::Write for LogWriter {
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }
+}
+
+/// An access token from an account service runs out every few minutes; the
+/// SDK logs the server's 401 as an ERROR and then refreshes the token, which
+/// "tokens refreshed" records (a failed refresh is logged on its own). The
+/// expected 401 lines only filled the log, about 250 a day per phone.
+fn is_expected_token_expiry(line: &str) -> bool {
+    line.contains("matrix_sdk::http_client") && line.contains("UnknownToken")
 }
 
 /// The key for the local store from sailfish-secrets (the app sets it before
@@ -277,6 +288,17 @@ fn command(core: &'static core::Core, json: &CStr) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Only the SDK's 401 for an expired token is left out of the log; other
+    /// errors, a 503 among them, stay. Planted-bug: match "401" alone.
+    #[test]
+    fn only_expected_token_expiry_is_hidden() {
+        let expiry = "ERROR matrix_sdk::http_client: Error while sending request: Api(Server(MatrixError(Error { status_code: 401, body: Standard(StandardErrorBody { kind: UnknownToken(UnknownTokenErrorData { soft_logout: false }), message: \"Token is not active\" }) })))";
+        assert!(is_expected_token_expiry(expiry));
+        let unavailable = "ERROR matrix_sdk::http_client: Error while sending request: Api(Server(MatrixError(Error { status_code: 503, body: Standard(StandardErrorBody { kind: Unknown, message: \"Unable to introspect the access token\" }) })))";
+        assert!(!is_expected_token_expiry(unavailable));
+        assert!(!is_expected_token_expiry("WARN rustrx::core::session: token refresh failed: UnknownToken"));
+    }
 
     /// A binary code, drawn as the login page draws one, reads back byte
     /// for byte: the scanner and the QR login speak the same bytes.
