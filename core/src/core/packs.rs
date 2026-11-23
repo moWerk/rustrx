@@ -85,6 +85,8 @@ const PACKS_TTL: u64 = 24 * 60 * 60;
 /// removed with it at logout): one per room, one for the enabled packs.
 const STORE_ROOM_KEY: &str = "rustrx.packs.v1.room:";
 const STORE_GLOBAL_KEY: &[u8] = b"rustrx.packs.v1.global";
+/// The account-data types the server had none of, and when it said so.
+const STORE_MISSING_KEY: &[u8] = b"rustrx.packs.v1.missing";
 
 fn unix_now() -> u64 {
     std::time::SystemTime::now()
@@ -126,6 +128,11 @@ struct PackCache {
     /// account data the store did not have, as the server answered (once
     /// per login, kept until the sync brings that type)
     fetched: HashMap<&'static str, Option<Raw<AnyGlobalAccountDataEventContent>>>,
+    /// account-data types the server had none of, by type: when it said so
+    /// (kept in the store too, so a restart does not ask again)
+    missing: HashMap<String, u64>,
+    /// `missing` was read from the store in this login
+    missing_loaded: bool,
 }
 
 fn pack_caches() -> &'static std::sync::Mutex<HashMap<PathBuf, PackCache>> {
@@ -182,6 +189,14 @@ fn encode_global(global: &HashMap<(String, String), (u64, Option<Value>)>) -> Ve
 fn decode_global(bytes: &[u8]) -> HashMap<(String, String), (u64, Option<Value>)> {
     let entries: Vec<(String, String, u64, Option<Value>)> = serde_json::from_slice(bytes).unwrap_or_default();
     entries.into_iter().map(|(r, k, at, v)| ((r, k), (at, v.filter(|v| !v.is_null())))).collect()
+}
+
+fn encode_missing(missing: &HashMap<String, u64>) -> Vec<u8> {
+    serde_json::to_vec(missing).unwrap_or_default()
+}
+
+fn decode_missing(bytes: &[u8]) -> HashMap<String, u64> {
+    serde_json::from_slice(bytes).unwrap_or_default()
 }
 
 /// The (state key, content) of each pack event, by state key.
@@ -248,18 +263,20 @@ impl Core {
                 self.store_global(&client, generation).await;
             }
         });
-        client.add_event_handler(move |raw: Raw<matrix_sdk::ruma::events::AnyGlobalAccountDataEvent>| async move {
+        client.add_event_handler(move |raw: Raw<matrix_sdk::ruma::events::AnyGlobalAccountDataEvent>, client: Client| async move {
             // the store has it from now on
-            match raw.get_field::<String>("type").ok().flatten().as_deref() {
-                Some(USER_EMOTES) => with_cache(&self.data_dir, generation, |c| {
-                    c.user_written = None;
-                    c.fetched.remove(USER_EMOTES);
-                }),
-                Some(EMOTE_ROOMS) => with_cache(&self.data_dir, generation, |c| {
-                    c.fetched.remove(EMOTE_ROOMS);
-                }),
-                _ => None,
+            let kind = match raw.get_field::<String>("type").ok().flatten().as_deref() {
+                Some(USER_EMOTES) => USER_EMOTES,
+                Some(EMOTE_ROOMS) => EMOTE_ROOMS,
+                _ => return,
             };
+            with_cache(&self.data_dir, generation, |c| {
+                if kind == USER_EMOTES {
+                    c.user_written = None;
+                }
+                c.fetched.remove(kind);
+            });
+            self.forget_missing(&client, generation, kind).await;
         });
     }
 
@@ -299,6 +316,45 @@ impl Core {
         let Some(bytes) = with_cache(&self.data_dir, generation, |c| encode_global(&c.global)) else { return };
         if let Err(e) = client.state_store().set_custom_value_no_read(STORE_GLOBAL_KEY, bytes).await {
             tracing::info!("packs: enabled packs not kept: {e}");
+        }
+    }
+
+    /// The account-data types the server had none of, from the store into
+    /// memory once per login. Called with store_lock held.
+    async fn load_missing(&self, client: &Client, generation: u64) {
+        if with_cache(&self.data_dir, generation, |c| c.missing_loaded) != Some(false) {
+            return;
+        }
+        let kept = match client.state_store().get_custom_value(STORE_MISSING_KEY).await {
+            Ok(v) => v.map(|b| decode_missing(&b)).unwrap_or_default(),
+            Err(e) => {
+                tracing::info!("packs: kept missing account data not read: {e}");
+                HashMap::new()
+            }
+        };
+        with_cache(&self.data_dir, generation, |c| {
+            c.missing_loaded = true;
+            for (kind, at) in kept {
+                c.missing.entry(kind).or_insert(at);
+            }
+        });
+    }
+
+    /// Called with store_lock held.
+    async fn store_missing(&self, client: &Client, generation: u64) {
+        let Some(bytes) = with_cache(&self.data_dir, generation, |c| encode_missing(&c.missing)) else { return };
+        if let Err(e) = client.state_store().set_custom_value_no_read(STORE_MISSING_KEY, bytes).await {
+            tracing::info!("packs: missing account data not kept: {e}");
+        }
+    }
+
+    /// The account data of `kind` exists now (the sync brought it, or it
+    /// was written here): its "none" answer goes, in memory and the store.
+    async fn forget_missing(&self, client: &Client, generation: u64, kind: &str) {
+        let _held = store_lock().lock().await;
+        self.load_missing(client, generation).await;
+        if with_cache(&self.data_dir, generation, |c| c.missing.remove(kind).is_some()) == Some(true) {
+            self.store_missing(client, generation).await;
         }
     }
 
@@ -377,7 +433,9 @@ impl Core {
     }
 
     /// Global account data from the store, or from the server where the
-    /// store has none (asked once per login: none is the usual answer).
+    /// store has none (asked once per login: none is the usual answer, and
+    /// that one is kept in the store for PACKS_TTL). The store comes first:
+    /// a kept "none" never hides what the sync brought since.
     async fn pack_account_data(&self, client: &Client, generation: u64, kind: &'static str, requests: &mut usize)
                                -> Option<Raw<AnyGlobalAccountDataEventContent>> {
         let account = client.account();
@@ -389,10 +447,29 @@ impl Core {
         if let Some(known) = with_cache(&self.data_dir, generation, |c| c.fetched.get(kind).cloned()).flatten() {
             return known;
         }
+        {
+            let _held = store_lock().lock().await;
+            self.load_missing(client, generation).await;
+        }
+        let now = unix_now();
+        if with_cache(&self.data_dir, generation, |c| c.missing.get(kind).is_some_and(|at| is_fresh(*at, now))) == Some(true) {
+            return None;
+        }
         *requests += 1;
         match account.fetch_account_data(GlobalAccountDataEventType::from(kind)).await {
             Ok(r) => {
                 with_cache(&self.data_dir, generation, |c| c.fetched.insert(kind, r.clone()));
+                let _held = store_lock().lock().await;
+                let changed = with_cache(&self.data_dir, generation, |c| match &r {
+                    None => {
+                        c.missing.insert(kind.to_owned(), now);
+                        true
+                    }
+                    Some(_) => c.missing.remove(kind).is_some(),
+                });
+                if changed == Some(true) {
+                    self.store_missing(client, generation).await;
+                }
                 r
             }
             Err(e) => {
@@ -634,6 +711,7 @@ impl Core {
         // the store has it once the sync brings it back; offered from now
         self.pack_cache_ready(&client, generation);
         with_cache(&self.data_dir, generation, |c| c.user_written = Some(v));
+        self.forget_missing(&client, generation, USER_EMOTES).await;
         self.emit(json!({"ev": "emote_added", "shortcode": name, "mxc": url}));
         Ok(())
     }
@@ -710,6 +788,23 @@ mod tests {
         global.insert(("!b:x".to_owned(), "k".to_owned()), (6, None));
         assert_eq!(decode_global(&encode_global(&global)), global);
         assert!(decode_global(b"{").is_empty());
+    }
+
+    /// The server's "none" for an account-data type survives the store
+    /// with its time, and expires like a kept pack.
+    /// Planted-bug: decode_missing reading the times as 0 (every kept
+    /// "none" is stale: a restart asks again).
+    #[test]
+    fn missing_account_data_survives_the_store() {
+        let now = unix_now();
+        let mut missing = HashMap::new();
+        missing.insert(EMOTE_ROOMS.to_owned(), now);
+        missing.insert(USER_EMOTES.to_owned(), now - PACKS_TTL);
+        let back = decode_missing(&encode_missing(&missing));
+        assert_eq!(back, missing);
+        assert!(is_fresh(back[EMOTE_ROOMS], now));
+        assert!(!is_fresh(back[USER_EMOTES], now));
+        assert!(decode_missing(b"[").is_empty());
     }
 
     #[test]

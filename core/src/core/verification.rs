@@ -3,6 +3,7 @@
 //! (part of `impl Core`, split out of core.rs; the items it uses live there)
 
 use super::*;
+use matrix_sdk::ruma::serde::Raw;
 
 /// An emoji comparison's state for the log, without its contents.
 fn sas_state_name(state: &SasState) -> &'static str {
@@ -29,6 +30,24 @@ fn request_state_name(state: &VerificationRequestState) -> &'static str {
     }
 }
 
+/// The sender and event id of an in-room verification request, read from
+/// the raw message without deserializing it whole.
+fn verification_request_of(raw: &Raw<OriginalSyncRoomMessageEvent>) -> Option<(OwnedUserId, String)> {
+    #[derive(Deserialize)]
+    struct Content {
+        msgtype: Option<String>,
+    }
+    if raw.get_field::<String>("type").ok().flatten().as_deref() != Some("m.room.message") {
+        return None;
+    }
+    let content = raw.get_field::<Content>("content").ok().flatten()?;
+    if content.msgtype.as_deref() != Some("m.key.verification.request") {
+        return None;
+    }
+    let sender = OwnedUserId::try_from(raw.get_field::<String>("sender").ok().flatten()?).ok()?;
+    Some((sender, raw.get_field::<String>("event_id").ok().flatten()?))
+}
+
 impl Core {
     /// Incoming verification requests, to-device and in-room.
     pub(crate) fn install_handlers(&'static self, client: &Client) {
@@ -43,14 +62,13 @@ impl Core {
                 core.spawn_login_task(core.watch_request(req)).await;
             }
         });
-        client.add_event_handler(move |ev: OriginalSyncRoomMessageEvent, client: Client| async move {
-            if let MessageType::VerificationRequest(_) = &ev.content.msgtype {
-                if let Some(req) =
-                    client.encryption().get_verification_request(&ev.sender, ev.event_id.as_str()).await
-                {
-                    let core = self;
-                    core.spawn_login_task(core.watch_request(req)).await;
-                }
+        // raw: every m.room.message of every sync comes here, and only a
+        // request is worth deserializing (the SDK reads it itself)
+        client.add_event_handler(move |raw: Raw<OriginalSyncRoomMessageEvent>, client: Client| async move {
+            let Some((sender, event_id)) = verification_request_of(&raw) else { return };
+            if let Some(req) = client.encryption().get_verification_request(&sender, &event_id).await {
+                let core = self;
+                core.spawn_login_task(core.watch_request(req)).await;
             }
         });
     }
@@ -255,5 +273,36 @@ impl Core {
     pub(crate) async fn verification_cancel(&self, flow: &str) -> Result<()> {
         self.request(flow).await?.cancel().await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn raw(v: Value) -> Raw<OriginalSyncRoomMessageEvent> {
+        Raw::new(&v).unwrap().cast_unchecked()
+    }
+
+    /// Only an in-room request is picked out, from its raw fields; plain
+    /// messages, other types and a redacted request are left alone.
+    /// Planted-bug: drop the msgtype check (every message is looked up as
+    /// a request).
+    #[test]
+    fn only_verification_requests_are_picked_out() {
+        let request = json!({"type": "m.room.message", "event_id": "$req", "sender": "@a:x", "origin_server_ts": 1,
+                             "content": {"msgtype": "m.key.verification.request", "body": "", "to": "@b:x",
+                                         "from_device": "D", "methods": ["m.sas.v1"]}});
+        assert_eq!(verification_request_of(&raw(request.clone())), Some((OwnedUserId::try_from("@a:x").unwrap(), "$req".into())));
+        let mut text = request.clone();
+        text["content"] = json!({"msgtype": "m.text", "body": "hi"});
+        assert_eq!(verification_request_of(&raw(text)), None);
+        let mut other = request.clone();
+        other["type"] = json!("m.sticker");
+        assert_eq!(verification_request_of(&raw(other)), None);
+        let mut redacted = request;
+        redacted["content"] = json!({});
+        redacted["unsigned"] = json!({"redacted_because": {"type": "m.room.redaction"}});
+        assert_eq!(verification_request_of(&raw(redacted)), None);
     }
 }

@@ -18,6 +18,7 @@
 #define RUSTRX_H
 
 #include "Handover.h"
+#include "RoomLists.h"
 
 #include <QElapsedTimer>
 #include <QHash>
@@ -28,7 +29,6 @@
 #include <QVariantMap>
 
 class Media;
-class RoomLists;
 class RoomModel;
 class TimelineModel;
 class UnifiedPush;
@@ -50,6 +50,8 @@ struct Account {
     RoomLists *lists = nullptr;
     // the core's last `rooms`, for the merged view
     QVariantList lastRooms;
+    // the chats with something unread that accounts() last showed
+    int unreadChats = 0;
     // its push registration (UnifiedPush), in its own folder
     UnifiedPush *push = nullptr;
     // pushes that came before its session was back (the woken process)
@@ -637,12 +639,13 @@ private:
     bool m_colourAccounts = true;
     // the lists the tabs show: the merged one while it is on
     RoomLists *shownLists() const;
-    // the merged list fed anew from every logged-in account's rooms
-    void refreshMerged();
+    // the merged list fed anew from every logged-in account's rooms (full:
+    // every tab sorted anew, as after a full `rooms` event)
+    void refreshMerged(bool full = true);
     // allTargets fed anew, while followed
     void refreshAllTargets();
     // the merged rows of refreshMerged and refreshAllTargets, kept for the next
-    QHash<QString, QPair<QVariant, QVariant>> m_mergeCache;
+    RoomLists::MergeCache m_mergeCache;
     // accountMarks made again from accounts()
     void updateAccountMarks();
     QVariantMap m_accountMarks;

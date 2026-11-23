@@ -670,6 +670,33 @@ def test_room_reads_only_what_was_shown():
     assert len(senders) == 3 and all(any(a <= s < a + 900 for a in allowed) for s in senders)
 
 
+
+def test_room_pages_back_by_itself_only_a_few_times():
+    """Older pages the room page asks for without a finger on the chat (at
+    the top as a page lands, the top reached by itself) are capped and
+    counted again only from a touch; the unread seek and a jump are capped
+    by Tunables. Every page goes through one of those three places, so none
+    can run on until the room's beginning by itself (audit C1).
+    Planted-bugs: drop the autoPageMax check; reset autoPages per page
+    instead of on movementStarted; a fifth paginate_back sender."""
+    page = read("qml/pages/RoomPage.qml")
+    gate = _qml_function(page, "maybePaginate")
+    idle = gate[gate.index("if (!list.moving)"):]
+    for need in ("autoPages >= autoPageMax", "PageStatus.Active", "Qt.application.active", "++autoPages"):
+        assert need in idle, need
+    assert idle.index("autoPages >= autoPageMax") < idle.index("++autoPages") < idle.index("pageSoon.start()")
+    assert re.search(r"readonly property int autoPageMax: [1-9]\b", page)
+    resets = re.findall(r"^\s*(.*)autoPages = 0", page, re.M)
+    assert len(resets) == 2 and any("onMovementStarted" in r for r in resets), resets
+    assert "jumpPages >= Tunables.jumpMaxPages" in _qml_function(page, "tryJump")
+    assert "seekPages < Tunables.readSeekPages" in _qml_function(page, "position")
+    # the only senders: pageSoon (every maybePaginate), the seek, a jump
+    senders = [m.start() for m in re.finditer(r'cmd: "paginate_back"', page)]
+    places = [page.index("id: pageSoon"), page.index(_qml_function(page, "position")),
+              page.index(_qml_function(page, "tryJump"))]
+    assert len(senders) == 3 and all(any(p <= s < p + 1500 for p in places) for s in senders)
+    assert "moreLater" in page and "page.maybePaginate(true)" in page[page.index("id: moreLater"):][:200]
+
 def _signals(header):
     """The signals a C++ class offers QML: its signals and its NOTIFYs."""
     s = read(header)

@@ -97,6 +97,7 @@ Page {
             if (!inTimeline) {
                 atStart = false
                 paginating = false
+                autoPages = 0
                 rustrx.openRoom(roomId)
             }
             // opened by Answer on an incoming call: join it
@@ -293,11 +294,25 @@ Page {
     // still about two screens away, so a fling runs on instead of stopping
     // at the top to wait for it (audit T3); at the top itself as before.
     // The unread seek and the jumps page on their own.
+    // Without a finger on the list (at the top as a page lands, the top
+    // reached by itself) only a few pages in a row; a touch starts the
+    // count again. Only in front with the app active: the list lays out
+    // only while the window draws, and its edges are stale until then
+    // (audit C1).
     readonly property int scrollPage: 50
+    readonly property int autoPageMax: 5
+    property int autoPages
     function maybePaginate(atTop) {
         if (paginating || atStart || !inTimeline || list.count === 0) return
         if (!atTop && !(positioned && list.moving && list.contentY - list.originY < 2 * list.height)) return
-        if (!pageSoon.running) pageSoon.start()
+        if (pageSoon.running) return
+        if (!list.moving) {
+            if (autoPages >= autoPageMax || status !== PageStatus.Active || !Qt.application.active) return
+            ++autoPages
+        }
+        // who asked for a page: a moving list, by itself, the seek, a jump
+        rustrx.perf(list.moving ? "room_page_scroll" : "room_page_auto")
+        pageSoon.start()
     }
     // asked for one turn later, never inside the list's own layout that
     // called maybePaginate (atYEnd, contentY): paginating sets the footer's
@@ -426,6 +441,7 @@ Page {
             if (!paginating && inTimeline) {
                 ++seekPages
                 paginating = true
+                rustrx.perf("room_page_seek")
                 rustrx.command({ cmd: "paginate_back", room_id: roomId })
             }
             return
@@ -559,6 +575,7 @@ Page {
         onOriginYChanged: trace.log("oy")
         onContentHeightChanged: trace.logContentHeight()
         onHeightChanged: trace.log("h")
+        onMovementStarted: page.autoPages = 0
         onMovementEnded: {
             trace.log("moved")
             page.readSoon()
@@ -889,6 +906,7 @@ Page {
         if (!paginating && page.inTimeline) {
             ++jumpPages
             paginating = true
+            rustrx.perf("room_page_jump")
             rustrx.command({ cmd: "paginate_back", room_id: roomId })
         }
     }

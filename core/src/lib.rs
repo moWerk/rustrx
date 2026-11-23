@@ -49,7 +49,10 @@ impl Emitter {
         let perf = tracing::enabled!(target: "rustrx::perf", tracing::Level::DEBUG)
             && matches!(value["ev"].as_str(), Some("timeline" | "thread_timeline" | "rooms" | "image_packs" | "members"));
         let t = perf.then(std::time::Instant::now);
-        if let Ok(s) = CString::new(value.to_string()) {
+        // serde escapes a NUL in a string as \u0000, so the text has none
+        // and needs no scan for one (CString::new scanned and copied it)
+        if let Ok(bytes) = serde_json::to_vec(&value) {
+            let s = unsafe { CString::from_vec_unchecked(bytes) };
             let ser = t.map(|t| t.elapsed());
             (self.cb)(self.ctx.0, s.as_ptr());
             if let (Some(t), Some(ser)) = (t, ser) {
@@ -183,6 +186,8 @@ pub extern "C" fn rustrx_start(data_dir: *const c_char, cb: EventCallback, ctx: 
         .try_init();
     let rt = match tokio::runtime::Builder::new_multi_thread()
         .worker_threads(consts::WORKER_THREADS)
+        .max_blocking_threads(consts::MAX_BLOCKING_THREADS)
+        .thread_keep_alive(consts::BLOCKING_KEEP_ALIVE)
         .thread_name("rustrx")
         .enable_all()
         .build()
@@ -568,8 +573,8 @@ mod tests {
     /// A NUL inside a command still yields its error event: the event is
     /// JSON, which escapes it, so the C string is not cut or dropped.
     /// Planted-bug: in `Emitter::emit`, hand on the text with the NUL raw
-    /// (`value.to_string().replace("\\u0000", "\0")`): CString::new refuses
-    /// it and the event is lost.
+    /// (`value.to_string().replace("\\u0000", "\0").into_bytes()`): the C
+    /// string ends at the NUL, the UI gets cut JSON (the test cannot parse it).
     #[test]
     fn nul_in_a_command_still_reaches_the_ui() {
         let (core, sink) = test_core();

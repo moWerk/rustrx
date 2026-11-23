@@ -19,6 +19,7 @@
 
 #include <QAbstractListModel>
 #include <QHash>
+#include <QPair>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QVector>
@@ -48,6 +49,14 @@ public:
     // Rows equal to the ones shown should be the same QVariant (RoomLists
     // passes the previous one on): they compare by pointer then.
     void setRooms(const QVariantList &rooms);
+    // the same with each row's key beside it (RoomLists has them)
+    void setRows(const QVariantList &rooms, const QVector<QString> &keys);
+    // the new list (its keys) differs from the one shown only in the rows
+    // of `touched` (changed, come, gone or moved; each with its new row, or
+    // gone when its key is not in keys); every other row stays the same
+    // QVariant in the same order: one step per touched row
+    typedef QVector<QPair<QString, QVariant>> Touched;
+    void setTouchedRows(const QVector<QString> &keys, const Touched &touched);
     Q_INVOKABLE QVariantMap get(int row) const;
     // a view, a Connections or a binding follows this list; without one,
     // setRooms takes the rows as they are, with no signals to work out
@@ -77,6 +86,10 @@ private:
     // every shown row, one role told
     void rerender(bool name);
     void reorder(const QVariantList &rooms, const QVector<QString> &keys);
+    // nothing follows the list: the rows taken without a signal (true)
+    bool takeUnwatched(const QVariantList &rooms, const QVector<QString> &keys);
+    // the fresh fields of rows in the same order: only the changed roles told
+    void tellChanged(const QVariantList &rooms, const QVector<int> &rows);
 
     QVariantList m_rooms;
     // each row's key (rowKey), beside it

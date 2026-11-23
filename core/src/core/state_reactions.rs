@@ -72,6 +72,11 @@ pub(crate) fn redacted_by(ev: &Value) -> Option<String> {
     ev["content"]["redacts"].as_str().or_else(|| ev["redacts"].as_str()).map(str::to_owned)
 }
 
+/// The event types reaction_of and redacted_by can make anything of.
+fn counts_for_state_reactions(kind: Option<&str>) -> bool {
+    matches!(kind, Some("m.reaction" | "m.room.redaction"))
+}
+
 /// The reactions on the state events of one open room.
 #[derive(Default)]
 pub(crate) struct StateReactions {
@@ -418,6 +423,10 @@ impl Core {
         let handle = room.add_event_handler(move |ev: Raw<AnySyncTimelineEvent>| {
             let shared = shared.clone();
             async move {
+                // every event of the open room comes here: the type first
+                if !counts_for_state_reactions(ev.get_field::<String>("type").ok().flatten().as_deref()) {
+                    return;
+                }
                 let v = raw_value(&ev);
                 if let Some(r) = reaction_of(&v) {
                     shared.add(&r);
@@ -503,6 +512,17 @@ mod tests {
         let thread = json!({"type": "m.reaction", "event_id": "$t", "sender": "@a:x",
                             "content": {"m.relates_to": {"rel_type": "m.thread", "event_id": "$join"}}});
         assert_eq!(reaction_of(&thread), None);
+    }
+
+    /// The open room's handler parses only what can change the counts.
+    /// Planted-bug: leave m.room.redaction out (a removed wave stays).
+    #[test]
+    fn only_reactions_and_redactions_are_parsed() {
+        assert!(counts_for_state_reactions(Some("m.reaction")));
+        assert!(counts_for_state_reactions(Some("m.room.redaction")));
+        assert!(!counts_for_state_reactions(Some("m.room.message")));
+        assert!(!counts_for_state_reactions(Some("m.room.member")));
+        assert!(!counts_for_state_reactions(None));
     }
 
     /// The redacted event's id, from the content (v11) or the top.

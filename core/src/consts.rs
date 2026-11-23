@@ -118,6 +118,15 @@ pub(crate) const JOIN_NOTIFY_MAX_AGE: Duration = Duration::from_secs(600);
 
 /// Tokio worker threads.
 pub(crate) const WORKER_THREADS: usize = 2;
+/// Blocking threads at most (store calls, file work, and DNS lookups:
+/// reqwest resolves on this pool, so a hung lookup on a bad network must
+/// not starve the stores; 32 leaves room for that), and how long an idle
+/// one is kept: tokio's 512 and 10 s made threads again after every pause.
+pub(crate) const MAX_BLOCKING_THREADS: usize = 32;
+pub(crate) const BLOCKING_KEEP_ALIVE: Duration = Duration::from_secs(60);
+/// Connections per database: the SDK keeps one of them for writing, so
+/// this leaves two readers (the room list reads several rows at once).
+pub(crate) const STORE_POOL_SIZE: usize = 3;
 
 // Files and directories in the data directory
 

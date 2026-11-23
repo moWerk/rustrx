@@ -17,6 +17,7 @@
 #ifndef ROOMLISTS_H
 #define ROOMLISTS_H
 
+#include <QCollator>
 #include <QHash>
 #include <QMap>
 #include <QObject>
@@ -24,6 +25,9 @@
 #include <QStringList>
 #include <QVariant>
 #include <QPair>
+#include <QScopedPointer>
+#include <QVector>
+#include <functional>
 #include <QVariantList>
 #include <QVariantMap>
 
@@ -70,8 +74,11 @@ public:
     void setRoomFilter(const QString &text);
 
     // the whole list at once (the merged view, tests): rows equal to the
-    // last ones are kept as those
-    void setRooms(const QVariantList &rooms);
+    // last ones are kept as those; full: every tab sorted again, else only
+    // the rows that changed are placed anew when the rest kept their order
+    void setRooms(const QVariantList &rooms, bool full = false);
+    // the same with each row's key beside it (mergeAccounts' uids)
+    void setRooms(const QVariantList &rooms, const QVector<QString> &keys, bool full = false);
     // the core's `rooms` event: the order and only the new or changed rows
     // (docs/PROTOCOL.md, "Room list events"); RoomsResync: not applied, the
     // core is to send the whole list (`rooms_resync`); RoomsDropped: an old
@@ -80,6 +87,10 @@ public:
     Applied applyRooms(const QVariantMap &ev);
     // the rows the last applied event changed, for perf: lines
     int lastChanged() const { return m_lastChanged; }
+    // of the last update: the time in the handlers of its notification,
+    // invitation and unread signals, and whether every tab was sorted anew
+    qint64 lastSignalsUs() const { return m_lastSignalsUs; }
+    bool lastFull() const { return m_lastFull; }
     // for the merged view (all accounts in one list): sorts, filters and
     // counts only; no notifications, no invitation bookkeeping, no settings
     // written but the tabs' own
@@ -87,10 +98,22 @@ public:
     // every account's rooms in one list for the merged view, each tagged
     // with its account and a uid ("<account>/<room_id>"), in the core's
     // order (invitations first, then the last activity, then the uid)
-    // cache: the merged rows of the last call by uid, with their source; a
-    // source passed on unchanged gives the same merged row
-    typedef QHash<QString, QPair<QVariant, QVariant>> MergeCache;
-    static QVariantList mergeAccounts(const QList<QPair<int, QVariantList>> &accounts, MergeCache *cache = nullptr);
+    // cache: the merged rows of the last call per account and room id,
+    // with their source and what the order reads; a source passed on
+    // unchanged gives the same merged row; uids: each row's, beside it
+    struct MergeRow {
+        QVariant source, merged;
+        QString uid;
+        bool invited = false;
+        qint64 ts = 0;
+        quint32 seen = 0;
+    };
+    struct MergeCache {
+        QHash<int, QHash<QString, MergeRow>> accounts;
+        quint32 pass = 0;
+    };
+    static QVariantList mergeAccounts(const QList<QPair<int, QVariantList>> &accounts, MergeCache *cache = nullptr,
+                                      QVector<QString> *uids = nullptr);
     // the last rooms as the lists hold them (unchanged rows as before)
     const QVariantList &lastRooms() const { return m_lastRooms; }
     // the core's `knock_requests` event
@@ -117,7 +140,53 @@ signals:
     void inviteGone(const QString &roomId);
 
 private:
-    void distributeRooms(const QVariantList &rooms);
+    enum Tab { TabRooms, TabPeople, TabFavs, TabAll, TabSpaces, TabCount };
+    // what the lists read of a row, once each time it comes or changes
+    struct Row {
+        QVariant row;
+        QString id;
+        int pos = -1;           // in the order
+        quint32 seen = 0;       // the last update that had it
+        bool invited = false, fav = false, low = false, dm = false, space = false, muted = false;
+        bool shown = false;     // matches the filter
+        int badge = 0, notifications = 0;
+        QString name;
+        uint tabs = 0;          // the tabs that hold it (1 << Tab)
+    };
+    // what a tab's order looks at, read from each row once instead of per comparison
+    struct SortKey {
+        bool invited;
+        bool fav;
+        bool low;
+        int unread;
+        QString name;
+    };
+    struct TabOrder {
+        bool favsFirst = false, lowAtEnd = true, byUnread = false, byName = false, hideMuted = false;
+    };
+    // a tab's rows as its model has them: each one's key and sort key
+    struct TabRows {
+        QVector<QString> keys;
+        QVector<SortKey> sort;
+    };
+    void readRow(Row &r) const;
+    uint tabsOf(const Row &r) const;
+    SortKey sortKey(const Row &r, const TabOrder &o) const;
+    bool keyLess(const SortKey &a, const SortKey &b, const TabOrder &o) const;
+    TabOrder tabOrder(const QString &kind) const;
+    RoomModel *tabModel(int tab) const;
+    // a new list in m_lastRooms / m_lastKeys, m_rows up to date: every tab
+    // anew, or only the touched rows (old: each changed row as it was, an
+    // empty id for a new one; gone: the rows no longer in the list)
+    void distributeRooms();
+    void placeTouched(const QVector<QString> &touched, const QVector<Row> &old, const QVector<Row> &gone);
+    // the list as given, its order checked against the last: a full
+    // distribute, or the touched rows placed
+    void takeRows(const QVariantList &kept, const QVector<QString> &keys, const QVector<QString> &touched,
+                  const QVector<Row> &old, bool inOrder, bool full);
+    void notifyInvites();
+    void updateTargets();
+    void flushSignals();
     // a tab's ("rooms", "people", "favs", "all", "spaces") own setting; one
     // never set starts from the setting all tabs shared before
     QVariant tabValue(const QString &kind, const QString &key, const QVariant &fallback) const;
@@ -129,8 +198,19 @@ private:
     // this account's own keys: the invitations already notified
     QString m_invitesKey;
     QVariantList m_lastRooms;   // as the core sent them, for a new order
+    QVector<QString> m_lastKeys; // their row keys
     // the same rows by row key, for the next event's compare
-    QHash<QString, QVariant> m_lastByKey;
+    QHash<QString, Row> m_rows;
+    quint32 m_pass = 0;
+    // the tabs as last placed (false: the next update sorts every tab)
+    bool m_placed = false;
+    TabOrder m_order[TabCount];
+    TabRows m_tab[TabCount];
+    mutable QScopedPointer<QCollator> m_collator;
+    // the signals of an update, sent once every list holds it
+    QVector<std::function<void()>> m_pendingSignals;
+    qint64 m_lastSignalsUs = 0;
+    bool m_lastFull = false;
     // the core's room list stream: the last event applied, and whether a
     // resync was asked since (once, until a full event comes)
     qint64 m_stream = 0;
@@ -139,8 +219,7 @@ private:
     qint64 m_streamFloor = 0;
     bool m_resyncAsked = false;
     int m_lastChanged = 0;
-    // the share targets, sorted only when read while no view shows them
-    mutable QVariantList m_pendingTargets;
+    // the share targets, made and sorted only when read while no view shows them
     mutable bool m_targetsDirty = false;
     QString m_roomFilter;
     QString m_currentTab = QStringLiteral("rooms");

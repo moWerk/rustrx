@@ -63,6 +63,17 @@ Page {
     // (the font of a Label as the preview has it, family and all)
     Label { id: previewFont; visible: false; font.pixelSize: Theme.fontSizeSmall * Tunables.metaTextScale }
     FontMetrics { id: previewMetrics; font: previewFont.font }
+    // what the models render the names with, one size for every list: the
+    // emoji as high as RoomDelegate's name (its nameSize, through a Label's
+    // font as the name has it). Set here once instead of from every row.
+    Label { id: nameFont; visible: false; font.pixelSize: Theme.fontSizeMedium * Tunables.roomNameScale }
+    Binding {
+        target: rustrx.rooms
+        property: "nameEmojiSize"
+        value: Math.round(nameFont.font.pixelSize * Tunables.emojiScaleList)
+    }
+    // the delegates' preview lines (RoomDelegate's maximumLineCount)
+    readonly property int previewLineCount: Math.max(1, Math.min(Tunables.previewLinesMax, app.previewLines))
     // the key may hold a room id or a room name; names are looked up in the list
     Instantiator {
         id: debugRooms
@@ -622,6 +633,12 @@ Page {
                 model: isAll ? rustrx.all : isRooms ? rustrx.rooms : isFavs ? rustrx.favourites
                      : isSpaces ? rustrx.spaces : rustrx.people
                 currentIndex: -1
+                // the previews in more than one line keep their breaks
+                Binding {
+                    target: list.model
+                    property: "previewMultiLine"
+                    value: page.previewLineCount > 1
+                }
                 // the list is in front (its tab current, the page active):
                 // only then do its favourites' glow keep the breath running
                 readonly property bool glowShown: page.status === PageStatus.Active && tabItem.isCurrentItem

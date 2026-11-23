@@ -95,6 +95,18 @@ int role(const RoomModel &m, const char *name)
 
 } // namespace
 
+
+// RoomModel's warning when touched rows did not give the new order (it
+// then compares the whole list, which hides the mistake from the result)
+int g_orderWarnings = 0;
+QtMessageHandler g_previousHandler = nullptr;
+void countOrderWarnings(QtMsgType type, const QMessageLogContext &context, const QString &text)
+{
+    if (text.contains(QLatin1String("touched rows did not give the new order")))
+        ++g_orderWarnings;
+    g_previousHandler(type, context, text);
+}
+
 class TestRoomModel : public QObject
 {
     Q_OBJECT
@@ -227,6 +239,100 @@ private slots:
                 now = want;
             }
         }
+    }
+
+    // Touched rows only: each placed behind the row before it in the new
+    // list, the others never move; a touched row that stays is one move at
+    // most and tells only its changed roles; unwatched, the rows are taken
+    // the same way without a signal.
+    // Planted-bug: a touched row goes to its new index instead of behind its
+    // predecessor (a touched row still in front of it shifts it).
+    // Planted-bug: the new row is not taken when the row stays in place.
+    void touchedRowsRandom()
+    {
+        g_orderWarnings = 0;
+        g_previousHandler = qInstallMessageHandler(countOrderWarnings);
+        QRandomGenerator rng(1234);
+        for (int round = 0; round < 600; ++round) {
+            RoomModel watchedModel, quiet;
+            Mirror v(watchedModel);
+            QStringList now;
+            const int n = int(rng.bounded(25));
+            for (int i = 0; i < n; ++i)
+                now << QStringLiteral("r%1").arg(i);
+            QVariantList rows = rooms(now);
+            watchedModel.setRooms(rows);
+            quiet.setRooms(rows);
+            int next = n, rev = 0;
+            for (int step = 0; step < 6; ++step) {
+                // the untouched rows keep their order; the touched ones go,
+                // come, move anywhere or change in place
+                QStringList touched;
+                for (int k = int(rng.bounded(5)); k > 0 && !now.isEmpty(); --k) {
+                    const QString key = now.at(int(rng.bounded(now.size())));
+                    if (!touched.contains(key))
+                        touched << key;
+                }
+                QStringList want;
+                for (const QString &key : now)
+                    if (!touched.contains(key))
+                        want << key;
+                QStringList placed;
+                for (const QString &key : touched)
+                    if (rng.bounded(4) != 0)
+                        placed << key;
+                for (int k = int(rng.bounded(3)); k > 0; --k) {
+                    placed << QStringLiteral("r%1").arg(next++);
+                    touched << placed.last();
+                }
+                for (const QString &key : placed)
+                    want.insert(int(rng.bounded(want.size() + 1)), key);
+                QVariantList wantRows;
+                QVector<QString> keys;
+                RoomModel::Touched t;
+                for (const QString &key : want) {
+                    keys << key;
+                    const int was = now.indexOf(key);
+                    if (touched.contains(key)) {
+                        wantRows << room(key, { { "preview", QStringLiteral("p%1").arg(++rev) } });
+                    } else {
+                        wantRows << rows.at(was);
+                    }
+                }
+                for (const QString &key : touched) {
+                    const int at = want.indexOf(key);
+                    t.append(qMakePair(key, at >= 0 ? wantRows.at(at) : QVariant()));
+                }
+                v.reset();
+                watchedModel.setTouchedRows(keys, t);
+                quiet.setTouchedRows(keys, t);
+                QCOMPARE(keysOf(watchedModel), want);
+                QCOMPARE(keysOf(quiet), want);
+                QCOMPARE(v.keys, want);
+                QVERIFY(v.moves <= touched.size());
+                for (int i = 0; i < want.size(); ++i) {
+                    QCOMPARE(watchedModel.get(i), wantRows.at(i).toMap());
+                    QCOMPARE(quiet.get(i), wantRows.at(i).toMap());
+                }
+                // the fresh previews told, nothing else
+                for (const QVector<int> &r : v.changes)
+                    QVERIFY(r.contains(role(watchedModel, "preview")));
+                now = want;
+                rows = wantRows;
+            }
+        }
+        qInstallMessageHandler(g_previousHandler);
+        QCOMPARE(g_orderWarnings, 0);
+        // one room up: one move, its preview told
+        RoomModel m;
+        Mirror v(m);
+        m.setRooms(rooms({ "a", "b", "c", "d" }));
+        v.reset();
+        m.setTouchedRows({ "c", "a", "b", "d" }, { qMakePair(QStringLiteral("c"), QVariant(room("c", { { "preview", "new" } }))) });
+        QCOMPARE(v.moves, 1);
+        QCOMPARE(v.inserts + v.removes, 0);
+        QCOMPARE(v.changes.size(), 1);
+        QCOMPARE(v.keys, QStringList({ "c", "a", "b", "d" }));
     }
 
     // Planted-bug: latest_event_id loses its place among the silent keys

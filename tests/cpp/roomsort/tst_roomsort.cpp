@@ -31,6 +31,8 @@
 #include "RoomLists.h"
 #include "RoomModel.h"
 
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -145,6 +147,200 @@ quint32 next()
 }
 int below(int n) { return int(next() % quint32(n)); }
 
+
+// the room ids of a model in its order, and its rows
+QStringList modelIds(RoomModel *m)
+{
+    QStringList ids;
+    for (int i = 0; i < m->rowCount(); ++i)
+        ids << m->get(i).value("uid").toString() + m->get(i).value("room_id").toString();
+    return ids;
+}
+
+// what a view holds: the model's signals replayed on a list of keys
+struct Follower
+{
+    explicit Follower(RoomModel *model)
+        : m(model)
+    {
+        keys = modelIds(m);
+        QObject::connect(m, &QAbstractItemModel::rowsInserted, [this](const QModelIndex &, int first, int last) {
+            for (int i = first; i <= last; ++i)
+                keys.insert(i, m->get(i).value("uid").toString() + m->get(i).value("room_id").toString());
+        });
+        QObject::connect(m, &QAbstractItemModel::rowsRemoved, [this](const QModelIndex &, int first, int last) {
+            for (int i = last; i >= first; --i)
+                keys.removeAt(i);
+        });
+        QObject::connect(m, &QAbstractItemModel::rowsMoved,
+                         [this](const QModelIndex &, int first, int last, const QModelIndex &, int dest) {
+            const QStringList block = keys.mid(first, last - first + 1);
+            for (int i = 0; i < block.size(); ++i)
+                keys.removeAt(first);
+            const int to = dest > last ? dest - block.size() : dest;
+            for (int i = 0; i < block.size(); ++i)
+                keys.insert(to + i, block.at(i));
+        });
+    }
+    RoomModel *m;
+    QStringList keys;
+};
+
+// every signal a list sends the app, as text in the order sent
+struct Heard
+{
+    explicit Heard(RoomLists *l)
+    {
+        QObject::connect(l, &RoomLists::newMessages, [this](const QString &id, const QString &name, int n) {
+            lines << QStringLiteral("new %1 %2 %3").arg(id, name).arg(n);
+        });
+        QObject::connect(l, &RoomLists::roomRead, [this](const QString &id) { lines << "read " + id; });
+        QObject::connect(l, &RoomLists::invited, [this](const QString &id, const QString &name, const QString &inviter, bool direct, bool known) {
+            lines << QStringLiteral("invited %1 %2 %3 %4 %5").arg(id, name, inviter).arg(direct).arg(known);
+        });
+        QObject::connect(l, &RoomLists::inviteGone, [this](const QString &id) { lines << "gone " + id; });
+        QObject::connect(l, &RoomLists::unreadChanged, [this, l]() {
+            lines << QStringLiteral("unread %1 %2").arg(l->unreadTotal()).arg(l->unreadChats());
+        });
+    }
+    QStringList lines;
+};
+
+// a core's state: its rooms and the order it sends them in
+struct Core
+{
+    QVector<QVariantMap> rooms;
+    qint64 stream = 1, seq = 0, clock = 1000;
+    // a shuffled order now and then: the lists keep whatever order comes
+    bool shuffled = false;
+    QStringList order() const
+    {
+        QVector<int> idx(rooms.size());
+        for (int i = 0; i < idx.size(); ++i)
+            idx[i] = i;
+        if (!shuffled) {
+            std::stable_sort(idx.begin(), idx.end(), [this](int a, int b) {
+                const QVariantMap &x = rooms.at(a), &y = rooms.at(b);
+                const bool ix = x.value("state") == "invited", iy = y.value("state") == "invited";
+                if (ix != iy)
+                    return ix;
+                if (x.value("ts").toLongLong() != y.value("ts").toLongLong())
+                    return x.value("ts").toLongLong() > y.value("ts").toLongLong();
+                return x.value("room_id").toString() < y.value("room_id").toString();
+            });
+        } else {
+            for (int i = idx.size() - 1; i > 0; --i)
+                std::swap(idx[i], idx[below(i + 1)]);
+        }
+        QStringList ids;
+        for (int i : idx)
+            ids << rooms.at(i).value("room_id").toString();
+        return ids;
+    }
+    // the event: every row (full), or only the ones in `sent`; in the
+    // order given, else the core's
+    QVariantMap event(bool full, const QSet<QString> &sent, QStringList ord = QStringList())
+    {
+        if (ord.isEmpty())
+            ord = order();
+        QVariantMap items;
+        for (const QVariantMap &r : rooms) {
+            const QString id = r.value("room_id").toString();
+            if (full || sent.contains(id)) {
+                QVariantMap fresh = r;
+                fresh.detach();
+                items.insert(id, fresh);
+            }
+        }
+        QVariantList ids;
+        for (const QString &id : ord)
+            ids << id;
+        return { { "stream", stream }, { "seq", ++seq }, { "full", full }, { "order", ids }, { "items", items } };
+    }
+};
+
+QVariantMap randomRoom(const QString &id, qint64 ts)
+{
+    static const QStringList names = { "alpha", "Alpha", "beta", "Beta 2", "éclair", "Zeta", "😀 room", "", "delta", "Ölfeld" };
+    QVariantMap r { { "room_id", id }, { "name", names.at(below(names.size())) }, { "ts", ts },
+                    { "state", below(10) == 0 ? "invited" : "joined" }, { "is_fav", below(4) == 0 },
+                    { "is_low", below(6) == 0 }, { "is_dm", below(3) == 0 }, { "is_space", below(12) == 0 },
+                    { "muted", below(6) == 0 }, { "unread", below(3) ? 0 : below(5) },
+                    { "notifications", below(4) ? 0 : below(3) }, { "alias", "#" + id }, { "preview", "hi" },
+                    { "inviter", "@x:y" }, { "inviter_known", below(2) == 0 } };
+    return r;
+}
+
+// one change the core may send: a message, a read, a switch, a room
+// joined, left or invited
+void mutate(Core &core, QSet<QString> &sent, int &next)
+{
+    const int what = below(14);
+    if (what == 0 || core.rooms.isEmpty()) {
+        const QString id = QStringLiteral("!n%1").arg(next++);
+        core.rooms << randomRoom(id, core.clock += 7);
+        sent.insert(id);
+        return;
+    }
+    const int i = below(core.rooms.size());
+    QVariantMap &r = core.rooms[i];
+    const QString id = r.value("room_id").toString();
+    switch (what) {
+    case 1:
+        sent.remove(id);
+        core.rooms.removeAt(i);
+        return;
+    case 2: r["is_fav"] = !r.value("is_fav").toBool(); break;
+    case 3: r["is_low"] = !r.value("is_low").toBool(); break;
+    case 4: r["state"] = r.value("state") == "invited" ? "joined" : "invited"; break;
+    case 5: r["unread"] = 0; r["notifications"] = 0; break;
+    case 6: r["muted"] = !r.value("muted").toBool(); break;
+    case 7: r["name"] = QStringLiteral("name %1").arg(below(5)); break;
+    case 8: r["is_dm"] = !r.value("is_dm").toBool(); break;
+    case 9: r["is_space"] = !r.value("is_space").toBool(); break;
+    case 10: r["latest_event_id"] = QStringLiteral("$%1").arg(next++); break;
+    default:
+        // a new message: to the top, unread, maybe a notification
+        r["ts"] = core.clock += 7;
+        r["preview"] = QStringLiteral("message %1").arg(next++);
+        r["unread"] = r.value("unread").toInt() + 1;
+        if (below(2))
+            r["notifications"] = r.value("notifications").toInt() + 1;
+        break;
+    }
+    sent.insert(id);
+}
+
+// everything a list shows or tells, as text
+QStringList stateOf(RoomLists *l)
+{
+    QStringList out;
+    for (RoomModel *m : { l->rooms(), l->people(), l->favourites(), l->all(), l->spaces() }) {
+        QStringList rows;
+        for (int i = 0; i < m->rowCount(); ++i)
+            rows << QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(m->get(i))).toJson(QJsonDocument::Compact));
+        out << rows.join('\n');
+    }
+    out << QStringLiteral("unread %1 %2").arg(l->unreadTotal()).arg(l->unreadChats());
+    QStringList ids = l->roomsById().keys();
+    ids.sort();
+    for (const QString &id : ids)
+        out << id + QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(l->roomsById().value(id))).toJson(QJsonDocument::Compact));
+    out << l->firstUnread().value("room_id").toString();
+    return out;
+}
+}
+
+
+// RoomModel's warning when touched rows did not give the new order (it
+// then compares the whole list, which hides the mistake from the result)
+int g_orderWarnings = 0;
+QtMessageHandler g_previousHandler = nullptr;
+void countOrderWarnings(QtMsgType type, const QMessageLogContext &context, const QString &text)
+{
+    if (text.contains(QLatin1String("touched rows did not give the new order")))
+        ++g_orderWarnings;
+    g_previousHandler(type, context, text);
 }
 
 class TestRoomSort : public QObject
@@ -335,6 +531,140 @@ private slots:
             }
         }
         qInfo("%s: %d lists, %d sorts, all as before", qPrintable(locale), lists, sorts);
+    }
+
+    // A delta places only the rows that changed; the result has to be what
+    // sorting every tab again gives: two lists fed the same states, one by
+    // deltas, one by full events, compared after every step (every tab's
+    // rows in order, the unread totals, roomInfo, the first unread room, the
+    // share targets read lazily and followed, every signal in order, the
+    // invitations kept in the settings, and the views' copies made from the
+    // signals), with settings and the filter changed on the way, shuffled
+    // orders (the guard), many rows at once (the full sort) and the merged
+    // view of two accounts.
+    // Planted-bug: the insertion ignores the core's order on equal keys
+    // (r.pos < ... dropped from the binary search).
+    // Planted-bug: placeTouched skips the tabs a row left (old.tabs unread).
+    // Planted-bug: takeRows does not check that the untouched rows kept
+    // their order (inOrder always true).
+    void deltaAsFull()
+    {
+        g_orderWarnings = 0;
+        g_previousHandler = qInstallMessageHandler(countOrderWarnings);
+        static const char *orders[] = { "activity", "unread", "name" };
+        static const char *kinds[] = { "rooms", "people", "favs", "all", "spaces" };
+        g_state = 99u;
+        int steps = 0, deltas = 0;
+        for (int round = 0; round < 30; ++round) {
+            QTemporaryDir own;
+            QSettings settings(own.filePath("s.ini"), QSettings::IniFormat);
+            for (const char *kind : kinds) {
+                const QString k = QStringLiteral("tabs/") + QLatin1String(kind) + QLatin1Char('/');
+                settings.setValue(k + "sortOrder", QLatin1String(orders[below(3)]));
+                settings.setValue(k + "favsOnTop", below(2) == 0);
+                settings.setValue(k + "lowLast", below(3) != 0);
+                settings.setValue(k + "hideMuted", below(3) == 0);
+            }
+            // two accounts, each as deltas (d) and as full events (f); the
+            // merged view of each pair
+            RoomLists d0(&settings, "d0/"), f0(&settings, "f0/"), d1(&settings, "d1/"), f1(&settings, "f1/");
+            RoomLists dm(&settings, "dm/"), fm(&settings, "fm/");
+            dm.setDisplayOnly(true);
+            fm.setDisplayOnly(true);
+            RoomLists *pairs[][2] = { { &d0, &f0 }, { &d1, &f1 }, { &dm, &fm } };
+            // followed: every tab of the delta lists, d1's targets too
+            std::vector<std::unique_ptr<Follower>> followers;
+            for (RoomLists *l : { &d0, &d1, &dm, &f0 })
+                for (RoomModel *m : { l->rooms(), l->people(), l->favourites(), l->all(), l->spaces() })
+                    followers.emplace_back(new Follower(m));
+            followers.emplace_back(new Follower(d1.targets()));
+            Heard h0d(&d0), h0f(&f0), h1d(&d1), h1f(&f1);
+            Core c0, c1;
+            int next = 0;
+            for (int i = 0, n = below(40); i < n; ++i)
+                c0.rooms << randomRoom(QStringLiteral("!a%1").arg(i), c0.clock += 3);
+            for (int i = 0, n = below(10); i < n; ++i)
+                c1.rooms << randomRoom(QStringLiteral("!a%1").arg(i), c1.clock += 5);
+            RoomLists::MergeCache cache;
+            const auto merge = [&](bool full) {
+                QVector<QString> uids;
+                const QVariantList rows = RoomLists::mergeAccounts({ { 0, d0.lastRooms() }, { 1, d1.lastRooms() } }, &cache, &uids);
+                dm.setRooms(rows, uids, full);
+                fm.setRooms(RoomLists::mergeAccounts({ { 0, f0.lastRooms() }, { 1, f1.lastRooms() } }), true);
+            };
+            QCOMPARE(d0.applyRooms(c0.event(true, {})), RoomLists::RoomsApplied);
+            QCOMPARE(f0.applyRooms(c0.event(true, {})), RoomLists::RoomsApplied);
+            c0.seq = 1;
+            d1.applyRooms(c1.event(true, {}));
+            f1.applyRooms(c1.event(true, {}));
+            c1.seq = 1;
+            merge(true);
+            for (int step = 0; step < 50; ++step) {
+                ++steps;
+                const int what = below(40);
+                if (what == 0) {
+                    // a setting of one tab, then shown again
+                    const QString k = QStringLiteral("tabs/") + QLatin1String(kinds[below(5)]) + QLatin1Char('/');
+                    switch (below(4)) {
+                    case 0: settings.setValue(k + "sortOrder", QLatin1String(orders[below(3)])); break;
+                    case 1: settings.setValue(k + "favsOnTop", below(2) == 0); break;
+                    case 2: settings.setValue(k + "lowLast", below(2) == 0); break;
+                    default: settings.setValue(k + "hideMuted", below(2) == 0); break;
+                    }
+                    for (auto &p : pairs) {
+                        p[0]->reloadSettings();
+                        p[1]->reloadSettings();
+                    }
+                } else if (what == 1) {
+                    static const QStringList filters = { "", "a", "ph", "!a1", "zz" };
+                    const QString f = filters.at(below(filters.size()));
+                    for (auto &p : pairs) {
+                        p[0]->setRoomFilter(f);
+                        p[1]->setRoomFilter(f);
+                    }
+                } else {
+                    Core &core = below(4) ? c0 : c1;
+                    RoomLists &dl = &core == &c0 ? d0 : d1, &fl = &core == &c0 ? f0 : f1;
+                    QSet<QString> sent;
+                    const int changes = below(15) == 0 ? 20 + below(20) : 1 + below(3);
+                    for (int k = 0; k < changes; ++k)
+                        mutate(core, sent, next);
+                    core.shuffled = below(12) == 0;
+                    // a delta now and then a full one (a resync, the sweep)
+                    const bool full = below(20) == 0;
+                    const QStringList ord = core.order();
+                    QCOMPARE(dl.applyRooms(core.event(full, sent, ord)), RoomLists::RoomsApplied);
+                    deltas += dl.lastFull() ? 0 : 1;
+                    QCOMPARE(fl.applyRooms(core.event(true, {}, ord)), RoomLists::RoomsApplied);
+                    --core.seq;
+                    QCOMPARE(fl.lastFull(), true);
+                    merge(full);
+                    core.shuffled = false;
+                }
+                for (auto &p : pairs) {
+                    const QStringList a = stateOf(p[0]), b = stateOf(p[1]);
+                    if (a != b) {
+                        for (int i = 0; i < a.size() && i < b.size(); ++i)
+                            if (a.at(i) != b.at(i))
+                                qWarning("round %d step %d, part %d:\n delta: %s\n full:  %s", round, step, i,
+                                         qPrintable(a.at(i)), qPrintable(b.at(i)));
+                        QFAIL("a delta gave other lists than a full sort");
+                    }
+                }
+                QCOMPARE(h0d.lines, h0f.lines);
+                QCOMPARE(h1d.lines, h1f.lines);
+                QCOMPARE(settings.value("d0/invitesNotified").toStringList(), settings.value("f0/invitesNotified").toStringList());
+                for (const auto &f : followers)
+                    QCOMPARE(f->keys, modelIds(f->m));
+                QCOMPARE(modelIds(d1.targets()), modelIds(f1.targets()));
+                if (below(3) == 0)
+                    QCOMPARE(modelIds(d0.targets()), modelIds(f0.targets()));
+            }
+        }
+        qInstallMessageHandler(g_previousHandler);
+        QCOMPARE(g_orderWarnings, 0);
+        qInfo("%s: %d steps, %d of them placed by delta, all as a full sort", qPrintable(QLocale().name()), steps, deltas);
+        QVERIFY(deltas > steps / 3);
     }
 
     // The merged view: two accounts' rooms in one list, in the core's

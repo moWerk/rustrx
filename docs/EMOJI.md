@@ -109,8 +109,8 @@ Gaps:
   `GET /rooms/{id}/state` (AsteroidOS: 2053 events, about 0.9 MB, 0.4 to
   8.4 s). An enabled pack is one event, asked by its state key.
 - So the answers are kept, in memory and in the account's SDK store
-  (custom values `rustrx.packs.v1.room:<room id>` and
-  `rustrx.packs.v1.global`: encrypted with the store, gone with it at
+  (custom values `rustrx.packs.v1.room:<room id>`,
+  `rustrx.packs.v1.global` and `rustrx.packs.v1.missing`: encrypted with the store, gone with it at
   logout, per account), read lazily per room. A room's kept packs are
   shown at once; older than 24 hours they are asked again behind that,
   and a changed answer goes out as a new `image_packs`. An enabled pack
@@ -122,7 +122,12 @@ Gaps:
   with the store writes under one lock). The own pack and the enabled
   list come from the account data in the store; what the server
   answered for them when the store had none is kept for the login only
-  and dropped when the sync brings that type. An enabled pack the server
+  and dropped when the sync brings that type; its "none" (the usual
+  answer, a 404) is kept in the store too (`rustrx.packs.v1.missing`,
+  24 hours like the packs), so a restart asks nothing, and is dropped
+  when the sync brings that type or "Add to my emoji" writes the own
+  pack. The store's account data is read first, so a kept "none" never
+  hides one the sync brought. An enabled pack the server
   does not have (404, or 403) is kept as gone like any answer. A pack
   changed in a room whose timeline this phone did not see (a gap after
   long offline, a room left and joined again) shows within 24 hours.

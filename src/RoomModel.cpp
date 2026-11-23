@@ -17,6 +17,7 @@
 #include "RoomModel.h"
 #include "Twemoji.h"
 
+#include <QMetaMethod>
 #include <QSet>
 #include <algorithm>
 
@@ -105,13 +106,26 @@ QVariantMap RoomModel::get(int row) const
 
 bool RoomModel::watched() const
 {
-    // QObject::receivers counts QML's handlers and bindings as well
-    return receivers(SIGNAL(dataChanged(QModelIndex,QModelIndex,QVector<int>))) > 0
-            || receivers(SIGNAL(rowsInserted(QModelIndex,int,int))) > 0
-            || receivers(SIGNAL(rowsRemoved(QModelIndex,int,int))) > 0
-            || receivers(SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int))) > 0
-            || receivers(SIGNAL(modelReset())) > 0
-            || receivers(SIGNAL(countChanged())) > 0;
+    // QObject::receivers counts QML's handlers and bindings as well, but
+    // looks each signal up by its name: isSignalConnected first, a quick
+    // no for the lists nothing follows (it can stay yes after a QML
+    // follower went, so a yes is asked again)
+    struct Followed {
+        QMetaMethod method;
+        const char *signal;
+    };
+    static const Followed followed[] = {
+        { QMetaMethod::fromSignal(&QAbstractItemModel::dataChanged), SIGNAL(dataChanged(QModelIndex,QModelIndex,QVector<int>)) },
+        { QMetaMethod::fromSignal(&QAbstractItemModel::rowsInserted), SIGNAL(rowsInserted(QModelIndex,int,int)) },
+        { QMetaMethod::fromSignal(&QAbstractItemModel::rowsRemoved), SIGNAL(rowsRemoved(QModelIndex,int,int)) },
+        { QMetaMethod::fromSignal(&QAbstractItemModel::rowsMoved), SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)) },
+        { QMetaMethod::fromSignal(&QAbstractItemModel::modelReset), SIGNAL(modelReset()) },
+        { QMetaMethod::fromSignal(&RoomModel::countChanged), SIGNAL(countChanged()) },
+    };
+    for (const Followed &f : followed)
+        if (isSignalConnected(f.method) && receivers(f.signal) > 0)
+            return true;
+    return false;
 }
 
 // the roles whose values differ between two versions of a room; *all when
@@ -322,22 +336,33 @@ void RoomModel::reorder(const QVariantList &rooms, const QVector<QString> &keys)
 // go in one step, and a room that moved is one move.
 void RoomModel::setRooms(const QVariantList &rooms)
 {
-    const int before = m_rooms.size();
     QVector<QString> keys;
     keys.reserve(rooms.size());
     for (const QVariant &v : rooms)
         keys.append(rowKey(v.toMap()));
+    setRows(rooms, keys);
+}
 
+bool RoomModel::takeUnwatched(const QVariantList &rooms, const QVector<QString> &keys)
+{
     // nothing follows the list: nothing to tell, the views that come ask
-    if (!watched()) {
-        m_rooms = rooms;
-        m_rowKeys = keys;
-        if (m_html.size() > 2 * rooms.size() + 16)
-            m_html.clear();
-        if (before != rooms.size())
-            emit countChanged();
+    if (watched())
+        return false;
+    const int before = m_rooms.size();
+    m_rooms = rooms;
+    m_rowKeys = keys;
+    if (m_html.size() > 2 * rooms.size() + 16)
+        m_html.clear();
+    if (before != rooms.size())
+        emit countChanged();
+    return true;
+}
+
+void RoomModel::setRows(const QVariantList &rooms, const QVector<QString> &keys)
+{
+    if (takeUnwatched(rooms, keys))
         return;
-    }
+    const int before = m_rooms.size();
 
     // the first fill in one step
     if (m_rooms.isEmpty()) {
@@ -374,10 +399,19 @@ void RoomModel::setRooms(const QVariantList &rooms)
     // same order now; take the fresh fields, and tell only about the rows
     // and roles that changed (every row on every update rebound every
     // delegate, and a range rebound the unchanged rows inside it)
+    QVector<int> rows;
+    for (int i = 0; i < rooms.size(); ++i)
+        if (!(m_rooms.at(i) == rooms.at(i)))
+            rows.append(i);
+    tellChanged(rooms, rows);
+    if (before != rooms.size())
+        emit countChanged();
+}
+
+void RoomModel::tellChanged(const QVariantList &rooms, const QVector<int> &rows)
+{
     QVector<QPair<int, QVector<int>>> changed;
-    for (int i = 0; i < rooms.size(); ++i) {
-        if (m_rooms.at(i) == rooms.at(i))
-            continue;
+    for (int i : rows) {
         bool all = false;
         const QVector<int> roles = changedRoles(m_rooms.at(i).toMap(), rooms.at(i).toMap(), &all);
         if (all || !roles.isEmpty())
@@ -386,6 +420,97 @@ void RoomModel::setRooms(const QVariantList &rooms)
     m_rooms = rooms;
     for (const auto &c : changed)
         emit dataChanged(index(c.first), index(c.first), c.second);
-    if (before != rooms.size())
+}
+
+// Each touched row in the order of the new list goes right behind the row
+// before it there (the rows before it are in place by then, the untouched
+// ones never move against each other): one move or insert per row that is
+// not there yet, the same steps setRows takes for a single row. The rows
+// are changed in place (a list shared with the caller would be copied).
+void RoomModel::setTouchedRows(const QVector<QString> &keys, const Touched &touched)
+{
+    const bool tell = watched();
+    const int before = m_rooms.size();
+    // where the touched rows are in the new list (few: a look each)
+    QVector<QPair<int, int>> places;
+    for (int t = 0; t < touched.size(); ++t) {
+        const QString &key = touched.at(t).first;
+        const int j = keys.indexOf(key);
+        if (j >= 0) {
+            places.append(qMakePair(j, t));
+            continue;
+        }
+        // gone from the list
+        const int i = m_rowKeys.indexOf(key);
+        if (i < 0)
+            continue;
+        if (tell)
+            beginRemoveRows(QModelIndex(), i, i);
+        m_html.remove(key);
+        m_rooms.removeAt(i);
+        m_rowKeys.remove(i);
+        if (tell)
+            endRemoveRows();
+    }
+    std::sort(places.begin(), places.end());
+    QVector<QPair<int, QVariant>> changed;
+    for (const auto &p : places) {
+        const int j = p.first;
+        const QString &key = keys.at(j);
+        const QVariant &row = touched.at(p.second).second;
+        const int dest = j == 0 ? 0 : m_rowKeys.indexOf(keys.at(j - 1)) + 1;
+        const int at = m_rowKeys.indexOf(key);
+        if (at < 0) {
+            if (tell)
+                beginInsertRows(QModelIndex(), dest, dest);
+            m_rooms.insert(dest, row);
+            m_rowKeys.insert(dest, key);
+            if (tell)
+                endInsertRows();
+            continue;
+        }
+        if (at != dest) {
+            if (tell)
+                beginMoveRows(QModelIndex(), at, at, QModelIndex(), dest);
+            const QVariant was = m_rooms.takeAt(at);
+            m_rowKeys.remove(at);
+            const int to = at < dest ? dest - 1 : dest;
+            m_rooms.insert(to, was);
+            m_rowKeys.insert(to, key);
+            if (tell)
+                endMoveRows();
+        }
+        changed.append(qMakePair(j, row));
+    }
+    if (m_rowKeys != keys) {
+        // not what the caller promised: the whole compare from here
+        qWarning("rooms: touched rows did not give the new order");
+        QHash<QString, QVariant> rows;
+        for (int i = 0; i < m_rowKeys.size(); ++i)
+            rows.insert(m_rowKeys.at(i), m_rooms.at(i));
+        for (const auto &t : touched)
+            rows.insert(t.first, t.second);
+        QVariantList all;
+        for (const QString &key : keys)
+            all.append(rows.value(key));
+        setRows(all, keys);
+        return;
+    }
+    // the fresh fields, and only the roles that changed told
+    for (const auto &c : changed) {
+        const QVariant was = m_rooms.at(c.first);
+        if (was == c.second)
+            continue;
+        m_rooms[c.first] = c.second;
+        if (!tell)
+            continue;
+        bool all = false;
+        const QVector<int> roles = changedRoles(was.toMap(), c.second.toMap(), &all);
+        if (all || !roles.isEmpty())
+            emit dataChanged(index(c.first), index(c.first), roles);
+    }
+    if (!tell && m_html.size() > 2 * m_rooms.size() + 16)
+        m_html.clear();
+    if (before != m_rooms.size())
         emit countChanged();
 }

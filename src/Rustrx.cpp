@@ -571,7 +571,7 @@ RoomLists *Rustrx::shownLists() const
     return m_mergedView ? m_merged : m_cur->lists;
 }
 
-void Rustrx::refreshMerged()
+void Rustrx::refreshMerged(bool full)
 {
     if (!m_mergedView)
         return;
@@ -579,7 +579,9 @@ void Rustrx::refreshMerged()
     for (const Account *a : m_accounts)
         if (a->loggedIn)
             all.append({ a->key, a->lastRooms });
-    m_merged->setRooms(RoomLists::mergeAccounts(all, &m_mergeCache));
+    QVector<QString> uids;
+    const QVariantList rows = RoomLists::mergeAccounts(all, &m_mergeCache, &uids);
+    m_merged->setRooms(rows, uids, full);
 }
 
 void Rustrx::setMergedView(bool on)
@@ -741,7 +743,7 @@ void Rustrx::eventCallback(void *ctx, const char *json)
     QElapsedTimer parse;
     if (perf)
         parse.start();
-    const QByteArray raw(json);
+    const QByteArray raw = QByteArray::fromRawData(json, int(qstrlen(json))); // valid until we return; fromJson copies
     const QJsonDocument doc = QJsonDocument::fromJson(raw);
     if (!doc.isObject())
         return;
@@ -1463,6 +1465,8 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
         if (shown)
             emit syncStateChanged();
     } else if (type == QLatin1String("rooms")) {
+        // the wait for the GUI thread, before this event's own work
+        const qint64 queuedMs = Perf::on() ? Perf::ms() - ev.value("perf_rx").toLongLong() : 0;
         QElapsedTimer apply;
         apply.start();
         // the order and the changed rooms; a gap or a room not known asks
@@ -1478,8 +1482,11 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
         // last event, which the merged view's cache and lists rely on
         a->lastRooms = a->lists->lastRooms();
         const qint64 listsUs = apply.nsecsElapsed() / 1000;
-        refreshMerged();
+        const qint64 signalsUs = a->lists->lastSignalsUs();
+        const bool listsFull = a->lists->lastFull();
+        refreshMerged(ev.value("full").toBool());
         const qint64 mergedUs = apply.nsecsElapsed() / 1000 - listsUs;
+        const bool mergedFull = m_mergedView && m_merged->lastFull();
         refreshAllTargets();
         if (Perf::on()) {
             // bytes: the event as sent (the order and the changed rows)
@@ -1488,10 +1495,12 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
                     << " sent=" << ev.value("items").toMap().size() << " full=" << ev.value("full").toBool()
                     << " bytes=" << ev.value("perf_bytes").toInt()
                     << " parse_us=" << ev.value("perf_parse_us").toLongLong()
-                    << " queued_ms=" << Perf::ms() - ev.value("perf_rx").toLongLong()
+                    << " queued_ms=" << queuedMs
                     << " lists_us=" << listsUs << " merged_us=" << mergedUs
                     << " targets_us=" << apply.nsecsElapsed() / 1000 - listsUs - mergedUs
-                    << " merged_view=" << (m_mergedView ? 1 : 0);
+                    << " merged_view=" << (m_mergedView ? 1 : 0)
+                    << " signals_us=" << signalsUs << " lists_sorted=" << (listsFull ? 1 : 0)
+                    << " merged_sorted=" << (mergedFull ? 1 : 0);
         }
         if (first && shown) {
             Perf::mark("rooms_applied", -1, QStringLiteral("rooms=%1").arg(a->lastRooms.size()));
@@ -1579,7 +1588,12 @@ Account *Rustrx::startAccount(int key, const QString &dir)
     connect(lists, &RoomLists::unreadChanged, this, [this, a]() {
         if (a == m_cur)
             emit unreadChanged();
-        emit accountsChanged();
+        // accounts() shows the chats only: a new message in a room already
+        // unread changes nothing there (every binding on it ran again)
+        if (a->lists->unreadChats() != a->unreadChats) {
+            a->unreadChats = a->lists->unreadChats();
+            emit accountsChanged();
+        }
     });
     connect(lists, &RoomLists::knockRequestsChanged, this, [this, a]() {
         if (a == m_cur)

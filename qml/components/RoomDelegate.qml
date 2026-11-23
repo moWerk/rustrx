@@ -467,20 +467,6 @@ ListItem {
         }
     }
 
-    // what the models render the name with (one size for every list), from
-    // the label's own size, and the preview's lines (one line: the breaks
-    // become spaces)
-    Binding {
-        target: item.ListView.view ? item.ListView.view.model : null
-        property: "nameEmojiSize"
-        value: Math.round(nameLabel.font.pixelSize * Tunables.emojiScaleList)
-    }
-    Binding {
-        target: item.ListView.view ? item.ListView.view.model : null
-        property: "previewMultiLine"
-        value: preview.maximumLineCount > 1
-    }
-
     Component {
         id: contextMenu
         ContextMenu {

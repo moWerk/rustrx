@@ -62,12 +62,13 @@ impl StoreSecret {
     }
 }
 
-/// The SDK's low-memory settings: a connection pool of one per physical
-/// core (the default is four per core, per store, 32 on an 8-core phone)
-/// and 500 KB of page cache each (2 MB). Every opener of the store goes
-/// through here, so all of them open it the same way.
+/// The SDK's low-memory settings, 500 KB of page cache per connection, and
+/// STORE_POOL_SIZE connections per database (the low-memory default is one
+/// per physical core, per database: 32 on an 8-core phone if all opened).
+/// Every opener of the store goes through here, so all of them open it
+/// the same way.
 fn store_config(dir: &std::path::Path, secret: Option<&StoreSecret>) -> matrix_sdk::SqliteStoreConfig {
-    let config = matrix_sdk::SqliteStoreConfig::with_low_memory_config(dir);
+    let config = matrix_sdk::SqliteStoreConfig::with_low_memory_config(dir).pool_max_size(STORE_POOL_SIZE);
     match secret {
         Some(StoreSecret::Key(bytes)) => {
             config.high_entropy_passphrase(Some(bytes), matrix_sdk_sqlite::Base64Variant::Unpadded)
@@ -1189,6 +1190,15 @@ impl Core {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every opener of the store gets STORE_POOL_SIZE connections per
+    /// database (one writer, two readers), not one per core.
+    /// Planted-bug: drop `.pool_max_size(STORE_POOL_SIZE)`.
+    #[test]
+    fn the_store_pool_is_small() {
+        let config = format!("{:?}", store_config(std::path::Path::new("/nowhere"), None));
+        assert!(config.contains(&format!("max_size: {STORE_POOL_SIZE},")), "{config}");
+    }
 
     // Planted-bug: todevice_check_needed ignores the marker (always true),
     // or todevice_check_rearm removes nothing.

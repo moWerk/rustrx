@@ -109,6 +109,15 @@ fn sync_rest(fails: u32) -> Duration {
     SYNC_REST_FIRST.saturating_mul(1 << doublings).min(SYNC_REST_MAX)
 }
 
+/// The sync state differs from the one sent last (which it becomes).
+fn sync_state_changed(sent: &mut Option<(&'static str, Option<String>)>, name: &'static str, message: &Option<String>) -> bool {
+    if sent.as_ref().is_some_and(|(n, m)| *n == name && m == message) {
+        return false;
+    }
+    *sent = Some((name, message.clone()));
+    true
+}
+
 impl Core {
     pub(crate) async fn start_sync(&'static self, client: Client) -> Result<()> {
         let generation = self.generation().await;
@@ -163,6 +172,7 @@ impl Core {
                 // up; from the third the service rests, longer each time.
                 let mut running_since: Option<std::time::Instant> = None;
                 let mut quick_fails = 0u32;
+                let mut sent = None;
                 loop {
                     let state = match current.take() {
                         Some(s) => s,
@@ -178,8 +188,12 @@ impl Core {
                         SyncState::Error(e) => ("error", Some(e.to_string())),
                         _ => ("offline", None),
                     };
-                    tracing::info!(state = name, message, "sync service");
-                    self.emit(json!({"ev": "sync_state", "state": name, "message": message}));
+                    // the first value and the stream's first item are mostly
+                    // the same state: sent (and logged) once
+                    if sync_state_changed(&mut sent, name, &message) {
+                        tracing::info!(state = name, message, "sync service");
+                        self.emit(json!({"ev": "sync_state", "state": name, "message": message}));
+                    }
                     // the server is reachable again: rooms whose queue a
                     // network error switched off send what waits
                     if matches!(state, SyncState::Running) {
@@ -615,6 +629,21 @@ impl Core {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The same state twice in a row is sent once; a change, a new error
+    /// text and a state coming back are sent again.
+    /// Planted-bug: compare only the name (a second, different error is
+    /// not shown).
+    #[test]
+    fn a_repeated_sync_state_is_sent_once() {
+        let mut sent = None;
+        assert!(sync_state_changed(&mut sent, "running", &None));
+        assert!(!sync_state_changed(&mut sent, "running", &None));
+        assert!(sync_state_changed(&mut sent, "error", &Some("a".into())));
+        assert!(sync_state_changed(&mut sent, "error", &Some("b".into())));
+        assert!(!sync_state_changed(&mut sent, "error", &Some("b".into())));
+        assert!(sync_state_changed(&mut sent, "running", &None));
+    }
 
     fn id(s: &str) -> OwnedRoomId {
         OwnedRoomId::try_from(s).unwrap()
