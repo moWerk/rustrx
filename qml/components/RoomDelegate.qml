@@ -216,6 +216,24 @@ ListItem {
         Item {
             // set by the mention Loader (its parent); the unread one has none
             readonly property bool mention: parent && parent.mention === true
+
+            // ---- the bubbles' layout, all in one place (the author nudges these) ----
+            // the unread pill: how far it reaches out of the picture's top right
+            readonly property real unreadOutRight: Theme.paddingSmall / 2
+            readonly property real unreadOutTop: Theme.paddingSmall / 2
+            // the mention "@": how far it reaches out of the picture's top left
+            readonly property real mentionOutLeft: Theme.paddingSmall / 2
+            readonly property real mentionOutTop: Theme.paddingSmall / 2
+            // both bubbles' height (the "@" is a circle of it)
+            readonly property real bubbleSize: Theme.iconSizeSmall
+            // the text inside: size, and nudges right (x) and down (y)
+            readonly property real unreadFontSize: Math.round(Theme.fontSizeExtraSmall * Tunables.badgeTextScale)
+            readonly property real unreadTextX: 0
+            readonly property real unreadTextY: 1 - Math.round(unreadFontSize * 0.04)
+            readonly property real mentionFontSize: unreadFontSize
+            readonly property real mentionTextX: 0
+            readonly property real mentionTextY: unreadTextY
+            // --------------------------------------------------------------------------
             // the badge's shadow, offset a little further than the digits' shadow,
             // soft at its edge: three pills, each a little larger, stacked to
             // about 42 % black in the middle (no blur in plain Qt Quick 2.6)
@@ -232,14 +250,11 @@ ListItem {
                 }
             }
 
-            // unread badge, top right of the picture; the mention's bottom right
+            // unread badge, top right of the picture; the mention's top left
             Rectangle {
                 id: badge
-                anchors {
-                    right: parent.right
-                    rightMargin: -Theme.paddingSmall / 2
-                }
-                y: mention ? parent.height - height + Theme.paddingSmall / 2 : -Theme.paddingSmall / 2
+                x: mention ? -mentionOutLeft : parent.width - width + unreadOutRight
+                y: mention ? -mentionOutTop : -unreadOutTop
                 // one digit: a circle; every further digit adds one digit's width to
                 // the straight middle only, so the ends stay half circles and the
                 // pill grows to the left (it is anchored at the right). The digit
@@ -255,7 +270,7 @@ ListItem {
                     text: "0"
                 }
                 // the circle keeps this size; the digits grew into its padding
-                height: Theme.iconSizeSmall
+                height: bubbleSize
                 radius: height / 2
                 // a shade (10 %) darker than the ambience's highlight colours, so the
                 // white digits stand out; a mention gets the brighter one
@@ -278,11 +293,12 @@ ListItem {
                     // them low in Sail Sans. Source Sans 3 sits higher, and the
                     // shadow below the digits adds visual weight: 1 px down
                     // centres digits and shadow together (the author's eye)
-                    anchors.verticalCenterOffset: 1 - Math.round(font.pixelSize * 0.04)
+                    anchors.horizontalCenterOffset: mention ? mentionTextX : unreadTextX
+                    anchors.verticalCenterOffset: mention ? mentionTextY : unreadTextY
                     text: mention ? "@" : model.notifications > 0 ? model.notifications : model.unread
                     // a tenth smaller than the size the pill is measured for: more
                     // room around the digits inside it
-                    font.pixelSize: Math.round(Theme.fontSizeExtraSmall * Tunables.badgeTextScale)
+                    font.pixelSize: mention ? mentionFontSize : unreadFontSize
                     // the file is the Semibold cut: asking for bold on top of it
                     // would make Qt embolden it again
                     font.family: app.semiboldFontFamily
