@@ -464,7 +464,9 @@ impl Core {
 
     /// Caches the avatars that are missing or changed (the picture's mxc
     /// address is kept beside it, "<room>.url"), once per picture, for the
-    /// rooms it is asked about (None: every room), a few downloads at once.
+    /// rooms it is asked about (None: every room), a few downloads at once;
+    /// and the picture of each group's latest sender, one file per mxc
+    /// (sender_avatar_file) for every room it is the latest sender's in.
     /// Sends back each room whose picture arrived (its row needs it).
     async fn avatars_task(
         &'static self,
@@ -474,8 +476,8 @@ impl Core {
     ) {
         let avatar_dir = self.data_dir.join(AVATAR_DIR);
         let own = client.user_id().map(ToOwned::to_owned);
-        // room and picture pairs tried once ("!room|mxc://..."); a new
-        // picture of the room is tried again
+        // room and picture pairs tried once ("!room|mxc://..."), a sender's
+        // picture once ("sender|mxc://..."); a new picture is tried again
         let mut tried: HashSet<String> = HashSet::new();
         while let Some(first) = rx.recv().await {
             // what was asked meanwhile in one go: every room if one asked for all
@@ -483,10 +485,25 @@ impl Core {
             while let Ok(more) = rx.try_recv() {
                 only = join_asks(only, more);
             }
-            let mut wanted = Vec::new();
+            // (rooms whose row waits for it, picture, file, marker)
+            let mut wanted: Vec<(Vec<OwnedRoomId>, OwnedMxcUri, PathBuf, Option<PathBuf>)> = Vec::new();
+            // a sender's picture: its place in wanted, by mxc
+            let mut senders: HashMap<OwnedMxcUri, usize> = HashMap::new();
             for room in client.rooms() {
                 if only.as_ref().is_some_and(|o| !o.contains(room.room_id())) {
                     continue;
+                }
+                if room.state() == RoomState::Joined {
+                    let is_dm = room.is_direct().await.unwrap_or(false);
+                    if let (_, _, Some(url)) = crate::serialize::preview(&room, is_dm).await {
+                        let file = crate::serialize::sender_avatar_file(&avatar_dir, url.as_str());
+                        if let Some(&at) = senders.get(&url) {
+                            wanted[at].0.push(room.room_id().to_owned());
+                        } else if !file.exists() && tried.insert(format!("sender|{url}")) {
+                            senders.insert(url.clone(), wanted.len());
+                            wanted.push((vec![room.room_id().to_owned()], url, file, None));
+                        }
+                    }
                 }
                 // Rooms without a known picture are looked at again next time:
                 // a DM's peer may only become known after a later sync.
@@ -504,32 +521,37 @@ impl Core {
                 if !tried.insert(format!("{}|{}", room.room_id(), url)) {
                     continue;
                 }
-                wanted.push((room.room_id().to_owned(), url, file, marker));
+                wanted.push((vec![room.room_id().to_owned()], url, file, Some(marker)));
             }
             let client = &client;
             let mut downloads = futures_util::stream::iter(wanted)
-                .map(|(id, url, file, marker)| async move {
+                .map(|(ids, url, file, marker)| async move {
                     let request = MediaRequestParameters {
                         source: MediaSource::Plain(url.clone()),
                         format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(ROOM_AVATAR_PX.into(), ROOM_AVATAR_PX.into())),
                     };
                     match client.media().get_media_content(&request, true).await {
                         Ok(bytes) => {
-                            if tokio::fs::write(&file, &bytes).await.is_ok() {
-                                tokio::fs::write(&marker, url.as_str()).await.ok();
-                                return Some(id);
+                            // whole or not at all: a row made meanwhile names the file once it exists
+                            let part = file.with_extension("part");
+                            if tokio::fs::write(&part, &bytes).await.is_ok() && tokio::fs::rename(&part, &file).await.is_ok() {
+                                if let Some(marker) = marker {
+                                    tokio::fs::write(&marker, url.as_str()).await.ok();
+                                }
+                                return ids;
                             }
-                            None
+                            tokio::fs::remove_file(&part).await.ok();
+                            Vec::new()
                         }
                         Err(e) => {
-                            tracing::info!(room = %id, "avatar: {e}");
-                            None
+                            tracing::info!(room = %ids[0], "avatar: {e}");
+                            Vec::new()
                         }
                     }
                 })
                 .buffer_unordered(AVATAR_FETCHES_AT_ONCE);
             while let Some(done) = downloads.next().await {
-                if let Some(id) = done {
+                for id in done {
                     arrived.send(id).ok();
                 }
             }

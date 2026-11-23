@@ -9,7 +9,7 @@ use matrix_sdk::notification_settings::{NotificationSettings, RoomNotificationMo
 use matrix_sdk::ruma::events::receipt::ReceiptThread;
 use matrix_sdk::ruma::events::room::message::{MessageFormat, MessageType};
 use matrix_sdk::ruma::events::{AnyMessageLikeEventContent, AnySyncTimelineEvent, StateEventType};
-use matrix_sdk::ruma::{OwnedUserId, UserId};
+use matrix_sdk::ruma::{OwnedMxcUri, OwnedUserId, UserId};
 use matrix_sdk::{Room, RoomState};
 use matrix_sdk_ui::timeline::{
     EventSendState, MembershipChange, TimelineEventShieldState, MsgLikeKind, Profile, TimelineDetails, TimelineItem,
@@ -59,6 +59,14 @@ pub(crate) fn avatar_file(dir: &std::path::Path, room: &Room) -> std::path::Path
     dir.join(format!("{safe}.img"))
 }
 
+/// File name of a message sender's cached picture, by its mxc address (hex,
+/// so two addresses never share a file; "sender-" keeps it apart from the
+/// rooms' and the own one). Shared by every room that sender wrote in last.
+pub(crate) fn sender_avatar_file(dir: &std::path::Path, mxc: &str) -> std::path::PathBuf {
+    let hex: String = mxc.bytes().map(|b| format!("{b:02x}")).collect();
+    dir.join(format!("sender-{hex}.img"))
+}
+
 /// The id of the room's latest remote event, for a read receipt on a room
 /// without an open timeline.
 pub(crate) fn latest_event_id(room: &Room) -> Option<matrix_sdk::ruma::OwnedEventId> {
@@ -68,17 +76,18 @@ pub(crate) fn latest_event_id(room: &Room) -> Option<matrix_sdk::ruma::OwnedEven
     }
 }
 
-/// One line for the room list: what the last message was, and who sent it
-/// in a group (`None` sender for direct chats and own messages say "You").
-async fn preview(room: &Room, is_dm: bool) -> (Option<String>, Option<String>) {
+/// One line for the room list: what the last message was, who sent it in
+/// a group (`None` sender for direct chats and own messages say "You"),
+/// and that sender's picture (its mxc address; none for one's own).
+pub(crate) async fn preview(room: &Room, is_dm: bool) -> (Option<String>, Option<String>, Option<OwnedMxcUri>) {
     let value = room.latest_event();
     let (text, sender) = match &value {
-        LatestEventValue::None => return (None, None),
+        LatestEventValue::None => return (None, None, None),
         LatestEventValue::RemoteInvite { .. } => (Some("Invitation".to_owned()), None),
         LatestEventValue::Remote(ev) => match ev.raw().deserialize() {
             // a membership change says whose: "Anna joined", no sender in front
             Ok(AnySyncTimelineEvent::State(matrix_sdk::ruma::events::AnySyncStateEvent::RoomMember(m))) => {
-                return (Some(membership_preview(room, &m).await), None);
+                return (Some(membership_preview(room, &m).await), None, None);
             }
             Ok(event) => (event_preview(&event), ev.sender()),
             Err(_) => (None, None),
@@ -94,17 +103,20 @@ async fn preview(room: &Room, is_dm: bool) -> (Option<String>, Option<String>) {
             (text, Some(room.own_user_id().to_owned()))
         }
     };
-    let Some(text) = text else { return (None, None) };
+    let Some(text) = text else { return (None, None, None) };
     // the sender only matters in a group
     if is_dm {
-        return (Some(text), None);
+        return (Some(text), None, None);
     }
-    let who = match sender {
-        Some(user) if user == room.own_user_id() => Some("You".to_owned()),
-        Some(user) => Some(member_name(room, &user).await),
-        None => None,
+    let (who, picture) = match sender {
+        Some(user) if user == room.own_user_id() => (Some("You".to_owned()), None),
+        Some(user) => match room.get_member_no_sync(&user).await {
+            Ok(Some(m)) => (Some(m.name().to_owned()), m.avatar_url().map(ToOwned::to_owned)),
+            _ => (Some(user.localpart().to_owned()), None),
+        },
+        None => (None, None),
     };
-    (Some(text), who)
+    (Some(text), who, picture)
 }
 
 /// A membership event in the room list: who, and what happened to them.
@@ -188,7 +200,10 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path, setting
     let avatar = avatar_file(avatar_dir, room);
     let avatar_meta = std::fs::metadata(&avatar).ok();
     let is_dm = room.is_direct().await.unwrap_or(false);
-    let (preview, preview_sender) = preview(room, is_dm).await;
+    let (preview, preview_sender, sender_mxc) = preview(room, is_dm).await;
+    // the sender's picture once the avatars task has it (it marks the room
+    // changed then)
+    let sender_avatar = sender_mxc.map(|u| sender_avatar_file(avatar_dir, u.as_str())).filter(|f| f.exists());
     // muted: the room's notification mode, as Room::notification_mode has it
     // (only a joined room has one; the default mode is never Mute)
     let muted = room.state() == RoomState::Joined
@@ -281,6 +296,7 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path, setting
         "name": name,
         "preview": preview,
         "preview_sender": preview_sender,
+        "preview_sender_avatar": sender_avatar.map(|f| f.to_string_lossy().into_owned()),
         "topic": room.topic(),
         "alias": room.canonical_alias().map(|a| a.to_string()),
         "is_dm": is_dm,
@@ -848,6 +864,25 @@ mod tests {
 
     fn in_order(rooms: Vec<Value>) -> Value {
         Value::Array(sorted_rooms(&rooms).into_iter().cloned().collect())
+    }
+
+    /// A sender's picture has a file of its own per mxc: two addresses that
+    /// differ only in characters a filter would drop stay apart, and none
+    /// can name a room's file, the own one or a path outside the folder.
+    /// Planted-bug: keep only the alphanumeric characters of the mxc.
+    #[test]
+    fn sender_avatar_files_are_one_per_mxc() {
+        let dir = std::path::Path::new("/a/avatars");
+        let a = sender_avatar_file(dir, "mxc://example.org/ab-c");
+        let b = sender_avatar_file(dir, "mxc://example.org/abc");
+        assert_ne!(a, b);
+        assert_eq!(a, sender_avatar_file(dir, "mxc://example.org/ab-c"));
+        for f in [&a, &b, &sender_avatar_file(dir, "mxc://../../etc/x")] {
+            assert_eq!(f.parent(), Some(dir));
+            let name = f.file_name().unwrap().to_str().unwrap();
+            assert!(name.starts_with("sender-") && name.ends_with(".img"), "{name}");
+            assert!(name["sender-".len()..name.len() - 4].chars().all(|c| c.is_ascii_hexdigit()), "{name}");
+        }
     }
 
     /// Invitations first, then the latest activity; favourites are not

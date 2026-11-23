@@ -367,6 +367,9 @@ public:
     // a custom emoji's cached picture (file://), or "" while it is fetched
     // (emoteReady follows)
     Q_INVOKABLE QString emotePath(const QString &mxc);
+    // a notification's icon: the picture at path rounded with radius (a
+    // share of the side, 0 square) as a file of its own, or "" without one
+    Q_INVOKABLE QString notificationIcon(const QString &path, qreal radius) const;
     // emoji as Twemoji pictures: in HTML for a StyledText (height in px),
     // and one emoji's picture ("" when there is none)
     Q_INVOKABLE QString emojify(const QString &html, int height) const;

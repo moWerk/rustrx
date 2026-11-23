@@ -261,7 +261,10 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 `room_id`, `name`, `topic`, `alias`, `avatar_path` (a cached file), `avatar_v`, `has_avatar`,
 `state` (`joined`, `invited`), `is_dm`, `dm_user` (the person of a direct chat), `is_fav`, `is_low`, `encrypted`,
 `unread`, `joined_members`, `notifications`, `highlights`, `ts` (last activity, ms), `latest_event_id`,
-`preview`, `preview_sender`.
+`preview`, `preview_sender`, `preview_sender_avatar` (in a group, the cached picture of
+the latest message's sender, a file per picture shared by every room; null until the core has
+it, and the row comes again when it arrives; never for direct chats, invitations or one's own
+messages).
 
 ### Room list events
 `rooms` comes when a room of the list changed, came or went, and not

@@ -5,8 +5,12 @@
 // x + 0.5): edgeMatchesTheShader fails. Planted-bug: crop from the left:
 // cropsTheCentre fails. Planted-bug: drop the prepended slash in parse:
 // parsesTheId fails. Planted-bug: take coverSquare's offsets from the
-// unscaled picture: coverSquareCutsTheMiddle fails.
+// unscaled picture: coverSquareCutsTheMiddle fails. Planted-bug: leave the
+// radius out of cachedFile's name: cachedFileFollowsVersionAndRadius fails.
+// Planted-bug: render again when the file is there: cachedFileIsWrittenOnce
+// fails.
 #include <QTemporaryDir>
+#include <utime.h>
 #include <QtTest>
 #include "AvatarProvider.h"
 #include "RoundAvatar.h"
@@ -98,6 +102,68 @@ private slots:
     void missingFileIsNull()
     {
         QVERIFY(RoundAvatar::render(dir.filePath("none.png"), 50, 0.5).isNull());
+    }
+
+    void cachedFileIsWrittenOnce()
+    {
+        QImage grey(40, 40, QImage::Format_RGB32);
+        grey.fill(Qt::gray);
+        const QString src = save(grey, "once.png");
+        const QString icons = dir.filePath("icons1");
+        const QString first = RoundAvatar::cachedFile(src, 0.5, icons, 8);
+        QVERIFY(!first.isEmpty());
+        QCOMPARE(QFileInfo(first).path(), icons);
+        // a reuse leaves the file as it is
+        QFile f(first);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("kept");
+        f.close();
+        QCOMPARE(RoundAvatar::cachedFile(src, 0.5, icons, 8), first);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(f.readAll(), QByteArray("kept"));
+    }
+
+    void cachedFileFollowsVersionAndRadius()
+    {
+        QImage grey(40, 40, QImage::Format_RGB32);
+        grey.fill(Qt::gray);
+        const QString src = save(grey, "versions.png");
+        const QString icons = dir.filePath("icons2");
+        const QString round = RoundAvatar::cachedFile(src, 0.5, icons, 8);
+        const QString square = RoundAvatar::cachedFile(src, 0, icons, 8);
+        QVERIFY(!round.isEmpty() && !square.isEmpty() && round != square);
+        QCOMPARE(qAlpha(QImage(round).pixel(0, 0)), 0);
+        QCOMPARE(qAlpha(QImage(square).pixel(0, 0)), 255);
+        QCOMPARE(QImage(round).size(), QSize(40, 40));
+        // the picture changed: a new file
+        struct utimbuf later = { 1000000000, 1000000000 };
+        QCOMPARE(::utime(QFile::encodeName(src).constData(), &later), 0);
+        const QString changed = RoundAvatar::cachedFile(src, 0.5, icons, 8);
+        QVERIFY(!changed.isEmpty() && changed != round);
+    }
+
+    void cachedFileKeepsTheLastUsed()
+    {
+        const QString icons = dir.filePath("icons3");
+        for (int i = 0; i < 5; ++i) {
+            QImage img(20, 20, QImage::Format_RGB32);
+            img.fill(QColor(i * 40, 0, 0));
+            QVERIFY(!RoundAvatar::cachedFile(save(img, qPrintable(QString("k%1.png").arg(i))), 0.5, icons, 3).isEmpty());
+        }
+        QCOMPARE(QDir(icons).entryList(QDir::Files).size(), 3);
+    }
+
+    void cachedFileNothingWithoutSource()
+    {
+        const QString icons = dir.filePath("icons4");
+        QVERIFY(RoundAvatar::cachedFile(dir.filePath("none.png"), 0.5, icons, 8).isEmpty());
+        QVERIFY(RoundAvatar::cachedFile(QString(), 0.5, icons, 8).isEmpty());
+        QFile junk(dir.filePath("junk.img"));
+        QVERIFY(junk.open(QIODevice::WriteOnly));
+        junk.write("not a picture");
+        junk.close();
+        QVERIFY(RoundAvatar::cachedFile(junk.fileName(), 0.5, icons, 8).isEmpty());
+        QVERIFY(QDir(icons).entryList(QDir::Files).isEmpty());
     }
 
     void parsesTheId()

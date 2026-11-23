@@ -212,10 +212,9 @@ Item {
         return actions
     }
 
-    // With several accounts, which one a notification is for: its name, or
+    // With several accounts, which one a row or page is for: its name, or
     // its user id where another account has the same name; "" with one
-    // account. Text, so it also tells accounts apart with the colours off
-    // (0.8 audit: two accounts in one room gave twin banners).
+    // account. Text, so it also tells accounts apart with the colours off.
     function accountLabel(key) {
         var all = rustrx.accounts
         if (all.length < 2) return ""
@@ -226,10 +225,15 @@ Item {
         for (var j = 0; j < all.length; j++) if (all[j].key !== key && all[j].name === name) name = ""
         return name.length ? name : (mine.user_id || "")
     }
-    // a notification's title with its account after it
-    function withAccount(title, key) {
-        var label = accountLabel(key)
-        return label.length ? title + " · " + label : title
+    // a message notification's picture: its sender's (a direct chat's own
+    // picture, else the room row's latest sender), rounded as the room list
+    // has it; "" (the app's icon) without one, while chat details stay
+    // inside Rustrx, or when the row's latest event is not eventId (a push)
+    function senderIcon(info, eventId) {
+        var path = info.is_dm ? info.avatar_path : info.preview_sender_avatar
+        if (!chatDetails || !path) return ""
+        if (eventId && !info.is_dm && info.latest_event_id !== eventId) return ""
+        return rustrx.notificationIcon(path, cfg.roundAvatars ? cfg.avatarCorners / 100 : 0)
     }
 
     // one notification per room and account, updated in place: the events
@@ -260,7 +264,8 @@ Item {
         var pending = count
         roomPending[noteKey(account, roomId)] = pending
         n.remoteActions = roomActions(account, roomId, info.latest_event_id || "")
-        n.summary = withAccount(chatDetails ? roomName : "Rustrx", account)
+        n.icon = senderIcon(info, "")
+        n.summary = chatDetails ? roomName : "Rustrx"
         n.previewSummary = n.summary
         //: notification body, %n new messages
         //% "%n new messages"
@@ -278,7 +283,9 @@ Item {
         var who = inviter.length ? inviter : roomName
         //: notification title for an invitation
         //% "Invitation"
-        n.summary = withAccount(qsTrId("rustrx-no-invitation"), account)
+        n.summary = qsTrId("rustrx-no-invitation")
+        // no inviter's picture: the room's line may have shown a sender's
+        n.icon = ""
         n.previewSummary = n.summary
         n.body = !chatDetails
                 //% "Someone invites you to a chat"
@@ -324,7 +331,7 @@ Item {
         stopRinging(roomId)
         var n = ringComponent.createObject(service, { roomId: roomId, eventId: eventId, ring: ring, account: account })
         // who calls and from where stays inside Rustrx when chat names do (Privacy)
-        n.summary = withAccount(!chatDetails
+        n.summary = !chatDetails
                 //: notification title when chat names stay inside Rustrx
                 //% "Incoming call"
                 ? qsTrId("rustrx-no-call-anonymous")
@@ -334,7 +341,7 @@ Item {
                 ? qsTrId("rustrx-no-call-ring").arg(senderName)
                 //: notification title, %1 the room
                 //% "Call in %1"
-                : qsTrId("rustrx-no-call-group").arg(roomName), account)
+                : qsTrId("rustrx-no-call-group").arg(roomName)
         n.previewSummary = n.summary
         n.body = !chatDetails ? "Rustrx"
                 : ring ? roomName
@@ -409,7 +416,8 @@ Item {
         roomPending[noteKey(account, roomId)] = pending
         var who = senderName && !isDm && chatDetails ? senderName + ": " : ""
         n.remoteActions = roomActions(account, roomId, eventId)
-        n.summary = withAccount(chatDetails ? roomName : "Rustrx", account)
+        n.icon = senderIcon(rustrx.roomInfoIn(account, roomId), eventId)
+        n.summary = chatDetails ? roomName : "Rustrx"
         n.previewSummary = n.summary
         n.body = body && notifyText ? who + body : qsTrId("rustrx-no-new-messages", pending)
         n.previewBody = n.body
@@ -436,9 +444,9 @@ Item {
         n.count += 1
         //: notification title, %1 the room
         //% "New in %1"
-        n.summary = withAccount(chatDetails ? qsTrId("rustrx-no-join-title").arg(roomName)
-                                            //% "Someone joined a room you moderate"
-                                            : qsTrId("rustrx-no-join-hidden"), account)
+        n.summary = chatDetails ? qsTrId("rustrx-no-join-title").arg(roomName)
+                                //% "Someone joined a room you moderate"
+                                : qsTrId("rustrx-no-join-hidden")
         n.previewSummary = n.summary
         n.body = !chatDetails ? "Rustrx"
                 : n.count > 1
@@ -483,7 +491,7 @@ Item {
         }
         //: notification title for a request to join
         //% "Request to join"
-        n.summary = withAccount(qsTrId("rustrx-no-knock"), account)
+        n.summary = qsTrId("rustrx-no-knock")
         n.previewSummary = n.summary
         n.body = !chatDetails
                 //% "Someone asks to join"
@@ -526,12 +534,13 @@ Item {
         var n = roomNote(account, roomId)
         var name = chatDetails ? (rustrx.roomInfoIn(account, roomId).name || "") : ""
         n.remoteActions = [ action("default", "openAccountRoom", [ String(account), roomId ]) ]
-        n.summary = withAccount(name.length
+        n.icon = ""
+        n.summary = name.length
                 //: notification title, %1 the room
                 //% "Your reply to %1 was not sent"
                 ? qsTrId("rustrx-no-reply-failed").arg(name)
                 //% "Your reply was not sent"
-                : qsTrId("rustrx-no-reply-failed-hidden"), account)
+                : qsTrId("rustrx-no-reply-failed-hidden")
         n.previewSummary = n.summary
         n.body = kept
                 //% "Tap to open the chat, your text is waiting there."

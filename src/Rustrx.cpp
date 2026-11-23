@@ -29,6 +29,7 @@
 #include "CallState.h"
 #include "Keys.h"
 #include "Perf.h"
+#include "RoundAvatar.h"
 #include "Wipe.h"
 #include "rustrx_core.h"
 #include <sailfishapp.h>
@@ -1033,6 +1034,13 @@ QString Rustrx::emojiUrl(const QString &emoji) const
 QString Rustrx::emotePath(const QString &mxc)
 {
     return m_media->emotePath(mxc);
+}
+
+QString Rustrx::notificationIcon(const QString &path, qreal radius) const
+{
+    return RoundAvatar::cachedFile(path, radius,
+                                   QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QLatin1Char('/') + QLatin1String(Keys::kNotifyIconDir),
+                                   Keys::kNotifyIconKeep);
 }
 
 void Rustrx::setRoomAvatar(const QString &roomId, const QString &path)

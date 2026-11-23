@@ -142,6 +142,10 @@ static const char kOutgoingDir[] = "outgoing";
 // files of sends still waiting are kept however long they wait
 static const qint64 kOutgoingKeepMs = 60 * 60 * 1000;
 static const char kVoiceDir[] = "voice";
+// notifications' sender pictures, rounded (RoundAvatar::cachedFile): the
+// ones used last are kept, for lines still in the events view
+static const char kNotifyIconDir[] = "notification-icons";
+static const int kNotifyIconKeep = 32;
 static const char kSharedDir[] = "shared";
 // in Downloads: saved media
 static const char kDownloadDir[] = "Rustrx";

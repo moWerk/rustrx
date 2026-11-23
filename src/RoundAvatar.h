@@ -2,11 +2,19 @@
 #ifndef ROUNDAVATAR_H
 #define ROUNDAVATAR_H
 
+#include <QCryptographicHash>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QImage>
 #include <QImageReader>
+#include <QSaveFile>
 #include <QSize>
 #include <QString>
 #include <QtMath>
+
+#include <utime.h>
 
 // A room or account picture, rounded once on the CPU instead of through a
 // layer and RoundMask per row: scaled to cover a square of `size` and cut to
@@ -64,6 +72,36 @@ inline QImage render(const QString &path, int size, qreal radius)
         }
     }
     return img;
+}
+
+// The picture at `path` rounded at its own size, as a PNG in `dir` (a
+// notification's icon, which the home screen reads from there): named by
+// the source, its version (time and size) and the corner, so a changed
+// picture or setting makes a new file and an unchanged one is reused. The
+// folder keeps the `keep` used last. "" when the source cannot be read.
+inline QString cachedFile(const QString &path, qreal radius, const QString &dir, int keep)
+{
+    const QFileInfo source(path);
+    if (path.isEmpty() || !source.isFile()) return QString();
+    const int r = qRound(qBound<qreal>(0, radius, 0.5) * 1000);
+    const QByteArray id = QCryptographicHash::hash(source.absoluteFilePath().toUtf8(), QCryptographicHash::Sha1).toHex().left(16);
+    const QString file = dir + QLatin1Char('/') + QString::fromLatin1(id)
+                         + QLatin1Char('-') + QString::number(source.lastModified().toMSecsSinceEpoch())
+                         + QLatin1Char('-') + QString::number(source.size())
+                         + QLatin1String("-r") + QString::number(r) + QLatin1String(".png");
+    if (QFileInfo(file).isFile()) {
+        // used again: the newest for the sweep below
+        ::utime(QFile::encodeName(file).constData(), nullptr);
+        return file;
+    }
+    const QImage img = render(path, 0, r / 1000.0);
+    if (img.isNull()) return QString();
+    QDir().mkpath(dir);
+    QSaveFile out(file);
+    if (!out.open(QIODevice::WriteOnly) || !img.save(&out, "PNG") || !out.commit()) return QString();
+    const QFileInfoList all = QDir(dir).entryInfoList(QStringList() << QStringLiteral("*.png"), QDir::Files, QDir::Time);
+    for (int i = qMax(1, keep); i < all.size(); ++i) QFile::remove(all.at(i).absoluteFilePath());
+    return file;
 }
 
 }
