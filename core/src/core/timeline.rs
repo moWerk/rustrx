@@ -8,21 +8,24 @@ use matrix_sdk::send_queue::LocalEchoContent;
 use crate::serialize::{has_other_readers, item_json, thread_latest, Extras, TimelineDiff};
 
 impl Core {
-    /// A reaction the server refuses for good (sent twice, say) stays in its
-    /// room's send queue, and the SDK holds back everything sent to that room
-    /// after it, across restarts, to keep the order. Such reactions are
-    /// dropped: at the start and whenever a send is refused. A refused
-    /// message stays, shown as not sent, for the user to retry or delete.
+    /// A send the server refuses for good stays in its room's send queue, and
+    /// the SDK holds back everything sent to that room after it, across
+    /// restarts, to keep the order. Refused reactions (sent twice, say) and
+    /// sends refused as too large (413: they can never go; a refused video
+    /// held back every picture after it on the author's Prawn) are dropped,
+    /// at the start and whenever a send is refused; a dropped too-large send
+    /// is told to the UI once ("send_too_large"), as the author chose. Other
+    /// refused messages stay, shown as not sent, to retry or delete.
     ///
     /// Any send error also switches the room's queue off, and only
     /// set_enabled switches it on again: after a network error everything
     /// sent to that room stayed "sending" until a restart. Such rooms are
     /// switched on again after SEND_RETRY_DELAY, and all of them when the
     /// sync is running again (sync.rs).
-    pub(crate) async fn send_queue_watch(client: Client) {
+    pub(crate) async fn send_queue_watch(&'static self, client: Client) {
         use tokio::sync::broadcast::error::RecvError;
         let mut errors = client.send_queue().subscribe_errors();
-        Self::drop_refused_reactions(&client).await;
+        self.drop_refused(&client).await;
         let mut asleep: HashMap<OwnedRoomId, tokio::time::Instant> = HashMap::new();
         loop {
             let next = asleep.values().min().copied();
@@ -34,7 +37,7 @@ impl Core {
                     // once; it stayed off, and nothing after the refused
                     // video went out (the author's Prawn, tchncs.de)
                     Ok(e) if !e.is_recoverable => {
-                        Self::drop_refused_reactions(&client).await;
+                        self.drop_refused(&client).await;
                         tracing::info!(room_id = %e.room_id, "send queue: one message refused, the rest goes on");
                         if let Some(room) = client.get_room(&e.room_id) {
                             room.send_queue().set_enabled(true);
@@ -45,7 +48,7 @@ impl Core {
                         asleep.entry(e.room_id).or_insert_with(|| tokio::time::Instant::now() + SEND_RETRY_DELAY);
                     }
                     Err(RecvError::Lagged(_)) => {
-                        Self::drop_refused_reactions(&client).await;
+                        self.drop_refused(&client).await;
                         client.send_queue().set_enabled(true).await;
                     }
                     Err(RecvError::Closed) => break,
@@ -86,25 +89,40 @@ impl Core {
         Ok(())
     }
 
-    async fn drop_refused_reactions(client: &Client) {
+    async fn drop_refused(&self, client: &Client) {
+        if Self::drop_refused_sends(client).await > 0 {
+            self.emit(json!({"ev": "error", "cmd": "send_too_large", "message": "M_TOO_LARGE"}));
+        }
+    }
+
+    /// Drops the refused reactions and the sends refused as too large;
+    /// returns how many of the latter went.
+    async fn drop_refused_sends(client: &Client) -> usize {
         let echoes = match client.send_queue().local_echoes().await {
             Ok(echoes) => echoes,
             Err(e) => {
                 tracing::warn!("send queue: no local echoes: {e}");
-                return;
+                return 0;
             }
         };
+        let mut too_large = 0;
         let mut woken = std::collections::HashSet::new();
         for (room_id, list) in echoes {
             for echo in list {
                 let LocalEchoContent::Event { serialized_event, send_handle, send_error: Some(error) } = echo.content else {
                     continue;
                 };
-                if serialized_event.raw().1 != "m.reaction" {
+                let large = crate::serialize::send_error_too_large(&format!("{error:?} {error}"));
+                if serialized_event.raw().1 != "m.reaction" && !large {
                     continue;
                 }
                 let dropped = send_handle.abort().await;
-                tracing::warn!(%room_id, txn_id = %echo.transaction_id, ?error, ?dropped, "send queue: refused reaction dropped");
+                if large {
+                    too_large += 1;
+                    tracing::warn!(%room_id, txn_id = %echo.transaction_id, ?error, ?dropped, "send queue: refused as too large, dropped");
+                } else {
+                    tracing::warn!(%room_id, txn_id = %echo.transaction_id, ?error, ?dropped, "send queue: refused reaction dropped");
+                }
                 woken.insert(room_id.clone());
             }
         }
@@ -115,6 +133,7 @@ impl Core {
                 room.send_queue().set_enabled(true);
             }
         }
+        too_large
     }
 
     /// Display names for the people whose read receipts sit on these items;

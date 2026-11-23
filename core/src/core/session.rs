@@ -604,7 +604,7 @@ impl Core {
         let _ = client.event_cache().subscribe();
         // the cached room list first, before anything waits for the network
         let rooms = self.rt.spawn(self.rooms_task(client.clone()));
-        let sends = self.rt.spawn(Self::send_queue_watch(client.clone()));
+        let sends = self.rt.spawn(self.send_queue_watch(client.clone()));
         let rules = self.rt.spawn(self.account_notifications_task(client.clone()));
         {
             let mut st = self.state.lock().await;

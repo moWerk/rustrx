@@ -616,6 +616,9 @@ ApplicationWindow {
         //: lead-in of an error for an action without its own name
         //% "That did not work."
                                : qsTrId("rustrx-no-err-lead-any")
+        // a send the server refused as too large, dropped from the queue so
+        // nothing after it waits (the core's send_too_large)
+        if (cmd === "send_too_large") return qsTrId("rustrx-la-not-sent-too-large")
         // no failure of the send: the original goes instead (Media.cpp shrinkVideo)
         //% "The video could not be made smaller. It is sent as it is."
         if (/could not be made smaller/.test(m)) return qsTrId("rustrx-no-err-video-smaller")

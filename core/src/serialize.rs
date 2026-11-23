@@ -1067,7 +1067,7 @@ mod tests {
 }
 
 /// A server's (or its proxy's) "too large" for an upload or an event.
-fn send_error_too_large(error: &str) -> bool {
+pub(crate) fn send_error_too_large(error: &str) -> bool {
     error.contains("[413")
         || error.contains("M_TOO_LARGE")
         || error.contains("Request Entity Too Large")
