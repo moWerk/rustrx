@@ -214,14 +214,12 @@ ListItem {
     }
 
     // A double tap replies, without the long press (side swipes belong to
-    // the tabs and the room page). Where a single tap does something
-    // itself (a picture, video, file, sound or place opens, a failed
-    // message goes again) it acts at once and a double tap does not reply
-    // there: waiting the double-tap interval read as lag (0.8 audit,
-    // item 7). Elsewhere (a thread's reply in the room's flow) the single
-    // tap still waits, as Qt cannot know at the first release whether a
-    // second tap follows.
-    readonly property bool tapsAtOnce: failed || isMedia || isFile || msgType === "location"
+    // the tabs and the room page), on every message, pictures and files
+    // included: a single tap waits the double-tap interval before it opens
+    // anything, as Qt cannot know at the first release whether a second tap
+    // follows (the author: a double tap on a picture must reply). Only a
+    // failed message acts at once: a tap sends it again.
+    readonly property bool tapsAtOnce: failed
     onDoubleClicked: {
         singleTap.stop()
         if (tapsAtOnce || !canAct) return
