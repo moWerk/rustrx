@@ -16,6 +16,8 @@
  */
 #pragma once
 
+#include "AecFrames.h"
+
 #include <QByteArray>
 #include <QAtomicInt>
 #include <QMutex>
@@ -32,6 +34,7 @@ typedef struct _GstBus GstBus;
 typedef struct _GstMessage GstMessage;
 typedef struct SpeexEchoState_ SpeexEchoState;
 typedef struct SpeexPreprocessState_ SpeexPreprocessState;
+class CallKeepAlive;
 
 // One-to-one calls the classic Matrix way (m.call.invite, answer,
 // candidates, select_answer, hangup, reject; VoIP version 1), with
@@ -90,7 +93,11 @@ public:
     // only relay (TURN) candidates: the peer sees the server's address,
     // never this phone's; with no relay to be had the call ends
     void setRelayOnly(bool on) { m_relayOnly = on; }
+    // held from ringing or calling until the call ends (not owned)
+    void setKeepAlive(CallKeepAlive *k) { m_keepAlive = k; }
     QVariantMap status() const;
+    // tests: the running call's pipeline, or null
+    GstElement *pipeline() const { return m_pipe; }
 
     // a TURN uri with credentials as webrtcbin takes it, or "" for one it
     // cannot use; the a=mid of each m-line of an SDP (both for tests too)
@@ -164,6 +171,8 @@ private:
     static int onBusMessage(GstBus *bus, GstMessage *msg, void * self);
     static int onMicSample(GstElement *sink, void *self);
     static int onFarSample(GstElement *sink, void *self);
+    static void onUplinkOverrun(GstElement *queue, void *self);
+    static void onDownlinkOverrun(GstElement *queue, void *self);
 
     QString m_ownUserId;
     QString m_state = QStringLiteral("idle");
@@ -208,6 +217,7 @@ private:
     SpeexPreprocessState *m_denoise = nullptr;
     QMutex m_aecLock;
     QByteArray m_micIn, m_farIn;
+    AecFrames::Clock m_micClock;
 
     QTimer m_candidateTimer;   // batches candidates into one event
     QTimer m_inviteTimer;      // the invite's lifetime
@@ -218,4 +228,12 @@ private:
     int m_packetsIn = 0, m_packetsOut = 0;
     int m_candidatesAdded = 0;
     qint64 m_lastLevelLog = 0;
+    // sound the leaky queues dropped (before the encoder, before the
+    // player), counted on GStreamer's threads; warnings logged sparingly
+    QAtomicInt m_dropsUp, m_dropsDown;
+    QAtomicInt m_micGaps;   // captured sound missing (AecFrames::Clock)
+    qint64 m_lastWarnLog = 0;
+    int m_warnings = 0;
+    CallKeepAlive *m_keepAlive = nullptr;
+    bool m_cpuHeld = false;
 };

@@ -41,6 +41,42 @@ frame by frame with the far end's audio (a queue of at most 120 ms) in
 noise suppression and gain control stay off: they took the far end's
 voice down 15 dB and made it crackle.
 
+**Timestamps.** What comes back through the appsrc carries the time it
+was captured, counted on in samples from the first captured buffer
+(`AecFrames::Clock`), not the time it was pushed. Stamped at push time
+(`do-timestamp`, up to 0.8.2) every late run of the microphone's thread
+became wobble in the Opus and RTP timestamps, backwards steps included,
+which the far end's jitter buffer patches over: clicks. A captured buffer
+more than a frame later than the count is a real gap (the source dropped
+samples): the count starts again there and the buffer is marked
+DISCONT. `opusenc` keeps `perfect-timestamp` off: with input that is
+contiguous and marked DISCONT at every gap (ours, and the leaky queue's
+after it drops) both modes give the same stream, one frame per packet
+and a gap as long as what is missing, which the far end conceals; the
+perfect mode would only add an error path of its own (a DISCONT buffer
+earlier than what it still holds ends the pipeline).
+
+**Awake during a call.** MCE lets the phone suspend 60 s into an active
+call (it blocks late suspend only while ringing and right after a state
+change); what kept it up so far was PulseAudio's module-keepalive, which
+holds MCE's CPU keepalive while a stream runs, and which a port may not
+load. So the call holds MCE's CPU keepalive itself
+(`req_cpu_keepalive_start`, renewed every period MCE names, as
+nemo-keepalive does) from ringing or calling until it ends, in the app
+and in the stand-in (`CallState`, through `CallKeepAlive`); MCE drops it
+when the process goes. Log: `call: cpu keepalive on` / `off`, and a
+warning if MCE refuses.
+
+**The log.** Every 2 s while connected: `voip: packets in N out M
+dropped up U down D mic gaps G warnings W`. "out" rises by about 100
+per line (20 ms packets); U and D count the times the leaky queues were
+full and dropped (one or more buffers each) before the encoder and on
+the way to the player (some at the start,
+while the link comes up, are normal); G counts capture gaps; W counts
+GStreamer warnings, logged as `voip: warning from <element>: ...` at
+most one line per 2 s (pulsesrc's "Can't record audio fast enough" is
+one).
+
 **The earpiece.** Sailfish OS's audio policy (ohmd and pulseaudio's
 xpolicy) keeps an app's streams in the "othermedia" group on the
 loudspeaker and gives apps neither of its call classes: "ipcall" is
@@ -93,7 +129,10 @@ or Unmute.
 wire with real WebRTC, a different tone on each side and the far end's
 level measured, plus the ringing rules (direct chats, lifetime, busy,
 others in the room), a call that cannot be sent, TURN addresses and the
-relay-only filter.
+relay-only filter; and that the outgoing RTP timestamps step by exactly
+one 20 ms frame while the microphone's thread is held up now and then,
+the capture clock's counting and gaps, and the CPU keepalive held and
+let go around every kind of call end.
 
 # Element Call: plan and spike
 

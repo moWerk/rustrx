@@ -17,8 +17,11 @@
 #ifndef RUSTRX_CALLSTATE_H
 #define RUSTRX_CALLSTATE_H
 
+#include "CallKeepAlive.h"
+
 #include <QObject>
 #include <QString>
+#include <QTimer>
 
 // The call as MCE knows it, the way the phone app tells it: "active" turns
 // on MCE's in-call behaviour (the display kept on, the lock screen giving
@@ -31,15 +34,25 @@
 // Not with MCE's display off request: that is a screen off like the power
 // key's, the lock screen and the device lock follow (the author's test). A ringing call stays "none" (the ringtone needs it). MCE ties the state to this process's
 // bus connection and drops it when the process goes, a crash included.
-class CallState : public QObject
+//
+// And the call's CPU keepalive (MCE's req_cpu_keepalive_start, renewed
+// each period MCE names, as nemo-keepalive and PulseAudio's
+// module-keepalive do): MCE lets the phone suspend 60 s into an active
+// call, and only module-keepalive held it up during a call so far, which a
+// port's PulseAudio may not load. MCE also ends it when the process goes,
+// or 75 s after the last renewal.
+class CallState : public QObject, public CallKeepAlive
 {
     Q_OBJECT
 public:
-    explicit CallState(QObject *parent = nullptr) : QObject(parent) {}
+    explicit CallState(QObject *parent = nullptr);
     ~CallState() override;
 
     // tests: the screen is dark at the ear now
     bool blanked() const { return m_blanked; }
+    bool cpuHeld() const { return m_cpuHeld; }
+
+    void holdCpu(bool on) override;
 
 signals:
     void blankedChanged();
@@ -53,11 +66,14 @@ public slots:
 
 private:
     void request(const QString &state);
+    void keepAlive(const char *method);
     void rethinkBlank();
     QString m_sent = QStringLiteral("none");
     bool m_speaker = false;
     bool m_near = false;
     bool m_blanked = false;
+    bool m_cpuHeld = false;
+    QTimer m_renew;
 };
 
 #endif

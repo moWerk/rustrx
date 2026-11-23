@@ -13,8 +13,80 @@
 
 #include "Voip.h"
 #include "AecFrames.h"
+#include "CallKeepAlive.h"
 
 #include <QtTest>
+
+#include <gst/gst.h>
+
+// MCE's keepalive as the test sees it: each hold and release
+class Held : public CallKeepAlive
+{
+public:
+    QList<bool> calls;
+    bool on = false;
+    void holdCpu(bool hold) override
+    {
+        calls << hold;
+        on = hold;
+    }
+};
+
+// What the call sends, packet by packet: each RTP packet's timestamp
+// (bytes 4-7 of its header), from the payloader on; and the microphone
+// thread held up now and then, as a busy or sleepy phone does
+struct Uplink
+{
+    QMutex lock;
+    QList<quint32> rtp;
+    int stalls = 0;
+    int buffers = 0;
+
+    static GstPadProbeReturn onRtp(GstPad *, GstPadProbeInfo *info, gpointer self)
+    {
+        GstBuffer *buf = GST_PAD_PROBE_INFO_BUFFER(info);
+        guint8 head[8];
+        if (buf && gst_buffer_extract(buf, 0, head, 8) == 8) {
+            Uplink *u = static_cast<Uplink *>(self);
+            QMutexLocker l(&u->lock);
+            u->rtp << (quint32(head[4]) << 24 | quint32(head[5]) << 16 | quint32(head[6]) << 8 | quint32(head[7]));
+        }
+        return GST_PAD_PROBE_OK;
+    }
+    // every third captured buffer waits 15 to 75 ms before the echo
+    // canceller gets it (well under the 200 ms queue)
+    static GstPadProbeReturn onCapture(GstPad *, GstPadProbeInfo *, gpointer self)
+    {
+        Uplink *u = static_cast<Uplink *>(self);
+        if (++u->buffers % 3 == 0) {
+            g_usleep(gulong(15000 + (u->buffers * 7919) % 60000));
+            ++u->stalls;
+        }
+        return GST_PAD_PROBE_OK;
+    }
+    void attach(GstElement *pipe)
+    {
+        GstElement *capture = gst_bin_get_by_name(GST_BIN(pipe), "capture");
+        GstPad *in = gst_element_get_static_pad(capture, "sink");
+        gst_pad_add_probe(in, GST_PAD_PROBE_TYPE_BUFFER, &Uplink::onCapture, this, nullptr);
+        gst_object_unref(in);
+        gst_object_unref(capture);
+        GstIterator *it = gst_bin_iterate_recurse(GST_BIN(pipe));
+        GValue item = G_VALUE_INIT;
+        while (gst_iterator_next(it, &item) == GST_ITERATOR_OK) {
+            GstElement *e = GST_ELEMENT(g_value_get_object(&item));
+            GstElementFactory *f = gst_element_get_factory(e);
+            if (f && QByteArray(GST_OBJECT_NAME(f)) == "rtpopuspay") {
+                GstPad *out = gst_element_get_static_pad(e, "src");
+                gst_pad_add_probe(out, GST_PAD_PROBE_TYPE_BUFFER, &Uplink::onRtp, this, nullptr);
+                gst_object_unref(out);
+            }
+            g_value_reset(&item);
+        }
+        g_value_unset(&item);
+        gst_iterator_free(it);
+    }
+};
 
 class Wire : public QObject
 {
@@ -137,6 +209,99 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(w.b.status().value("remote_level_db").toDouble() > -40, 10000);
         w.a.hangup();
         QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("idle"), 3000);
+    }
+
+    // The microphone's frames keep their capture time through the echo
+    // canceller: with its thread held up now and then, every Opus packet
+    // still follows the one before by exactly 20 ms of RTP time (960 at
+    // 48 kHz). With the frames stamped when they were pushed, the bursts
+    // after each stall made the timestamps wobble: clicks at the far end.
+    // Planted-bug: the appsrc stamps at push time (do-timestamp=true,
+    // our timestamps dropped).
+    void outgoingTimestampsAdvanceOneFrameAtATime()
+    {
+        Uplink up;   // outlives the pipeline's probes
+        Wire w;
+        w.a.place(QStringLiteral("!dm:example.org"), QStringLiteral("@b:example.org"), QStringLiteral("B"));
+        QTRY_VERIFY_WITH_TIMEOUT(w.a.pipeline(), 5000);
+        up.attach(w.a.pipeline());
+        QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("incoming"), 5000);
+        w.b.answer();
+        QTRY_COMPARE_WITH_TIMEOUT(w.a.state(), QStringLiteral("connected"), 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(w.b.status().value("remote_level_db").toDouble() > -40, 10000);
+        QTest::qWait(3000);
+        w.a.hangup();
+        QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("idle"), 3000);
+        QMutexLocker l(&up.lock);
+        QVERIFY2(up.stalls > 20, qPrintable(QString::number(up.stalls)));
+        QVERIFY2(up.rtp.size() > 120, qPrintable(QString::number(up.rtp.size())));
+        // in the first second the queue before the encoder drops what
+        // comes while the link is set up: whole 10 ms frames missing,
+        // honestly shown (480); from then on not one
+        QStringList off;
+        for (int i = 1; i < up.rtp.size(); ++i) {
+            const quint32 step = up.rtp.at(i) - up.rtp.at(i - 1);
+            if (i < 50 ? step == 0 || step % 480 : step != 960)
+                off << QStringLiteral("%1:%2").arg(i).arg(qint32(step));
+        }
+        QVERIFY2(off.isEmpty(), qPrintable(QStringLiteral("%1 of %2 steps off: ").arg(off.size()).arg(up.rtp.size())
+                                           + QStringList(off.mid(0, 12)).join(QLatin1Char(' '))));
+    }
+
+    // The CPU is held from calling or ringing to the end, whichever way
+    // it ends, and let go once.
+    // Planted-bug: never let go. Planted-bug: held only while the call
+    // has audio (not while it rings).
+    void theCpuIsHeldForTheCall()
+    {
+        {
+            // calling, connected, hung up here; and ringing, hung up there
+            Held a, b;   // outlive the engines
+            Wire w;
+            w.a.setKeepAlive(&a);
+            w.b.setKeepAlive(&b);
+            w.a.place(QStringLiteral("!dm:example.org"), QStringLiteral("@b:example.org"), QStringLiteral("B"));
+            QCOMPARE(a.calls, QList<bool>{ true });
+            QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("incoming"), 5000);
+            QCOMPARE(b.calls, QList<bool>{ true });
+            w.b.answer();
+            QTRY_COMPARE_WITH_TIMEOUT(w.a.state(), QStringLiteral("connected"), 15000);
+            QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("connected"), 15000);
+            QCOMPARE(a.calls, QList<bool>{ true });
+            QCOMPARE(b.calls, QList<bool>{ true });
+            w.a.hangup();
+            QCOMPARE(a.calls, (QList<bool>{ true, false }));
+            QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("idle"), 3000);
+            QCOMPARE(b.calls, (QList<bool>{ true, false }));
+        }
+        {
+            // rejected while ringing; an answer that cannot be sent
+            Held k;
+            Voip b;
+            b.setKeepAlive(&k);
+            b.setOwnUserId(QStringLiteral("@b:example.org"));
+            b.handleEvent(invite("c1", 60000, true));
+            QVERIFY(k.on);
+            b.reject();
+            QCOMPARE(k.calls, (QList<bool>{ true, false }));
+            b.handleEvent(invite("c2", 60000, true));
+            b.answer();
+            b.sendFailed();
+            QCOMPARE(b.state(), QStringLiteral("idle"));
+            QCOMPARE(k.calls, (QList<bool>{ true, false, true, false }));
+        }
+        {
+            // gone mid-call (quitting while it rings never reaches idle)
+            Held k;
+            {
+                Voip b;
+                b.setKeepAlive(&k);
+                b.setOwnUserId(QStringLiteral("@b:example.org"));
+                b.handleEvent(invite("c1", 60000, true));
+                QVERIFY(k.on);
+            }
+            QCOMPARE(k.calls, (QList<bool>{ true, false }));
+        }
     }
 
     // Planted-bug: the caller ignores m.call.reject (it rings on).
@@ -412,6 +577,60 @@ private slots:
         QCOMPARE(out, QByteArray(n, 'c'));
         QVERIFY(mic.isEmpty());
         QCOMPARE(far, QByteArray(n, '3'));
+    }
+
+    // The canceller's output keeps the capture's time: counted on in
+    // samples whatever the thread's timing, a part frame carried over, and
+    // only a real gap (a frame or more missing) starts the count again.
+    // Planted-bug: the count follows every buffer's time (jitter goes
+    // through). Planted-bug: the part frame left out of the count (each
+    // frame 5 ms early). Planted-bug: a gap not marked.
+    void cleanFramesKeepTheCaptureTime()
+    {
+        const qint64 ms = 1000000;
+        const int n = AecFrames::frameBytes();   // 10 ms
+        const auto none = [](const char *mic, const char *, char *out) { memcpy(out, mic, size_t(AecFrames::frameBytes())); };
+        AecFrames::Clock c;
+        QByteArray mic, far;
+        // 15 ms at 1000 ms: one frame out, stamped 1000, 5 ms wait
+        QVERIFY(!c.captured(1000 * ms, n * 3 / 2, mic));
+        mic += QByteArray(n * 3 / 2, 'a');
+        QByteArray out = AecFrames::pair(mic, far, n, none);
+        QCOMPARE(out.size(), n);
+        QCOMPARE(c.ptsOf(out, mic), 1000 * ms);
+        QVERIFY(!c.discont);
+        // the next 15 ms, handed over 6 ms late (the thread): 1010, 1020
+        QVERIFY(!c.captured(1021 * ms, n * 3 / 2, mic));
+        mic += QByteArray(n * 3 / 2, 'b');
+        out = AecFrames::pair(mic, far, n, none);
+        QCOMPARE(out.size(), 2 * n);
+        QCOMPARE(c.ptsOf(out, mic), 1010 * ms);
+        QVERIFY(mic.isEmpty());
+        // and one stamped early by the same (never back in time)
+        QVERIFY(!c.captured(1025 * ms, n, mic));
+        mic += QByteArray(n, 'c');
+        out = AecFrames::pair(mic, far, n, none);
+        QCOMPARE(c.ptsOf(out, mic), 1030 * ms);
+        // 5 ms, then 30 ms missing: the part frame goes, the count starts
+        // at the new buffer, and it is marked
+        QVERIFY(!c.captured(1040 * ms, n / 2, mic));
+        mic += QByteArray(n / 2, 'd');
+        out = AecFrames::pair(mic, far, n, none);
+        QVERIFY(out.isEmpty());
+        QVERIFY(c.captured(1075 * ms, n, mic));
+        QVERIFY(mic.isEmpty());
+        mic += QByteArray(n, 'e');
+        out = AecFrames::pair(mic, far, n, none);
+        QCOMPARE(out, QByteArray(n, 'e'));
+        QCOMPARE(c.ptsOf(out, mic), 1075 * ms);
+        QVERIFY(c.discont);
+        // no time at all: counted on
+        c.discont = false;
+        QVERIFY(!c.captured(-1, n, mic));
+        mic += QByteArray(n, 'f');
+        out = AecFrames::pair(mic, far, n, none);
+        QCOMPARE(c.ptsOf(out, mic), 1085 * ms);
+        QVERIFY(!c.discont);
     }
 
     // Planted-bug: the credentials go in unescaped (an "@" in the password

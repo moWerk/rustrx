@@ -180,6 +180,8 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     // the screen goes dark at the ear, as in the phone app; the app's call
     // only (the stand-in rings through its notification)
     m_callState = new CallState(this);
+    // the CPU stays up from ringing or calling to the end, the stand-in's ring too
+    m_voip->setKeepAlive(m_callState);
     connect(m_voip, &Voip::changed, m_callState, [this]() {
         if (!m_handover.standIn())
             m_callState->follow(m_voip->state());

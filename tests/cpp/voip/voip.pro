@@ -6,4 +6,4 @@ CONFIG += link_pkgconfig
 !packagesExist(gstreamer-webrtc-1.0 gstreamer-app-1.0 speexdsp): error("tst_voip needs gstreamer-webrtc-1.0, gstreamer-app-1.0 and speexdsp development files")
 PKGCONFIG += gstreamer-1.0 gstreamer-sdp-1.0 gstreamer-webrtc-1.0 gstreamer-app-1.0 speexdsp
 SOURCES += tst_voip.cpp $$ROOT/src/Voip.cpp
-HEADERS += $$ROOT/src/Voip.h $$ROOT/src/AecFrames.h
+HEADERS += $$ROOT/src/Voip.h $$ROOT/src/AecFrames.h $$ROOT/src/CallKeepAlive.h

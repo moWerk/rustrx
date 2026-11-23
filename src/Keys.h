@@ -252,6 +252,8 @@ static const int kVoipAecFrameMs = 10;
 static const int kVoipAecTailMs = 300;
 // the far end's audio waits at most this long for the microphone's frames
 static const int kVoipAecQueueMs = 120;
+// a call's CPU keepalive is renewed this often until MCE names its period
+static const int kCallKeepAliveRenewMs = 60000;
 // calls only through the homeserver's relay (TURN): the peer never sees
 // this phone's addresses; off by default, as in Element
 static const char kVoipRelayOnly[] = "callsRelayOnly";

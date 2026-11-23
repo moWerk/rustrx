@@ -3,4 +3,4 @@ include(../common.pri)
 TARGET = tst_callstate
 QT += dbus
 SOURCES += tst_callstate.cpp $$ROOT/src/CallState.cpp
-HEADERS += $$ROOT/src/CallState.h
+HEADERS += $$ROOT/src/CallState.h $$ROOT/src/CallKeepAlive.h

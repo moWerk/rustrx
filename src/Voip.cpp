@@ -17,6 +17,7 @@
 #define GST_USE_UNSTABLE_API
 #include "Voip.h"
 #include "AecFrames.h"
+#include "CallKeepAlive.h"
 #include "Keys.h"
 #include "Perf.h"
 
@@ -139,6 +140,8 @@ Voip::Voip(QObject *parent) : QObject(parent)
 Voip::~Voip()
 {
     stopPipeline();
+    if (m_cpuHeld && m_keepAlive)
+        m_keepAlive->holdCpu(false);
 }
 
 QVariant Voip::version() const
@@ -153,6 +156,14 @@ void Voip::setState(const QString &state)
     qInfo().noquote() << "voip: state" << m_state << "->" << state;
     const bool needed = state == QLatin1String("outgoing") || state == QLatin1String("connecting") || state == QLatin1String("connected");
     m_state = state;
+    // a suspend mid-call stalls the microphone: not every port's
+    // PulseAudio keeps the CPU up while its streams run (module-keepalive)
+    const bool hold = state != QLatin1String("idle");
+    if (hold != m_cpuHeld) {
+        m_cpuHeld = hold;
+        if (m_keepAlive)
+            m_keepAlive->holdCpu(hold);
+    }
     emit audioNeeded(needed);
     emit changed();
 }
@@ -549,13 +560,13 @@ bool Voip::startPipeline()
     const QString aecCaps = QStringLiteral("audio/x-raw,format=S16LE,rate=%1,channels=1,layout=interleaved").arg(Keys::kVoipAecRate);
     const QString mic = m_aec
             ? QStringLiteral("%1 ! audioconvert ! audioresample ! %2 ! appsink name=capture emit-signals=true sync=false "
-                             "appsrc name=aec is-live=true format=time do-timestamp=true caps=%2 ! audioconvert ! audioresample")
+                             "appsrc name=aec is-live=true format=time caps=%2 ! audioconvert ! audioresample")
                   .arg(source, aecCaps)
             : source + QStringLiteral(" ! audioconvert ! audioresample");
     const QString desc = QStringLiteral(
             "webrtcbin name=w bundle-policy=max-bundle latency=%1 "
             "%2 ! volume name=mic ! "
-            "queue leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=%4 ! opusenc bitrate=%3 ! "
+            "queue name=upq leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=%4 ! opusenc bitrate=%3 ! "
             "rtpopuspay pt=111 ! application/x-rtp,media=audio,encoding-name=OPUS,payload=111,clock-rate=48000 ! w.")
             .arg(Keys::kVoipJitterMs).arg(mic).arg(Keys::kVoipOpusBitrate).arg(qint64(Keys::kVoipQueueMs) * 1000000);
     GError *err = nullptr;
@@ -573,6 +584,14 @@ bool Voip::startPipeline()
     m_webrtc = gst_bin_get_by_name(GST_BIN(m_pipe), "w");
     m_volume = gst_bin_get_by_name(GST_BIN(m_pipe), "mic");
     g_object_set(m_volume, "mute", m_muted ? TRUE : FALSE, nullptr);
+    m_dropsUp.store(0);
+    m_dropsDown.store(0);
+    m_micGaps.store(0);
+    m_warnings = 0;
+    m_lastWarnLog = 0;
+    GstElement *upq = gst_bin_get_by_name(GST_BIN(m_pipe), "upq");
+    g_signal_connect(upq, "overrun", G_CALLBACK(&Voip::onUplinkOverrun), this);
+    gst_object_unref(upq);
     if (m_aec) {
         const int frame = Keys::kVoipAecRate * Keys::kVoipAecFrameMs / 1000;
         m_echo = speex_echo_state_init(frame, Keys::kVoipAecRate * Keys::kVoipAecTailMs / 1000);
@@ -587,6 +606,7 @@ bool Voip::startPipeline()
         speex_preprocess_ctl(m_denoise, SPEEX_PREPROCESS_SET_AGC, &off);
         m_micIn.clear();
         m_farIn.clear();
+        m_micClock = AecFrames::Clock();
         m_aecSrc = gst_bin_get_by_name(GST_BIN(m_pipe), "aec");
         GstElement *capture = gst_bin_get_by_name(GST_BIN(m_pipe), "capture");
         g_signal_connect(capture, "new-sample", G_CALLBACK(&Voip::onMicSample), this);
@@ -804,12 +824,13 @@ void Voip::onPadAdded(GstElement *, GstPad *pad, void *self)
     // leaky: while the phone switches its audio to the call, the player
     // can stall for seconds; what arrives meanwhile is dropped instead of
     // played in order afterwards, seconds late (the author's first calls)
-    const QString leaky = QStringLiteral("queue leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=%1")
+    const QString leaky = QStringLiteral("queue name=%2 leaky=downstream max-size-buffers=0 max-size-bytes=0 max-size-time=%1")
             .arg(qint64(Keys::kVoipQueueMs) * 1000000);
     const QString desc = QStringLiteral(
             "%4 ! rtpopusdepay ! opusdec ! audioconvert ! audioresample ! "
-            "level interval=%1 post-messages=true ! tee name=far ! %4 ! %2%3")
-            .arg(qint64(Keys::kVoipLevelMs) * 1000000).arg(sink, ref, leaky);
+            "level interval=%1 post-messages=true ! tee name=far ! %5 ! %2%3")
+            .arg(qint64(Keys::kVoipLevelMs) * 1000000)
+            .arg(sink, ref, leaky.arg(QStringLiteral("rtpq")), leaky.arg(QStringLiteral("playq")));
     GError *err = nullptr;
     GstElement *bin = gst_parse_bin_from_description(desc.toUtf8().constData(), TRUE, &err);
     if (err) {
@@ -819,6 +840,11 @@ void Voip::onPadAdded(GstElement *, GstPad *pad, void *self)
             gst_object_unref(bin);
         QMetaObject::invokeMethod(v, "onMediaError", Qt::QueuedConnection, Q_ARG(QString, what), Q_ARG(int, v->m_pipeGen.load()));
         return;
+    }
+    for (const char *name : { "rtpq", "playq" }) {
+        GstElement *q = gst_bin_get_by_name(GST_BIN(bin), name);
+        g_signal_connect(q, "overrun", G_CALLBACK(&Voip::onDownlinkOverrun), v);
+        gst_object_unref(q);
     }
     if (v->m_aec) {
         GstElement *far = gst_bin_get_by_name(GST_BIN(bin), "farref");
@@ -839,13 +865,23 @@ void Voip::onPadAdded(GstElement *, GstPad *pad, void *self)
 
 // ---- echo cancelling (Speex), on GStreamer's threads ---------------------
 
-static QByteArray takeSample(GstElement *sink)
+// and with pts, when it was captured (the running time, -1 unknown)
+static QByteArray takeSample(GstElement *sink, qint64 *pts = nullptr)
 {
     QByteArray out;
     GstSample *sample = gst_app_sink_pull_sample(GST_APP_SINK(sink));
     if (!sample)
         return out;
     GstBuffer *buf = gst_sample_get_buffer(sample);
+    if (pts) {
+        *pts = -1;
+        const GstSegment *segment = gst_sample_get_segment(sample);
+        if (buf && segment && GST_BUFFER_PTS_IS_VALID(buf)) {
+            const GstClockTime t = gst_segment_to_running_time(segment, GST_FORMAT_TIME, GST_BUFFER_PTS(buf));
+            if (GST_CLOCK_TIME_IS_VALID(t))
+                *pts = qint64(t);
+        }
+    }
     GstMapInfo map;
     if (buf && gst_buffer_map(buf, &map, GST_MAP_READ)) {
         out = QByteArray(reinterpret_cast<const char *>(map.data), int(map.size));
@@ -874,12 +910,24 @@ int Voip::onFarSample(GstElement *sink, void *self)
 int Voip::onMicSample(GstElement *sink, void *self)
 {
     Voip *v = static_cast<Voip *>(self);
-    const QByteArray data = takeSample(sink);
+    qint64 pts = -1;
+    const QByteArray data = takeSample(sink, &pts);
     QByteArray clean;
+    qint64 cleanPts = -1;
+    bool discont = false;
     {
         QMutexLocker lock(&v->m_aecLock);
         if (!v->m_echo || !v->m_aecSrc)
             return GST_FLOW_OK;
+        // no capture time at all (not seen): the clock's, at the start
+        if (pts < 0 && v->m_micClock.base < 0) {
+            GstClock *clock = gst_element_get_clock(sink);
+            pts = clock ? qint64(gst_clock_get_time(clock) - gst_element_get_base_time(sink)) : 0;
+            if (clock)
+                gst_object_unref(clock);
+        }
+        if (v->m_micClock.captured(pts, data.size(), v->m_micIn))
+            v->m_micGaps.ref();
         v->m_micIn += data;
         // each microphone frame with one frame of the far end (silence
         // when none came): the two in step, whatever the network does
@@ -888,13 +936,32 @@ int Voip::onMicSample(GstElement *sink, void *self)
                                     reinterpret_cast<const spx_int16_t *>(far), reinterpret_cast<spx_int16_t *>(out));
             speex_preprocess_run(v->m_denoise, reinterpret_cast<spx_int16_t *>(out));
         });
+        if (!clean.isEmpty()) {
+            cleanPts = v->m_micClock.ptsOf(clean, v->m_micIn);
+            discont = v->m_micClock.discont;
+            v->m_micClock.discont = false;
+        }
     }
     if (clean.isEmpty())
         return GST_FLOW_OK;
     GstBuffer *buf = gst_buffer_new_allocate(nullptr, gsize(clean.size()), nullptr);
     gst_buffer_fill(buf, 0, clean.constData(), gsize(clean.size()));
+    GST_BUFFER_PTS(buf) = GstClockTime(cleanPts);
+    GST_BUFFER_DURATION(buf) = GstClockTime(AecFrames::Clock::ns(clean.size() / 2));
+    if (discont)
+        GST_BUFFER_FLAG_SET(buf, GST_BUFFER_FLAG_DISCONT);
     gst_app_src_push_buffer(GST_APP_SRC(v->m_aecSrc), buf);
     return GST_FLOW_OK;
+}
+
+void Voip::onUplinkOverrun(GstElement *, void *self)
+{
+    static_cast<Voip *>(self)->m_dropsUp.ref();
+}
+
+void Voip::onDownlinkOverrun(GstElement *, void *self)
+{
+    static_cast<Voip *>(self)->m_dropsDown.ref();
 }
 
 void Voip::onStatsReply(GstPromise *promise, void *self)
@@ -935,6 +1002,31 @@ int Voip::onBusMessage(GstBus *, GstMessage *msg, void *self)
         if (err)
             g_error_free(err);
         v->onMediaError(QStringLiteral("%1: %2").arg(QString::fromUtf8(GST_OBJECT_NAME(msg->src)), what), v->m_pipeGen.load());
+        break;
+    }
+    case GST_MESSAGE_WARNING: {
+        // a source that cannot keep up ("Can't record audio fast enough",
+        // samples dropped) and the like; a burst of them makes one line,
+        // the stats line counts them all
+        ++v->m_warnings;
+        const qint64 now = nowMs();
+        if (now - v->m_lastWarnLog < Keys::kVoipStatsMs)
+            break;
+        v->m_lastWarnLog = now;
+        GError *err = nullptr;
+        gchar *debug = nullptr;
+        gst_message_parse_warning(msg, &err, &debug);
+        QString line = QStringLiteral("voip: warning from %1: %2").arg(QString::fromUtf8(GST_OBJECT_NAME(msg->src)),
+                                                                        QString::fromUtf8(err ? err->message : "unknown"));
+        // the debug text's last line is its detail (file, function and
+        // element path come before it)
+        const QString detail = QString::fromUtf8(debug ? debug : "").section(QLatin1Char('\n'), -1).trimmed();
+        if (!detail.isEmpty())
+            line += QStringLiteral(" (%1)").arg(detail);
+        qInfo().noquote() << line;
+        if (err)
+            g_error_free(err);
+        g_free(debug);
         break;
     }
     case GST_MESSAGE_ELEMENT: {
@@ -1077,7 +1169,8 @@ void Voip::onStats(int packetsIn, int packetsOut, int gen)
         return;
     m_packetsIn = packetsIn;
     m_packetsOut = packetsOut;
-    qInfo() << "voip: packets in" << packetsIn << "out" << packetsOut;
+    qInfo() << "voip: packets in" << packetsIn << "out" << packetsOut << "dropped up" << m_dropsUp.load()
+            << "down" << m_dropsDown.load() << "mic gaps" << m_micGaps.load() << "warnings" << m_warnings;
 }
 
 void Voip::onMediaError(const QString &what, int gen)

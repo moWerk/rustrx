@@ -15,17 +15,74 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "CallState.h"
+#include "Keys.h"
 
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusPendingCall>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
 #include <QDebug>
+
+namespace {
+const char kKeepAliveSession[] = "rustrx-call";
+}
+
+CallState::CallState(QObject *parent) : QObject(parent)
+{
+    m_renew.setInterval(Keys::kCallKeepAliveRenewMs);
+    connect(&m_renew, &QTimer::timeout, this, [this]() { keepAlive("req_cpu_keepalive_start"); });
+}
 
 CallState::~CallState()
 {
     m_near = false;
     rethinkBlank();
     request(QStringLiteral("none"));
+    holdCpu(false);
+}
+
+void CallState::holdCpu(bool on)
+{
+    if (on == m_cpuHeld)
+        return;
+    m_cpuHeld = on;
+    qInfo() << "call: cpu keepalive" << (on ? "on" : "off");
+    if (!on) {
+        m_renew.stop();
+        keepAlive("req_cpu_keepalive_stop");
+        return;
+    }
+    // the period first: MCE's answer to it sets the session to end in
+    // 2 s, and after a start that cut the start's 75 s short
+    QDBusMessage msg = QDBusMessage::createMethodCall(QStringLiteral("com.nokia.mce"), QStringLiteral("/com/nokia/mce/request"),
+                                                      QStringLiteral("com.nokia.mce.request"),
+                                                      QStringLiteral("req_cpu_keepalive_period"));
+    msg << QString::fromLatin1(kKeepAliveSession);
+    auto *watch = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(msg), this);
+    connect(watch, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        QDBusPendingReply<int> reply = *w;
+        if (reply.isValid() && reply.value() > 0 && m_cpuHeld)
+            m_renew.setInterval(reply.value() * 1000);
+    });
+    keepAlive("req_cpu_keepalive_start");
+    m_renew.start();
+}
+
+void CallState::keepAlive(const char *method)
+{
+    QDBusMessage msg = QDBusMessage::createMethodCall(QStringLiteral("com.nokia.mce"), QStringLiteral("/com/nokia/mce/request"),
+                                                      QStringLiteral("com.nokia.mce.request"), QString::fromLatin1(method));
+    msg << QString::fromLatin1(kKeepAliveSession);
+    auto *watch = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(msg), this);
+    const QString name = QString::fromLatin1(method);
+    connect(watch, &QDBusPendingCallWatcher::finished, this, [name](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        // refused (the sandbox, no MCE): the call then relies on PulseAudio's
+        if (w->isError())
+            qWarning().noquote() << "call: cpu keepalive" << name << "failed:" << w->error().message();
+    });
 }
 
 void CallState::setSpeaker(bool on)

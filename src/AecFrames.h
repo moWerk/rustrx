@@ -57,6 +57,53 @@ QByteArray pair(QByteArray &mic, QByteArray &far, int bytes, Process process)
     return clean;
 }
 
+// What comes out of pair() is stamped with the time it was captured, not
+// when the microphone's thread got round to it (that made the encoder's
+// timestamps wobble: clicks at the far end). The captured buffers' time,
+// counted on in samples; a buffer more than a frame later than the count
+// is a gap (the source dropped samples): the count starts again there,
+// the part frame from before it goes, and the next frame out is marked a
+// discontinuity. Times in ns, the running time.
+struct Clock
+{
+    qint64 base = -1;      // the capture time the count starts from
+    qint64 samples = 0;    // captured since base, up to mic's end
+    bool discont = false;  // the next frame out follows a gap
+
+    static qint64 ns(qint64 samples)
+    {
+        return samples * 1000000000LL / Keys::kVoipAecRate;
+    }
+
+    // a captured buffer of bytes at pts; mic holds what still waits for
+    // its frame (cleared on a gap); true when it was one
+    bool captured(qint64 pts, int bytes, QByteArray &mic)
+    {
+        bool gap = false;
+        if (base < 0) {
+            mic.clear();
+            base = pts;
+            samples = 0;
+        } else if (pts - (base + ns(samples)) > ns(frameBytes() / 2)) {
+            // late or early within a frame is the thread, not the audio;
+            // earlier than the count never steps back
+            mic.clear();
+            base = pts;
+            samples = 0;
+            discont = gap = true;
+        }
+        samples += bytes / 2;
+        return gap;
+    }
+
+    // the time of clean's first sample, taken out of mic by pair() (mic is
+    // what stays in it, its part frame)
+    qint64 ptsOf(const QByteArray &clean, const QByteArray &mic) const
+    {
+        return base + ns(samples - (clean.size() + mic.size()) / 2);
+    }
+};
+
 }
 
 #endif
