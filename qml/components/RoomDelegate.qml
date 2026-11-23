@@ -195,37 +195,31 @@ ListItem {
             sourceComponent: RoundMaskTexture { sourceImage: picture; radius: app.avatarRadius }
         }
 
-        // the unread badge with its shadow, made only for rows with something
-        // unread
+        // the unread badge, made only for rows with something unread or a
+        // mention: the count's pill, and the "@" circle in its right end
         Loader {
             anchors.fill: parent
-            active: !invited && hasUnread
-            sourceComponent: badgeComponent
-        }
-        // a mention: an "@" in the same bubble at the top left, in the
-        // badge's one tone (the author's idea), while one is unread
-        Loader {
-            readonly property bool mention: true
-            anchors.fill: parent
-            active: !invited && model.highlights > 0
+            active: !invited && (hasUnread || model.highlights > 0)
             sourceComponent: badgeComponent
         }
     }
     Component {
         id: badgeComponent
         Item {
-            // set by the mention Loader (its parent); the unread one has none
-            readonly property bool mention: parent && parent.mention === true
+            readonly property bool counted: hasUnread
+            readonly property bool mention: model.highlights > 0
 
-            // ---- the bubbles' layout, all in one place (the author nudges these) ----
-            // the unread pill: how far it reaches out of the picture's top right
-            readonly property real unreadOutRight: Theme.paddingSmall / 2
-            readonly property real unreadOutTop: Theme.paddingSmall / 2
-            // the mention "@": how far it reaches out of the picture's top left
-            readonly property real mentionOutLeft: Theme.paddingSmall / 2
-            readonly property real mentionOutTop: Theme.paddingSmall / 2
-            // both bubbles' height (the "@" is a circle of it)
+            // ---- the badge's layout, all in one place (the author nudges these) ----
+            // how far the badge reaches out of the picture's top right
+            readonly property real outRight: Theme.paddingSmall / 2
+            readonly property real outTop: Theme.paddingSmall / 2
+            // the badge's height; the "@" is a circle of it
             readonly property real bubbleSize: Theme.iconSizeSmall
+            // the count's tone: a shade (10 %) darker than the ambience's
+            // secondary highlight, so the white digits stand out
+            readonly property color countColour: Qt.darker(Theme.secondaryHighlightColor, 1.1)
+            // the "@" circle: two shades darker than that (the author's)
+            readonly property color mentionColour: Qt.darker(countColour, 1.1 * 1.1)
             // the text inside: size, and nudges right (x) and down (y)
             readonly property real unreadFontSize: Math.round(Theme.fontSizeExtraSmall * Tunables.badgeTextScale)
             readonly property real unreadTextX: 0
@@ -234,36 +228,41 @@ ListItem {
             readonly property real mentionFontSize: Math.round(unreadFontSize * 0.8)
             readonly property real mentionTextX: 0
             readonly property real mentionTextY: unreadTextY
+            // with a mention the pill keeps this much room right of its digits,
+            // where the "@" circle sits (the author's: one circle)
+            readonly property real mentionRoom: bubbleSize
             // --------------------------------------------------------------------------
-            // the badge's shadow, offset a little further than the digits' shadow,
-            // soft at its edge: three pills, each a little larger, stacked to
-            // about 42 % black in the middle (no blur in plain Qt Quick 2.6)
+
+            // the shadow of the badge's shape (the pill, or the "@" alone):
+            // three shapes, each a little larger, stacked to about 42 % black
+            // in the middle (no blur in plain Qt Quick 2.6)
             Repeater {
                 model: 3
                 Rectangle {
+                    readonly property Item shape: counted ? pill : at
                     readonly property real spread: index * 0.96
-                    x: badge.x + 1.5 - spread
-                    y: badge.y + 3 - spread
-                    width: badge.width + 2 * spread
-                    height: badge.height + 2 * spread
+                    x: shape.x + 1.5 - spread
+                    y: shape.y + 3 - spread
+                    width: shape.width + 2 * spread
+                    height: shape.height + 2 * spread
                     radius: height / 2
                     color: Theme.rgba("black", 0.17)
                 }
             }
 
-            // unread badge, top right of the picture; the mention's top left
+            // the count: one digit a circle; every further digit adds one
+            // digit's width to the straight middle only, so the ends stay half
+            // circles and the pill grows to the left (it ends at the picture's
+            // top right). The digit is measured at the size the digits had, so
+            // the pill keeps its geometry while the digits shrink inside it.
+            // With a mention the pill is one circle longer, the digits left of it
             Rectangle {
-                id: badge
-                x: mention ? -mentionOutLeft : parent.width - width + unreadOutRight
-                y: mention ? -mentionOutTop : -unreadOutTop
-                // one digit: a circle; every further digit adds one digit's width to
-                // the straight middle only, so the ends stay half circles and the
-                // pill grows to the left (it is anchored at the right). The digit
-                // is measured (by the page) at the size the digits had, so the
-                // pill keeps its geometry while the digits shrink inside it
-                // (measured here: inside the Loader's component "item" is the
-                // Loader's own item, not the row, and the pill stayed a circle)
-                width: height + Math.max(0, badgeLabel.text.length - 1) * digitWidth.advanceWidth
+                id: pill
+                visible: counted
+                x: parent.width - width + outRight
+                y: -outTop
+                width: height + Math.max(0, countLabel.text.length - 1) * digitWidth.advanceWidth
+                       + (mention ? mentionRoom : 0)
                 TextMetrics {
                     id: digitWidth
                     font.family: app.semiboldFontFamily
@@ -273,36 +272,66 @@ ListItem {
                 // the circle keeps this size; the digits grew into its padding
                 height: bubbleSize
                 radius: height / 2
-                // a shade (10 %) darker than the ambience's secondary highlight
-                // colour, so the white digits stand out; one tone for every row,
-                // a mention included (the "@" bubble says it, the author's spec)
-                color: Qt.darker(Theme.secondaryHighlightColor, 1.1)
+                color: countColour
 
                 // a soft shadow under the digits, one label behind the other
                 Label {
-                    anchors.centerIn: badgeLabel
+                    anchors.centerIn: countLabel
                     anchors.horizontalCenterOffset: 1
                     anchors.verticalCenterOffset: 2
-                    text: badgeLabel.text
-                    font: badgeLabel.font
+                    text: countLabel.text
+                    font: countLabel.font
                     color: Theme.rgba("black", 0.5)
                 }
 
                 Label {
-                    id: badgeLabel
+                    id: countLabel
                     anchors.centerIn: parent
                     // digits have no descender; the text box's share for it pushed
                     // them low in Sail Sans. Source Sans 3 sits higher, and the
                     // shadow below the digits adds visual weight: 1 px down
                     // centres digits and shadow together (the author's eye)
-                    anchors.horizontalCenterOffset: mention ? mentionTextX : unreadTextX
-                    anchors.verticalCenterOffset: mention ? mentionTextY : unreadTextY
-                    text: mention ? "@" : model.notifications > 0 ? model.notifications : model.unread
+                    anchors.horizontalCenterOffset: unreadTextX - (mention ? mentionRoom / 2 : 0)
+                    anchors.verticalCenterOffset: unreadTextY
+                    text: model.notifications > 0 ? model.notifications : model.unread
                     // a tenth smaller than the size the pill is measured for: more
                     // room around the digits inside it
-                    font.pixelSize: mention ? mentionFontSize : unreadFontSize
+                    font.pixelSize: unreadFontSize
                     // the file is the Semibold cut: asking for bold on top of it
                     // would make Qt embolden it again
+                    font.family: app.semiboldFontFamily
+                    color: "white"
+                }
+            }
+
+            // the mention: an "@" circle flush in the pill's right end, without
+            // a shadow of its own (the pill's is under it); alone, it casts the
+            // shadow above
+            Rectangle {
+                id: at
+                visible: mention
+                x: parent.width - width + outRight
+                y: -outTop
+                width: bubbleSize
+                height: bubbleSize
+                radius: height / 2
+                color: mentionColour
+
+                Label {
+                    anchors.centerIn: atLabel
+                    anchors.horizontalCenterOffset: 1
+                    anchors.verticalCenterOffset: 2
+                    text: atLabel.text
+                    font: atLabel.font
+                    color: Theme.rgba("black", 0.5)
+                }
+                Label {
+                    id: atLabel
+                    anchors.centerIn: parent
+                    anchors.horizontalCenterOffset: mentionTextX
+                    anchors.verticalCenterOffset: mentionTextY
+                    text: "@"
+                    font.pixelSize: mentionFontSize
                     font.family: app.semiboldFontFamily
                     color: "white"
                 }
