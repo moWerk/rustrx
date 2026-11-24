@@ -4,8 +4,11 @@
 //! through one callback, which fires on tokio worker threads; the caller
 //! hops to its own thread before touching UI state.
 //!
-//!   rustrx_start(data_dir, callback, ctx)  once per process
+//!   rustrx_start(data_dir, callback, ctx)  once per account
 //!   rustrx_command("{\"cmd\": ..., ...}")   any thread, returns at once
+//!
+//! Every account's core runs on the one tokio runtime of the process,
+//! made by the first rustrx_start and stopped by rustrx_shutdown.
 //!
 //! Replies are events (`"ev"`), never return values, so the UI stays
 //! asynchronous throughout.
@@ -85,14 +88,58 @@ pub extern "C" fn rustrx_shutdown(timeout_ms: u32) {
     // them within the one limit
     let done = std::panic::catch_unwind(|| {
         let limit = std::time::Duration::from_millis(timeout_ms.into());
-        let stops: Vec<_> = cores().into_iter().map(|core| std::thread::spawn(move || core.shutdown(limit))).collect();
-        for stop in stops {
-            let _ = stop.join();
-        }
+        let runtime = RUNTIME.lock().unwrap_or_else(|e| e.into_inner()).take();
+        shutdown_all(cores(), runtime, limit);
     });
     if done.is_err() {
         eprintln!("rustrx: shutdown panicked");
     }
+}
+
+/// Every core's stop at once, each on a thread of its own, within the
+/// limit less a reserve; then the shared runtime stops with what is left,
+/// so no task outlives the shutdown. A second call finds the cores stopped
+/// and no runtime.
+fn shutdown_all(cores: Vec<&'static core::Core>, runtime: Option<tokio::runtime::Runtime>, limit: std::time::Duration) {
+    let start = std::time::Instant::now();
+    let reserve = (limit / 5).min(consts::SHUTDOWN_RUNTIME_RESERVE);
+    let each = limit.saturating_sub(reserve);
+    let stops: Vec<_> = cores.into_iter().map(|core| std::thread::spawn(move || core.shutdown(each))).collect();
+    for stop in stops {
+        let _ = stop.join();
+    }
+    if let Some(runtime) = runtime {
+        // tasks still running are dropped at their next wait, blocking ones
+        // are not waited for longer
+        runtime.shutdown_timeout(limit.saturating_sub(start.elapsed()));
+    }
+}
+
+/// The process's runtime, shared by every account's core: made by the
+/// first rustrx_start, taken and stopped by rustrx_shutdown. `HANDLE` stays
+/// after that, so a start after the shutdown is refused, not given a
+/// runtime that no longer runs.
+static RUNTIME: std::sync::Mutex<Option<tokio::runtime::Runtime>> = std::sync::Mutex::new(None);
+static HANDLE: OnceLock<tokio::runtime::Handle> = OnceLock::new();
+
+/// The shared runtime's handle; made on the first call. None when it could
+/// not be made, or after the shutdown took it.
+fn shared_runtime() -> Option<tokio::runtime::Handle> {
+    let mut slot = RUNTIME.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(handle) = HANDLE.get() {
+        return slot.is_some().then(|| handle.clone());
+    }
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(consts::WORKER_THREADS)
+        .max_blocking_threads(consts::MAX_BLOCKING_THREADS)
+        .thread_keep_alive(consts::BLOCKING_KEEP_ALIVE)
+        .thread_name("rustrx")
+        .enable_all()
+        .build()
+        .ok()?;
+    let handle = HANDLE.get_or_init(|| rt.handle().clone()).clone();
+    *slot = Some(rt);
+    Some(handle)
 }
 
 /// One core per account, in the order they were started; a core lives as
@@ -172,11 +219,9 @@ pub extern "C" fn rustrx_version() -> *const c_char {
     VERSION.get_or_init(|| CString::new(env!("CARGO_PKG_VERSION")).unwrap()).as_ptr()
 }
 
-/// Start the core. `data_dir` holds the session, the store and cached media.
-/// Returns 0, or 1 when already started, 2 on a bad argument, 3 when the
-/// runtime could not be created.
-/// Start a core on its account's data folder. Returns its number (0 for the
-/// first, then 1, 2, ...), or below 0: -2 no folder, -3 no runtime.
+/// Start a core on its account's data folder (the session, the store and
+/// cached media). Returns its number (0 for the first, then 1, 2, ...), or
+/// below 0: -2 no folder, -3 no runtime (not made, or after the shutdown).
 #[no_mangle]
 pub extern "C" fn rustrx_start(data_dir: *const c_char, cb: EventCallback, ctx: *mut c_void) -> i32 {
     if data_dir.is_null() {
@@ -195,17 +240,8 @@ pub extern "C" fn rustrx_start(data_dir: *const c_char, cb: EventCallback, ctx: 
         .without_time()
         .with_writer(|| LogWriter::default())
         .try_init();
-    let rt = match tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(consts::WORKER_THREADS)
-        .max_blocking_threads(consts::MAX_BLOCKING_THREADS)
-        .thread_keep_alive(consts::BLOCKING_KEEP_ALIVE)
-        .thread_name("rustrx")
-        .enable_all()
-        .build()
-    {
-        Ok(rt) => rt,
-        Err(_) => return -3,
-    };
+    // the first account's start makes the runtime, the others share it
+    let Some(rt) = shared_runtime() else { return -3 };
     // a panicking task would otherwise vanish: into the debug log, and to
     // stderr (the journal), which also reaches it when the Qt loop that
     // writes the debug log has ended (a panic at exit was invisible there)
@@ -213,7 +249,7 @@ pub extern "C" fn rustrx_start(data_dir: *const c_char, cb: EventCallback, ctx: 
         eprintln!("rustrx: panic: {info}");
         tracing::error!("panic: {info}");
     }));
-    let core: &'static core::Core = Box::leak(Box::new(core::Core::new(rt, dir.into(), Emitter { cb, ctx: Ctx(ctx) })));
+    let core: &'static core::Core = Box::leak(Box::new(core::Core::new(rt, None, dir.into(), Emitter { cb, ctx: Ctx(ctx) })));
     let index = {
         let Ok(mut all) = CORES.lock() else { return -3 };
         all.push(core);
@@ -374,7 +410,15 @@ mod tests {
         let sink: &'static Sink = Box::leak(Box::new(Mutex::new(Vec::new())));
         let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().unwrap();
         let emitter = Emitter { cb: collect, ctx: Ctx(sink as *const Sink as *mut c_void) };
-        (Box::leak(Box::new(core::Core::new(rt, dir, emitter))), sink)
+        (Box::leak(Box::new(core::Core::new(rt.handle().clone(), Some(rt), dir, emitter))), sink)
+    }
+
+    /// A core on a runtime it does not own, as every core of the app is.
+    fn test_core_on(rt: &tokio::runtime::Runtime) -> (&'static core::Core, &'static Sink) {
+        let sink: &'static Sink = Box::leak(Box::new(Mutex::new(Vec::new())));
+        let emitter = Emitter { cb: collect, ctx: Ctx(sink as *const Sink as *mut c_void) };
+        let dir = std::env::temp_dir().join("rustrx-tests-never-written");
+        (Box::leak(Box::new(core::Core::new(rt.handle().clone(), None, dir, emitter))), sink)
     }
 
     fn wait_for_event(sink: &Sink) -> Vec<Value> {
@@ -430,8 +474,8 @@ mod tests {
     /// Planted-bugs: drop the `t.abort()` loop in `shutdown` (the command,
     /// mark_read waiting 22 s between retries, is awaited until the
     /// timeout: too slow); put the runtime back instead of stopping it
-    /// (`*self.runtime.lock().unwrap() = Some(runtime)`: the sleeping task
-    /// still holds its sentinel).
+    /// (`*self.runtime.lock().unwrap() = runtime`: the sleeping task still
+    /// holds its sentinel).
     #[test]
     fn shutdown_aborts_commands_and_stops_the_runtime() {
         let (core, sink) = test_core();
@@ -455,6 +499,74 @@ mod tests {
         assert!(events(sink).is_empty(), "a command ran after the shutdown: {:?}", events(sink));
         // a second shutdown has nothing left to do and returns
         core.shutdown(Duration::from_millis(100));
+    }
+
+    /// Two accounts' cores on one runtime they do not own: the shared stop
+    /// aborts both cores' running commands, stops the runtime last (a task
+    /// spawned on it outlives neither), stays in its budget, and both cores
+    /// refuse commands afterwards. A second stop has nothing left to do.
+    /// Planted-bugs: in `shutdown_all`, leave out the runtime's
+    /// `shutdown_timeout` (the sentinel is still held); in `Core::shutdown`,
+    /// return early when the core owns no runtime, as before the shared
+    /// runtime (the cores are not stopped).
+    #[test]
+    fn the_shared_runtime_stops_after_every_core() {
+        let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap();
+        let (a, sink_a) = test_core_on(&rt);
+        let (b, sink_b) = test_core_on(&rt);
+        for core in [a, b] {
+            assert_eq!(send(core, r#"{"cmd":"mark_read","room_id":"!a:b"}"#), 0);
+        }
+        let sentinel = std::sync::Arc::new(());
+        let held = sentinel.clone();
+        rt.spawn(async move {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            drop(held);
+        });
+        std::thread::sleep(Duration::from_millis(200));
+        let started = Instant::now();
+        let done = std::thread::spawn(move || shutdown_all(vec![a, b], Some(rt), Duration::from_secs(3))).join();
+        assert!(done.is_ok(), "shutdown panicked");
+        assert!(started.elapsed() < Duration::from_secs(1), "took {:?}", started.elapsed());
+        assert_eq!(std::sync::Arc::strong_count(&sentinel), 1, "a task outlived the shared runtime");
+        for (core, sink) in [(a, sink_a), (b, sink_b)] {
+            assert!(core.is_stopped(), "a core was not stopped");
+            assert!(events(sink).is_empty(), "{:?}", events(sink));
+            assert_eq!(send(core, r#"{"cmd":"open_room","room_id":"!a:b"}"#), 0);
+        }
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(events(sink_a).is_empty() && events(sink_b).is_empty(), "a command ran after the shutdown");
+        shutdown_all(vec![a, b], None, Duration::from_millis(100));
+    }
+
+    /// The rooms held at shutdown: a timeline made again moves its room to
+    /// the newest, a room and a thread in it are two entries, and only the
+    /// newest TIMELINE_ROOMS_KEPT stay.
+    /// Planted-bug: in `note_timeline`, pop the newest (`pop_back`) when
+    /// over the cap: the room just opened is the one left out.
+    #[test]
+    fn the_newest_timeline_rooms_are_kept() {
+        use matrix_sdk::ruma::{EventId, RoomId};
+        let (core, _) = test_core();
+        let room = |i: usize| RoomId::parse(format!("!r{i}:example.org")).unwrap();
+        let root = EventId::parse("$root:example.org").unwrap();
+        core.note_timeline(&room(0), None);
+        core.note_timeline(&room(0), Some(&root));
+        // full: the two of room 0 and six more
+        for i in 1..consts::TIMELINE_ROOMS_KEPT - 1 {
+            core.note_timeline(&room(i), None);
+        }
+        // again: newest, not twice
+        core.note_timeline(&room(0), None);
+        let kept = core.timeline_rooms();
+        assert_eq!(kept.len(), consts::TIMELINE_ROOMS_KEPT);
+        assert_eq!(kept.last().unwrap(), &(room(0), None));
+        assert_eq!(kept.first().unwrap(), &(room(0), Some(root.clone())));
+        core.note_timeline(&room(99), None);
+        let kept = core.timeline_rooms();
+        assert_eq!(kept.len(), consts::TIMELINE_ROOMS_KEPT);
+        assert!(!kept.contains(&(room(0), Some(root))), "the oldest stayed");
+        assert_eq!(kept.last().unwrap(), &(room(99), None));
     }
 
     /// While a login runs, a second one of any kind is refused at once
@@ -635,7 +747,7 @@ mod tests {
         let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap();
         let emitter = Emitter { cb: collect, ctx: Ctx(sink as *const Sink as *mut c_void) };
         let dir = std::env::temp_dir().join(format!("rustrx-oauth-test-{}", std::process::id()));
-        let core: &'static core::Core = Box::leak(Box::new(core::Core::new(rt, dir.clone(), emitter)));
+        let core: &'static core::Core = Box::leak(Box::new(core::Core::new(rt.handle().clone(), Some(rt), dir.clone(), emitter)));
         assert_eq!(send(core, r#"{"cmd":"login_oauth","homeserver":"matrix.org"}"#), 0);
         let wait_for = |ev: &str| {
             let deadline = Instant::now() + Duration::from_secs(60);

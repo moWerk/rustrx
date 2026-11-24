@@ -8,7 +8,8 @@ UI. They talk through six C functions (`src/rustrx_core.h`) and JSON:
   before `rustrx_start`. It is the store's passphrase and seals
   `session.json` (the access and refresh tokens); without it both stay
   unencrypted.
-- `rustrx_start(data_dir, callback, ctx)`: once per process.
+- `rustrx_start(data_dir, callback, ctx)`: once per account; the first one
+  makes the process's runtime, which every account's core shares.
 - `rustrx_command(json)`: one command object, `{"cmd": "...", ...}`.
 - The callback given to `rustrx_start`: one event object per call,
   `{"ev": "...", ...}`, on a core thread; the bridge (`src/Rustrx.cpp`)
@@ -16,7 +17,8 @@ UI. They talk through six C functions (`src/rustrx_core.h`) and JSON:
 - `rustrx_stop()`: no event reaches the callback afterwards.
 - `rustrx_shutdown(timeout_ms)`: at the process's end, within the time
   given: running commands are aborted, the session is saved, the client's
-  stores close and the core's threads stop. No command runs afterwards.
+  stores close and the shared runtime's threads stop. No command runs
+  afterwards, and no `rustrx_start` succeeds.
 
 **Version 3** (since 0.8.2: a timeline, and the room list, go out as their order plus only the changed items or rooms; version 2, since 0.4.7, was one name per concept). The core sends `"proto": 3` with `ready` and `logged_in`
 (`PROTO` in `core/src/consts.rs`); the bridge warns in the log when it expects

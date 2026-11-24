@@ -49,7 +49,7 @@ impl Core {
             Err(e) => tracing::warn!("thread draft: not loaded: {e}"),
         }
         let seq = self.state.lock().await.thread_seq;
-        let timeline = Self::build_timeline(&room, TimelineFocus::Thread { root_event_id: root.clone() }, true).await?;
+        let timeline = self.build_timeline(&room, TimelineFocus::Thread { root_event_id: root.clone() }, true).await?;
         let tl = timeline.clone();
         let room_id_owned = room.room_id().to_owned();
         let room_id_kept = room_id_owned.clone();
@@ -70,11 +70,11 @@ impl Core {
             // the whole thread: older replies page in after the first items
             let back = tl.clone();
             let page_in = move || {
-                tokio::spawn(async move {
+                self.spawn_timeline_work(async move {
                     let _ = back.paginate_backwards(THREAD_FILL).await;
                 });
             };
-            Self::stream_timeline(&room, &tl, &own, emit, page_in, self.threads_read.subscribe(), None, replies, resync).await;
+            self.stream_timeline(&room, &tl, &own, emit, page_in, self.threads_read.subscribe(), None, replies, resync).await;
         });
         tracing::info!(room = %room_id, %root, "thread: open");
         // a close or another open during the build: this one is not wanted
@@ -96,6 +96,8 @@ impl Core {
         let room = self.room(room_id).await?;
         self.close_thread_list().await;
         let seq = self.state.lock().await.thread_list_seq;
+        // the service subscribes to the room's event cache, as a timeline does
+        self.note_timeline(room.room_id(), None);
         let service = Arc::new(ThreadListService::new(room.clone()));
         let rid = room.room_id().to_owned();
         let own = self.client().await?.user_id().context("no user id")?.to_owned();
@@ -226,7 +228,7 @@ impl Core {
         if let Some(tl) = open {
             return Ok(tl);
         }
-        Self::build_timeline(room, TimelineFocus::Thread { root_event_id: root }, false).await
+        self.build_timeline(room, TimelineFocus::Thread { root_event_id: root }, false).await
     }
 
     /// The timeline to send into: the thread's when a root is given, else

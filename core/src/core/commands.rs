@@ -48,15 +48,19 @@ impl Core {
         }));
     }
 
-    /// The running commands, taken out for the shutdown to abort.
-    pub(crate) fn take_commands(&self) -> Vec<JoinHandle<()>> {
-        match self.commands.lock() {
-            Ok(mut running) => {
-                self.stopped.store(true, std::sync::atomic::Ordering::Release);
-                std::mem::take(&mut *running)
-            }
-            Err(_) => Vec::new(),
+    #[cfg(test)]
+    pub(crate) fn is_stopped(&self) -> bool {
+        self.stopped.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    /// The running commands, taken out for the shutdown to abort; none
+    /// when the core was stopped already (a second shutdown).
+    pub(crate) fn take_commands(&self) -> Option<Vec<JoinHandle<()>>> {
+        let mut running = self.commands.lock().unwrap_or_else(|e| e.into_inner());
+        if self.stopped.swap(true, std::sync::atomic::Ordering::AcqRel) {
+            return None;
         }
+        Some(std::mem::take(&mut *running))
     }
 
     pub(crate) async fn handle(&'static self, command: Command) -> Result<()> {

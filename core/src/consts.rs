@@ -73,6 +73,10 @@ pub(crate) const TIMELINE_COALESCE: Duration = Duration::from_millis(60);
 /// Of the shutdown's budget, at most this (and at most a fifth) is kept
 /// for stopping the runtime after the client paused.
 pub(crate) const SHUTDOWN_RUNTIME_RESERVE: Duration = Duration::from_millis(500);
+/// How many of the rooms (and threads) that had a timeline lately get
+/// their event caches held at shutdown, besides the open ones: those whose
+/// timeline went shortly before may still be shrunk from the store.
+pub(crate) const TIMELINE_ROOMS_KEPT: usize = 8;
 /// How long a call ring lasts when the caller sets no lifetime (MSC4075).
 pub(crate) const RING_LIFETIME_DEFAULT_MS: u64 = 30_000;
 /// The longest ring lifetime accepted from a caller.
@@ -116,7 +120,8 @@ pub(crate) const JOIN_NOTIFY_MAX_AGE: Duration = Duration::from_secs(600);
 
 // Runtime
 
-/// Tokio worker threads.
+/// Tokio worker threads: one runtime per process, so these serve every
+/// account at once.
 pub(crate) const WORKER_THREADS: usize = 2;
 /// Blocking threads at most (store calls, file work, and DNS lookups:
 /// reqwest resolves on this pool, so a hung lookup on a bad network must

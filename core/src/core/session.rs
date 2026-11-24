@@ -269,7 +269,14 @@ impl Core {
 
     /// Restore a saved session, or report that a login is needed.
     pub(crate) fn boot(&'static self) {
-        self.rt.spawn(async move {
+        // among the commands: the shutdown aborts a restore still running,
+        // which would otherwise sync on, unpaused, until the shared runtime
+        // stops after every other account's core
+        let Ok(mut running) = self.commands.lock() else { return };
+        if self.stopped.load(std::sync::atomic::Ordering::Acquire) {
+            return;
+        }
+        running.push(self.rt.spawn(async move {
             std::fs::create_dir_all(self.data_dir.join(MEDIA_DIR)).ok();
             std::fs::create_dir_all(self.data_dir.join(AVATAR_DIR)).ok();
             match self.restore().await {
@@ -289,7 +296,7 @@ impl Core {
                     self.emit(json!({"ev": "ready", "logged_in": false, "proto": PROTO, "restore_failed": true}));
                 }
             }
-        });
+        }));
     }
 
     pub(crate) async fn restore(&'static self) -> Result<bool> {
@@ -928,17 +935,20 @@ impl Core {
     /// in abort() before any of this ran.
     /// In this order, all within `limit`: the running commands are aborted
     /// (none may write after the stores closed, nor hold the state's lock),
-    /// the login's tasks and the sync stop, the session is saved, the
-    /// client pauses (its stores close), and last the runtime stops, so no
-    /// tokio thread is left running into the process's exit handlers.
+    /// the event caches of the rooms that had timelines are held (below),
+    /// the login's tasks and the sync stop, the session is saved, the work
+    /// that holds a timeline stops, and the client pauses (its stores
+    /// close). A core with a runtime of its own (tests) then stops it, so
+    /// no tokio thread is left running into the process's exit handlers;
+    /// the shared one is stopped by rustrx_shutdown after every core.
     pub(crate) fn shutdown(&'static self, limit: Duration) {
         let start = std::time::Instant::now();
-        let Some(runtime) = self.runtime.lock().ok().and_then(|mut r| r.take()) else {
+        let Some(commands) = self.take_commands() else {
             return; // stopped already
         };
+        let runtime = self.runtime.lock().ok().and_then(|mut r| r.take());
         // the runtime's own stop gets what the rest leaves, and at least this
-        let reserve = (limit / 5).min(SHUTDOWN_RUNTIME_RESERVE);
-        let commands = self.take_commands();
+        let reserve = if runtime.is_some() { (limit / 5).min(SHUTDOWN_RUNTIME_RESERVE) } else { Duration::ZERO };
         let done = self.rt.block_on(async { tokio::time::timeout(limit.saturating_sub(reserve), async {
             for t in &commands {
                 t.abort();
@@ -946,6 +956,7 @@ impl Core {
             for t in commands {
                 let _ = t.await;
             }
+            self.hold_event_caches().await;
             let teardown = self.state.lock().await.take_login();
             // the tokens as they are now: a refresh that ended while this
             // process was leaving may not have reached session.json yet
@@ -958,7 +969,15 @@ impl Core {
             }
             // the sync stopped first, then the stores closed: running
             // writes finish, connections and file locks are let go
-            if let Some(client) = teardown.stop().await {
+            let client = teardown.stop().await;
+            let work = self.timeline_work.lock().map(|mut w| std::mem::take(&mut *w)).unwrap_or_default();
+            for t in &work {
+                t.abort();
+            }
+            for t in work {
+                let _ = t.await;
+            }
+            if let Some(client) = client {
                 if let Err(e) = client.pause().await {
                     tracing::warn!("shutdown: stores not closed: {e}");
                 }
@@ -970,7 +989,58 @@ impl Core {
         }
         // what is left of the budget: tasks still running are dropped at
         // their next wait, blocking ones are not waited for longer
-        runtime.shutdown_timeout(limit.saturating_sub(start.elapsed()));
+        if let Some(runtime) = runtime {
+            runtime.shutdown_timeout(limit.saturating_sub(start.elapsed()));
+        }
+    }
+
+    /// Takes an event cache subscriber on the open room and thread and on
+    /// the rooms and threads that had a timeline lately, and keeps it for
+    /// the rest of the process. The SDK shrinks a cache from the store
+    /// when its last subscriber goes (a timeline dropped), on a task of its
+    /// own that cannot be awaited; at shutdown that ran into the closed
+    /// store ("error when attempting to shrink linked chunk ... StoreClosed").
+    /// With one held here, no timeline is the last subscriber; a shrink
+    /// already queued finds one and does nothing, and one running holds
+    /// the cache's lock, which the subscribe waits for.
+    async fn hold_event_caches(&self) {
+        let (client, mut wanted) = {
+            let st = self.state.lock().await;
+            let open = st.open.as_ref().map(|o| (o.room_id.clone(), None));
+            let thread = st.thread.as_ref().map(|t| (t.room_id.clone(), Some(t.root.clone())));
+            (st.client.clone(), open.into_iter().chain(thread).collect::<Vec<_>>())
+        };
+        let Some(client) = client else { return };
+        if let Ok(recent) = self.timeline_rooms.lock() {
+            wanted.extend(recent.iter().rev().cloned());
+        }
+        let cache = client.event_cache();
+        let mut held_rooms = std::collections::HashSet::new();
+        let mut held_threads = std::collections::HashSet::new();
+        for (room_id, thread) in wanted {
+            // a thread's timeline subscribes to its room's cache too
+            if held_rooms.insert(room_id.clone()) {
+                if let Ok((room_cache, _)) = cache.room(&room_id).await {
+                    if let Ok((_, subscriber)) = room_cache.subscribe().await {
+                        self.hold(Box::new(subscriber));
+                    }
+                }
+            }
+            let Some(root) = thread else { continue };
+            if held_threads.insert((room_id.clone(), root.clone())) {
+                if let Ok((thread_cache, _)) = cache.thread(&room_id, &root).await {
+                    if let Ok((_, subscriber)) = thread_cache.subscribe().await {
+                        self.hold(Box::new(subscriber));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Kept in the core, not in the shutdown's future: a timeout drops that,
+    /// and the drop would ask for the shrink after all.
+    fn hold(&self, subscriber: Box<dyn std::any::Any + Send>) {
+        self.cache_pins.lock().unwrap_or_else(|e| e.into_inner()).push(subscriber);
     }
 
     /// Logging in with a QR code (MSC4108): this device shows a code, a

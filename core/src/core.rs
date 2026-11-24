@@ -167,6 +167,14 @@ impl Teardown {
         for t in &self.tasks {
             t.abort();
         }
+        // awaited: an aborted task lets go of what it holds (a timeline,
+        // and with it the SDK's tasks for it) only when it runs next
+        let me = tokio::task::try_id();
+        for t in self.tasks {
+            if Some(t.id()) != me {
+                let _ = t.await;
+            }
+        }
         if let Some(service) = self.service {
             service.stop().await;
         }
@@ -175,9 +183,11 @@ impl Teardown {
 }
 
 pub(crate) struct Core {
-    /// where every task runs
+    /// where every task runs: the process's one runtime, shared by every
+    /// account's core (lib.rs), or a test's own
     rt: tokio::runtime::Handle,
-    /// the runtime itself, taken and stopped by `shutdown`
+    /// the runtime when this core owns it (tests): taken and stopped by
+    /// `shutdown`; none for the shared one, which rustrx_shutdown stops
     runtime: std::sync::Mutex<Option<Runtime>>,
     /// the running commands' tasks (dispatch), aborted first at shutdown
     commands: std::sync::Mutex<Vec<JoinHandle<()>>>,
@@ -201,6 +211,15 @@ pub(crate) struct Core {
     /// bumped when a thread was read here: open timelines and the thread
     /// list check their threads' unread state again
     threads_read: tokio::sync::watch::Sender<u64>,
+    /// work that holds a timeline beyond its stream (a page of history, a
+    /// reply's original): the shutdown stops it before the stores close
+    timeline_work: std::sync::Mutex<Vec<JoinHandle<()>>>,
+    /// the rooms (and threads) that had a timeline lately, newest last:
+    /// their event caches are held open at shutdown (session.rs)
+    timeline_rooms: std::sync::Mutex<std::collections::VecDeque<(OwnedRoomId, Option<OwnedEventId>)>>,
+    /// the event cache subscribers the shutdown took; never let go (a drop
+    /// would ask the SDK to shrink the cache from the closed store)
+    cache_pins: std::sync::Mutex<Vec<Box<dyn std::any::Any + Send>>>,
 }
 
 mod account;
@@ -225,11 +244,14 @@ mod verification;
 pub(crate) use spaces::join_rule_name;
 
 impl Core {
-    pub(crate) fn new(rt: Runtime, data_dir: PathBuf, emitter: Emitter) -> Self {
-        Core { rt: rt.handle().clone(), runtime: std::sync::Mutex::new(Some(rt)), commands: std::sync::Mutex::new(Vec::new()),
+    /// A core on `rt`; `owned` is the runtime behind it when the core is
+    /// to stop it itself (tests), none for the shared one.
+    pub(crate) fn new(rt: tokio::runtime::Handle, owned: Option<Runtime>, data_dir: PathBuf, emitter: Emitter) -> Self {
+        Core { rt, runtime: std::sync::Mutex::new(owned), commands: std::sync::Mutex::new(Vec::new()),
                stopped: std::sync::atomic::AtomicBool::new(false), login_busy: std::sync::atomic::AtomicBool::new(false),
                data_dir, emitter, state: Mutex::new(State::default()), sso_cancel: tokio::sync::Notify::new(), push_lock: Mutex::new(()), qr_check: Mutex::new(None),
-               threads_read: tokio::sync::watch::channel(0).0 }
+               threads_read: tokio::sync::watch::channel(0).0, timeline_work: std::sync::Mutex::new(Vec::new()),
+               timeline_rooms: std::sync::Mutex::new(std::collections::VecDeque::new()), cache_pins: std::sync::Mutex::new(Vec::new()) }
     }
 
     #[cfg(test)]
@@ -268,6 +290,31 @@ impl Core {
     pub(crate) async fn spawn_login_task(&'static self, task: impl std::future::Future<Output = ()> + Send + 'static) {
         let handle = self.rt.spawn(task);
         self.state.lock().await.login_tasks.push(handle);
+    }
+
+    /// Spawns work that holds a timeline (see `timeline_work`).
+    pub(crate) fn spawn_timeline_work(&self, work: impl std::future::Future<Output = ()> + Send + 'static) {
+        let handle = self.rt.spawn(work);
+        if let Ok(mut all) = self.timeline_work.lock() {
+            all.retain(|t| !t.is_finished());
+            all.push(handle);
+        }
+    }
+
+    /// Notes that a timeline on this room (and thread) was made.
+    pub(crate) fn note_timeline(&self, room: &RoomId, thread: Option<&EventId>) {
+        let Ok(mut rooms) = self.timeline_rooms.lock() else { return };
+        let entry = (room.to_owned(), thread.map(ToOwned::to_owned));
+        rooms.retain(|e| *e != entry);
+        rooms.push_back(entry);
+        while rooms.len() > TIMELINE_ROOMS_KEPT {
+            rooms.pop_front();
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn timeline_rooms(&self) -> Vec<(OwnedRoomId, Option<OwnedEventId>)> {
+        self.timeline_rooms.lock().unwrap().iter().cloned().collect()
     }
 
     fn error(&self, cmd: &str, err: &anyhow::Error) {

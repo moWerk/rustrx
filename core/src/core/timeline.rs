@@ -164,6 +164,7 @@ impl Core {
     /// earlier open of the room shows from the kept ones and is not asked
     /// again while fresh (state_reactions.rs, KEPT_FRESH).
     pub(crate) fn fetch_replied<'a>(
+        &self,
         timeline: &Arc<Timeline>,
         items: impl IntoIterator<Item = &'a Arc<TimelineItem>>,
         asked: &mut std::collections::HashSet<OwnedEventId>,
@@ -181,7 +182,7 @@ impl Core {
                 continue;
             }
             let tl = timeline.clone();
-            tokio::spawn(async move {
+            self.spawn_timeline_work(async move {
                 if let Err(e) = tl.fetch_details_for_event(&id).await {
                     tracing::info!(event = %id, "reply: fetching the original: {e}");
                 }
@@ -200,6 +201,7 @@ impl Core {
     /// them. `started` runs once, after the first items are out.
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn stream_timeline(
+        &self,
         room: &Room,
         timeline: &Arc<Timeline>,
         own: &UserId,
@@ -226,7 +228,7 @@ impl Core {
         loop {
             let pass = std::time::Instant::now();
             let first = started.is_some();
-            Self::fetch_replied(timeline, &items, &mut replies_asked, &lock_replies());
+            self.fetch_replied(timeline, &items, &mut replies_asked, &lock_replies());
             if let Some(shared) = &state_reactions {
                 Self::fetch_state_reactions(room, shared, &items);
             }
@@ -393,7 +395,7 @@ impl Core {
         // the guard keeps the sync's reactions coming while this task lives
         let _reactions_guard = Self::watch_state_reactions(&room, &reactions);
         let (replies, resync) = (reactions.replies.clone(), reactions.resync.clone());
-        let items = Self::stream_timeline(&room, &timeline, &own, emit, || {}, self.threads_read.subscribe(),
+        let items = self.stream_timeline(&room, &timeline, &own, emit, || {}, self.threads_read.subscribe(),
                                           Some(reactions), replies, resync);
         // the guard keeps the typing handler registered while this task lives
         let (_typing_guard, mut typing) = room.subscribe_to_typing_notifications();
@@ -420,7 +422,12 @@ impl Core {
 
     /// A timeline with this focus; `track` follows the read marker and the
     /// receipts (a timeline made only to send into does not need them).
-    pub(crate) async fn build_timeline(room: &Room, focus: TimelineFocus, track: bool) -> Result<Arc<Timeline>> {
+    pub(crate) async fn build_timeline(&self, room: &Room, focus: TimelineFocus, track: bool) -> Result<Arc<Timeline>> {
+        let thread = match &focus {
+            TimelineFocus::Thread { root_event_id } => Some(root_event_id.clone()),
+            _ => None,
+        };
+        self.note_timeline(room.room_id(), thread.as_deref());
         let mut builder = room.timeline_builder().with_focus(focus);
         if track {
             builder = builder.track_read_marker_and_receipts(TimelineReadReceiptTracking::MessageLikeEvents);
@@ -457,7 +464,7 @@ impl Core {
             }
             // every message, thread replies too (marked by their thread_root);
             // the thread's page shows a thread alone, its root a summary
-            Self::build_timeline(&room, TimelineFocus::Live { hide_threaded_events: false }, true).await
+            self.build_timeline(&room, TimelineFocus::Live { hide_threaded_events: false }, true).await
         };
         let (draft, timeline) = tokio::join!(draft, built);
         let timeline = timeline?;
@@ -481,7 +488,7 @@ impl Core {
         // is further back (the room page's seek went 30 at a time)
         let first = first_page(room.num_unread_messages());
         let tl = timeline.clone();
-        self.rt.spawn(async move {
+        self.spawn_timeline_work(async move {
             let _ = tl.paginate_backwards(first).await;
         });
         Ok(())
@@ -551,7 +558,10 @@ impl Core {
         };
         match open {
             Some(tl) => Ok(tl),
-            None => Ok(Arc::new(room.timeline().await?)),
+            None => {
+                self.note_timeline(room.room_id(), None);
+                Ok(Arc::new(room.timeline().await?))
+            }
         }
     }
 
