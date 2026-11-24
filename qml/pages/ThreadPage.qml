@@ -92,6 +92,22 @@ Page {
             page.composer.field.forceActiveFocus()
         }
     }
+    // the PushUpMenu's _contentDeficit fed from the list, as in the room
+    // (RoomPage, feedDeficit): its binding was re-entered when a long
+    // thread first filled the list
+    property bool deficitBusy
+    property bool deficitAgain
+    function feedDeficit() {
+        if (!pushUp.hasOwnProperty("_contentDeficit")) return
+        if (deficitBusy) { deficitAgain = true; return }
+        deficitBusy = true
+        var rounds = 0
+        do {
+            deficitAgain = false
+            pushUp._contentDeficit = Math.max(list.height - (list.contentHeight + pushUp._pdmHeight + pushUp.spacing), 0)
+        } while (deficitAgain && ++rounds < 4)
+        deficitBusy = false
+    }
     SilicaListView {
         id: list
         anchors { top: parent.top; left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -99,8 +115,12 @@ Page {
         verticalLayoutDirection: ListView.BottomToTop
         model: rustrx.thread
         currentIndex: -1
+        onContentHeightChanged: page.feedDeficit()
+        onHeightChanged: page.feedDeficit()
+        Component.onCompleted: page.feedDeficit()
 
         PushUpMenu {
+            id: pushUp
             // pictures and videos, each through its gallery picker (videos
             // could not be sent in a thread at all)
             Repeater {

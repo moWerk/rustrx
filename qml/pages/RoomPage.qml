@@ -573,8 +573,9 @@ Page {
 
         onContentYChanged: { trace.logY(); page.checkMarker(); page.readSoon(); page.maybePaginate(false) }
         onOriginYChanged: trace.log("oy")
-        onContentHeightChanged: trace.logContentHeight()
-        onHeightChanged: trace.log("h")
+        onContentHeightChanged: { trace.logContentHeight(); page.feedDeficit() }
+        onHeightChanged: { trace.log("h"); page.feedDeficit() }
+        Component.onCompleted: page.feedDeficit()
         onMovementStarted: page.autoPages = 0
         onMovementEnded: {
             trace.log("moved")
@@ -587,6 +588,7 @@ Page {
         // with an empty message an entry sends on its own; with a message
         // drafted it attaches: the text goes along as the caption
         PushUpMenu {
+            id: pushUp
             // pictures and videos through Sailfish's gallery pickers, one
             // step to choose which: videos took the file picker and its
             // folders before (the author's find; four entries are what one
@@ -913,6 +915,27 @@ Page {
     Timer { id: jumpRetry; interval: Tunables.menuCloseMs; onTriggered: page.tryJump() }
     Timer { id: seekRetry; interval: Tunables.menuCloseMs; onTriggered: page.position() }
     Timer { id: flashOff; interval: Tunables.jumpFlashMs * 3; onTriggered: page.flashEventId = "" }
+
+    // Silica's PushUpMenu binds _contentDeficit to the list's content height
+    // and writes it into the list's bottomMargin; when a room's first rows
+    // fill the list, that write lays the list out again, the content height
+    // changes inside it and the binding was re-entered (the binding loop on
+    // every room open). Same formula, fed from the list instead: a change
+    // arriving during the write is applied right after it.
+    property bool deficitBusy
+    property bool deficitAgain
+    function feedDeficit() {
+        if (!pushUp.hasOwnProperty("_contentDeficit")) return
+        if (deficitBusy) { deficitAgain = true; return }
+        deficitBusy = true
+        var rounds = 0
+        do {
+            deficitAgain = false
+            // no pull-down menu here and the menu's spacing is 0: the two terms stay fixed
+            pushUp._contentDeficit = Math.max(list.height - (list.contentHeight + pushUp._pdmHeight + pushUp.spacing), 0)
+        } while (deficitAgain && ++rounds < 4)
+        deficitBusy = false
+    }
 
     // positioning, with a trace line before and after
     function viewAt(tag, index, mode) {
