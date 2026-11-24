@@ -148,6 +148,11 @@ Column {
     }
 
     function send() {
+        // the word the keyboard is still composing (underlined) is not in
+        // text yet: it is committed first, or it went missing from the
+        // message or the edit (projectmoon, issue #2)
+        if (input.activeFocus)
+            Qt.inputMethod.commit()
         var text = input.text.trim()
         if (text.length === 0) return
         // "/react <text>" while replying reacts to that message (as in nheko);
