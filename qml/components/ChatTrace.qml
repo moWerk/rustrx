@@ -51,7 +51,7 @@ Item {
     readonly property real flickSpeed: 2500
     property int flicksDone
 
-    DebugValue { id: debugChatPos; name: "debugChatPos"; defaultValue: false }
+    DebugValue { id: debugChatPos; name: "debugChatPos"; defaultValue: false; acts: false }
     DebugValue { id: debugFlick; name: "debugFlick"; defaultValue: 0 }
     Connections {
         target: trace.flickCount > 0 ? trace.page : null

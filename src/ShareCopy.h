@@ -10,6 +10,7 @@
 #include <QString>
 
 #include <cerrno>
+#include <cstdlib>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -29,6 +30,46 @@ inline QString target(const QString &dir, const QString &name, const QString &fa
     return dir + QLatin1Char('/') + file;
 }
 
+// a new folder of its own under base for one copy (mkdtemp, 0700), so that
+// copies of the same name, from one share or another, or one still waiting
+// for the handover, never meet (audit IPC5); "" when it cannot be made
+inline QString freshDir(const QString &base)
+{
+    QDir().mkpath(base);
+    QByteArray tmpl = QFile::encodeName(base + QLatin1String("/XXXXXX"));
+    if (!::mkdtemp(tmpl.data())) {
+        qWarning() << "share: cannot make a folder for a shared file";
+        return QString();
+    }
+    return QFile::decodeName(tmpl);
+}
+
+namespace detail {
+// all of len bytes to out; false on a write error
+inline bool writeAll(int out, const char *data, qint64 len)
+{
+    for (qint64 done = 0; done < len;) {
+        const ssize_t w = ::write(out, data + done, size_t(len - done));
+        if (w < 0 && errno == EINTR)
+            continue;
+        if (w <= 0)
+            return false;
+        done += w;
+    }
+    return true;
+}
+
+// path made as a new file: a file or a link already there is neither
+// replaced nor followed; -1 then
+inline int create(const QByteArray &local)
+{
+    const int out = ::open(local.constData(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    if (out < 0)
+        qWarning() << "share: cannot copy a shared file";
+    return out;
+}
+}
+
 // the open file fd (left open) into dir as name, a new file there; at most
 // maxBytes. The copy's path, or "" (nothing is left behind then).
 inline QString fromDescriptor(int fd, const QString &dir, const QString &name, const QString &fallback,
@@ -39,14 +80,9 @@ inline QString fromDescriptor(int fd, const QString &dir, const QString &name, c
     QDir().mkpath(dir);
     const QString path = target(dir, name, fallback);
     const QByteArray local = QFile::encodeName(path);
-    // created new: an earlier copy of the same name goes, and a link put
-    // in its place is not followed
-    ::unlink(local.constData());
-    const int out = ::open(local.constData(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
-    if (out < 0) {
-        qWarning() << "share: cannot copy a shared file";
+    const int out = detail::create(local);
+    if (out < 0)
         return QString();
-    }
     ::lseek(fd, 0, SEEK_SET);
     QByteArray buf(chunk, Qt::Uninitialized);
     qint64 total = 0;
@@ -65,18 +101,10 @@ inline QString fromDescriptor(int fd, const QString &dir, const QString &name, c
             ok = false;
             break;
         }
-        for (ssize_t done = 0; done < n;) {
-            const ssize_t w = ::write(out, buf.constData() + done, size_t(n - done));
-            if (w < 0 && errno == EINTR)
-                continue;
-            if (w <= 0) {
-                ok = false;
-                break;
-            }
-            done += w;
-        }
-        if (!ok)
+        if (!detail::writeAll(out, buf.constData(), n)) {
+            ok = false;
             break;
+        }
     }
     ::close(out);
     if (!ok) {
@@ -84,6 +112,31 @@ inline QString fromDescriptor(int fd, const QString &dir, const QString &name, c
         return QString();
     }
     qInfo() << "share: received" << total << "bytes";
+    return path;
+}
+
+// bytes the share itself carries (its "data") into dir as name, made the
+// same way as a copy, with the same cap
+inline QString fromBytes(const QByteArray &data, const QString &dir, const QString &name, const QString &fallback,
+                         qint64 maxBytes)
+{
+    if (data.size() > maxBytes) {
+        qWarning() << "share: larger than" << (maxBytes >> 20) << "MB, not taken";
+        return QString();
+    }
+    QDir().mkpath(dir);
+    const QString path = target(dir, name, fallback);
+    const QByteArray local = QFile::encodeName(path);
+    const int out = detail::create(local);
+    if (out < 0)
+        return QString();
+    const bool ok = detail::writeAll(out, data.constData(), data.size());
+    ::close(out);
+    if (!ok) {
+        ::unlink(local.constData());
+        return QString();
+    }
+    qInfo() << "share: received" << data.size() << "bytes";
     return path;
 }
 

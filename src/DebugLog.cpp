@@ -23,6 +23,7 @@
 #include <QFile>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QStandardPaths>
 
@@ -74,13 +75,48 @@ static void appendLine(QtMsgType type, const QString &message)
     file->flush();
 }
 
+QString DebugLog::redact(const QString &line)
+{
+    // most lines have none of it: no expression runs for them
+    const bool url = line.contains(QLatin1String("://"));
+    const bool token = line.contains(QLatin1String("token"), Qt::CaseInsensitive);
+    const bool bearer = line.contains(QLatin1String("Bearer"), Qt::CaseInsensitive);
+    if (!url && !token && !bearer)
+        return line;
+    QString out = line;
+    if (url) {
+        // user:password@ (a TURN server's, as Voip hands it to webrtcbin)
+        static const QRegularExpression userinfo(QStringLiteral("\\b([a-z][a-z0-9+.-]*://)(?!\\[cut\\]@)[^\\s/?#@\"'<>]+@"),
+                                                 QRegularExpression::CaseInsensitiveOption);
+        out.replace(userinfo, QStringLiteral("\\1[cut]@"));
+        // ?query, to the end of the address
+        static const QRegularExpression query(QStringLiteral("\\b([a-z][a-z0-9+.-]*://[^\\s?#\"'<>]*)\\?(?!\\[cut\\])[^\\s#\"'<>)]*"),
+                                              QRegularExpression::CaseInsensitiveOption);
+        out.replace(query, QStringLiteral("\\1?[cut]"));
+    }
+    if (token) {
+        // access_token=…, "refresh_token": "…", token: …
+        static const QRegularExpression value(QStringLiteral("(token[\"']?\\s*[:=]\\s*[\"']?)(?!\\[cut\\])[^\\s\"'&,;)}\\]]+"),
+                                              QRegularExpression::CaseInsensitiveOption);
+        out.replace(value, QStringLiteral("\\1[cut]"));
+    }
+    if (bearer) {
+        static const QRegularExpression auth(QStringLiteral("\\b(Bearer\\s+)(?!\\[cut\\])[^\\s\"',;)}\\]]+"),
+                                             QRegularExpression::CaseInsensitiveOption);
+        out.replace(auth, QStringLiteral("\\1[cut]"));
+    }
+    return out;
+}
+
 static void handler(QtMsgType type, const QMessageLogContext &context, const QString &message)
 {
+    // the file and the system log alike
+    const QString line = DebugLog::redact(message);
     // the file first: the system log's handler aborts on a fatal message
     if (s_enabled.load() && !s_path.isEmpty())
-        appendLine(type, message);
+        appendLine(type, line);
     if (s_previous)
-        s_previous(type, context, message);
+        s_previous(type, context, line);
 }
 
 void DebugLog::install(const QString &name)

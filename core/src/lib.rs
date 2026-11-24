@@ -19,6 +19,7 @@
 mod consts;
 mod core;
 mod protocol;
+mod redact;
 mod serialize;
 
 use std::ffi::{c_char, c_void, CStr, CString};
@@ -164,10 +165,13 @@ impl std::io::Write for LogWriter {
         self.0.extend_from_slice(buf);
         while let Some(pos) = self.0.iter().position(|&b| b == b'\n') {
             let line: Vec<u8> = self.0.drain(..=pos).collect();
-            let text = String::from_utf8_lossy(&line).trim_end().to_owned();
-            if is_expected_token_expiry(&text) {
+            let text = String::from_utf8_lossy(&line);
+            let text = text.trim_end();
+            if is_expected_token_expiry(text) {
                 continue;
             }
+            // what servers and serde echo stays out of the log (redact.rs)
+            let text = redact::redact(text);
             // the process's one log, through the first account's core
             if let Some(core) = core_at(0) {
                 core.emit(serde_json::json!({"ev": "log", "line": text}));
@@ -191,11 +195,12 @@ fn is_expected_token_expiry(line: &str) -> bool {
 }
 
 /// The key for the local store from sailfish-secrets (the app sets it before
-/// rustrx_start; none when sailfish-secrets is missing or failed).
-static STORE_KEY: OnceLock<String> = OnceLock::new();
+/// rustrx_start; none when sailfish-secrets is missing or failed). Kept
+/// for the process's life; a second key handed in is wiped when refused.
+static STORE_KEY: OnceLock<zeroize::Zeroizing<String>> = OnceLock::new();
 
 pub(crate) fn store_key() -> Option<&'static str> {
-    STORE_KEY.get().map(String::as_str).filter(|k| !k.is_empty())
+    STORE_KEY.get().map(|k| k.as_str()).filter(|k| !k.is_empty())
 }
 
 /// Set the store key; call before rustrx_start, or later, before the
@@ -207,7 +212,7 @@ pub extern "C" fn rustrx_set_store_key(key: *const c_char) -> i32 {
         return 2;
     }
     let Ok(key) = unsafe { std::ffi::CStr::from_ptr(key) }.to_str() else { return 2 };
-    if STORE_KEY.set(key.to_owned()).is_err() {
+    if STORE_KEY.set(zeroize::Zeroizing::new(key.to_owned())).is_err() {
         return 1;
     }
     0
@@ -288,7 +293,7 @@ pub extern "C" fn rustrx_decode_qr(grey: *const u8, width: i32, height: i32, str
     }
     let (w, h, stride) = (width as usize, height as usize, stride as usize);
     let pixels = unsafe { std::slice::from_raw_parts(grey, stride * (h - 1) + w) };
-    match decode_qr(pixels, w, h, stride) {
+    match decode_qr_caught(pixels, w, h, stride, decode_qr) {
         None => 0,
         Some(data) if data.len() > cap as usize => -2,
         Some(data) => {
@@ -296,6 +301,21 @@ pub extern "C" fn rustrx_decode_qr(grey: *const u8, width: i32, height: i32, str
             data.len() as i32
         }
     }
+}
+
+/// The decoder under catch_unwind: rqrr 0.11 asserts on a near-degenerate
+/// perspective, which some noisy frames give (3 in 280 000 in the 0.8.4
+/// audit), and a panic cannot leave an extern "C" fn (the app would
+/// abort). Such a frame reads as no code; the scanner takes the next one.
+/// rqrr keeps no state between calls, so nothing is left half-changed.
+fn decode_qr_caught(
+    pixels: &[u8],
+    w: usize,
+    h: usize,
+    stride: usize,
+    decode: fn(&[u8], usize, usize, usize) -> Option<Vec<u8>>,
+) -> Option<Vec<u8>> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| decode(pixels, w, h, stride))).unwrap_or(None)
 }
 
 /// The bytes of the first QR code that decodes, as they are (a login code
@@ -360,6 +380,25 @@ mod tests {
         assert_eq!(&out[..len as usize], &data[..]);
         assert_eq!(rustrx_decode_qr(pixels.as_ptr(), side as i32, side as i32, side as i32, out.as_mut_ptr(), 4), -2);
         assert_eq!(decode_qr(&vec![255; 100 * 100], 100, 100, 100), None);
+    }
+
+    /// A frame on which rqrr 0.11.0 fails its assertion in
+    /// `Perspective::map` (from the 0.8.4 audit's noise harness, seed 1
+    /// iteration 6041: a 31 px code with pixel noise, cut to 28x25) reads
+    /// as no code, through the C function as the camera page calls it.
+    /// Planted-bug: call `decode_qr` in `rustrx_decode_qr` without
+    /// `decode_qr_caught`: the test run aborts.
+    #[test]
+    fn a_frame_that_panics_the_decoder_is_no_code() {
+        let frame = include_bytes!("testdata/qr-assert-frame.bin");
+        let (w, h, stride) = (28, 25, 31);
+        assert_eq!(frame.len(), stride * (h - 1) + w);
+        assert!(std::panic::catch_unwind(|| decode_qr(frame, w, h, stride)).is_err(), "rqrr no longer panics on this frame");
+        let mut out = vec![0u8; 1024];
+        let got = rustrx_decode_qr(frame.as_ptr(), w as i32, h as i32, stride as i32, out.as_mut_ptr(), out.len() as i32);
+        assert_eq!(got, 0);
+        // any panic of the decoder, not only this one
+        assert_eq!(decode_qr_caught(&[], 0, 0, 0, |_, _, _, _| panic!("decoder")), None);
     }
     use serde_json::{json, Value};
     use std::sync::Mutex;
@@ -439,7 +478,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("rustrx-emote-test-{}", std::process::id()));
         let emotes = dir.join(consts::MEDIA_DIR).join(consts::EMOTE_DIR);
         std::fs::create_dir_all(&emotes).unwrap();
-        let file = emotes.join("example_org_AbC123.gif");
+        let file = emotes.join(format!("{}.gif", crate::core::emote_stem("mxc://example.org/AbC123")));
         std::fs::write(&file, b"GIF89a").unwrap();
         let (core, sink) = test_core_in(dir.clone());
         assert_eq!(send(core, r#"{"cmd":"fetch_emote","mxc":"mxc://example.org/AbC123"}"#), 0);

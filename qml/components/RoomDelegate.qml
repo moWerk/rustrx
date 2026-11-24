@@ -183,7 +183,7 @@ ListItem {
             source: model.avatar_path && !(invited && model.inviter_known !== true && !app.strangerInvites)
                     ? (rounded && item.avatarRounding === "provider"
                        ? "image://rxavatar/" + model.avatar_path + "?v=" + (model.avatar_v || 0) + "&r=" + Math.round(app.avatarRadius * 1000)
-                       : "file://" + model.avatar_path + "?v=" + (model.avatar_v || 0))
+                       : rustrx.picture(model.avatar_path) + "?v=" + (model.avatar_v || 0))
                     : ""
             // clip: true would cut a square; the rounding is a mask
             layer.enabled: rounded && item.avatarRounding === "layer"

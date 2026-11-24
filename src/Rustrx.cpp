@@ -146,6 +146,16 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
 {
     s_instance = this;
     m_dataDir = dataDir;
+    m_posted.setPath(dataDir + QLatin1Char('/') + QLatin1String(NotifyGate::kPostedFile));
+    m_notesKnown = QFile::exists(dataDir + QLatin1Char('/') + QLatin1String(NotifyGate::kPostedFile));
+    QDir().mkpath(dataDir);
+    m_posted.create();
+    checkDevMode();
+    if (qGuiApp)
+        connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState st) {
+            if (st == Qt::ApplicationActive)
+                checkDevMode();
+        });
     // a share into another account's room names it (shareTo)
     connect(m_media, &Media::command, this, [this](const QVariantMap &cmd) {
         if (!cmd.contains(QStringLiteral("account"))) {
@@ -324,14 +334,41 @@ bool Rustrx::takePendingKnocks()
     return true;
 }
 
+// IPC1: whoever owns the notification server's name runs the actions
+bool Rustrx::fromNotifications(const char *what) const
+{
+    return NotifyGate::fromServer(*this, what);
+}
+
 void Rustrx::open()
 {
     if (!m_handover.handOver())
         emit activateRequested();
 }
 
+// a notification's buttons from before 0.7 name no account: the first one's
 void Rustrx::answerCall(const QString &roomId)
 {
+    if (fromNotifications("answer"))
+        answerIn(0, roomId);
+}
+
+void Rustrx::answerAccountCall(const QString &account, const QString &roomId)
+{
+    if (fromNotifications("answer"))
+        answerIn(account.toInt(), roomId);
+}
+
+void Rustrx::answerIn(int key, const QString &roomId)
+{
+    // a ring that ended (expired, answered, declined, the call over) answers
+    // nothing: an old notification's Answer, or a copy of one (IPC1c)
+    if (calledFromDBus() && !m_posted.rings(key, roomId)) {
+        qInfo() << "call: answer for a ring that is over, ignored; account" << key;
+        return;
+    }
+    m_handover.setPendingAccount(key);
+    requestShow(key);
     // a classic call ringing in that room: answered here, its page follows
     // the call's state
     if (m_voip->state() == QLatin1String("incoming") && m_voip->roomId() == roomId) {
@@ -352,26 +389,28 @@ void Rustrx::answerCall(const QString &roomId)
     openRoomFromNotification(roomId);
 }
 
-void Rustrx::answerAccountCall(const QString &account, const QString &roomId)
-{
-    const int key = account.toInt();
-    m_handover.setPendingAccount(key);
-    requestShow(key);
-    answerCall(roomId);
-}
-
 void Rustrx::declineAccountCall(const QString &account, const QString &roomId, const QString &eventId)
 {
+    if (fromNotifications("decline"))
+        declineIn(account.toInt(), roomId, eventId);
+}
+
+void Rustrx::declineIn(int key, const QString &roomId, const QString &eventId)
+{
+    // only the ring that is up, by its own event (a classic call's is "")
+    if (calledFromDBus() && !m_posted.mayDecline(key, roomId, eventId)) {
+        qInfo() << "call: decline for a ring that is not up, ignored; account" << key;
+        return;
+    }
     emit callAnswered(roomId);
-    if (m_voip->state() == QLatin1String("incoming") && m_voip->roomId() == roomId && m_voipKey == account.toInt()) {
+    if (m_voip->state() == QLatin1String("incoming") && m_voip->roomId() == roomId && m_voipKey == key) {
         m_voip->reject();
         return;
     }
     if (!eventId.isEmpty())
-        commandTo(account.toInt(), { { "cmd", "call_decline" }, { "room_id", roomId }, { "event_id", eventId } });
+        commandTo(key, { { "cmd", "call_decline" }, { "room_id", roomId }, { "event_id", eventId } });
 }
 
-// a notification's buttons from before 0.7 name no account: the first one's
 void Rustrx::markRoomRead(const QString &roomId)
 {
     markAccountRoomRead(QStringLiteral("0"), roomId);
@@ -387,14 +426,28 @@ void Rustrx::reactFromNotification(const QString &roomId, const QString &eventId
     reactFromAccountNotification(QStringLiteral("0"), roomId, eventId, key);
 }
 
+// these three: only for a room line that is up (IPC1 b), its event and
+// emoji for a reaction
 void Rustrx::markAccountRoomRead(const QString &account, const QString &roomId)
 {
+    if (!fromNotifications("mark as read"))
+        return;
+    if (calledFromDBus() && !m_posted.hasRoom(account.toInt(), roomId)) {
+        qInfo() << "notification: mark as read for no line of ours, ignored; account" << account;
+        return;
+    }
     qInfo() << "notification: mark as read, account" << account;
     emit markReadRequested(roomId, account.toInt());
 }
 
 void Rustrx::replyFromAccountNotification(const QString &account, const QString &roomId, const QString &text)
 {
+    if (!fromNotifications("reply"))
+        return;
+    if (calledFromDBus() && !m_posted.hasRoom(account.toInt(), roomId)) {
+        qInfo() << "notification: reply for no line of ours, ignored; account" << account;
+        return;
+    }
     qInfo() << "notification: reply, account" << account;
     emit replyRequested(roomId, text, account.toInt());
 }
@@ -402,6 +455,12 @@ void Rustrx::replyFromAccountNotification(const QString &account, const QString 
 void Rustrx::reactFromAccountNotification(const QString &account, const QString &roomId,
                                           const QString &eventId, const QString &key)
 {
+    if (!fromNotifications("reaction"))
+        return;
+    if (calledFromDBus() && !m_posted.mayReact(account.toInt(), roomId, eventId, key)) {
+        qInfo() << "notification: reaction for no line of ours, ignored; account" << account;
+        return;
+    }
     qInfo() << "notification: reaction, account" << account;
     emit reactRequested(roomId, eventId, key, account.toInt());
 }
@@ -425,13 +484,8 @@ void Rustrx::openAccountKnocks(const QString &account)
 
 void Rustrx::declineCall(const QString &roomId, const QString &eventId)
 {
-    emit callAnswered(roomId);
-    if (m_voip->state() == QLatin1String("incoming") && m_voip->roomId() == roomId) {
-        m_voip->reject();
-        return;
-    }
-    if (!eventId.isEmpty())
-        command({ { "cmd", "call_decline" }, { "room_id", roomId }, { "event_id", eventId } });
+    if (fromNotifications("decline"))
+        declineIn(0, roomId, eventId);
 }
 
 void Rustrx::openUrl(const QStringList &urls)
@@ -450,6 +504,9 @@ void Rustrx::openUrl(const QStringList &urls)
 
 void Rustrx::quit()
 {
+    if (calledFromDBus() && !QFile::exists(m_dataDir + QLatin1Char('/') + QLatin1String(Keys::kDevCommandsFlag))
+            && !fromNotifications("quit"))
+        return;
     emit quitRequested();
     // time for the close to reach the notification server
     QTimer::singleShot(Keys::kQuitDelayMs, qApp, &QCoreApplication::quit);
@@ -457,8 +514,20 @@ void Rustrx::quit()
 
 bool Rustrx::activate()
 {
+    if (!m_handover.standIn() && !m_handover.pushWake())
+        emit activateRequested();
+    return false;
+}
+
+bool Rustrx::activateWith(const QString &secret)
+{
     if (!m_handover.standIn() && !m_handover.pushWake()) {
         emit activateRequested();
+        return false;
+    }
+    if (!NotifyGate::sameSecret(NotifyGate::secret(m_dataDir + QLatin1Char('/') + QLatin1String(NotifyGate::kSecretFile)), secret)) {
+        qWarning().noquote() << "stand-in: asked to leave without the secret, by"
+                             << (calledFromDBus() ? message().service() : QStringLiteral("?")) << "; staying";
         return false;
     }
     qInfo() << "stand-in: the app is starting, leaving";
@@ -1043,6 +1112,44 @@ QString Rustrx::notificationIcon(const QString &path, qreal radius) const
                                    Keys::kNotifyIconKeep);
 }
 
+void Rustrx::checkDevMode()
+{
+    const bool on = QFile::exists(m_dataDir + QLatin1Char('/') + QLatin1String(Keys::kDevCommandsFlag));
+    if (on == m_devMode)
+        return;
+    m_devMode = on;
+    qInfo() << "dev mode" << (on ? "on" : "off");
+    emit devModeChanged();
+}
+
+QString Rustrx::picture(const QString &path) const
+{
+    const QString local = Media::localPath(path);
+    if (local.isEmpty())
+        return QString();
+    return m_pictures.ok(local) ? QStringLiteral("file://") + local : QString::fromLatin1(PixelGate::kRefusedUrl);
+}
+
+void Rustrx::notePosted(int account, const QString &roomId, const QString &eventId, const QStringList &emoji)
+{
+    m_posted.roomPosted(account, roomId, eventId, emoji);
+}
+
+void Rustrx::noteClosed(int account, const QString &roomId)
+{
+    m_posted.roomClosed(account, roomId);
+}
+
+void Rustrx::noteRinging(int account, const QString &roomId, const QString &eventId, int forMs)
+{
+    m_posted.ringPosted(account, roomId, eventId, forMs);
+}
+
+void Rustrx::noteRingEnded(int account, const QString &roomId)
+{
+    m_posted.ringEnded(account, roomId);
+}
+
 void Rustrx::setRoomAvatar(const QString &roomId, const QString &path)
 {
     m_media->setRoomAvatar(roomId, path);
@@ -1183,6 +1290,9 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         }
     } else if (type == QLatin1String("emote")) {
         const QString mxc = ev.value("mxc").toString(), path = ev.value("path").toString();
+        // too large to decode (UC3): it stays its name, as one not fetched
+        if (!m_pictures.ok(path))
+            return;
         m_timeline->setEmotePath(mxc, path);
         m_thread->setEmotePath(mxc, path);
         m_media->emoteArrived(mxc, path);

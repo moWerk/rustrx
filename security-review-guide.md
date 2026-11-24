@@ -74,7 +74,7 @@ Rustrx is reachable by other processes in these ways:
 
 - One binary, three modes (`src/main.cpp`): the app; the stand-in (`RUSTRX_BACKGROUND=1`, a systemd user unit, no window, syncs and notifies); push wake (one push, then exit).
 - The session bus name is the only lock on the stores (`src/main.cpp:139-181`). The SDK's cross-process lock is off (`CrossProcessLockConfig::SingleProcess`, `session.rs`, `build_client_with`), so two processes on one store would be a real fault. The core is stopped before the name is released (`aboutToQuit`, `src/main.cpp:190-195`).
-- The stand-in and push wake never ask Sailfish Secrets interactively (`src/SecretStore.cpp:45-53`); before the first unlock after boot they get no key and fail, and the unit retries a minute later.
+- The stand-in and push wake never ask Sailfish Secrets interactively (`src/SecretStore.cpp:45-57`); before the first unlock after boot they get no key and fail, and the unit retries a minute later.
 
 ## Secrets and sensitive data
 
@@ -89,8 +89,9 @@ Rustrx is reachable by other processes in these ways:
 ### The store key
 
 - Made and kept by `src/SecretStore.cpp`, built as a separate plugin `librustrx-secrets.so` (`secrets/secrets.pro`) so Rustrx still runs where Sailfish Secrets is missing. Loaded at run time with `QLibrary` by `Rustrx::handStoreKeyOn` (`src/Rustrx.cpp:74`).
-- The key is 32 bytes from `/dev/urandom`, stored as 64 hex characters in a Secrets collection `rustrx` of its own: `DeviceLock` lock type, `DeviceLockKeepUnlocked` (open after the first unlock until reboot), `OwnerOnlyMode` (`createCollection`, line 72). How Secrets identifies the owning app under sailjail is Sailfish's code, not checked here.
+- The key is 32 bytes from `/dev/urandom`, stored as 64 hex characters in a Secrets collection `rustrx` of its own: `DeviceLock` lock type, `DeviceLockKeepUnlocked` (open after the first unlock until reboot), `OwnerOnlyMode` (`createCollection`, line 85). How Secrets identifies the owning app under sailjail is Sailfish's code, not checked here.
 - The key goes from the plugin's buffer to `rustrx_set_store_key` (`core/src/lib.rs:143`), and the C++ copies are wiped (`src/Wipe.h`; audit finding B13). The core keeps it in a process-wide `OnceLock<String>` (`lib.rs:133`) for the life of the process, not wiped. One key serves every account of the phone.
+- A new key is made only when Secrets answers twice the same way that there is none, no other Secrets error came before in the same process, and making the collection does not find one that the first answer said was missing (a failed metadata query in Secrets comes back as "no collection"; audit SEC3, `src/StoreKeyGuard.h`). Otherwise the restore fails and Retry asks again. Before a new key is stored, every account's store with `rustrx-encrypted` goes with its `session.json` to `store-lost-<UTC time>/<account>/` in the data folder, outside the folders the start's account sweep and a logout remove; they are put back if Secrets does not keep the new key. Nothing removes `store-lost-*` yet.
 
 ### The local stores
 
@@ -132,7 +133,7 @@ All in `core/src/core/session.rs`. No WebView is used for logins.
 
 ### Notifications
 
-- Built in `qml/Service.qml` (`notify`, line 255). By default the room name, the sender and the message text are shown (`chatDetails` and `notifyText`, `qml/components/Settings.qml:66` and `:74`); switching either off shows "Rustrx" or "N new messages".
+- Built in `qml/Service.qml` (`notify`, line 255). By default the room name, the sender and the message text are shown (`chatDetails` and `notifyText`, `src/PrivateSettings.cpp`, in the app's own settings file, not dconf: every app may read and write dconf); switching either off shows "Rustrx" or "N new messages".
 - Whether a preview shows on the lock screen is the system's choice. The notification server keeps notifications on disk; this guide has not checked where or how.
 - A push wake fetches and decrypts the one event (`core/src/core/push.rs`) to fill the notification.
 

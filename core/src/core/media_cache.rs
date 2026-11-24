@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
 /// What media/ may hold per account before the oldest files go. The SDK
-/// keeps its own copy (up to 400 MiB); a file swept here comes from there,
-/// or from the server.
+/// keeps its own copy (up to SDK_MEDIA_CACHE_MAX_BYTES, 100 MiB); a file
+/// swept here comes from there, or from the server.
 pub(crate) const MEDIA_CACHE_MAX_BYTES: u64 = 300 * 1024 * 1024;
 /// A temporary file older than this was left by a write that never ended.
 const PART_MAX_AGE: Duration = Duration::from_secs(60 * 60);

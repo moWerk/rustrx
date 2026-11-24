@@ -33,12 +33,29 @@ const QRegularExpression &imgTag()
     return re;
 }
 
-// an attribute's value in a tag, quoted either way
+QRegularExpression attributeRe(const QString &name)
+{
+    return QRegularExpression(QStringLiteral("\\b%1\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')").arg(name),
+                              QRegularExpression::CaseInsensitiveOption);
+}
+
+// an attribute's value in a tag, quoted either way; the names asked for
+// are compiled once (audit UC9: one compile per call cost more than the rest)
 QString attribute(const QString &tag, const QString &name)
 {
-    const QRegularExpression re(QStringLiteral("\\b%1\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')").arg(name),
-                                QRegularExpression::CaseInsensitiveOption);
-    const QRegularExpressionMatch m = re.match(tag);
+    static const QRegularExpression src(attributeRe(QStringLiteral("src")));
+    static const QRegularExpression alt(attributeRe(QStringLiteral("alt")));
+    static const QRegularExpression title(attributeRe(QStringLiteral("title")));
+    static const QRegularExpression href(attributeRe(QStringLiteral("href")));
+    static const QRegularExpression mxColour(attributeRe(QStringLiteral("data-mx-color")));
+    static const QRegularExpression colour(attributeRe(QStringLiteral("color")));
+    const QRegularExpression *known = name == QLatin1String("src") ? &src
+            : name == QLatin1String("alt") ? &alt
+            : name == QLatin1String("title") ? &title
+            : name == QLatin1String("href") ? &href
+            : name == QLatin1String("data-mx-color") ? &mxColour
+            : name == QLatin1String("color") ? &colour : nullptr;
+    const QRegularExpressionMatch m = known ? known->match(tag) : attributeRe(name).match(tag);
     if (!m.hasMatch())
         return QString();
     return m.capturedStart(1) >= 0 ? m.captured(1) : m.captured(2);
@@ -337,6 +354,9 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight, bool spo
 
     struct Open { QString name; QString close; bool hides; };
     QVector<Open> stack;
+    // how many of each name are open: a close with none open is dropped
+    // without a walk down the stack (audit UC9)
+    QHash<QString, int> openCount;
     int hidden = 0;        // inside a spoiler: its text is not shown
     int covered = 0;       // the characters of its line so far, one block each
     bool coveredLine = false;   // a line of it has been covered already
@@ -357,6 +377,7 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight, bool spo
     };
     auto closeTop = [&]() {
         const Open o = stack.takeLast();
+        --openCount[o.name];
         if (o.hides && --hidden == 0) {
             // an empty spoiler still shows that there is one
             if (covered > 0 || !coveredLine)
@@ -377,6 +398,9 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight, bool spo
         const QString tag = m.captured();
 
         if (closing) {
+            if (openCount.value(name) <= 0)
+                continue;   // a close without its open: dropped
+            // the walk ends at most where the closes it makes end
             int i = stack.size() - 1;
             while (i >= 0 && stack.at(i).name != name)
                 --i;
@@ -453,6 +477,7 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight, bool spo
         // anything else (code, del, s, sup, sub, table, details, unknown):
         // its text only
         emit_(open);
+        ++openCount[o.name];
         stack.append(o);
     }
     emitText(text(in.midRef(last)));

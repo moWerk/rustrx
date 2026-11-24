@@ -106,16 +106,65 @@ private slots:
     }
 
     // Planted-bug: the copy follows a link that sits where it is written
-    // (the session overwritten through the cache).
+    // (the session overwritten through the cache), or replaces what is
+    // there (audit IPC5: an earlier copy of the same name).
     void theCopyIsANewFile()
     {
         QDir().mkpath(m_cache);
         QVERIFY(QFile::link(m_own + "/session.json", m_cache + "/note.txt"));
         write(m_outside + "/note.txt", "note");
-        QCOMPARE(copy(m_outside + "/note.txt"), m_cache + "/note.txt");
+        QCOMPARE(copy(m_outside + "/note.txt"), QString());
         QCOMPARE(read(m_own + "/session.json"), QByteArray("tokens"));
-        QCOMPARE(read(m_cache + "/note.txt"), QByteArray("note"));
-        QVERIFY(!QFileInfo(m_cache + "/note.txt").isSymLink());
+        QVERIFY(QFileInfo(m_cache + "/note.txt").isSymLink());
+        // a file already there stays as it is
+        write(m_cache + "/kept.txt", "earlier");
+        write(m_outside + "/kept.txt", "later");
+        QCOMPARE(copy(m_outside + "/kept.txt"), QString());
+        QCOMPARE(read(m_cache + "/kept.txt"), QByteArray("earlier"));
+    }
+
+    // Planted-bug: one folder for every share (freshDir returns base):
+    // two shares of the same name, the later replaced the earlier one
+    // still waiting to be sent (audit IPC5).
+    void sameNamesInTwoSharesBothKept()
+    {
+        const QString a = ShareCopy::freshDir(m_cache);
+        const QString b = ShareCopy::freshDir(m_cache);
+        QVERIFY(!a.isEmpty() && !b.isEmpty() && a != b);
+        QCOMPARE(QFileInfo(a).path(), m_cache);
+        QCOMPARE(QFileInfo(a).permissions() & (QFile::ReadGroup | QFile::ReadOther | QFile::WriteGroup | QFile::WriteOther),
+                 QFileDevice::Permissions());
+        write(m_outside + "/photo.jpg", "first");
+        const QString first = ShareCopy::fromPath(m_outside + "/photo.jpg", a, QStringLiteral("shared-1"), 1 << 20, 4096,
+                                                  [](const QString &) { return true; });
+        const QString second = ShareCopy::fromBytes("second", b, QStringLiteral("photo.jpg"), QStringLiteral("shared-1"), 1 << 20);
+        QCOMPARE(first, a + "/photo.jpg");
+        QCOMPARE(second, b + "/photo.jpg");
+        QCOMPARE(read(first), QByteArray("first"));
+        QCOMPARE(read(second), QByteArray("second"));
+    }
+
+    // Planted-bug: the inline data written with a plain open (no O_EXCL /
+    // O_NOFOLLOW) or without the cap (audit IPC5).
+    void bytesAsANewFileWithinTheCap()
+    {
+        QDir().mkpath(m_cache);
+        QCOMPARE(ShareCopy::fromBytes(QByteArray(10000, 'x'), m_cache, "big.bin", "shared-1", 9999), QString());
+        QVERIFY(!QFile::exists(m_cache + "/big.bin"));
+        QCOMPARE(ShareCopy::fromBytes(QByteArray(10000, 'x'), m_cache, "big.bin", "shared-1", 10000), m_cache + "/big.bin");
+        QCOMPARE(read(m_cache + "/big.bin").size(), 10000);
+        QCOMPARE(QFileInfo(m_cache + "/big.bin").permissions() & (QFile::ReadGroup | QFile::ReadOther),
+                 QFileDevice::Permissions());
+        // a second one of that name does not replace it
+        QCOMPARE(ShareCopy::fromBytes("other", m_cache, "big.bin", "shared-1", 10000), QString());
+        QCOMPARE(read(m_cache + "/big.bin").size(), 10000);
+        // a link in its place is not followed
+        QVERIFY(QFile::link(m_own + "/session.json", m_cache + "/link.txt"));
+        QCOMPARE(ShareCopy::fromBytes("evil", m_cache, "link.txt", "shared-1", 10000), QString());
+        QCOMPARE(read(m_own + "/session.json"), QByteArray("tokens"));
+        // the name's last part only, the fallback without one
+        QCOMPARE(ShareCopy::fromBytes("n", m_cache, "../../up.txt", "shared-1", 10), m_cache + "/up.txt");
+        QCOMPARE(ShareCopy::fromBytes("n", m_cache, "", "shared-2", 10), m_cache + "/shared-2");
     }
 
     void names()

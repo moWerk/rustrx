@@ -8,7 +8,7 @@ QT = core
 PKGCONFIG += sailfishsecrets
 
 SOURCES += ../src/SecretStore.cpp
-HEADERS += ../src/SecretStore.h
+HEADERS += ../src/SecretStore.h ../src/StoreKeyGuard.h
 
 target.path = /usr/share/harbour-rustrx/lib
 INSTALLS += target

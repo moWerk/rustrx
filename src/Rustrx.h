@@ -18,8 +18,11 @@
 #define RUSTRX_H
 
 #include "Handover.h"
+#include "NotifyGate.h"
+#include "PixelGate.h"
 #include "RoomLists.h"
 
+#include <QDBusContext>
 #include <QElapsedTimer>
 #include <QHash>
 #include <QMetaMethod>
@@ -92,12 +95,17 @@ struct Account {
 // The bridge to librustrx: commands go out as JSON, events come back on
 // tokio threads and are re-posted onto the GUI thread before anything here
 // changes. One instance per process, exposed to QML as `rustrx`.
-class Rustrx : public QObject
+class Rustrx : public QObject, protected QDBusContext
 {
     Q_OBJECT
     // Keys::kInterface; Q_CLASSINFO takes a literal only
     Q_CLASSINFO("D-Bus Interface", "net.mowerk.harbour_rustrx")
     Q_PROPERTY(bool ready READ ready NOTIFY stateChanged)
+    // the dev-commands file is in the data folder (as for dev()): only then
+    // do the debug dconf keys that act do anything (components/DebugValue);
+    // any sandboxed app can write dconf. Looked at again when the app
+    // comes to the front
+    Q_PROPERTY(bool devMode READ devMode NOTIFY devModeChanged)
     // the shown account had a saved session when the app started: the main
     // page is the first page, before the core has restored it
     Q_PROPERTY(bool sessionSaved READ sessionSaved CONSTANT)
@@ -370,6 +378,20 @@ public:
     // a notification's icon: the picture at path rounded with radius (a
     // share of the side, 0 square) as a file of its own, or "" without one
     Q_INVOKABLE QString notificationIcon(const QString &path, qreal radius) const;
+    // a received picture's file as an Image's source: "file://" + path, or
+    // one that fails to load when the picture is too large to decode
+    // (PixelGate, audit UC3); "" for none
+    Q_INVOKABLE QString picture(const QString &path) const;
+    // Service.qml's notifications as they are posted and closed: their
+    // actions are taken only while they are up (NotifyGate::Posted)
+    Q_INVOKABLE void notePosted(int account, const QString &roomId, const QString &eventId, const QStringList &emoji);
+    Q_INVOKABLE void noteClosed(int account, const QString &roomId);
+    Q_INVOKABLE void noteRinging(int account, const QString &roomId, const QString &eventId, int forMs);
+    Q_INVOKABLE void noteRingEnded(int account, const QString &roomId);
+    // that list was there when the process started (not the first 0.8.4
+    // run, when lines posted before the update are taken into it)
+    Q_INVOKABLE bool notesKnown() const { return m_notesKnown; }
+    bool devMode() const { return m_devMode; }
     // emoji as Twemoji pictures: in HTML for a StyledText (height in px),
     // and one emoji's picture ("" when there is none)
     Q_INVOKABLE QString emojify(const QString &html, int height) const;
@@ -415,6 +437,7 @@ public:
     Q_INVOKABLE QVariantMap takePendingShare() { return m_handover.takePendingShare(); }
 
 signals:
+    void devModeChanged();
     void callDarkChanged();
     void shrinkingVideosChanged();
     // a dev command for the UI (see dev())
@@ -572,10 +595,15 @@ public slots:
     // a notification's arguments come as they were written); the app shows
     // that account first
     Q_SCRIPTABLE void openAccountRoom(const QString &account, const QString &roomId);
-    // a second launch: true when this is the stand-in, which leaves at once,
-    // and the caller waits for the name to go and becomes the app
+    // a second launch: true when this is the stand-in or a push-woken
+    // process, which leaves at once, and the caller waits for the name to go
+    // and becomes the app. Only with the data folder's secret (NotifyGate):
+    // anyone else could end the stand-in for good (exit 0 is not restarted)
+    Q_SCRIPTABLE bool activateWith(const QString &secret);
+    // the same without the secret, as before 0.8.4: shows the window, never quits
     Q_SCRIPTABLE bool activate();
-    // the stand-in's notification: open the app
+    // the stand-in's notification: open the app. Open to any caller, as
+    // openUrl([]) is, which does the same and is the launcher's
     Q_SCRIPTABLE void open();
     // an incoming call's notification: Answer opens the room and joins
     // the call (the room starts it once it is open: takePendingCall)
@@ -599,7 +627,10 @@ public slots:
     // Decline: the caller's clients are told (MSC4310)
     Q_SCRIPTABLE void declineCall(const QString &roomId, const QString &eventId);
     Q_SCRIPTABLE void declineAccountCall(const QString &account, const QString &roomId, const QString &eventId);
-    // the stand-in's notification: Quit (after QML has closed that notification)
+    // the stand-in's notification: Quit (after QML has closed that
+    // notification); from the notification server, or from a shell while
+    // the dev flag is there (tests). No secret: lipstick is the caller, and
+    // it shows any app a notification's arguments
     Q_SCRIPTABLE void quit();
     // D-Bus net.mowerk.harbour_rustrx.openUrl, the desktop file's handler for
     // matrix: links; the launcher icon calls it too, without a link
@@ -629,6 +660,18 @@ private:
     void leaveIfNobodyLoggedIn();
     // asks the window to show that account (nothing in a process without one)
     void requestShow(int key);
+    // a notification's action over D-Bus: from the notification server
+    // (always true for a call that is not over D-Bus)
+    bool fromNotifications(const char *what) const;
+    void answerIn(int key, const QString &roomId);
+    void declineIn(int key, const QString &roomId, const QString &eventId);
+    // the notifications up, for their actions (in the data folder)
+    NotifyGate::Posted m_posted;
+    bool m_notesKnown = false;
+    bool m_devMode = false;
+    void checkDevMode();
+    // what picture() found per file
+    mutable PixelGate::Cache m_pictures;
     // everything QML reads changed: after a switch
     void emitAllChanged();
     QString m_dataDir;

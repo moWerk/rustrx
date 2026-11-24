@@ -15,11 +15,9 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 import QtQuick 2.6
-import Nemo.Configuration 1.0
 import Rustrx 1.0
 import Sailfish.Silica 1.0
 import "../components"
-import "../names.js" as Names
 
 // Find rooms in the server's public directory and people in the user
 // directory; a typed address (#room:server, @user:server) is offered as is.
@@ -46,16 +44,13 @@ Page {
 
     // what was opened or joined from here before, newest first, for each
     // account its own (the author's wish, 0.8): a JSON list of
-    // { term, name, account } in one dconf key
+    // { term, name, account } in one key of Rustrx's own file (not dconf,
+    // which every app can read: audit SEC1)
     readonly property int historyMax: Tunables.searchHistoryMax
-    ConfigurationValue {
-        id: historyValue
-        key: Names.dconfPath + "/searchHistory"
-        defaultValue: "[]"
-    }
+    PrivateSettings { id: historyValue }
     function allHistory() {
         try {
-            var all = JSON.parse(historyValue.value || "[]")
+            var all = JSON.parse(historyValue.searchHistory || "[]")
             return Array.isArray(all) ? all : []
         } catch (e) {
             return []
@@ -77,19 +72,19 @@ Page {
             kept.push(all[i])
         }
         kept.unshift({ term: term, name: name || term, account: rustrx.userId })
-        historyValue.value = JSON.stringify(kept)
+        historyValue.searchHistory = JSON.stringify(kept)
     }
     function forget(term) {
         var all = allHistory(), kept = []
         for (var i = 0; i < all.length; i++)
             if (!(all[i].account === rustrx.userId && all[i].term === term)) kept.push(all[i])
-        historyValue.value = JSON.stringify(kept)
+        historyValue.searchHistory = JSON.stringify(kept)
     }
     function forgetAll() {
         var all = allHistory(), kept = [], me = rustrx.userId
         for (var i = 0; i < all.length; i++)
             if (all[i].account !== me) kept.push(all[i])
-        historyValue.value = JSON.stringify(kept)
+        historyValue.searchHistory = JSON.stringify(kept)
     }
 
     function search(term) {

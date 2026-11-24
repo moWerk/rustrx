@@ -1,6 +1,6 @@
 [package]
 name = "rustrx-core"
-version = "0.8.3"
+version = "0.8.4"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "Matrix core for Rustrx, a SailfishOS client: matrix-rust-sdk behind a small C ABI"
@@ -39,6 +39,13 @@ matrix-sdk-base = { version = "=0.19.1", default-features = false }
 # the store's key as a key (Base64Variant, session.rs; in the tree through
 # matrix-sdk's sqlite store)
 matrix-sdk-sqlite = { version = "=0.19.1", default-features = false }
+# wipes the store key's copies when they are dropped (in the tree through
+# the SDK)
+zeroize = "1"
+# cache file names from remote ids (in the tree through the SDK)
+sha2 = "0.10"
+# openat for the export into Downloads (in the tree through tokio and others)
+libc = "0.2"
 
 [profile.release]
 opt-level = 2

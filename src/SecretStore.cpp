@@ -16,10 +16,14 @@
  */
 #include "SecretStore.h"
 #include "Keys.h"
+#include "StoreKeyGuard.h"
 #include "Wipe.h"
 
+#include <QDateTime>
 #include <QDebug>
 #include <QFile>
+#include <QFileInfo>
+#include <QStandardPaths>
 #include <cstring>
 #include <Sailfish/Secrets/secretmanager.h>
 #include <Sailfish/Secrets/secret.h>
@@ -52,8 +56,11 @@ static SecretManager::UserInteractionMode interaction()
     return background() ? SecretManager::PreventInteraction : SecretManager::SystemInteraction;
 }
 
+// "missing" after another error in this process is not believed (StoreKeyGuard)
+static bool s_failedBefore = false;
+
 // the stored key, or empty when there is none (or the daemon cannot be reached)
-static QByteArray fetch(SecretManager &manager, bool *missing)
+static QByteArray fetch(SecretManager &manager, StoreKeyGuard::Fetch *answer)
 {
     StoredSecretRequest request;
     request.setManager(&manager);
@@ -62,14 +69,20 @@ static QByteArray fetch(SecretManager &manager, bool *missing)
     request.startRequest();
     request.waitForFinished();
     const Result r = request.result();
-    if (r.code() == Result::Succeeded)
+    if (r.code() == Result::Succeeded) {
+        *answer = StoreKeyGuard::Found;
         return request.secret().data();
-    *missing = r.errorCode() == Result::InvalidSecretError || r.errorCode() == Result::InvalidCollectionError;
+    }
+    *answer = r.errorCode() == Result::InvalidCollectionError ? StoreKeyGuard::NoCollection
+            : r.errorCode() == Result::InvalidSecretError ? StoreKeyGuard::NoSecret
+            : StoreKeyGuard::Failed;
+    if (*answer == StoreKeyGuard::Failed)
+        s_failedBefore = true;
     qInfo() << "secrets: no store key:" << r.errorCode() << r.errorMessage();
     return QByteArray();
 }
 
-static bool createCollection(SecretManager &manager)
+static StoreKeyGuard::Create createCollection(SecretManager &manager)
 {
     CreateCollectionRequest request;
     request.setManager(&manager);
@@ -83,26 +96,58 @@ static bool createCollection(SecretManager &manager)
     request.startRequest();
     request.waitForFinished();
     const Result r = request.result();
-    if (r.code() == Result::Succeeded || r.errorCode() == Result::CollectionAlreadyExistsError)
-        return true;
+    if (r.code() == Result::Succeeded)
+        return StoreKeyGuard::Created;
+    if (r.errorCode() == Result::CollectionAlreadyExistsError)
+        return StoreKeyGuard::Existed;
     qWarning() << "secrets: cannot create the collection:" << r.errorCode() << r.errorMessage();
-    return false;
+    return StoreKeyGuard::CreateFailed;
 }
 
 QByteArray SecretStore::storeKey()
 {
     SecretManager manager;
-    bool missing = false;
-    QByteArray key = fetch(manager, &missing);
-    if (!key.isEmpty() || !missing || background())
+    const bool failedBefore = s_failedBefore;
+    StoreKeyGuard::Fetch first = StoreKeyGuard::Failed;
+    QByteArray key = fetch(manager, &first);
+    if (!key.isEmpty() || first == StoreKeyGuard::Failed || background())
         return key;   // the key, or sailfish-secrets does not work: no key
 
-    // the first time: 32 random bytes as hex, in a collection of our own
+    // the first time, or the key is really gone: asked once more, and a key
+    // is made only when the answers agree (audit SEC3); otherwise this is a
+    // failed restore and the next try asks again
+    StoreKeyGuard::Fetch again = StoreKeyGuard::Failed;
+    key = fetch(manager, &again);
+    if (!key.isEmpty())
+        return key;
+    if (!StoreKeyGuard::answersAgree(first, again, failedBefore)) {
+        qWarning() << "secrets: no new store key, the answers disagree:" << first << again << failedBefore;
+        return QByteArray();
+    }
+    const StoreKeyGuard::Create created = createCollection(manager);
+    if (!StoreKeyGuard::mayMint(first, created)) {
+        if (created != StoreKeyGuard::CreateFailed)
+            qWarning() << "secrets: no new store key: the collection was missing, then there";
+        return QByteArray();
+    }
+
+    // 32 random bytes as hex, in a collection of our own
     QFile random(QStringLiteral("/dev/urandom"));
     if (!random.open(QIODevice::ReadOnly | QIODevice::Unbuffered))
         return QByteArray();
     QByteArray bytes = random.read(32);
-    if (bytes.size() != 32 || !createCollection(manager)) {
+    if (bytes.size() != 32) {
+        Wipe::array(bytes);
+        return QByteArray();
+    }
+
+    // stores the old key encrypted are moved aside first, not deleted
+    // (they open again should that key come back); back in place when the
+    // new key is not kept
+    StoreKeyGuard::Moves moves;
+    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (!StoreKeyGuard::moveAside(dataDir, QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd-HHmmss")), &moves)) {
+        qWarning() << "secrets: no new store key: the old encrypted stores could not be moved aside";
         Wipe::array(bytes);
         return QByteArray();
     }
@@ -121,8 +166,13 @@ QByteArray SecretStore::storeKey()
     request.waitForFinished();
     if (request.result().code() != Result::Succeeded) {
         qWarning() << "secrets: cannot store the key:" << request.result().errorCode() << request.result().errorMessage();
+        StoreKeyGuard::moveBack(moves);
+        Wipe::array(key);
         return QByteArray();
     }
+    if (!moves.isEmpty())
+        qWarning() << "secrets: a new store key; the stores the old one encrypted are kept in"
+                   << QFileInfo(QFileInfo(moves.first().second).path()).path();
     qInfo() << "secrets: a new store key is kept in sailfish-secrets";
     return key;
 }

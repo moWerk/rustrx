@@ -32,6 +32,7 @@ typedef struct _GstPromise GstPromise;
 typedef struct _GstPad GstPad;
 typedef struct _GstBus GstBus;
 typedef struct _GstMessage GstMessage;
+typedef struct _GstCaps GstCaps;
 typedef struct SpeexEchoState_ SpeexEchoState;
 typedef struct SpeexPreprocessState_ SpeexPreprocessState;
 class CallKeepAlive;
@@ -106,6 +107,12 @@ public:
     // a candidate through a relay; an SDP without the others' lines
     static bool isRelayCandidate(const QString &candidate);
     static QString relayOnlySdp(const QString &sdp);
+    // the far end's limits: a bigger SDP is refused as one that does not
+    // parse, candidates past the cap are dropped (a few dozen is a lot)
+    static const int kMaxRemoteSdp = 64 * 1024;
+    static const int kMaxRemoteCandidates = 200;
+    // a pad's caps the far end's player takes: RTP, audio, Opus
+    static bool isFarAudio(const GstCaps *caps);
 
     // a ringing invite as it stands, to hand over from the stand-in to the
     // app (which never saw the event), and taken up there; "answer" in it
@@ -227,6 +234,9 @@ private:
     double m_lastLevel = -100;
     int m_packetsIn = 0, m_packetsOut = 0;
     int m_candidatesAdded = 0;
+    int m_remoteMlines = 0;     // the remote description's m-lines, 0 before it
+    // the far end's audio has its player; another pad goes to a fakesink
+    QAtomicInt m_farLinked;
     qint64 m_lastLevelLog = 0;
     // sound the leaky queues dropped (before the encoder, before the
     // player), counted on GStreamer's threads; warnings logged sparingly

@@ -815,3 +815,21 @@ def test_pulse_restarts_when_the_call_rule_changes(tmp_path):
     assert install("rule 2")
     assert not install("rule 2")
     assert not install(None)
+
+
+def test_private_settings_out_of_dconf():
+    """The settings other apps must not reach (audit SEC1) are aliases of
+    PrivateSettings in Settings.qml, each one a key of PrivateSettings.cpp,
+    and none of them is a key in the dconf group any more; DconfOld reads
+    the folder names.js names.
+    Planted-bug: sendReceipts declared in the ConfigurationGroup again."""
+    settings = code(ROOT / "qml/components/Settings.qml")
+    own = set(re.findall(r"property alias (\w+): own\.\1\b", settings))
+    stored = set(re.findall(r'\{ "(\w+)", ', read("src/PrivateSettings.cpp")))
+    assert own == stored - {"searchHistory"}, own ^ stored
+    group = settings[settings.index("ConfigurationGroup {"):]
+    in_dconf = set(re.findall(r"property \w+ (\w+):", group))
+    assert not in_dconf & stored
+    path = re.search(r'dconfPath = "([^"]+)"', read("qml/names.js")).group(1)
+    assert f'"{path}/"' in read("src/DconfOld.h")
+    assert "searchHistory" in code(ROOT / "qml/pages/SearchPage.qml")

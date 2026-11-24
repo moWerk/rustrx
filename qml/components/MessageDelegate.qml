@@ -638,9 +638,9 @@ ListItem {
                                     autoTransform: true
                                     fillMode: Image.PreserveAspectFit
                                     // a video's own file is no picture: only its thumbnail
-                                    source: !thumbFailed && model.thumb_path && model.thumb_path.length ? "file://" + model.thumb_path
+                                    source: !thumbFailed && model.thumb_path && model.thumb_path.length ? rustrx.picture(model.thumb_path)
                                           : msgType !== "video" && model.media_path && model.media_path.length
-                                            ? "file://" + model.media_path : ""
+                                            ? rustrx.picture(model.media_path) : ""
                                     onStatusChanged: {
                                         if (status !== Image.Error || thumbFailed || msgType === "video") return
                                         if (!(model.thumb_path && model.thumb_path.length)) return
@@ -666,7 +666,7 @@ ListItem {
                                             asynchronous: true
                                             cache: false
                                             fillMode: Image.PreserveAspectFit
-                                            source: "file://" + model.media_path
+                                            source: rustrx.picture(model.media_path)
                                             playing: msg.gifRun
                                             paused: msg.gifRun && msg.listMoving
                                             // no looping: it stops on its last frame

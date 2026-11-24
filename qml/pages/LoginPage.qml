@@ -62,6 +62,13 @@ Page {
         errorText = ""
         rustrx.loginPassword(userField.text, passwordField.text, serverField.text)
     }
+    // the password goes once the login worked (audit NET-13), while the
+    // page is out of sight (under the QR login, or on its way out); kept
+    // after a failed one, to be corrected
+    function forgetPassword() {
+        if (rustrx.loggedIn && page.status === PageStatus.Inactive && passwordField.text.length) passwordField.text = ""
+    }
+    onStatusChanged: forgetPassword()
 
     function probe() {
         if (userField.text.indexOf(":") < 0 && serverField.text.length === 0) return
@@ -450,5 +457,6 @@ Page {
                        idps: info.idps, sliding: info.sliding_sync, signup: info.signup_url || "" }
         }
         onErrorOccurred: if (cmd === "probe_server") errorText = message
+        onStateChanged: page.forgetPassword()
     }
 }

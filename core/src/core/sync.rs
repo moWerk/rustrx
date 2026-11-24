@@ -510,6 +510,11 @@ impl Core {
                 let Some(url) = Self::avatar_source(&room, own.as_deref()).await else { continue };
                 let file = avatar_file(&avatar_dir, &room);
                 let marker = file.with_extension("url");
+                // the picture under its 0.8.3 name, where it is this one
+                if !file.exists() && crate::serialize::take_old_avatar(&avatar_dir, room.room_id().as_str(), url.as_str(), &file) {
+                    arrived.send(room.room_id().to_owned()).ok();
+                    continue;
+                }
                 // the cached one is this picture (a file from before the marker
                 // counts as current, as before)
                 if file.exists() {

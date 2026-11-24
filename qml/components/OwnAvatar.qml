@@ -50,7 +50,7 @@ Item {
         sourceSize.width: width
         sourceSize.height: height
         // the version makes a changed picture load past Qt's image cache
-        source: avatar.path.length ? "file://" + avatar.path + "?v=" + avatar.version : ""
+        source: avatar.path.length ? rustrx.picture(avatar.path) + "?v=" + avatar.version : ""
         layer.enabled: app.avatarRadius > 0
         layer.effect: RoundMask { radius: app.avatarRadius }
     }

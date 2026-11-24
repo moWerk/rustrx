@@ -14,6 +14,8 @@
 #include <QString>
 #include <QtMath>
 
+#include "PixelGate.h"
+
 #include <utime.h>
 
 // A room or account picture, rounded once on the CPU instead of through a
@@ -46,8 +48,13 @@ inline QImage coverSquare(const QImage &img, int size)
 
 inline QImage render(const QString &path, int size, qreal radius)
 {
-    QImageReader reader(path);
+    // the decoder by content, as Qt Quick picks it
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return QImage();
+    QImageReader reader(&file);
     const QSize full = reader.size();
+    // too large to decode at all (audit UC3): as an unreadable file
+    if (!PixelGate::fits(full)) return QImage();
     if (size > 0 && full.isValid() && !full.isEmpty()) {
         const QSize cover = full.scaled(size, size, Qt::KeepAspectRatioByExpanding);
         reader.setScaledSize(cover);
@@ -74,8 +81,13 @@ inline QImage render(const QString &path, int size, qreal radius)
     return img;
 }
 
-// The picture at `path` rounded at its own size, as a PNG in `dir` (a
-// notification's icon, which the home screen reads from there): named by
+// a notification icon's side at the most (audit UC3: it was decoded at the
+// picture's full size); a homeserver's avatar thumbnail is smaller
+static const int kIconMax = 256;
+
+// The picture at `path` rounded at its own size, kIconMax at the most, as
+// a PNG in `dir` (a notification's icon, which the home screen reads from
+// there): named by
 // the source, its version (time and size) and the corner, so a changed
 // picture or setting makes a new file and an unchanged one is reused. The
 // folder keeps the `keep` used last. "" when the source cannot be read.
@@ -94,7 +106,9 @@ inline QString cachedFile(const QString &path, qreal radius, const QString &dir,
         ::utime(QFile::encodeName(file).constData(), nullptr);
         return file;
     }
-    const QImage img = render(path, 0, r / 1000.0);
+    const QSize own = PixelGate::headerSize(path);
+    const int side = own.isValid() && qMin(own.width(), own.height()) > kIconMax ? kIconMax : 0;
+    const QImage img = render(path, side, r / 1000.0);
     if (img.isNull()) return QString();
     QDir().mkpath(dir);
     QSaveFile out(file);

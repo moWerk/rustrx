@@ -28,7 +28,7 @@ class TestHandover : public QObject
                                 { "party_id", "PARTY" }, { "version", "1" }, { "offer", "v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\n" },
                                 { "peer_name", "Alice" }, { "expires_at", double(QDateTime::currentMSecsSinceEpoch() + 50000) },
                                 { "answer", true } };
-        const QJsonObject share{ { "files", QJsonArray{ QString::fromLatin1(kShared) + "/photo.jpg" } }, { "text", "look" } };
+        const QJsonObject share{ { "files", QJsonArray{ QString::fromLatin1(kShared) + "/AbC123/photo.jpg", QString::fromLatin1(kShared) + "/old.jpg" } }, { "text", "look" } };
         return { { "room", "!room:example.org" }, { "call", "" }, { "knocks", false },
                  { "uri", "matrix:roomid/room:example.org?via=example.org" }, { "share", share }, { "voip", voip } };
     }
@@ -61,7 +61,8 @@ private slots:
         QVERIFY(accepts(h, good()));
         QCOMPARE(h.takePendingRoom(), QStringLiteral("!room:example.org"));
         QCOMPARE(h.takePendingUri(), QStringLiteral("matrix:roomid/room:example.org?via=example.org"));
-        QCOMPARE(h.takePendingShare().value("files").toStringList(), QStringList{ QString::fromLatin1(kShared) + "/photo.jpg" });
+        QCOMPARE(h.takePendingShare().value("files").toStringList(),
+                 (QStringList{ QString::fromLatin1(kShared) + "/AbC123/photo.jpg", QString::fromLatin1(kShared) + "/old.jpg" }));
         const QVariantMap voip = h.takePendingVoip();
         QCOMPARE(voip.value("call_id").toString(), QStringLiteral("1700000000000abc"));
         QCOMPARE(voip.value("answer").toBool(), true);
@@ -120,7 +121,8 @@ private slots:
         const QString shared = QString::fromLatin1(kShared);
         QTest::newRow("share: the session") << withShare("files", QJsonArray{ "/home/u/.config/net.mowerk/harbour-rustrx/session.json" });
         QTest::newRow("share: out with ..") << withShare("files", QJsonArray{ shared + "/../../../.config/net.mowerk/harbour-rustrx/session.json" });
-        QTest::newRow("share: a subfolder") << withShare("files", QJsonArray{ shared + "/x/photo.jpg" });
+        QTest::newRow("share: two folders down") << withShare("files", QJsonArray{ shared + "/x/y/photo.jpg" });
+        QTest::newRow("share: its folder ..") << withShare("files", QJsonArray{ shared + "/../photo.jpg" });
         QTest::newRow("share: the folder") << withShare("files", QJsonArray{ shared });
         QTest::newRow("share: relative") << withShare("files", QJsonArray{ "photo.jpg" });
         QTest::newRow("share: a number") << withShare("files", QJsonArray{ 1 });

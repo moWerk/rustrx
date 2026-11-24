@@ -72,9 +72,14 @@ pub(crate) fn read_session_file(path: &Path, key: Option<&str>) -> Result<Option
     let Some(key) = key else {
         bail!("the session is sealed and the store's key is not available (sailfish-secrets locked or unreachable)");
     };
-    let cipher = StoreCipher::import_with_key(key.as_bytes(), &unhex(&sealed.cipher)?)
-        .map_err(|e| SealKeyLost(e.to_string()))?;
-    let plain = cipher.decrypt_value_base64_data(sealed.value).map_err(|e| SealKeyLost(e.to_string()))?;
+    // only a cipher the key cannot unwrap proves another key; a damaged
+    // file (an export that does not decode, a value that does not decrypt
+    // under a cipher the key did unwrap) is a failed restore, tried again
+    let cipher = StoreCipher::import_with_key(key.as_bytes(), &unhex(&sealed.cipher)?).map_err(|e| match e {
+        matrix_sdk_store_encryption::Error::Encryption(_) => anyhow::Error::new(SealKeyLost(e.to_string())),
+        e => anyhow!("the session file is damaged: {e}"),
+    })?;
+    let plain = cipher.decrypt_value_base64_data(sealed.value).map_err(|e| anyhow!("the session file is damaged: {e}"))?;
     Ok(Some((serde_json::from_slice(&plain)?, true)))
 }
 
@@ -264,6 +269,38 @@ mod tests {
         assert!(path.exists());
         assert!(load_or_drop_session_file(&path, Some("store-key-2")).unwrap().is_none());
         assert!(!path.exists());
+        std::fs::remove_dir_all(d).ok();
+    }
+
+    /// Only a key that does not fit drops the session: a damaged file (a
+    /// cut cipher export, a cut or altered value, a cipher that is no hex)
+    /// is an error and the file stays.
+    /// Planted-bug: map every error of `import_with_key` and of the
+    /// value's decryption to SealKeyLost, as up to 0.8.3: the damaged
+    /// file is removed.
+    #[test]
+    fn only_a_wrong_key_drops_the_session() {
+        let d = dir("damaged");
+        let path = d.join(SESSION_FILE);
+        write_session_file(&path, &saved(), Some("store-key-1")).unwrap();
+        let good: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let cipher = good["cipher"].as_str().unwrap().to_owned();
+        let value = good["value"].clone();
+        let mut altered = value.clone();
+        let text = altered["ciphertext"].as_str().unwrap().to_owned();
+        let flipped = if text.starts_with('A') { "B" } else { "A" };
+        altered["ciphertext"] = json!(format!("{flipped}{}", &text[1..]));
+        let damaged = [
+            json!({"rustrx_sealed": 1, "cipher": &cipher[..cipher.len() / 2], "value": value}),
+            json!({"rustrx_sealed": 1, "cipher": "zz", "value": value}),
+            json!({"rustrx_sealed": 1, "cipher": cipher, "value": altered}),
+        ];
+        for bad in damaged {
+            std::fs::write(&path, serde_json::to_vec(&bad).unwrap()).unwrap();
+            let Err(err) = load_or_drop_session_file(&path, Some("store-key-1")) else { panic!("a damaged file reads: {bad}") };
+            assert!(!err.is::<SealKeyLost>(), "{err:#}");
+            assert!(path.exists(), "a damaged file was removed: {bad}");
+        }
         std::fs::remove_dir_all(d).ok();
     }
 

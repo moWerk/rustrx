@@ -633,6 +633,119 @@ private slots:
         QVERIFY(!c.discont);
     }
 
+    // NET-5: before the answer, only the person called counts.
+    // Planted-bug: place() leaves the peer open (a third member's hangup,
+    // reject or candidates for the ringing call are taken).
+    void othersCannotEndACallBeforeTheAnswer()
+    {
+        Voip a;
+        a.setOwnUserId(QStringLiteral("@a:example.org"));
+        a.place(QStringLiteral("!r"), QStringLiteral("@b:example.org"), QStringLiteral("B"));
+        QCOMPARE(a.state(), QStringLiteral("outgoing"));
+        const QString callId = a.status().value("call_id").toString();
+        auto ev = [&callId](const char *type, const char *sender, QVariantMap extra = QVariantMap()) {
+            extra.insert("call_id", callId);
+            extra.insert("party_id", "pc");
+            extra.insert("version", "1");
+            return QVariantMap{ { "type", type }, { "room_id", "!r" }, { "sender", sender }, { "own", false },
+                                { "content", extra } };
+        };
+        const QVariantList one{ QVariantMap{ { "candidate", "candidate:1 1 UDP 2015 198.51.100.9 40000 typ host" },
+                                             { "sdpMLineIndex", 0 } } };
+        a.handleEvent(ev("m.call.candidates", "@c:example.org", { { "candidates", one } }));
+        QCOMPARE(a.status().value("remote_queued").toInt(), 0);
+        a.handleEvent(ev("m.call.reject", "@c:example.org"));
+        QCOMPARE(a.state(), QStringLiteral("outgoing"));
+        a.handleEvent(ev("m.call.hangup", "@c:example.org"));
+        QCOMPARE(a.state(), QStringLiteral("outgoing"));
+        // the invitee's own still count
+        a.handleEvent(ev("m.call.candidates", "@b:example.org", { { "candidates", one } }));
+        QCOMPARE(a.status().value("remote_queued").toInt(), 1);
+        a.handleEvent(ev("m.call.reject", "@b:example.org"));
+        QCOMPARE(a.state(), QStringLiteral("idle"));
+        QCOMPARE(a.endReason(), QStringLiteral("rejected"));
+    }
+
+    // NET-9. Planted-bug: no cap on the queued candidates.
+    void remoteCandidatesAreCapped()
+    {
+        Voip b;
+        b.setOwnUserId(QStringLiteral("@b:example.org"));
+        b.handleEvent(invite("c1", 60000, true));
+        QVariantList many;
+        for (int i = 0; i < Voip::kMaxRemoteCandidates + 100; ++i)
+            many << QVariantMap{ { "candidate", QStringLiteral("candidate:%1 1 UDP 2015 198.51.100.9 %2 typ host").arg(i).arg(40000 + i) },
+                                 { "sdpMLineIndex", 0 } };
+        b.handleEvent({ { "type", "m.call.candidates" }, { "room_id", "!r" }, { "sender", "@a:example.org" }, { "own", false },
+                        { "content", QVariantMap{ { "call_id", "c1" }, { "party_id", "pa" }, { "candidates", many } } } });
+        QCOMPARE(b.status().value("remote_queued").toInt(), Voip::kMaxRemoteCandidates);
+        b.hangup();
+    }
+
+    // NET-9. Planted-bug: no size check on the far end's SDP (a huge one
+    // goes to the parser and on).
+    void aHugeRemoteSdpEndsTheCall()
+    {
+        Voip b;
+        b.setOwnUserId(QStringLiteral("@b:example.org"));
+        QVariantMap inv = invite("c1", 60000, true);
+        QVariantMap content = inv.value("content").toMap();
+        QString sdp = QStringLiteral("v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\n");
+        while (sdp.size() <= Voip::kMaxRemoteSdp)
+            sdp += QStringLiteral("a=x-padding:0123456789012345678901234567890123456789\r\n");
+        content.insert("offer", QVariantMap{ { "type", "offer" }, { "sdp", sdp } });
+        inv.insert("content", content);
+        b.handleEvent(inv);
+        QCOMPARE(b.state(), QStringLiteral("incoming"));
+        b.answer();
+        QTRY_COMPARE_WITH_TIMEOUT(b.state(), QStringLiteral("idle"), 5000);
+        QCOMPARE(b.endReason(), QStringLiteral("ice_failed"));
+    }
+
+    // NET-9: only an RTP Opus audio pad gets the player.
+    // Planted-bug: isFarAudio takes any caps.
+    void onlyOpusAudioIsPlayed()
+    {
+        gst_init(nullptr, nullptr);
+        auto takes = [](const char *text) {
+            GstCaps *caps = gst_caps_from_string(text);
+            const bool ok = Voip::isFarAudio(caps);
+            gst_caps_unref(caps);
+            return ok;
+        };
+        QVERIFY(takes("application/x-rtp, media=(string)audio, encoding-name=(string)OPUS, clock-rate=(int)48000"));
+        QVERIFY(takes("application/x-rtp, media=(string)audio, encoding-name=(string)opus"));
+        QVERIFY(!takes("application/x-rtp, media=(string)video, encoding-name=(string)VP8"));
+        QVERIFY(!takes("application/x-rtp, media=(string)audio, encoding-name=(string)PCMU"));
+        QVERIFY(!takes("audio/x-opus"));
+        QVERIFY(!Voip::isFarAudio(nullptr));
+    }
+
+    // NET-9, in a real call: a candidate for an m-line the description
+    // does not have is dropped. Planted-bug: the index is taken as given.
+    void candidatesForMissingMlinesAreDropped()
+    {
+        Wire w;
+        w.a.place(QStringLiteral("!dm:example.org"), QStringLiteral("@b:example.org"), QStringLiteral("B"));
+        QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("incoming"), 5000);
+        w.b.answer();
+        QTRY_COMPARE_WITH_TIMEOUT(w.a.state(), QStringLiteral("connected"), 15000);
+        const QString callId = w.b.status().value("call_id").toString();
+        const int before = w.b.status().value("remote_candidates").toInt();
+        auto send = [&](int index) {
+            const QVariantList c{ QVariantMap{ { "candidate", "candidate:9 1 UDP 2015 198.51.100.9 40009 typ host" },
+                                               { "sdpMLineIndex", index } } };
+            w.b.handleEvent({ { "type", "m.call.candidates" }, { "room_id", "!dm:example.org" }, { "sender", "@a:example.org" },
+                              { "own", false }, { "content", QVariantMap{ { "call_id", callId }, { "candidates", c } } } });
+        };
+        send(7);
+        QCOMPARE(w.b.status().value("remote_candidates").toInt(), before);
+        send(0);
+        QCOMPARE(w.b.status().value("remote_candidates").toInt(), before + 1);
+        w.a.hangup();
+        QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("idle"), 3000);
+    }
+
     // Planted-bug: the credentials go in unescaped (an "@" in the password
     // breaks the address).
     // Relay only: what goes out names no address of the phone's own.

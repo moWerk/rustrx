@@ -6,7 +6,7 @@
 
 Name:       harbour-rustrx
 Summary:    Rustrx, a Matrix client
-Version:    0.8.3
+Version:    0.8.4
 Release:    1
 License:    GPLv3+
 URL:        https://github.com/moWerk/rustrx
@@ -40,6 +40,7 @@ BuildRequires:  pkgconfig(gstreamer-webrtc-1.0)
 BuildRequires:  pkgconfig(gstreamer-app-1.0)
 BuildRequires:  pkgconfig(speexdsp)
 BuildRequires:  pkgconfig(libpulse)
+BuildRequires:  pkgconfig(mlite5)
 BuildRequires:  desktop-file-utils
 BuildRequires:  qt5-qttools-linguist
 

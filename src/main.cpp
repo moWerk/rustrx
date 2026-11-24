@@ -35,7 +35,9 @@
 
 #include <malloc.h>
 
+#include "GstGuard.h"
 #include "LocalOnly.h"
+#include "NotifyGate.h"
 #include "Rustrx.h"
 #include "UnifiedPush.h"
 #include "Voip.h"
@@ -45,6 +47,8 @@
 #include "AvatarProvider.h"
 #include "KeyboardSlide.h"
 #include "Twemoji.h"
+#include "PrivateSettings.h"
+#include "DconfOld.h"
 #include <QSettings>
 #include "RoomModel.h"
 #include "TimelineModel.h"
@@ -73,6 +77,8 @@ int main(int argc, char *argv[])
     Perf::clock().start();
     // before any thread: few malloc arenas (Keys.h)
     mallopt(M_ARENA_MAX, Keys::kMallocArenas);
+    // no playlist demuxers, for whatever starts GStreamer (audit UC4)
+    GstGuard::setEnvironment();
 
     // the stand-in: started by the user unit, with the session or when the
     // app is closed in background mode. It never has a window and does not
@@ -119,6 +125,8 @@ int main(int argc, char *argv[])
     qmlRegisterUncreatableType<TimelineModel>("Rustrx", 1, 0, "TimelineModel", "owned by rustrx");
     qmlRegisterUncreatableType<UnifiedPush>("Rustrx", 1, 0, "UnifiedPush", "owned by rustrx");
     qmlRegisterUncreatableType<Voip>("Rustrx", 1, 0, "Voip", "owned by rustrx");
+    // the settings other apps must not reach (components/Settings.qml)
+    qmlRegisterType<PrivateSettings>("Rustrx", 1, 0, "PrivateSettings");
     // the tuned numbers (import Rustrx 1.0): one registration serves the
     // window's engine and Service.qml's
     qmlRegisterSingletonType(QUrl::fromLocalFile(SailfishApp::pathTo(QStringLiteral("qml/singletons/Tunables.qml")).toLocalFile()),
@@ -147,7 +155,11 @@ int main(int argc, char *argv[])
             return 0;
         bool takeOver = standIn;
         if (!standIn) {
+            // the stand-in leaves only for the data folder's secret (IPC1 d)
             QDBusMessage call = QDBusMessage::createMethodCall(kService, QString::fromLatin1(Keys::kObjectPath),
+                    QString::fromLatin1(Keys::kInterface), QStringLiteral("activateWith"));
+            call << NotifyGate::secret(dataDir + QLatin1Char('/') + QLatin1String(NotifyGate::kSecretFile));
+            const QDBusMessage plain = QDBusMessage::createMethodCall(kService, QString::fromLatin1(Keys::kObjectPath),
                     QString::fromLatin1(Keys::kInterface), QStringLiteral("activate"));
             // one that is still starting (it waits for sailfish-secrets,
             // say) has the name but not its object yet: asked again
@@ -156,6 +168,13 @@ int main(int argc, char *argv[])
             QDBusMessage reply;
             for (;;) {
                 reply = bus.call(call, QDBus::Block, Keys::kActivateTimeoutMs);
+                // a Rustrx from before 0.8.4 (a stand-in still running after
+                // the update) knows only activate
+                if (reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.UnknownMethod")) {
+                    const QDBusMessage old = bus.call(plain, QDBus::Block, Keys::kActivateTimeoutMs);
+                    if (old.type() == QDBusMessage::ReplyMessage)
+                        reply = old;
+                }
                 const QString error = reply.errorName();
                 const bool starting = error == QLatin1String("org.freedesktop.DBus.Error.UnknownObject")
                         || error == QLatin1String("org.freedesktop.DBus.Error.UnknownMethod")
@@ -182,6 +201,13 @@ int main(int argc, char *argv[])
     }
 
     Perf::mark("bus");
+    // the private settings, for both engines: by the one process that holds
+    // the name (whichever runs first after the update moves them out of dconf)
+    PrivateStore privateSettings(Rustrx::settingsFile());
+    {
+        DconfOld dconf;
+        privateSettings.migrate(dconf);
+    }
     // ~/.local/share/harbour-rustrx/harbour-rustrx: session, store, media
     Rustrx rustrx(dataDir);
     Perf::mark("rustrx");

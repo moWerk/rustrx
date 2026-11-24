@@ -67,7 +67,7 @@ CoverBackground {
     Image {
         anchors.fill: parent
         visible: cover.inChat && !!cover.chat.avatar_path
-        source: visible ? "file://" + cover.chat.avatar_path + "?v=" + (cover.chat.avatar_v || 0) : ""
+        source: visible ? rustrx.picture(cover.chat.avatar_path) + "?v=" + (cover.chat.avatar_v || 0) : ""
         sourceSize.width: width
         fillMode: Image.PreserveAspectCrop
         opacity: 0.3

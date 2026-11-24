@@ -502,6 +502,28 @@ private slots:
         const QString closed = t.html(QStringLiteral("<i>").repeated(size / 3));
         QCOMPARE(closed.count(QStringLiteral("</i>")), size / 3);
     }
+
+    // Planted-bug: a close tag walks the whole stack for an opener that is
+    // not there, or attribute() compiles its expression per call (audit
+    // UC9: over a second each on the host before, quadratic in the input).
+    void auditUC9NoQuadraticWork()
+    {
+        const int n = 9000;
+        QElapsedTimer timer;
+        timer.start();
+        const QString unmatched = t.html(QStringLiteral("<b>").repeated(n) + QStringLiteral("</q>").repeated(n));
+        const qint64 closes = timer.restart();
+        const QString images = t.html(QStringLiteral("<img alt=\"a\">").repeated(4000));
+        const qint64 alts = timer.elapsed();
+        qInfo("unmatched closes: %lld ms, image alts: %lld ms", static_cast<long long>(closes), static_cast<long long>(alts));
+        QCOMPARE(unmatched, QStringLiteral("<b>").repeated(n) + QStringLiteral("</b>").repeated(n));
+        QCOMPARE(images, QStringLiteral("a").repeated(4000));
+        QVERIFY2(closes < 250, qPrintable(QString::number(closes)));
+        QVERIFY2(alts < 250, qPrintable(QString::number(alts)));
+        // a close still finds its opener under others, and closes them
+        QCOMPARE(t.html(QStringLiteral("<i>").repeated(3) + QStringLiteral("<b>x") + QStringLiteral("</i>")),
+                 QStringLiteral("<i><i><i><b>x</b></i></i></i>"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestRenderHtml)

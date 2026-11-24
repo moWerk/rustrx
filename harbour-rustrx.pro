@@ -12,6 +12,8 @@ CONFIG += link_pkgconfig
 PKGCONFIG += gstreamer-1.0 gstreamer-sdp-1.0 gstreamer-webrtc-1.0 gstreamer-app-1.0 speexdsp
 # where a call is heard (CallRoute.cpp)
 PKGCONFIG += libpulse
+# the old dconf settings, read once (DconfOld.h)
+PKGCONFIG += mlite5
 
 CONFIG += sailfishapp sailfishapp_i18n sailfishapp_i18n_idbased sailfishapp_i18n_unfinished
 
@@ -31,7 +33,8 @@ SOURCES += src/main.cpp \
     src/KeyboardSlide.cpp \
     src/CallState.cpp \
     src/Voip.cpp \
-    src/CallRoute.cpp
+    src/CallRoute.cpp \
+    src/PrivateSettings.cpp
 
 HEADERS += src/Rustrx.h \
     src/Handover.h \
@@ -63,6 +66,9 @@ HEADERS += src/Rustrx.h \
     src/RoundAvatar.h \
     src/AvatarProvider.h \
     src/ShareCopy.h \
+    src/PrivateSettings.h \
+    src/DconfOld.h \
+    src/StoreKeyGuard.h \
     src/rustrx_core.h
 
 # the prebuilt core: lib/librustrx.so at build time, next to the data at run time

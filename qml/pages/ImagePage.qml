@@ -120,7 +120,7 @@ Page {
             sourceSize.height: page.fitSize
             // under a moving GIF it lets go (a transparent one showed the still
             // through), and under the larger decode
-            source: page.source.length && !gif.visible && !deep.visible ? "file://" + page.source : ""
+            source: page.source.length && !gif.visible && !deep.visible ? rustrx.picture(page.source) : ""
 
             PinchArea {
                 anchors.fill: parent
@@ -154,7 +154,7 @@ Page {
             smooth: true
             sourceSize.width: page.deepSize
             sourceSize.height: page.deepSize
-            source: page.deepWanted && page.fullLoaded && !page.isGif && page.source.length ? "file://" + page.source : ""
+            source: page.deepWanted && page.fullLoaded && !page.isGif && page.source.length ? rustrx.picture(page.source) : ""
         }
 
         // Qt 5.6's AnimatedImage ignores sourceSize: a GIF decodes at its own size
@@ -167,7 +167,7 @@ Page {
             asynchronous: true
             cache: false
             smooth: true
-            source: page.isGif && page.fullLoaded && page.source.length ? "file://" + page.source : ""
+            source: page.isGif && page.fullLoaded && page.source.length ? rustrx.picture(page.source) : ""
             playing: Qt.application.active && page.status === PageStatus.Active
         }
 

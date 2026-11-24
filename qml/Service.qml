@@ -191,6 +191,16 @@ Item {
         var picked = String(cfg.notifyEmoji || "").split(/\s+/).filter(function (e) { return e.length > 0 }).slice(0, 3)
         return picked.length ? picked : ["👍", "😀", "👎"]
     }
+    // the emoji a line's buttons offer for eventId
+    function offeredEmoji(eventId) {
+        return cfg.notifyReactions && eventId && eventId.length ? notificationEmoji : []
+    }
+    // a room line goes up: its Reply, Mark as read and emoji are taken only
+    // while it is (rustrx.notePosted, the audit's IPC1)
+    function publishRoom(n, account, roomId, eventId) {
+        rustrx.notePosted(account, roomId, eventId || "", offeredEmoji(eventId))
+        n.publish()
+    }
     // each names its account (as text: the arguments arrive as written)
     function roomActions(account, roomId, eventId) {
         var viaPush = rustrx.push.enabled
@@ -205,7 +215,7 @@ Item {
         //% "Mark as read"
         actions.push(action("mark_read", "markAccountRoomRead", [ a, roomId ], qsTrId("rustrx-me-notification-read"), viaPush))
         if (cfg.notifyReactions && eventId && eventId.length) {
-            var emoji = notificationEmoji
+            var emoji = offeredEmoji(eventId)
             for (var i = 0; i < emoji.length; i++)
                 actions.push(action("react" + i, "reactFromAccountNotification", [ a, roomId, eventId, emoji[i] ], emoji[i], viaPush))
         }
@@ -263,7 +273,8 @@ Item {
         var last = (info.preview_sender && chatDetails ? info.preview_sender + ": " : "") + (info.preview || "")
         var pending = count
         roomPending[noteKey(account, roomId)] = pending
-        n.remoteActions = roomActions(account, roomId, info.latest_event_id || "")
+        var latest = info.latest_event_id || ""
+        n.remoteActions = roomActions(account, roomId, latest)
         n.icon = senderIcon(info, "")
         n.summary = chatDetails ? roomName : "Rustrx"
         n.previewSummary = n.summary
@@ -272,7 +283,7 @@ Item {
         n.body = last.length && notifyText ? last : qsTrId("rustrx-no-new-messages", pending)
         n.previewBody = n.body
         n.itemCount = pending
-        n.publish()
+        publishRoom(n, account, roomId, latest)
     }
     // an invitation: a banner, also while Rustrx is in front (they are easy
     // to miss in the list); a tap opens it, where it is accepted or declined
@@ -299,7 +310,8 @@ Item {
                 : qsTrId("rustrx-no-invite-room").arg(who).arg(roomName)
         n.previewBody = n.body
         n.itemCount = 1
-        n.publish()
+        // a new line has the room's buttons, without emoji
+        publishRoom(n, account, roomId, "")
     }
     // an invitation answered some other way: its banner goes, also one an
     // earlier Rustrx process posted (the app and the stand-in take turns)
@@ -351,6 +363,8 @@ Item {
         n.previewBody = n.body
         n.expiry.interval = Math.max(Tunables.ringMinMs, expiresMs)
         n.expiry.start()
+        // Answer and Decline only while it rings
+        rustrx.noteRinging(account, roomId, eventId, n.expiry.interval)
         n.publish()
         var r = ringing
         r[roomId] = n
@@ -360,6 +374,7 @@ Item {
     function stopRinging(roomId) {
         var n = ringing[roomId]
         if (!n) return
+        rustrx.noteRingEnded(n.account, roomId)
         n.close()
         n.destroy()
         var r = ringing
@@ -422,7 +437,7 @@ Item {
         n.body = body && notifyText ? who + body : qsTrId("rustrx-no-new-messages", pending)
         n.previewBody = n.body
         n.itemCount = pending
-        n.publish()
+        publishRoom(n, account, roomId, eventId)
     }
 
     // requests to join: one notification per account, the latest request
@@ -534,6 +549,8 @@ Item {
         var n = roomNote(account, roomId)
         var name = chatDetails ? (rustrx.roomInfoIn(account, roomId).name || "") : ""
         n.remoteActions = [ action("default", "openAccountRoom", [ String(account), roomId ]) ]
+        // its only button opens the room
+        rustrx.noteClosed(account, roomId)
         n.icon = ""
         n.summary = name.length
                 //: notification title, %1 the room
@@ -556,6 +573,8 @@ Item {
         takeOverOld()
         var k = noteKey(account, roomId)
         delete roomPending[k]
+        // also a line an earlier process posted that is gone from the list
+        rustrx.noteClosed(account, roomId)
         var n = roomNotifications[k]
         if (!n) return
         n.close()
@@ -627,11 +646,28 @@ Item {
         for (var i = 0; i < old.length; i++) {
             var first = old[i].remoteActions.length ? old[i].remoteActions[0] : {}
             var k = noteKeyOf(first)
-            if (k.length && !roomNotifications[k])
+            if (k.length && !roomNotifications[k]) {
                 roomNotifications[k] = old[i]
-            else
+                if (!rustrx.notesKnown()) adoptButtons(old[i].remoteActions)
+            } else {
                 old[i].close()
+            }
         }
+    }
+    // the first run of a Rustrx that keeps the list: lines posted before
+    // the update keep their buttons
+    function adoptButtons(actions) {
+        var room = null, eventId = "", emoji = []
+        for (var i = 0; i < actions.length; i++) {
+            var args = actions[i].arguments || []
+            if ((actions[i].method === "markAccountRoomRead" || actions[i].method === "replyFromAccountNotification") && args.length >= 2)
+                room = { account: Number(args[0]), roomId: args[1] }
+            else if (actions[i].method === "reactFromAccountNotification" && args.length === 4) {
+                eventId = args[2]
+                emoji.push(args[3])
+            }
+        }
+        if (room) rustrx.notePosted(room.account, room.roomId, eventId, emoji)
     }
 
     Component.onCompleted: {

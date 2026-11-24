@@ -242,6 +242,8 @@ mod timeline;
 mod verification;
 
 pub(crate) use spaces::join_rule_name;
+#[cfg(test)]
+pub(crate) use timeline::emote_stem;
 
 impl Core {
     /// A core on `rt`; `owned` is the runtime behind it when the core is

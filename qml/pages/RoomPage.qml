@@ -393,7 +393,7 @@ Page {
             fillMode: Image.PreserveAspectCrop
             sourceSize.width: width * 2
             sourceSize.height: height * 2
-            source: page.hasPicture ? "file://" + page.roomInfo.avatar_path + "?v=" + (page.roomInfo.avatar_v || 0) : ""
+            source: page.hasPicture ? rustrx.picture(page.roomInfo.avatar_path) + "?v=" + (page.roomInfo.avatar_v || 0) : ""
             layer.enabled: app.avatarRadius > 0
             layer.effect: RoundMask { radius: app.avatarRadius }
         }

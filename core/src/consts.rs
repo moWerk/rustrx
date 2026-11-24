@@ -161,8 +161,9 @@ pub(crate) const KEY_BASED_MARKER: &str = "rustrx-key-based-";
 /// ENCRYPTED_MARKER, whose std hash may change with the toolchain.
 pub(crate) const KEY_FINGERPRINT_FILE: &str = "rustrx-key-fingerprint";
 /// The SDK's media cache (the media database) at most this big; uploads
-/// waiting in the send queue are not counted and never removed.
-pub(crate) const MEDIA_CACHE_MAX_BYTES: u64 = 100 * 1024 * 1024;
+/// waiting in the send queue are not counted and never removed. (Rustrx's
+/// own copies in media/ have their limit in media_cache.rs.)
+pub(crate) const SDK_MEDIA_CACHE_MAX_BYTES: u64 = 100 * 1024 * 1024;
 pub(crate) const MEDIA_DIR: &str = "media";
 /// Inside MEDIA_DIR.
 pub(crate) const EMOTE_DIR: &str = "emotes";

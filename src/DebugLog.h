@@ -33,4 +33,7 @@ QString collect(const QString &dir, const QString &header);
 // the logs emptied (the open one keeps writing, from the start) and the
 // copies shared to `dir` before removed; returns how many copies went
 int clear(const QString &dir);
+// a line as it is logged: URL queries and user:password parts (TURN),
+// access_token / token values and Bearer tokens cut (audit 0.8.4 SEC7)
+QString redact(const QString &line);
 }

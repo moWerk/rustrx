@@ -46,6 +46,8 @@ static QString outgoingDir()
     return dir;
 }
 
+static void sweepOutgoing(const QSet<QString> &waiting);
+
 namespace {
 
 // a video's metadata out of a copy of it (Mp4::strip), off the GUI thread:
@@ -92,6 +94,8 @@ Media::Media(QSettings *settings, QObject *parent)
             m_settings->setValue(QLatin1String(Keys::kMetadataLevel), m_settings->value(old).toBool() ? 2 : 0);
         m_settings->remove(old);
     }
+    // what an earlier run sent and left (nothing of this run waits yet)
+    sweepOutgoing(QSet<QString>());
 }
 
 QString Media::localPath(const QString &path)
@@ -217,13 +221,18 @@ void Media::setOwnAvatar(const QString &path)
 }
 
 // prepared files the core has long read: away, before they pile up; those
-// of sends still waiting (behind a long video's re-encode) stay
+// of sends still waiting (behind a long video's re-encode) stay. Recorded
+// voice messages too (VoiceRecorder): the core has the sent ones in its
+// send queue, a discarded one went at once (audit 0.8.4 SEC4)
 static void sweepOutgoing(const QSet<QString> &waiting)
 {
     const QDateTime before = QDateTime::currentDateTime().addMSecs(-Keys::kOutgoingKeepMs);
-    for (const QFileInfo &f : QDir(outgoingDir()).entryInfoList(QDir::Files | QDir::NoDotAndDotDot)) {
-        if (f.lastModified() < before && !waiting.contains(f.filePath()))
-            QFile::remove(f.filePath());
+    const QString voice = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QLatin1Char('/') + QLatin1String(Keys::kVoiceDir);
+    for (const QString &dir : { outgoingDir(), voice }) {
+        for (const QFileInfo &f : QDir(dir).entryInfoList(QDir::Files | QDir::NoDotAndDotDot)) {
+            if (f.lastModified() < before && !waiting.contains(f.filePath()))
+                QFile::remove(f.filePath());
+        }
     }
 }
 
@@ -539,6 +548,10 @@ void Media::sendInOrder()
 
 void Media::sendVoice(const QString &roomId, const QString &path, qint64 durationMs, const QString &caption)
 {
+    QSet<QString> waiting{ path };
+    for (const Outgoing &o : m_outgoing)
+        waiting << o.cmd.value("path").toString() << o.cmd.value("thumb_path").toString();
+    sweepOutgoing(waiting);
     QVariantMap cmd{{"cmd", "send_file"}, {"room_id", roomId}, {"path", path}, {"voice", true}, {"duration_ms", durationMs}};
     if (!caption.isEmpty())
         cmd.insert("caption", caption);

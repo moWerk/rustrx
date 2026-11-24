@@ -218,7 +218,12 @@ bool isShare(const QJsonValue &v, const QString &sharedDir)
             return false;
         const QString path = f.toString();
         const QFileInfo info(path);
-        if (path != QDir::cleanPath(path) || info.path() != dir || info.fileName().isEmpty()
+        // each copy in a folder of its own (ShareCopy::freshDir, audit IPC5);
+        // straight in the folder as before 0.8.4
+        const QFileInfo folder(info.path());
+        const bool own = folder.path() == dir && !folder.fileName().isEmpty()
+                && folder.fileName() != QLatin1String("..") && !folder.isSymLink();
+        if (path != QDir::cleanPath(path) || (info.path() != dir && !own) || info.fileName().isEmpty()
                 || info.fileName() == QLatin1String("..") || info.isSymLink())
             return false;
     }

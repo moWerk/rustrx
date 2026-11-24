@@ -33,12 +33,19 @@
 ShareAdaptor::ShareAdaptor(Rustrx *owner) : QObject(owner), m_owner(owner)
 {
     // copies already sent, or never: a share can wait across the handover
-    // from the stand-in, so only old ones go
+    // from the stand-in, so only old ones go. Each copy has a folder of its
+    // own (ShareCopy::freshDir), which goes as a whole; loose files are from
+    // before 0.8.4
     QDir shared(QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QLatin1Char('/') + QLatin1String(Keys::kSharedDir));
     const QDateTime before = QDateTime::currentDateTime().addSecs(-3600 * Keys::kSharedKeepHours);
-    for (const QFileInfo &f : shared.entryInfoList(QDir::Files))
-        if (f.lastModified() < before)
+    for (const QFileInfo &f : shared.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::System | QDir::Hidden)) {
+        if (f.lastModified() >= before)
+            continue;
+        if (f.isDir() && !f.isSymLink())
+            QDir(f.filePath()).removeRecursively();
+        else
             QFile::remove(f.filePath());
+    }
 }
 
 // A path another app names is taken (copied, ShareCopy.h) only when it is
@@ -73,10 +80,14 @@ void ShareAdaptor::share(const QVariantMap &config)
             const QString path = Rustrx::localPath(r.toString());
             if (QFileInfo(path).isFile()) {
                 // copied now, the copy is sent (ShareCopy.h)
-                const QString copy = ShareCopy::fromPath(path, cache, QStringLiteral("shared-%1").arg(++n),
-                                                         Keys::kShareMaxBytes, Keys::kShareChunk, &ShareAdaptor::mayShare);
+                const QString dir = ShareCopy::freshDir(cache);
+                const QString copy = dir.isEmpty() ? QString()
+                        : ShareCopy::fromPath(path, dir, QStringLiteral("shared-%1").arg(++n),
+                                              Keys::kShareMaxBytes, Keys::kShareChunk, &ShareAdaptor::mayShare);
                 if (!copy.isEmpty())
                     files << copy;
+                else if (!dir.isEmpty())
+                    QDir().rmdir(dir);
             } else {
                 qInfo() << "share: not a readable file, sent as text";
                 texts << path;   // a URL that is not a local file: send it as text
@@ -89,29 +100,38 @@ void ShareAdaptor::share(const QVariantMap &config)
         // a file from a sandboxed app (the gallery, say) comes as an open
         // file descriptor, since this app may not read the other's folders
         if (rawData.userType() == qMetaTypeId<QDBusUnixFileDescriptor>()) {
-            const QString path = copyFromDescriptor(rawData.value<QDBusUnixFileDescriptor>(), cache,
-                    unwrap(m.value(QStringLiteral("name"))).toString(), ++n);
+            const QString dir = ShareCopy::freshDir(cache);
+            const QString path = dir.isEmpty() ? QString()
+                    : copyFromDescriptor(rawData.value<QDBusUnixFileDescriptor>(), dir,
+                                         unwrap(m.value(QStringLiteral("name"))).toString(), ++n);
             if (!path.isEmpty())
                 files << path;
+            else if (!dir.isEmpty())
+                QDir().rmdir(dir);
             continue;
         }
         QByteArray data = rawData.type() == QVariant::String ? rawData.toString().toUtf8() : rawData.toByteArray();
+        // the same cap as a copied file (unwrap stops reading just past it)
+        if (data.size() > Keys::kShareMaxBytes) {
+            qWarning() << "share: larger than" << (Keys::kShareMaxBytes >> 20) << "MB, not taken";
+            continue;
+        }
         if (type.startsWith(QLatin1String("text/")))
             while (data.endsWith('\0'))   // C strings arrive with their terminator
                 data.chop(1);
         if (type.startsWith(QLatin1String("text/")) || m.contains(QStringLiteral("linkTitle"))) {
             texts << QString::fromUtf8(data);
         } else if (!data.isEmpty()) {
-            QDir().mkpath(cache);
-            QString name = m.value(QStringLiteral("name")).toString();
-            if (name.isEmpty())
-                name = QStringLiteral("shared-%1").arg(++n);
-            const QString path = cache + "/" + QFileInfo(name).fileName();
-            QFile f(path);
-            if (f.open(QIODevice::WriteOnly)) {
-                f.write(data);
+            // a new file in a folder of its own, as the copies (ShareCopy.h)
+            const QString name = m.value(QStringLiteral("name")).toString();
+            const QString dir = ShareCopy::freshDir(cache);
+            const QString path = dir.isEmpty() ? QString()
+                    : ShareCopy::fromBytes(data, dir, name, QStringLiteral("shared-%1").arg(name.isEmpty() ? ++n : n + 1),
+                                           Keys::kShareMaxBytes);
+            if (!path.isEmpty())
                 files << path;
-            }
+            else if (!dir.isEmpty())
+                QDir().rmdir(dir);
         }
     }
     m_owner->receiveShare(files, texts.join(QStringLiteral("\n")));
@@ -135,9 +155,11 @@ QVariant ShareAdaptor::unwrap(const QVariant &v)
         const QDBusArgument arg = v.value<QDBusArgument>();
         if (arg.currentType() == QDBusArgument::ArrayType) {
             if (arg.currentSignature() == QLatin1String("ay")) {
+                // the bus takes up to a GB: reading stops just past the
+                // share's cap, and share() refuses what got there
                 QByteArray bytes;
                 arg.beginArray();
-                while (!arg.atEnd()) {
+                while (!arg.atEnd() && bytes.size() <= Keys::kShareMaxBytes) {
                     uchar b = 0;
                     arg >> b;
                     bytes.append(char(b));

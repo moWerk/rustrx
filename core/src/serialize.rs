@@ -53,10 +53,44 @@ pub(crate) fn raw_value<T>(raw: &matrix_sdk::ruma::serde::Raw<T>) -> Value {
     serde_json::from_str(raw.json().get()).unwrap_or(Value::Null)
 }
 
+/// The name of a cache file for remote ids: the SHA-256 of the parts, each
+/// after its length, in hex. No two keys share a file whatever the ids
+/// hold, and the name stays 64 characters.
+pub(crate) fn cache_name(parts: &[&str]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    for part in parts {
+        hash.update((part.len() as u64).to_le_bytes());
+        hash.update(part.as_bytes());
+    }
+    hash.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
 /// File name of a room's cached avatar; the UI detects the image format.
 pub(crate) fn avatar_file(dir: &std::path::Path, room: &Room) -> std::path::PathBuf {
-    let safe: String = room.room_id().as_str().chars().filter(|c| c.is_ascii_alphanumeric()).collect();
-    dir.join(format!("{safe}.img"))
+    avatar_file_for(dir, room.room_id().as_str())
+}
+
+fn avatar_file_for(dir: &std::path::Path, room_id: &str) -> std::path::PathBuf {
+    dir.join(format!("room-{}.img", cache_name(&[room_id])))
+}
+
+/// A room's avatar of 0.8.3 and before (named by the room id's letters and
+/// digits, which two rooms can share) moved to `file` with its marker, when
+/// the marker names `url`, the room's picture now: no picture of another
+/// room is taken over. True when it was moved.
+pub(crate) fn take_old_avatar(dir: &std::path::Path, room_id: &str, url: &str, file: &std::path::Path) -> bool {
+    let safe: String = room_id.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    let old = dir.join(format!("{safe}.img"));
+    let marker = old.with_extension("url");
+    if std::fs::read_to_string(&marker).ok().as_deref().map(str::trim) != Some(url) {
+        return false;
+    }
+    if std::fs::rename(&old, file).is_err() {
+        return false;
+    }
+    std::fs::rename(&marker, file.with_extension("url")).ok();
+    true
 }
 
 /// File name of a message sender's cached picture, by its mxc address (hex,
@@ -198,7 +232,16 @@ pub(crate) async fn room_json(room: &Room, avatar_dir: &std::path::Path, setting
     };
     let counts = room.unread_notification_counts();
     let avatar = avatar_file(avatar_dir, room);
-    let avatar_meta = std::fs::metadata(&avatar).ok();
+    let mut avatar_meta = std::fs::metadata(&avatar).ok();
+    // a picture cached by 0.8.3 is shown at once (a direct chat's, from
+    // the peer, is taken over by the avatars task)
+    if avatar_meta.is_none() {
+        if let Some(url) = room.avatar_url() {
+            if take_old_avatar(avatar_dir, room.room_id().as_str(), url.as_str(), &avatar) {
+                avatar_meta = std::fs::metadata(&avatar).ok();
+            }
+        }
+    }
     let is_dm = room.is_direct().await.unwrap_or(false);
     let (preview, preview_sender, sender_mxc) = preview(room, is_dm).await;
     // the sender's picture once the avatars task has it (it marks the room
@@ -864,6 +907,39 @@ mod tests {
 
     fn in_order(rooms: Vec<Value>) -> Value {
         Value::Array(sorted_rooms(&rooms).into_iter().cloned().collect())
+    }
+
+    /// Two room ids with the same letters and digits get two files; a
+    /// file under the old name is taken over once, with its marker, and
+    /// only by the room whose picture the marker names.
+    /// Planted-bugs: name the file by the room id's letters and digits
+    /// again (the two rooms share it); drop the marker check in
+    /// take_old_avatar (the other picture is taken over).
+    #[test]
+    fn room_avatar_files_are_one_per_room() {
+        let dir = std::env::temp_dir().join(format!("rustrx-avatar-names-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        let (a, b) = ("!AbCdE:fmatrix.org", "!AbCdEf:matrix.org");
+        assert_ne!(avatar_file_for(&dir, a), avatar_file_for(&dir, b));
+        assert_ne!(cache_name(&["ab", "c"]), cache_name(&["a", "bc"]));
+        let name = avatar_file_for(&dir, a).file_name().unwrap().to_string_lossy().into_owned();
+        assert!(name.len() < 80 && name.starts_with("room-") && name.ends_with(".img"), "{name}");
+        // the old file goes to a room whose picture it is not: it stays
+        let (room, url) = ("!old:example.org", "mxc://example.org/pic");
+        std::fs::write(dir.join("oldexampleorg.img"), b"picture").unwrap();
+        std::fs::write(dir.join("oldexampleorg.url"), format!("{url}\n")).unwrap();
+        let file = avatar_file_for(&dir, room);
+        assert!(!take_old_avatar(&dir, "!o:ldexample.org", "mxc://example.org/other", &avatar_file_for(&dir, "!o:ldexample.org")));
+        assert!(!take_old_avatar(&dir, room, "mxc://example.org/other", &file));
+        assert!(dir.join("oldexampleorg.img").exists() && !file.exists());
+        // its own room takes it, with the marker, once
+        assert!(take_old_avatar(&dir, room, url, &file));
+        assert_eq!(std::fs::read(&file).unwrap(), b"picture");
+        assert_eq!(std::fs::read_to_string(file.with_extension("url")).unwrap().trim(), url);
+        assert!(!dir.join("oldexampleorg.img").exists() && !dir.join("oldexampleorg.url").exists());
+        assert!(!take_old_avatar(&dir, room, url, &file));
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// A sender's picture has a file of its own per mxc: two addresses that

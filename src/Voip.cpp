@@ -18,6 +18,7 @@
 #include "Voip.h"
 #include "AecFrames.h"
 #include "CallKeepAlive.h"
+#include "GstGuard.h"
 #include "Keys.h"
 #include "Perf.h"
 
@@ -85,11 +86,15 @@ QStringList Voip::mids(const QString &sdp)
 // voice recorder moved to first use for the same reason)
 static void ensureGst()
 {
-    if (gst_is_initialized())
+    // started by QtMultimedia before: its ranks set again all the same
+    if (gst_is_initialized()) {
+        GstGuard::demote();
         return;
+    }
     QElapsedTimer t;
     t.start();
     gst_init(nullptr, nullptr);
+    GstGuard::demote();
     qInfo().noquote() << "voip: GStreamer set up in" << t.elapsed() << "ms";
     Perf::mark("gst", -1, QStringLiteral("ms=%1").arg(t.elapsed()));
 }
@@ -193,6 +198,7 @@ QVariantMap Voip::status() const
              { "remote_level_db", m_lastLevel }, { "packets_in", m_packetsIn },
              { "packets_out", m_packetsOut }, { "end_reason", m_endReason },
              { "remote_candidates", m_candidatesAdded },
+             { "remote_queued", m_remoteCandidates.size() },
              { "turn", m_turnUris.size() },
              // the next call's test settings (tests: they last one call)
              { "test_tone", m_testTone }, { "aec", m_aec } };
@@ -217,6 +223,8 @@ void Voip::place(const QString &roomId, const QString &invitee, const QString &p
     reset();
     m_roomId = roomId;
     m_invitee = invitee;
+    // before the answer too: others in the room cannot end it or send candidates
+    m_peerUser = invitee;
     m_peerName = peerName;
     m_callId = newId();
     m_partyId = newId();
@@ -369,6 +377,7 @@ void Voip::reset()
     m_lastLevel = -100;
     m_packetsIn = m_packetsOut = 0;
     m_candidatesAdded = 0;
+    m_remoteMlines = 0;
     if (m_muted || m_speaker) {
         m_muted = false;
         if (m_speaker) {
@@ -552,6 +561,7 @@ bool Voip::startPipeline()
     // every GStreamer object of a call is made below
     ensureGst();
     m_pipeGen.ref();
+    m_farLinked.store(0);
     const QString source = m_testTone
             ? QStringLiteral("audiotestsrc is-live=true wave=sine freq=%1 volume=0.3").arg(m_toneHz)
             : QStringLiteral("pulsesrc stream-properties=\"props,media.role=(string)phone\"");
@@ -685,11 +695,15 @@ void Voip::applyRemote(const QString &type, const QString &sdp)
     if (!m_webrtc)
         return;
     GstSDPMessage *msg = nullptr;
-    if (gst_sdp_message_new_from_text(sdp.toUtf8().constData(), &msg) != GST_SDP_OK) {
-        qWarning() << "voip: remote SDP does not parse";
+    const QByteArray text = sdp.toUtf8();
+    if (text.size() > kMaxRemoteSdp || gst_sdp_message_new_from_text(text.constData(), &msg) != GST_SDP_OK) {
+        qWarning() << "voip: remote SDP does not parse, or is too big:" << text.size() << "bytes";
+        if (msg)
+            gst_sdp_message_free(msg);
         finish(QStringLiteral("ice_failed"), true, QStringLiteral("ice_failed"));
         return;
     }
+    m_remoteMlines = int(gst_sdp_message_medias_len(msg));
     const bool offer = type == QLatin1String("offer");
     GstWebRTCSessionDescription *desc = gst_webrtc_session_description_new(
             offer ? GST_WEBRTC_SDP_TYPE_OFFER : GST_WEBRTC_SDP_TYPE_ANSWER, msg);
@@ -709,7 +723,11 @@ void Voip::applyRemote(const QString &type, const QString &sdp)
 void Voip::addRemoteCandidates(const QVariantList &candidates)
 {
     if (!m_remoteSet || !m_webrtc) {
-        m_remoteCandidates += candidates;
+        for (const QVariant &v : candidates) {
+            if (m_candidatesAdded + m_remoteCandidates.size() >= kMaxRemoteCandidates)
+                break;
+            m_remoteCandidates << v;
+        }
         return;
     }
     const QStringList remoteMids = mids(m_offerer ? QString() : m_remoteOffer);
@@ -721,6 +739,12 @@ void Voip::addRemoteCandidates(const QVariantList &candidates)
         int index = c.contains("sdpMLineIndex") ? c.value("sdpMLineIndex").toInt() : -1;
         if (index < 0)
             index = qMax(0, remoteMids.indexOf(c.value("sdpMid").toString()));
+        if (m_remoteMlines > 0 && index >= m_remoteMlines)
+            continue;
+        if (m_candidatesAdded >= kMaxRemoteCandidates) {
+            qInfo() << "voip: more remote candidates than" << kMaxRemoteCandidates << ", the rest ignored";
+            break;
+        }
         g_signal_emit_by_name(m_webrtc, "add-ice-candidate", guint(index), line.toUtf8().constData());
         ++m_candidatesAdded;
     }
@@ -802,13 +826,44 @@ void Voip::onGatheringCb(GstElement *webrtc, void *, void *self)
                                   Q_ARG(int, static_cast<Voip *>(self)->m_pipeGen.load()));
 }
 
+bool Voip::isFarAudio(const GstCaps *caps)
+{
+    if (!caps || gst_caps_get_size(caps) < 1)
+        return false;
+    const GstStructure *st = gst_caps_get_structure(caps, 0);
+    const gchar *media = gst_structure_get_string(st, "media");
+    const gchar *encoding = gst_structure_get_string(st, "encoding-name");
+    return gst_structure_has_name(st, "application/x-rtp") && media && encoding
+            && g_ascii_strcasecmp(media, "audio") == 0 && g_ascii_strcasecmp(encoding, "OPUS") == 0;
+}
+
 // the far end's audio: Opus out of RTP, to the call route (or, in a test,
-// only measured)
+// only measured). One stream only: any other pad (a second audio stream,
+// video) goes to a fakesink, so it neither stalls webrtcbin nor feeds the
+// echo canceller twice
 void Voip::onPadAdded(GstElement *, GstPad *pad, void *self)
 {
     Voip *v = static_cast<Voip *>(self);
     if (GST_PAD_DIRECTION(pad) != GST_PAD_SRC)
         return;
+    GstCaps *caps = gst_pad_get_current_caps(pad);
+    // without caps yet, the first pad as before
+    const bool audio = caps ? isFarAudio(caps) : true;
+    if (caps)
+        gst_caps_unref(caps);
+    if (!audio || !v->m_farLinked.testAndSetOrdered(0, 1)) {
+        qInfo() << "voip: a further stream from the far end, not played";
+        GstElement *drop = gst_element_factory_make("fakesink", nullptr);
+        if (!drop)
+            return;
+        g_object_set(drop, "sync", FALSE, "async", FALSE, nullptr);
+        gst_bin_add(GST_BIN(v->m_pipe), drop);
+        gst_element_sync_state_with_parent(drop);
+        GstPad *dropPad = gst_element_get_static_pad(drop, "sink");
+        gst_pad_link(pad, dropPad);
+        gst_object_unref(dropPad);
+        return;
+    }
     const QString sink = v->m_testTone
             ? QStringLiteral("fakesink sync=false")
             // at full volume: Sailfish's stream restore starts the "phone"

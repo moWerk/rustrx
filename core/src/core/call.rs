@@ -5,8 +5,9 @@
 //! The UI only carries the widget API's postMessage strings: "call_message"
 //! commands go to the driver, "call_message" events go to the page.
 //!
-//! Spike: one call at a time, every capability the widget asks for is
-//! granted (Element Call asks only for what a call needs in this room).
+//! One call at a time. The widget gets of what it asks for only what a
+//! call needs (`CallCapabilities`): Element Call is remote code, loaded
+//! fresh for every call.
 
 use super::*;
 use matrix_sdk::ruma::events::{AnySyncMessageLikeEvent, StateEventType, TimelineEventType};
@@ -14,9 +15,9 @@ use matrix_sdk::ruma::Int;
 use matrix_sdk::deserialized_responses::RawAnySyncOrStrippedState;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::widget::{
-    Capabilities, CapabilitiesProvider, ClientProperties, EncryptionSystem, Intent,
-    VirtualElementCallWidgetConfig, VirtualElementCallWidgetProperties, WidgetDriver,
-    WidgetDriverHandle, WidgetSettings,
+    Capabilities, CapabilitiesProvider, ClientProperties, EncryptionSystem, Filter, Intent,
+    MessageLikeEventFilter, StateEventFilter, ToDeviceEventFilter, VirtualElementCallWidgetConfig,
+    VirtualElementCallWidgetProperties, WidgetDriver, WidgetDriverHandle, WidgetSettings,
 };
 
 pub(crate) struct CallSession {
@@ -33,11 +34,137 @@ impl CallSession {
     }
 }
 
-struct GrantAll;
+/// What Element Call may do in a call, granted where it asks for it:
+/// Element X's set (matrix-sdk-ffi 0.19.1,
+/// `get_element_call_required_permissions`), with the stable names of the
+/// call member and ring types and the additions on the SDK's main branch
+/// (to-device `m.rtc.encryption_key`, the MSC4143 `rtc.member` events, the
+/// functional members). Anything else, the room's messages among it, is
+/// refused and logged by its type.
+struct CallCapabilities {
+    allowed: Capabilities,
+}
 
-impl CapabilitiesProvider for GrantAll {
+impl CallCapabilities {
+    fn new(own_user: &str, own_device: &str) -> Self {
+        let message = |t: &str| Filter::MessageLike(MessageLikeEventFilter::WithType(t.into()));
+        let to_device = |t: &str| Filter::ToDevice(ToDeviceEventFilter::new(t.into()));
+        let both = [
+            "org.matrix.rageshake_request",
+            "io.element.call.encryption_keys",
+            "io.element.call.reaction",
+            "m.reaction",
+            "m.room.redaction",
+            DECLINE_TYPE,
+            "m.rtc.decline",
+            "org.matrix.msc4143.rtc.member",
+            "m.rtc.member",
+        ]
+        .into_iter()
+        .map(message)
+        .chain(["io.element.call.encryption_keys", "m.rtc.encryption_key"].into_iter().map(to_device));
+        let read = CALL_MEMBER_TYPES
+            .into_iter()
+            .chain(["m.room.name", "m.room.member", "m.room.encryption", "m.room.create", "io.element.functional_members"])
+            .map(|t| Filter::State(StateEventFilter::WithType(t.into())))
+            .chain(both.clone())
+            .collect();
+        // the own membership only: one per user (legacy), per device, per
+        // device and application, and the same with a leading underscore
+        let keys = [
+            own_user.to_owned(),
+            format!("{own_user}_{own_device}"),
+            format!("{own_user}_{own_device}_m.call"),
+            format!("_{own_user}_{own_device}"),
+            format!("_{own_user}_{own_device}_m.call"),
+        ];
+        let send = CALL_MEMBER_TYPES
+            .into_iter()
+            .flat_map(|t| keys.iter().map(move |k| Filter::State(StateEventFilter::WithTypeAndStateKey(t.into(), k.clone()))))
+            .chain(RING_TYPES.into_iter().map(message))
+            .chain(both)
+            .collect();
+        let allowed = Capabilities {
+            read,
+            send,
+            requires_client: true,
+            update_delayed_event: true,
+            send_delayed_event: true,
+            download_file: true,
+            rtc_transports: true,
+        };
+        Self { allowed }
+    }
+
+    /// The part of `asked` that is allowed: a filter for a whole type the
+    /// allowed set has only with given state keys becomes those keys.
+    fn grant(&self, asked: Capabilities) -> (Capabilities, Vec<String>) {
+        let mut refused = Vec::new();
+        let read = narrow(asked.read, &self.allowed.read, "read", &mut refused);
+        let send = narrow(asked.send, &self.allowed.send, "send", &mut refused);
+        let a = &self.allowed;
+        let granted = Capabilities {
+            read,
+            send,
+            requires_client: asked.requires_client && a.requires_client,
+            update_delayed_event: asked.update_delayed_event && a.update_delayed_event,
+            send_delayed_event: asked.send_delayed_event && a.send_delayed_event,
+            download_file: asked.download_file && a.download_file,
+            rtc_transports: asked.rtc_transports && a.rtc_transports,
+        };
+        (granted, refused)
+    }
+}
+
+/// A filter as kind, type and state key (None: any key); ruma's types
+/// print an alias under its primary name, as the SDK compares them.
+fn filter_key(f: &Filter) -> (&'static str, String, Option<String>) {
+    match f {
+        Filter::MessageLike(MessageLikeEventFilter::WithType(t)) => ("message", t.to_string(), None),
+        // m.room.message by msgtype is never allowed
+        Filter::MessageLike(MessageLikeEventFilter::RoomMessageWithMsgtype(m)) => ("message", "m.room.message".to_owned(), Some(m.clone())),
+        Filter::State(StateEventFilter::WithType(t)) => ("state", t.to_string(), None),
+        Filter::State(StateEventFilter::WithTypeAndStateKey(t, k)) => ("state", t.to_string(), Some(k.clone())),
+        Filter::ToDevice(t) => ("to_device", t.event_type.to_string(), None),
+    }
+}
+
+/// The filters of `asked` that `allowed` covers; the rest go to `refused`.
+fn narrow(asked: Vec<Filter>, allowed: &[Filter], how: &str, refused: &mut Vec<String>) -> Vec<Filter> {
+    let mut out: Vec<Filter> = Vec::new();
+    let push = |f: &Filter, out: &mut Vec<Filter>| {
+        if !out.iter().any(|o| filter_key(o) == filter_key(f)) {
+            out.push(f.clone());
+        }
+    };
+    for f in asked {
+        let (kind, ty, key) = filter_key(&f);
+        let same_type = |a: &&Filter| {
+            let (k, t, _) = filter_key(a);
+            k == kind && t == ty
+        };
+        if kind == "message" && key.is_some() {
+            refused.push(format!("{how} {kind} {ty}#"));
+        } else if allowed.iter().filter(same_type).any(|a| filter_key(a).2.is_none() || filter_key(a).2 == key) {
+            push(&f, &mut out);
+        } else if key.is_none() && allowed.iter().any(|a| same_type(&a)) {
+            for a in allowed.iter().filter(same_type) {
+                push(a, &mut out);
+            }
+        } else {
+            refused.push(format!("{how} {kind} {ty}"));
+        }
+    }
+    out
+}
+
+impl CapabilitiesProvider for CallCapabilities {
     async fn acquire_capabilities(&self, capabilities: Capabilities) -> Capabilities {
-        capabilities
+        let (granted, refused) = self.grant(capabilities);
+        if !refused.is_empty() {
+            tracing::info!(?refused, "call: capabilities refused");
+        }
+        granted
     }
 }
 
@@ -300,13 +427,14 @@ impl Core {
         }
 
         let rid_room = room.clone();
+        let capabilities = CallCapabilities::new(room.own_user_id().as_str(), room.client().device_id().map(|d| d.as_str()).unwrap_or(""));
         let (driver, handle) = WidgetDriver::new(settings);
         let handle = Arc::new(handle);
         let rid = room.room_id().to_owned();
         let run = self.rt.spawn({
             let rid = rid.clone();
             async move {
-                let _ = driver.run(room, GrantAll).await;
+                let _ = driver.run(room, capabilities).await;
                 tracing::info!(room = %rid, "call widget driver ended");
                 self.emit(json!({"ev": "call_ended", "room_id": rid.as_str()}));
             }
@@ -387,5 +515,76 @@ impl Core {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn caps(list: &[&str]) -> Capabilities {
+        serde_json::from_value(json!(list)).unwrap()
+    }
+
+    fn names(c: &Capabilities) -> Vec<String> {
+        let mut v: Vec<String> = serde_json::from_value(serde_json::to_value(c).unwrap()).unwrap();
+        v.sort();
+        v
+    }
+
+    /// What Element Call asks for a call is granted as asked; the room's
+    /// messages, other state, others' memberships and internal to-device
+    /// types are refused; a send of the member type for any key becomes
+    /// the own keys only.
+    /// Planted-bug: return `asked` from `grant` (GrantAll, as up to 0.8.3).
+    #[test]
+    fn element_call_gets_only_what_a_call_needs() {
+        let (me, dev) = ("@me:example.org", "DEV");
+        let provider = CallCapabilities::new(me, dev);
+        let call = [
+            "io.element.requires_client",
+            "org.matrix.msc4157.send.delayed_event",
+            "org.matrix.msc4157.update_delayed_event",
+            "org.matrix.msc2762.receive.state_event:m.room.member",
+            "org.matrix.msc2762.receive.state_event:org.matrix.msc3401.call.member",
+            "org.matrix.msc2762.receive.state_event:m.room.create",
+            "org.matrix.msc2762.receive.state_event:m.room.encryption",
+            "org.matrix.msc2762.receive.event:io.element.call.encryption_keys",
+            "org.matrix.msc2762.receive.event:m.reaction",
+            "org.matrix.msc2762.receive.event:org.matrix.msc4310.rtc.decline",
+            "org.matrix.msc3819.receive.to_device:io.element.call.encryption_keys",
+            "org.matrix.msc2762.send.state_event:org.matrix.msc3401.call.member#_@me:example.org_DEV_m.call",
+            "org.matrix.msc2762.send.event:org.matrix.msc4075.rtc.notification",
+            "org.matrix.msc2762.send.event:org.matrix.msc4075.call.notify",
+            "org.matrix.msc2762.send.event:io.element.call.encryption_keys",
+            "org.matrix.msc3819.send.to_device:io.element.call.encryption_keys",
+        ];
+        let (granted, refused) = provider.grant(caps(&call));
+        assert!(refused.is_empty(), "{refused:?}");
+        assert_eq!(names(&granted), names(&caps(&call)));
+
+        let hostile = [
+            "org.matrix.msc2762.receive.event:m.room.message",
+            "org.matrix.msc2762.receive.event:m.room.message#m.text",
+            "org.matrix.msc2762.receive.event:m.room.encrypted",
+            "org.matrix.msc2762.receive.state_event:m.room.power_levels",
+            "org.matrix.msc2762.send.state_event:m.room.topic",
+            "org.matrix.msc2762.send.state_event:m.room.power_levels#",
+            "org.matrix.msc2762.send.state_event:org.matrix.msc3401.call.member#@other:example.org",
+            "org.matrix.msc2762.send.event:m.room.message",
+            "org.matrix.msc3819.receive.to_device:m.room_key",
+            "org.matrix.msc3819.send.to_device:m.secret.send",
+        ];
+        let (granted, refused) = provider.grant(caps(&hostile));
+        assert!(names(&granted).is_empty(), "{:?}", names(&granted));
+        assert_eq!(refused.len(), hostile.len(), "{refused:?}");
+
+        // the member type for any key: the own keys, nobody else's
+        let (granted, _) = provider.grant(caps(&["org.matrix.msc2762.send.state_event:org.matrix.msc3401.call.member"]));
+        let got = names(&granted);
+        assert!(got.contains(&"org.matrix.msc2762.send.state_event:org.matrix.msc3401.call.member#_@me:example.org_DEV".to_owned()));
+        assert!(got.iter().all(|n| n.contains("#@me:example.org") || n.contains("#_@me:example.org_DEV")), "{got:?}");
+        // a flag not asked for is not given
+        assert!(!provider.grant(caps(&[])).0.requires_client);
     }
 }

@@ -3,6 +3,7 @@
 //! (part of `impl Core`, split out of core.rs; the items it uses live there)
 
 use super::*;
+use zeroize::Zeroizing;
 
 /// In the store: its to-device position was checked for one the classic
 /// sync left (drop_classic_to_device_token).
@@ -39,11 +40,12 @@ fn todevice_check_rearm(store: &std::path::Path) {
 /// A build before this one opens a rewrapped database with "KdfMismatch":
 /// a failed restore (Retry), the store left alone; nothing in those builds
 /// removes it on that error, and this build opens it again.
+/// Both are wiped when dropped.
 enum StoreSecret {
     /// the key's bytes as the SDK's high-entropy passphrase
-    Key(Vec<u8>),
+    Key(Zeroizing<Vec<u8>>),
     /// a key of another shape (not from SecretStore): as before
-    Passphrase(String),
+    Passphrase(Zeroizing<String>),
 }
 
 impl StoreSecret {
@@ -53,11 +55,11 @@ impl StoreSecret {
         // random; the SDK turns the bytes back into the passphrase with
         // unpadded standard base64, so they must come back unchanged
         if key.len() != 64 || !key.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return StoreSecret::Passphrase(key.to_owned());
+            return StoreSecret::Passphrase(Zeroizing::new(key.to_owned()));
         }
-        match base64_decode(key) {
+        match base64_decode(key).map(Zeroizing::new) {
             Ok(bytes) if base64_encode(&bytes) == key => StoreSecret::Key(bytes),
-            _ => StoreSecret::Passphrase(key.to_owned()),
+            _ => StoreSecret::Passphrase(Zeroizing::new(key.to_owned())),
         }
     }
 }
@@ -71,9 +73,9 @@ fn store_config(dir: &std::path::Path, secret: Option<&StoreSecret>) -> matrix_s
     let config = matrix_sdk::SqliteStoreConfig::with_low_memory_config(dir).pool_max_size(STORE_POOL_SIZE);
     match secret {
         Some(StoreSecret::Key(bytes)) => {
-            config.high_entropy_passphrase(Some(bytes), matrix_sdk_sqlite::Base64Variant::Unpadded)
+            config.high_entropy_passphrase(Some(bytes.as_slice()), matrix_sdk_sqlite::Base64Variant::Unpadded)
         }
-        Some(StoreSecret::Passphrase(p)) => config.passphrase(Some(p)),
+        Some(StoreSecret::Passphrase(p)) => config.passphrase(Some(p.as_str())),
         None => config,
     }
 }
@@ -109,20 +111,20 @@ fn mark_key_based(store: &std::path::Path, dbs: &[(&'static str, bool)]) {
 }
 
 /// The SDK's media cache had no limit (its default policy is empty): it
-/// grows to MEDIA_CACHE_MAX_BYTES, the longest unused go first, and the
+/// grows to SDK_MEDIA_CACHE_MAX_BYTES, the longest unused go first, and the
 /// rest of the policy is the SDK's own default (files over 20 MiB are not
 /// cached, none kept unused for 60 days, a clean-up a day at the next
 /// media call). Uploads waiting in the send queue are kept whatever the
 /// policy (IgnoreMediaRetentionPolicy::Yes, matrix-sdk send_queue/upload.rs).
 /// The policy is kept in the media database: written only when it differs.
 async fn limit_media_cache(client: &Client) {
-    let policy = matrix_sdk::media::MediaRetentionPolicy::new().with_max_cache_size(Some(MEDIA_CACHE_MAX_BYTES));
+    let policy = matrix_sdk::media::MediaRetentionPolicy::new().with_max_cache_size(Some(SDK_MEDIA_CACHE_MAX_BYTES));
     let media = client.media();
     if media.media_retention_policy().await.ok() == Some(policy) {
         return;
     }
     match media.set_media_retention_policy(policy).await {
-        Ok(()) => tracing::info!(max = MEDIA_CACHE_MAX_BYTES, "media cache: limit set"),
+        Ok(()) => tracing::info!(max = SDK_MEDIA_CACHE_MAX_BYTES, "media cache: limit set"),
         Err(e) => tracing::warn!("media cache: limit not set: {e}"),
     }
 }
@@ -391,7 +393,7 @@ impl Core {
 
     /// The store's secret (store_passphrase), in the form the store opens with.
     fn store_secret(&self) -> Result<Option<StoreSecret>> {
-        Ok(self.store_passphrase()?.as_deref().map(StoreSecret::of))
+        Ok(self.store_passphrase()?.map(|key| StoreSecret::of(&key)))
     }
 
     pub(crate) async fn build_client(&self, server: &str, with_store: bool) -> Result<Client> {
@@ -414,7 +416,7 @@ impl Core {
     ///   mismatch there proves nothing either.
     ///   ENCRYPTED_MARKER keeps the old form: builds before 0.8.2 remove the
     ///   store when that file is anything else.
-    fn store_passphrase(&self) -> Result<Option<String>> {
+    fn store_passphrase(&self) -> Result<Option<Zeroizing<String>>> {
         let dir = self.data_dir.join(STORE_DIR);
         let marker = dir.join(ENCRYPTED_MARKER);
         let existing = std::fs::read_dir(&dir).map(|mut d| d.next().is_some()).unwrap_or(false);
@@ -440,19 +442,19 @@ impl Core {
                     tracing::warn!("store: encrypted, its fingerprint is another key's; the open proves it (prove_store_key)");
                 }
             }
-            return Ok(Some(key.to_owned()));
+            return Ok(Some(Zeroizing::new(key.to_owned())));
         }
         let Some(key) = key else { return Ok(None) };
         Ok(Some(self.new_encrypted_store(&dir, key)))
     }
 
     /// Marks a new store as encrypted with `key`; its passphrase.
-    fn new_encrypted_store(&self, dir: &std::path::Path, key: &str) -> String {
+    fn new_encrypted_store(&self, dir: &std::path::Path, key: &str) -> Zeroizing<String> {
         std::fs::create_dir_all(dir).ok();
         std::fs::write(dir.join(ENCRYPTED_MARKER), legacy_fingerprint(key)).ok();
         confirm_store_key(dir, key);
         tracing::info!("store: new and encrypted, key from sailfish-secrets");
-        key.to_owned()
+        Zeroizing::new(key.to_owned())
     }
 
     /// How the local store is kept, for the account's security status:
@@ -1314,7 +1316,7 @@ mod tests {
         let short = &HEX_KEY[..60];
         let not_hex = HEX_KEY.replace('0', "g");
         for other in ["", "abc", "not-base64!", short, not_hex.as_str()] {
-            assert!(matches!(StoreSecret::of(other), StoreSecret::Passphrase(ref p) if p == other), "{other:?}");
+            assert!(matches!(StoreSecret::of(other), StoreSecret::Passphrase(ref p) if p.as_str() == other), "{other:?}");
         }
     }
 

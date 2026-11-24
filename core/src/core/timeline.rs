@@ -1036,9 +1036,13 @@ impl Core {
             },
         };
         let mime_ext = mime.as_deref().and_then(|m| mime_guess::get_mime_extensions_str(m).and_then(|e| e.first().copied()));
+        // the export's fallback name keeps the event id's letters and digits
         let safe: String = event_id.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
         let media_dir = self.data_dir.join(MEDIA_DIR);
-        let stem = format!("{safe}{}", if thumb { "-thumb" } else { "" });
+        // the cache's name by room and event, which no other pair shares
+        // (files of 0.8.3 and before, by the event id's letters and digits,
+        // are no longer looked for and go with the sweep)
+        let stem = format!("{}{}", crate::serialize::cache_name(&[room.room_id().as_str(), event_id]), if thumb { "-thumb" } else { "" });
         // the file from an earlier run, under any name this function gives
         // (below); not for an edited message, whose file may be another one
         media_cache::swept(&media_dir).await;
@@ -1084,37 +1088,24 @@ impl Core {
         let ext = sniff_extension(&bytes).or(mime_ext).unwrap_or("bin");
         // "dest_dir": a copy for other apps (the data dir is private to the sandbox),
         // named after the file where the message has a name
-        let path = match dest_dir {
-            Some(dir) => {
-                let original = item
-                    .content()
-                    .as_message()
-                    .map(|m| m.body().to_owned())
-                    .filter(|b| !b.is_empty() && b.len() < MAX_FILENAME_FROM_BODY)
-                    .map(|b| b.chars().map(|c| if c == '/' || c == '\\' || c.is_control() { '_' } else { c }).collect::<String>())
-                    .unwrap_or_else(|| format!("{safe}.{ext}"));
-                let dir = PathBuf::from(dir);
-                tokio::fs::create_dir_all(&dir).await?;
-                // Downloads is open to other apps: a link put there in the
-                // folder's place would lead the copy into Rustrx's own files
-                if tokio::fs::symlink_metadata(&dir).await?.file_type().is_symlink() {
-                    bail!("{} is a link, not a folder", dir.display());
-                }
-                let mut path = dir.join(&original);
-                if path.exists() {
-                    path = dir.join(format!("{safe}-{original}"));
-                }
-                path
-            }
-            None => media_dir.join(format!("{stem}.{ext}")),
-        };
+        let export = dest_dir.map(|dir| {
+            let original = item
+                .content()
+                .as_message()
+                .map(|m| m.body().to_owned())
+                .filter(|b| !b.is_empty() && b.len() < MAX_FILENAME_FROM_BODY)
+                .map(|b| b.chars().map(|c| if c == '/' || c == '\\' || c.is_control() { '_' } else { c }).collect::<String>())
+                .unwrap_or_else(|| format!("{safe}.{ext}"));
+            let second = format!("{safe}-{original}");
+            (PathBuf::from(dir), original, second)
+        });
+        let mut path = media_dir.join(format!("{stem}.{ext}"));
         self.same_login(generation).await?;
-        if exported {
-            // a new file only: never over one, never through a link left there
-            use tokio::io::AsyncWriteExt;
-            let mut f = tokio::fs::OpenOptions::new().write(true).create_new(true).open(&path).await?;
-            f.write_all(&bytes).await?;
-            f.flush().await?;
+        let len = bytes.len();
+        if let Some((dir, original, second)) = export {
+            path = tokio::task::spawn_blocking(move || export_new_file(&dir, &[&original, &second], &bytes))
+                .await
+                .map_err(|e| anyhow!("export: {e}"))??;
         } else {
             // whole or not at all: a write cut short (the app closed, the
             // disk full) must not leave a file the lookup above would serve
@@ -1134,7 +1125,7 @@ impl Core {
                 return Err(e.into());
             }
         }
-        tracing::debug!(target: "rustrx::perf", cached = cached.is_some(), bytes = bytes.len(),
+        tracing::debug!(target: "rustrx::perf", cached = cached.is_some(), bytes = len,
                         ms = t.elapsed().as_millis() as u64, "get_media");
         self.emit(json!({"ev": "media", "room_id": room.room_id().as_str(), "event_id": event_id,
                          "thumb": thumb, "exported": exported,
@@ -1149,8 +1140,7 @@ impl Core {
     /// A cached one is answered without the network.
     pub(crate) async fn fetch_emote(&'static self, mxc: &str) -> Result<()> {
         let dir = self.data_dir.join(MEDIA_DIR).join(EMOTE_DIR);
-        let safe: String = mxc.trim_start_matches("mxc://").chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+        let safe = emote_stem(mxc);
         // the cached file has one of the extensions sniff_extension gives:
         // looked up by name, without listing the folder per emoji
         let mut cached = None;
@@ -1190,12 +1180,60 @@ impl Core {
                 tokio::fs::create_dir_all(&dir).await?;
                 let path = dir.join(format!("{safe}.{ext}"));
                 tokio::fs::write(&path, &bytes).await?;
+                // the file of 0.8.3 and before, named by the address with
+                // every other character `_` (two addresses could share it),
+                // goes once this one is here
+                let old: String = mxc.trim_start_matches("mxc://").chars()
+                    .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+                for ext in MEDIA_EXTENSIONS {
+                    tokio::fs::remove_file(dir.join(format!("{old}.{ext}"))).await.ok();
+                }
                 path
             }
         };
         self.emit(json!({"ev": "emote", "mxc": mxc, "path": path.to_string_lossy()}));
         Ok(())
     }
+}
+
+/// A custom emoji's file name without extension, by its whole address
+/// (cache_name): no two addresses share a file.
+pub(crate) fn emote_stem(mxc: &str) -> String {
+    crate::serialize::cache_name(&[mxc])
+}
+
+/// Writes `bytes` to a new file in `dir` (made if missing) under the first
+/// of `names` that is free, and gives its path. The folder is opened once
+/// without following a link and the file made relative to it, new only
+/// (O_EXCL) and never through a link: another app with Downloads cannot
+/// swap the folder for a link between a check and the write and so lead
+/// the copy into Rustrx's own files (the name is the sender's choice).
+fn export_new_file(dir: &std::path::Path, names: &[&str], bytes: &[u8]) -> Result<PathBuf> {
+    use std::io::Write;
+    use std::os::fd::{AsRawFd, FromRawFd};
+    use std::os::unix::fs::OpenOptionsExt;
+    std::fs::create_dir_all(dir)?;
+    let folder = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(dir)
+        .map_err(|e| anyhow!("{}: not a folder ({e})", dir.display()))?;
+    for name in names {
+        let c_name = std::ffi::CString::new(*name).map_err(|_| anyhow!("a file name with a NUL"))?;
+        let flags = libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+        let fd = unsafe { libc::openat(folder.as_raw_fd(), c_name.as_ptr(), flags, 0o666 as libc::c_uint) };
+        if fd < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.kind() == std::io::ErrorKind::AlreadyExists {
+                continue;
+            }
+            return Err(err.into());
+        }
+        let mut f = unsafe { std::fs::File::from_raw_fd(fd) };
+        f.write_all(bytes)?;
+        return Ok(dir.join(name));
+    }
+    Err(std::io::Error::from(std::io::ErrorKind::AlreadyExists).into())
 }
 
 /// Every extension sniff_extension gives (a custom emoji without a known
@@ -1470,6 +1508,53 @@ fn read_receipts(event_id: OwnedEventId, private: bool, marker: bool) -> Receipt
 mod tests {
     use super::*;
     use crate::protocol::MentionArg;
+
+    /// Addresses that differ only in a `.` and a `-` (or `-` and `_`) get
+    /// two emote files; the name never leaves the folder.
+    /// Planted-bug: map every other character to `_` again, as up to 0.8.3.
+    #[test]
+    fn emote_names_are_one_per_address() {
+        let a = emote_stem("mxc://chat.example.org/ID");
+        assert_ne!(a, emote_stem("mxc://chat-example.org/ID"));
+        assert_ne!(emote_stem("mxc://s.org/a-b"), emote_stem("mxc://s.org/a_b"));
+        assert_eq!(a, emote_stem("mxc://chat.example.org/ID"));
+        assert!(a.len() == 64 && a.chars().all(|c| c.is_ascii_hexdigit()), "{a}");
+    }
+
+    /// The export writes a new file in the folder, the second name when the
+    /// first is taken, never over a file and never through a link: not as
+    /// the folder (a link put in its place, as another app with Downloads
+    /// could between a check and the write), not as the file name.
+    /// (The race itself needs a swap between two calls; here the folder's
+    /// open is the only check, so a link there at any time is refused.)
+    /// Planted-bug: drop O_NOFOLLOW from the folder's open (session.json
+    /// lands in the private folder). (O_EXCL alone already refuses a link
+    /// at the file's name; O_NOFOLLOW there is a second guard.)
+    #[test]
+    fn export_never_follows_a_link() {
+        let base = std::env::temp_dir().join(format!("rustrx-export-{}", std::process::id()));
+        std::fs::remove_dir_all(&base).ok();
+        let (downloads, private) = (base.join("Downloads"), base.join("private"));
+        std::fs::create_dir_all(&downloads).unwrap();
+        std::fs::create_dir_all(&private).unwrap();
+        let dir = downloads.join("Rustrx");
+        let first = export_new_file(&dir, &["a.txt", "e-a.txt"], b"one").unwrap();
+        assert_eq!(first, dir.join("a.txt"));
+        let second = export_new_file(&dir, &["a.txt", "e-a.txt"], b"two").unwrap();
+        assert_eq!(second, dir.join("e-a.txt"));
+        assert_eq!(std::fs::read(&first).unwrap(), b"one");
+        assert!(export_new_file(&dir, &["a.txt", "e-a.txt"], b"three").is_err());
+        // a dangling link at the name: taken, not followed
+        std::os::unix::fs::symlink(private.join("dev-commands"), dir.join("b.txt")).unwrap();
+        assert_eq!(export_new_file(&dir, &["b.txt", "e-b.txt"], b"x").unwrap(), dir.join("e-b.txt"));
+        assert!(!private.join("dev-commands").exists());
+        // the folder swapped for a link to the private one
+        std::fs::remove_dir_all(&dir).unwrap();
+        std::os::unix::fs::symlink(&private, &dir).unwrap();
+        assert!(export_new_file(&dir, &["session.json"], b"x").is_err());
+        assert!(!private.join("session.json").exists());
+        std::fs::remove_dir_all(&base).ok();
+    }
 
     fn mention(user_id: &str, name: &str) -> MentionArg {
         MentionArg { user_id: user_id.to_owned(), name: name.to_owned() }
