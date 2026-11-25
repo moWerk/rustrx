@@ -349,10 +349,11 @@ bool Rustrx::leaving(const char *what) const
     return m_leaving;
 }
 
-// IPC1: whoever owns the notification server's name runs the actions
+// IPC1: a process of this user (lipstick's mliteremoteaction); each
+// action then checks that its notification is up
 bool Rustrx::fromNotifications(const char *what) const
 {
-    return NotifyGate::fromServer(*this, what);
+    return NotifyGate::fromUser(*this, what);
 }
 
 void Rustrx::open()
@@ -527,9 +528,16 @@ void Rustrx::openUrl(const QStringList &urls)
 
 void Rustrx::quit()
 {
-    if (calledFromDBus() && !QFile::exists(m_dataDir + QLatin1Char('/') + QLatin1String(Keys::kDevCommandsFlag))
-            && !fromNotifications("quit"))
-        return;
+    // over D-Bus: the dev flag, or the stand-in's line, which only the
+    // stand-in posts
+    if (calledFromDBus() && !QFile::exists(m_dataDir + QLatin1Char('/') + QLatin1String(Keys::kDevCommandsFlag))) {
+        if (!fromNotifications("quit"))
+            return;
+        if (!m_handover.standIn()) {
+            qInfo() << "notification: quit outside the stand-in, ignored";
+            return;
+        }
+    }
     emit quitRequested();
     // time for the close to reach the notification server
     QTimer::singleShot(Keys::kQuitDelayMs, qApp, &QCoreApplication::quit);

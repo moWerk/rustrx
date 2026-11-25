@@ -23,19 +23,22 @@
 
 // Who may use a notification's actions over D-Bus (audit 0.8.4 IPC1).
 //
-// The session bus lets every unsandboxed process of the user call Rustrx,
-// and a sandboxed app's notification may name Rustrx's methods in its own
-// actions. So an action is taken only (1) from the notification server,
-// the owner of org.freedesktop.Notifications (lipstick runs the actions on
-// that connection), and (2) for a notification Rustrx posted and has not
-// closed: Posted, a small file in the data folder, so the app, the
-// stand-in and a push-woken process (started by the tap itself, when
-// lipstick may have dropped the notification already) agree. A secret in
-// the actions' arguments would not help: lipstick hands them to any app
-// (IPC4). Calls from inside the process (QML) are not D-Bus calls and pass.
+// Lipstick does not call Rustrx itself: it runs a sandboxed app's actions
+// through /usr/libexec/mliteremoteaction, a short-lived process with a bus
+// connection of its own, which the sandbox cannot tell from any other
+// process of the user. So an action is taken (1) from a caller running as
+// this process's Unix user, asked of the bus at every call (other users
+// are refused), and (2) only for a notification Rustrx posted and has not
+// closed, the action matching it: Posted, a small file in the data folder,
+// so the app, the stand-in and a push-woken process (started by the tap
+// itself, when lipstick may have dropped the notification already) agree.
+// (2) is the real barrier: any app of the user can still take an action of
+// a notification that is listed as up, e.g. answer a ringing call. A
+// secret in the actions' arguments would not help: lipstick hands them to
+// any app (IPC4). Calls from inside the process (QML) are not D-Bus calls
+// and pass.
 namespace NotifyGate {
 
-static const char kServer[] = "org.freedesktop.Notifications";
 // in the data folder
 static const char kPostedFile[] = "notified.json";
 static const char kSecretFile[] = "bus-secret";
@@ -84,28 +87,28 @@ inline QString describe(QDBusConnectionInterface *bus, const QString &name)
     return d;
 }
 
-// true for a call from the notification server, or not over D-Bus at all.
-// Lipstick may call on a second connection of its own: the same process as
-// the name's owner counts as the server too.
-inline bool fromServer(const QDBusContext &ctx, const char *what)
+// whether a caller's uid, as the bus told it (valid: the bus answered), is
+// this process's
+inline bool sameUser(bool valid, uint callerUid, uint ownUid)
+{
+    return valid && callerUid == ownUid;
+}
+
+// true for a call from a process of this user, or not over D-Bus at all
+inline bool fromUser(const QDBusContext &ctx, const char *what)
 {
     if (!ctx.calledFromDBus())
         return true;
     const QString sender = ctx.message().service();
     QDBusConnectionInterface *bus = ctx.connection().interface();
-    const QString owner = bus ? bus->serviceOwner(QString::fromLatin1(kServer)).value() : QString();
-    if (!owner.isEmpty() && sender == owner) {
-        qInfo().noquote() << "notification:" << what << "from the notification server" << sender;
+    const QDBusReply<uint> uid = bus ? bus->serviceUid(sender) : QDBusReply<uint>();
+    if (sameUser(uid.isValid(), uid.value(), uint(::getuid()))) {
+        qInfo().noquote() << "notification:" << what << "from" << sender << "(this user)";
         return true;
     }
-    const uint senderPid = bus ? bus->servicePid(sender).value() : 0;
-    const uint ownerPid = bus && !owner.isEmpty() ? bus->servicePid(owner).value() : 0;
-    if (senderPid && senderPid == ownerPid) {
-        qInfo().noquote() << "notification:" << what << "from the notification server's process, connection" << sender;
-        return true;
-    }
-    qWarning().noquote() << "notification:" << what << "refused: from" << describe(bus, sender)
-                         << "not the notification server" << (owner.isEmpty() ? QStringLiteral("(none)") : describe(bus, owner));
+    qWarning().noquote() << "notification:" << what << "refused: from" << describe(bus, sender) << "uid"
+                         << (uid.isValid() ? QString::number(uid.value()) : QStringLiteral("? (") + uid.error().name() + QLatin1Char(')'))
+                         << "not this user" << ::getuid();
     return false;
 }
 

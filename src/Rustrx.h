@@ -668,8 +668,9 @@ private:
     void leaveIfNobodyLoggedIn();
     // asks the window to show that account (nothing in a process without one)
     void requestShow(int key);
-    // a notification's action over D-Bus: from the notification server
-    // (always true for a call that is not over D-Bus)
+    // a notification's action over D-Bus: from a process of this user
+    // (always true for a call that is not over D-Bus); the action's own
+    // check that its notification is up follows
     bool fromNotifications(const char *what) const;
     void answerIn(int key, const QString &roomId);
     void declineIn(int key, const QString &roomId, const QString &eventId);

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Who may use a notification's actions (NotifyGate.h, audit 0.8.4 IPC1):
-// on a private bus, a call from another connection is refused, one from
-// the owner of org.freedesktop.Notifications taken; the list of posted
-// notifications and the data folder's secret.
+// on a private bus, a call from another process of this user is taken for
+// a notification that is up and refused for one that is not; the uid
+// comparison on its own (another uid cannot be faked here); the list of
+// posted notifications and the data folder's secret.
 #include "NotifyGate.h"
 
 #include <QDBusConnection>
@@ -16,18 +17,22 @@
 #include <cstdio>
 #include <sys/stat.h>
 
-// stands in for Rustrx: an exported slot behind the gate
+// stands in for Rustrx: an exported slot behind the gate and, as Rustrx's
+// answerIn, the check that the room rings
 class Target : public QObject, protected QDBusContext
 {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "net.mowerk.test")
 public:
+    NotifyGate::Posted posted;
     int taken = 0;
-    bool direct() { return act(); }
+    bool direct(const QString &roomId) { return answer(roomId); }
 public slots:
-    Q_SCRIPTABLE bool act()
+    Q_SCRIPTABLE bool answer(const QString &roomId)
     {
-        if (!NotifyGate::fromServer(*this, "test"))
+        if (!NotifyGate::fromUser(*this, "test"))
+            return false;
+        if (calledFromDBus() && !posted.rings(0, roomId))
             return false;
         ++taken;
         return true;
@@ -43,10 +48,11 @@ class TestNotifyGate : public QObject
 
     // a call to the target from the connection `from`, the event loop running
     // (the target answers on this thread)
-    QVariant callFrom(QDBusConnection from)
+    QVariant callFrom(QDBusConnection from, const QString &roomId)
     {
         QDBusMessage m = QDBusMessage::createMethodCall(QStringLiteral("net.mowerk.test.target"), QStringLiteral("/t"),
-                                                        QStringLiteral("net.mowerk.test"), QStringLiteral("act"));
+                                                        QStringLiteral("net.mowerk.test"), QStringLiteral("answer"));
+        m << roomId;
         QDBusPendingCall p = from.asyncCall(m, 5000);
         QElapsedTimer t;
         t.start();
@@ -71,42 +77,32 @@ private slots:
     }
     void cleanupTestCase()
     {
-        for (const char *n : { "target", "other", "server" })
+        for (const char *n : { "target", "other" })
             QDBusConnection::disconnectFromBus(QLatin1String(n));
         m_daemon.terminate();
         m_daemon.waitForFinished(3000);
     }
 
-    // a process of its own (this binary, NOTIFYGATE_CHILD): "call" calls
-    // the target once; "own" takes the server's name first, then calls
-    // when told to (a line on stdin). Its answers: "owned", the call's result.
-    QProcess *startChild(const char *mode)
+    // a process of its own (this binary, NOTIFYGATE_CHILD), as lipstick's
+    // mliteremoteaction: calls the target once for the room; its answer,
+    // the call's result, is its one line
+    QByteArray callFromChild(const QString &roomId)
     {
-        auto *p = new QProcess(this);
+        QProcess p;
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-        env.insert(QStringLiteral("NOTIFYGATE_CHILD"), QString::fromLatin1(mode));
+        env.insert(QStringLiteral("NOTIFYGATE_CHILD"), roomId);
         env.insert(QStringLiteral("NOTIFYGATE_BUS"), m_address);
-        p->setProcessEnvironment(env);
-        p->start(QCoreApplication::applicationFilePath(), QStringList());
-        return p;
-    }
-    // the child's next line, this event loop running (the target answers here)
-    QByteArray lineFrom(QProcess *p)
-    {
+        p.setProcessEnvironment(env);
+        p.start(QCoreApplication::applicationFilePath(), QStringList());
+        // this event loop running: the target answers here
         QElapsedTimer t;
         t.start();
-        while (!p->canReadLine() && t.elapsed() < 8000) {
+        while (!p.canReadLine() && t.elapsed() < 8000) {
             QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
-            p->waitForReadyRead(20);
+            p.waitForReadyRead(20);
         }
-        return p->readLine().trimmed();
-    }
-    QByteArray callFromChild()
-    {
-        QProcess *p = startChild("call");
-        const QByteArray r = lineFrom(p);
-        p->waitForFinished(3000);
-        delete p;
+        const QByteArray r = p.readLine().trimmed();
+        p.waitForFinished(3000);
         return r;
     }
 
@@ -114,42 +110,49 @@ private slots:
     {
         QDBusConnection target = QDBusConnection::connectToBus(m_address, QStringLiteral("target"));
         QDBusConnection other = QDBusConnection::connectToBus(m_address, QStringLiteral("other"));
-        QDBusConnection server = QDBusConnection::connectToBus(m_address, QStringLiteral("server"));
-        QVERIFY(target.isConnected() && other.isConnected() && server.isConnected());
+        QVERIFY(target.isConnected() && other.isConnected());
         Target t;
+        t.posted.setPath(file("caller.json"));
+        t.posted.create();
         QVERIFY(target.registerObject(QStringLiteral("/t"), &t, QDBusConnection::ExportScriptableSlots));
         QVERIFY(target.registerService(QStringLiteral("net.mowerk.test.target")));
+        const QString room = QStringLiteral("!c:x");
 
-        // nobody is the notification server yet: refused
-        QCOMPARE(callFrom(other), QVariant(false));
-        QCOMPARE(callFromChild(), QByteArray("false"));
-        QVERIFY(server.registerService(QString::fromLatin1(NotifyGate::kServer)));
-        // another process: refused; the server: taken
-        // Planted-bug: any caller taken (the gate open to every process)
-        QCOMPARE(callFromChild(), QByteArray("false"));
+        // nothing rings: refused, from another process and from another
+        // connection of this one
+        // Planted-bug: the posted check dropped (any action of the user taken)
+        QCOMPARE(callFromChild(room), QByteArray("false"));
+        QCOMPARE(callFrom(other, room), QVariant(false));
         QCOMPARE(t.taken, 0);
-        QCOMPARE(callFrom(server), QVariant(true));
+        // the room rings: another process of this user is taken (lipstick's
+        // mliteremoteaction), only for that room
+        // Planted-bug: only the owner of org.freedesktop.Notifications taken
+        t.posted.ringPosted(0, room, QStringLiteral("$call"), 60000);
+        QCOMPARE(callFromChild(room), QByteArray("true"));
         QCOMPARE(t.taken, 1);
-        // another connection of the server's process (lipstick's second
-        // one): taken
-        // Planted-bug: only the name's own connection taken
-        QCOMPARE(callFrom(other), QVariant(true));
+        QCOMPARE(callFromChild(QStringLiteral("!other:x")), QByteArray("false"));
+        QCOMPARE(callFrom(other, room), QVariant(true));
         QCOMPARE(t.taken, 2);
-        // the name moves to another process: this one's connections are
-        // refused, the new owner is taken
-        QVERIFY(server.unregisterService(QString::fromLatin1(NotifyGate::kServer)));
-        QProcess *owner = startChild("own");
-        QCOMPARE(lineFrom(owner), QByteArray("owned"));
-        QCOMPARE(callFrom(server), QVariant(false));
-        QCOMPARE(callFrom(other), QVariant(false));
-        owner->write("go\n");
-        QCOMPARE(lineFrom(owner), QByteArray("true"));
-        owner->waitForFinished(3000);
-        delete owner;
-        QCOMPARE(t.taken, 3);
+        // the ring is over: refused again
+        t.posted.ringEnded(0, room);
+        QCOMPARE(callFromChild(room), QByteArray("false"));
+        QCOMPARE(t.taken, 2);
         // from inside the process (QML): not a D-Bus call, taken
-        QVERIFY(t.direct());
-        QCOMPARE(t.taken, 4);
+        QVERIFY(t.direct(room));
+        QCOMPARE(t.taken, 3);
+    }
+
+    // the uid the bus tells against this process's: another user, or no
+    // answer from the bus, is refused
+    // Planted-bug: the reply's validity ignored (an error's 0 is root's uid)
+    void sameUser()
+    {
+        QVERIFY(NotifyGate::sameUser(true, 1000, 1000));
+        QVERIFY(NotifyGate::sameUser(true, 0, 0));
+        QVERIFY(!NotifyGate::sameUser(true, 1001, 1000));
+        QVERIFY(!NotifyGate::sameUser(true, 0, 1000));
+        QVERIFY(!NotifyGate::sameUser(false, 1000, 1000));
+        QVERIFY(!NotifyGate::sameUser(false, 0, 0));
     }
 
     void posted()
@@ -243,23 +246,16 @@ private slots:
 };
 
 // the child process of caller(): no test, no event loop needed (the
-// calls block, the target answers in the parent)
-static int child(const QByteArray &mode)
+// call blocks, as mliteremoteaction's does; the target answers in the parent)
+static int child(const QString &roomId)
 {
     QDBusConnection bus = QDBusConnection::connectToBus(QString::fromLocal8Bit(qgetenv("NOTIFYGATE_BUS")), QStringLiteral("child"));
     if (!bus.isConnected())
         return 1;
-    if (mode == "own") {
-        if (!bus.registerService(QString::fromLatin1(NotifyGate::kServer)))
-            return 1;
-        std::printf("owned\n");
-        std::fflush(stdout);
-        char line[16];
-        if (!std::fgets(line, sizeof line, stdin))
-            return 1;
-    }
-    const QDBusMessage r = bus.call(QDBusMessage::createMethodCall(QStringLiteral("net.mowerk.test.target"), QStringLiteral("/t"),
-                                                                   QStringLiteral("net.mowerk.test"), QStringLiteral("act")), QDBus::Block, 5000);
+    QDBusMessage m = QDBusMessage::createMethodCall(QStringLiteral("net.mowerk.test.target"), QStringLiteral("/t"),
+                                                    QStringLiteral("net.mowerk.test"), QStringLiteral("answer"));
+    m << roomId;
+    const QDBusMessage r = bus.call(m, QDBus::Block, 5000);
     const bool ok = r.type() == QDBusMessage::ReplyMessage && !r.arguments().isEmpty();
     std::printf("%s\n", !ok ? "error" : r.arguments().first().toBool() ? "true" : "false");
     std::fflush(stdout);
@@ -269,9 +265,9 @@ static int child(const QByteArray &mode)
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
-    const QByteArray mode = qgetenv("NOTIFYGATE_CHILD");
-    if (!mode.isEmpty())
-        return child(mode);
+    const QByteArray room = qgetenv("NOTIFYGATE_CHILD");
+    if (!room.isEmpty())
+        return child(QString::fromUtf8(room));
     TestNotifyGate t;
     return QTest::qExec(&t, argc, argv);
 }
