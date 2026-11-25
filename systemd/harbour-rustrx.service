@@ -17,6 +17,14 @@ ExecStart=/usr/bin/sailjail -p harbour-rustrx.desktop /usr/bin/harbour-rustrx
 # unlock) ends the stand-in with a failure: tried again a minute later
 Restart=on-failure
 RestartSec=60
+# a stop (and the session's end) is Rustrx's own quit, on SIGTERM: the core
+# stops before the bus name goes. Only firejail (the main process) gets the
+# SIGTERM and hands it in: signalled with the whole group, the sandbox's
+# D-Bus proxy (firejail's child, in this unit) would go at once, and with it
+# Rustrx's bus. firejail gives Rustrx about 10 s (its quit takes under 7 s),
+# systemd kills what is left after 15 s.
+KillMode=mixed
+TimeoutStopSec=15
 
 [Install]
 WantedBy=post-user-session.target

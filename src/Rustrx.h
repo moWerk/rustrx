@@ -394,6 +394,8 @@ public:
     Q_INVOKABLE void noteClosed(int account, const QString &roomId);
     Q_INVOKABLE void noteRinging(int account, const QString &roomId, const QString &eventId, int forMs);
     Q_INVOKABLE void noteRingEnded(int account, const QString &roomId);
+    // ms the room's ring has left (notified.json), 0 when it is over
+    Q_INVOKABLE int ringLeftMs(int account, const QString &roomId) const;
     // that list was there when the process started (not the first 0.8.4
     // run, when lines posted before the update are taken into it)
     Q_INVOKABLE bool notesKnown() const { return m_notesKnown; }

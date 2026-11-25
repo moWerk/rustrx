@@ -8,6 +8,7 @@
 #include <QDBusConnectionInterface>
 #include <QDBusContext>
 #include <QDBusMessage>
+#include <QDBusReply>
 #include <QDebug>
 #include <QFile>
 #include <QJsonArray>
@@ -41,7 +42,51 @@ static const char kSecretFile[] = "bus-secret";
 // room lines kept at the most; the oldest go first
 static const int kMaxRooms = 256;
 
-// true for a call from the notification server, or not over D-Bus at all
+// whether this process sees the host's process ids (sailjail's firejail
+// gives it a PID namespace of its own: the bus's ids are not in its /proc)
+inline bool hostPids()
+{
+    QFile f(QStringLiteral("/proc/self/status"));
+    if (!f.open(QIODevice::ReadOnly))
+        return false;
+    for (const QByteArray &line : f.readAll().split('\n'))
+        if (line.startsWith("NSpid:"))
+            return line.mid(6).simplified().split(' ').size() == 1;
+    return true;
+}
+
+// a caller for the log: its unique name, process id and, where this process
+// can see it, the process's name and program
+inline QString describe(QDBusConnectionInterface *bus, const QString &name)
+{
+    if (!bus)
+        return name;
+    const QDBusReply<uint> reply = bus->servicePid(name);
+    const uint pid = reply.isValid() ? reply.value() : 0;
+    QString d = name + QStringLiteral(" pid ") + (pid ? QString::number(pid) : QStringLiteral("? (") + reply.error().name() + QLatin1Char(')'));
+    if (!pid)
+        return d;
+    if (!hostPids())
+        return d + QStringLiteral(" (not visible in the sandbox)");
+    const QString dir = QStringLiteral("/proc/") + QString::number(pid);
+    QFile comm(dir + QStringLiteral("/comm"));
+    if (comm.open(QIODevice::ReadOnly))
+        d += QStringLiteral(" comm ") + QString::fromLocal8Bit(comm.read(64).trimmed());
+    const QString exe = QFile::symLinkTarget(dir + QStringLiteral("/exe"));
+    if (!exe.isEmpty())
+        d += QStringLiteral(" exe ") + exe;
+    QFile cmdline(dir + QStringLiteral("/cmdline"));
+    if (cmdline.open(QIODevice::ReadOnly)) {
+        QByteArray c = cmdline.read(256);
+        c.replace('\0', ' ');
+        d += QStringLiteral(" cmdline ") + QString::fromLocal8Bit(c.trimmed());
+    }
+    return d;
+}
+
+// true for a call from the notification server, or not over D-Bus at all.
+// Lipstick may call on a second connection of its own: the same process as
+// the name's owner counts as the server too.
 inline bool fromServer(const QDBusContext &ctx, const char *what)
 {
     if (!ctx.calledFromDBus())
@@ -53,8 +98,14 @@ inline bool fromServer(const QDBusContext &ctx, const char *what)
         qInfo().noquote() << "notification:" << what << "from the notification server" << sender;
         return true;
     }
-    qWarning().noquote() << "notification:" << what << "refused: from" << sender
-                         << "not the notification server" << (owner.isEmpty() ? QStringLiteral("(none)") : owner);
+    const uint senderPid = bus ? bus->servicePid(sender).value() : 0;
+    const uint ownerPid = bus && !owner.isEmpty() ? bus->servicePid(owner).value() : 0;
+    if (senderPid && senderPid == ownerPid) {
+        qInfo().noquote() << "notification:" << what << "from the notification server's process, connection" << sender;
+        return true;
+    }
+    qWarning().noquote() << "notification:" << what << "refused: from" << describe(bus, sender)
+                         << "not the notification server" << (owner.isEmpty() ? QStringLiteral("(none)") : describe(bus, owner));
     return false;
 }
 
@@ -136,6 +187,13 @@ public:
     {
         const QJsonValue v = read().value(QStringLiteral("rings")).toObject().value(key(account, roomId));
         return v.isObject() && v.toObject().value(QStringLiteral("until")).toDouble() >= now();
+    }
+    // how long the room still rings, 0 when it does not: a ring an earlier
+    // process posted ends as one of this process's own (Service.qml)
+    qint64 ringLeft(int account, const QString &roomId) const
+    {
+        const QJsonValue v = read().value(QStringLiteral("rings")).toObject().value(key(account, roomId));
+        return v.isObject() ? qMax(qint64(0), qint64(v.toObject().value(QStringLiteral("until")).toDouble()) - now()) : 0;
     }
     bool mayDecline(int account, const QString &roomId, const QString &eventId) const
     {

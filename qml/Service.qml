@@ -193,8 +193,10 @@ Item {
     // latest message; reply and emoji can be switched off in Settings.
     // lipstick puts the buttons in one row while they fit and stacks every
     // one of them otherwise: these fit a phone's row (Jolla Phone 2026: 871
-    // of 972 px). With push on they go to the push connector, so a closed
-    // Rustrx answers them without its window.
+    // of 972 px). With push on and a distributor there they go to the push
+    // connector, so a closed Rustrx answers them without its window; without
+    // a distributor nobody may own that name and they would be lost, so they
+    // go to the app's own name (with Rustrx closed a tap then opens it).
     // the user's three from Settings; the default when none are left
     readonly property var notificationEmoji: {
         var picked = String(cfg.notifyEmoji || "").split(/\s+/).filter(function (e) { return e.length > 0 }).slice(0, 3)
@@ -212,7 +214,7 @@ Item {
     }
     // each names its account (as text: the arguments arrive as written)
     function roomActions(account, roomId, eventId) {
-        var viaPush = rustrx.push.enabled
+        var viaPush = rustrx.push.enabled && rustrx.push.available
         var a = String(account)
         var actions = [ action("default", "openAccountRoom", [ a, roomId ]) ]
         if (cfg.notifyReply) {
@@ -385,6 +387,7 @@ Item {
         if (!n) return
         rustrx.noteRingEnded(n.account, roomId)
         n.close()
+        if (n.adopted) n.adopted.close()
         n.destroy()
         var r = ringing
         delete r[roomId]
@@ -412,6 +415,9 @@ Item {
             property int account
             // the room's state showed the call running once; its end then ends the ring
             property bool seenCall
+            // an earlier process's ring this one stands for (adoptRing): it
+            // is closed in its place, this one is never posted
+            property var adopted
             property Timer expiry: Timer { onTriggered: service.stopRinging(ringNote.roomId) }
             appName: "Rustrx"
             appIcon: "harbour-rustrx"
@@ -653,6 +659,12 @@ Item {
         rustrx.perf("notes_taken")
         var old = standInNote.notifications()
         for (var i = 0; i < old.length; i++) {
+            // a ring's tap opens its room too: it is a ring first
+            var ring = ringOf(old[i].remoteActions)
+            if (ring) {
+                adoptRing(old[i], ring)
+                continue
+            }
             var first = old[i].remoteActions.length ? old[i].remoteActions[0] : {}
             var k = noteKeyOf(first)
             if (k.length && !roomNotifications[k]) {
@@ -662,6 +674,43 @@ Item {
                 old[i].close()
             }
         }
+    }
+    // an earlier process's ring, by its Answer and Decline (before 0.7
+    // they named no account: the first one): { account, roomId, eventId }
+    // (a classic call's eventId is ""), null for other lines
+    function ringOf(actions) {
+        var ring = null, eventId = ""
+        for (var i = 0; i < actions.length; i++) {
+            var args = actions[i].arguments || []
+            var method = actions[i].method
+            if (method === "answerAccountCall" && args.length === 2) ring = { account: Number(args[0]), roomId: args[1] }
+            else if (method === "answerCall" && args.length === 1) ring = { account: 0, roomId: args[0] }
+            else if (method === "declineAccountCall" && args.length === 3) eventId = args[2]
+            else if (method === "declineCall" && args.length === 2) eventId = args[1]
+        }
+        if (ring) ring.eventId = eventId
+        return ring
+    }
+    // a ring the stand-in posted (a call handed over by a launcher tap, a
+    // link or another room's tap) rings on as one of this process's own and
+    // goes as they do: expired, answered, declined, the call over, the room
+    // opened. One that is over or whose room is open goes now.
+    function adoptRing(old, ring) {
+        var left = rustrx.ringLeftMs(ring.account, ring.roomId)
+        var open = rustrx.openRoomId.length > 0 && ring.account === rustrx.accountKey && ring.roomId === rustrx.openRoomId
+        if (left <= 0 || open || ringing[ring.roomId]) {
+            if (!ringing[ring.roomId]) rustrx.noteRingEnded(ring.account, ring.roomId)
+            old.close()
+            return
+        }
+        var n = ringComponent.createObject(service, { roomId: ring.roomId, eventId: ring.eventId, account: ring.account,
+                                                      ring: old.category === "x-harbour-rustrx.call", adopted: old })
+        n.expiry.interval = left
+        n.expiry.start()
+        var r = ringing
+        r[ring.roomId] = n
+        ringing = r
+        console.log("call: ring taken over from an earlier process, for", left, "ms")
     }
     // the first run of a Rustrx that keeps the list: lines posted before
     // the update keep their buttons

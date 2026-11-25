@@ -40,6 +40,7 @@
 #include "Handover.h"
 #include "LocalOnly.h"
 #include "NotifyGate.h"
+#include "QuitSignals.h"
 #include "Rustrx.h"
 #include "UnifiedPush.h"
 #include "Voip.h"
@@ -213,6 +214,9 @@ int main(int argc, char *argv[])
     }
 
     Perf::mark("bus");
+    // from here a SIGTERM (the unit stopped, the session's end), SIGINT or
+    // SIGHUP waits for the event loop and its normal quit below
+    QuitSignals::install();
     // the private settings, for both engines: by the one process that holds
     // the name (whichever runs first after the update moves them out of dconf)
     PrivateStore privateSettings(Rustrx::settingsFile());
@@ -237,6 +241,11 @@ int main(int argc, char *argv[])
         // what was asked meanwhile is handed over to the app, not lost
         rustrx.setLeaving();
         BusLeave::releaseName(bus, kService, rustrx.busObjects());
+    });
+    // as the Quit button does: the stand-in's line closed, then the order above
+    QuitSignals::watch(app.data(), [&rustrx](int sig) {
+        qInfo() << "quit: signal" << sig << "received, quitting";
+        rustrx.quit();
     });
     rustrx.setStandIn(standIn);
     rustrx.setPushWake(pushWake);
@@ -324,8 +333,8 @@ int main(int argc, char *argv[])
     Perf::mark("show");
     const int rc = app->exec();
     // closed in background mode: the stand-in takes over (it waits for this
-    // process to be gone)
-    if (rustrx.background() && !UnifiedPush::activeOnDisk(dataDir) && Handover::sessionOnDisk(dataDir))
+    // process to be gone); not when a signal ended it (the session's end)
+    if (!QuitSignals::received() && rustrx.background() && !UnifiedPush::activeOnDisk(dataDir) && Handover::sessionOnDisk(dataDir))
         Rustrx::startUnit(QString::fromLatin1(Keys::kStandInUnit));
     return rc;
 }

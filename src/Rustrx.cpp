@@ -52,6 +52,8 @@
 #include <QStandardPaths>
 #include <QTimer>
 
+#include <limits>
+
 // The core's tokio threads call eventCallback until the process ends; the
 // lock and the pointer keep them away from a Rustrx that is being destroyed.
 static QMutex s_lock;
@@ -1173,6 +1175,11 @@ void Rustrx::noteRinging(int account, const QString &roomId, const QString &even
 void Rustrx::noteRingEnded(int account, const QString &roomId)
 {
     m_posted.ringEnded(account, roomId);
+}
+
+int Rustrx::ringLeftMs(int account, const QString &roomId) const
+{
+    return int(qMin(m_posted.ringLeft(account, roomId), qint64(std::numeric_limits<int>::max())));
 }
 
 void Rustrx::setRoomAvatar(const QString &roomId, const QString &path)
