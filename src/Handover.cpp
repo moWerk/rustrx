@@ -104,6 +104,19 @@ bool Handover::startUnit(const QString &unit)
     return true;
 }
 
+bool Handover::sessionOnDisk(const QString &dataDir)
+{
+    if (QFile::exists(dataDir + QLatin1String("/session.json")))
+        return true;
+    QDir more(dataDir + QLatin1String("/accounts"));
+    for (const QString &name : more.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        bool ok = false;
+        if (name.toInt(&ok) > 0 && ok && QFile::exists(more.filePath(name + QLatin1String("/session.json"))))
+            return true;
+    }
+    return false;
+}
+
 // The new process opens the store only when this one is gone (it waits for
 // the bus name), so what it should show goes through a file.
 bool Handover::handOver()
@@ -122,6 +135,10 @@ bool Handover::handOver()
     if (!f.open(QIODevice::WriteOnly) || f.write(QJsonDocument(o).toJson(QJsonDocument::Compact)) < 0)
         qWarning() << "stand-in: cannot write" << f.fileName() << f.errorString();
     f.close();
+    if (m_appComing) {
+        qInfo() << "stand-in: handed over to the app that is starting";
+        return true;
+    }
     qInfo() << "stand-in: handing over to the app";
     // the app could not be started: this one stays and keeps notifying,
     // and the request is dropped rather than shown by a later start

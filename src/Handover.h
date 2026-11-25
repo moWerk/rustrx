@@ -54,6 +54,9 @@ public:
     // the stand-in: pass what was asked for to a new app process and leave;
     // false in the app, which shows it itself
     bool handOver();
+    // a second launch is on its way (activateWith): handOver() only writes
+    // the file, which that app reads once this process is gone
+    void setAppComing() { m_appComing = true; }
     // what the stand-in passed on: the room, link or share to show
     void takeHandover();
     // the handover file's content taken up when every field is as
@@ -70,10 +73,14 @@ public:
     // a user unit: the stand-in (harbour-rustrx.service) or the app for it to
     // hand over to (harbour-rustrx-open.service)
     static bool startUnit(const QString &unit);
+    // a saved login in the data folder: the first account's session.json
+    // or one in accounts/<n> (a relogin.json alone is no login)
+    static bool sessionOnDisk(const QString &dataDir);
 
 private:
     bool m_standIn = false;
     bool m_pushWake = false;
+    bool m_appComing = false;
     QString m_pendingRoom;
     int m_pendingAccount = 0;
     QString m_pendingCall;

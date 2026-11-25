@@ -35,7 +35,9 @@
 
 #include <malloc.h>
 
+#include "BusLeave.h"
 #include "GstGuard.h"
+#include "Handover.h"
 #include "LocalOnly.h"
 #include "NotifyGate.h"
 #include "Rustrx.h"
@@ -135,6 +137,12 @@ int main(int argc, char *argv[])
     // the stand-in is the fallback: not wanted while push works
     if (standIn && (!QFile::exists(Rustrx::backgroundFlagPath()) || UnifiedPush::activeOnDisk(dataDir)))
         return 0;
+    // nor logged out: it took the name for a moment, and a launcher tap in
+    // that moment reached a process on its way out (the Prawn, 2026-11-25)
+    if (standIn && !Handover::sessionOnDisk(dataDir)) {
+        qInfo() << "stand-in: no account logged in, not started";
+        return 0;
+    }
     if (pushWake) {
         // push switched off, or someone (the app, the stand-in) has the
         // connector name already and takes the push itself
@@ -159,8 +167,12 @@ int main(int argc, char *argv[])
             QDBusMessage call = QDBusMessage::createMethodCall(kService, QString::fromLatin1(Keys::kObjectPath),
                     QString::fromLatin1(Keys::kInterface), QStringLiteral("activateWith"));
             call << NotifyGate::secret(dataDir + QLatin1Char('/') + QLatin1String(NotifyGate::kSecretFile));
-            const QDBusMessage plain = QDBusMessage::createMethodCall(kService, QString::fromLatin1(Keys::kObjectPath),
+            QDBusMessage plain = QDBusMessage::createMethodCall(kService, QString::fromLatin1(Keys::kObjectPath),
                     QString::fromLatin1(Keys::kInterface), QStringLiteral("activate"));
+            // gone in the meantime: the name is free for this one (a call
+            // that may start a process would start a third Rustrx)
+            call.setAutoStartService(false);
+            plain.setAutoStartService(false);
             // one that is still starting (it waits for sailfish-secrets,
             // say) has the name but not its object yet: asked again
             QElapsedTimer asked;
@@ -213,11 +225,18 @@ int main(int argc, char *argv[])
     Perf::mark("rustrx");
     // at the end the core stops first, then the name (the store's lock)
     // goes, so the next Rustrx never opens a store this one still writes
-    QObject::connect(app.data(), &QCoreApplication::aboutToQuit, [&bus, &rustrx]() {
+    const bool windowless = standIn || pushWake;
+    QObject::connect(app.data(), &QCoreApplication::aboutToQuit, [&bus, &rustrx, windowless]() {
         // a call is hung up first, while the core can still send
         rustrx.voip()->endForQuit(Keys::kVoipQuitHangupMs);
         rustrx_shutdown(Keys::kShutdownMs);
-        bus.unregisterService(kService);
+        if (!windowless) {
+            bus.unregisterService(kService);
+            return;
+        }
+        // what was asked meanwhile is handed over to the app, not lost
+        rustrx.setLeaving();
+        BusLeave::releaseName(bus, kService, rustrx.busObjects());
     });
     rustrx.setStandIn(standIn);
     rustrx.setPushWake(pushWake);
@@ -306,7 +325,7 @@ int main(int argc, char *argv[])
     const int rc = app->exec();
     // closed in background mode: the stand-in takes over (it waits for this
     // process to be gone)
-    if (rustrx.background() && !UnifiedPush::activeOnDisk(dataDir))
+    if (rustrx.background() && !UnifiedPush::activeOnDisk(dataDir) && Handover::sessionOnDisk(dataDir))
         Rustrx::startUnit(QString::fromLatin1(Keys::kStandInUnit));
     return rc;
 }

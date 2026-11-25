@@ -37,6 +37,7 @@ SOURCES += src/main.cpp \
     src/PrivateSettings.cpp
 
 HEADERS += src/Rustrx.h \
+    src/BusLeave.h \
     src/Handover.h \
     src/Media.h \
     src/Keys.h \

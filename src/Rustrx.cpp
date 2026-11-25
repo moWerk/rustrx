@@ -274,6 +274,7 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     // the share sheet calls /share/<method>, the method named in the desktop
     // file's X-Share-Methods ("room"); /share stays for direct callers
     ShareAdaptor *share = new ShareAdaptor(this);
+    m_share = share;
     bus.registerObject(QString::fromLatin1(Keys::kSharePath), share, QDBusConnection::ExportScriptableSlots);
     bus.registerObject(QString::fromLatin1(Keys::kShareRoomPath), share, QDBusConnection::ExportScriptableSlots);
     // the name itself is main()'s, taken before the store is opened
@@ -332,6 +333,18 @@ bool Rustrx::takePendingKnocks()
     // a request of another account: that account first (0.8 audit)
     requestShow(m_handover.takePendingAccount());
     return true;
+}
+
+QList<QObject *> Rustrx::busObjects() const
+{
+    return { const_cast<Rustrx *>(this), m_share };
+}
+
+bool Rustrx::leaving(const char *what) const
+{
+    if (m_leaving)
+        qInfo() << what << "came while Rustrx was leaving, not done";
+    return m_leaving;
 }
 
 // IPC1: whoever owns the notification server's name runs the actions
@@ -397,6 +410,8 @@ void Rustrx::declineAccountCall(const QString &account, const QString &roomId, c
 
 void Rustrx::declineIn(int key, const QString &roomId, const QString &eventId)
 {
+    if (leaving("decline"))
+        return;
     // only the ring that is up, by its own event (a classic call's is "")
     if (calledFromDBus() && !m_posted.mayDecline(key, roomId, eventId)) {
         qInfo() << "call: decline for a ring that is not up, ignored; account" << key;
@@ -430,6 +445,8 @@ void Rustrx::reactFromNotification(const QString &roomId, const QString &eventId
 // emoji for a reaction
 void Rustrx::markAccountRoomRead(const QString &account, const QString &roomId)
 {
+    if (leaving("mark as read"))
+        return;
     if (!fromNotifications("mark as read"))
         return;
     if (calledFromDBus() && !m_posted.hasRoom(account.toInt(), roomId)) {
@@ -442,6 +459,8 @@ void Rustrx::markAccountRoomRead(const QString &account, const QString &roomId)
 
 void Rustrx::replyFromAccountNotification(const QString &account, const QString &roomId, const QString &text)
 {
+    if (leaving("reply"))
+        return;
     if (!fromNotifications("reply"))
         return;
     if (calledFromDBus() && !m_posted.hasRoom(account.toInt(), roomId)) {
@@ -455,6 +474,8 @@ void Rustrx::replyFromAccountNotification(const QString &account, const QString 
 void Rustrx::reactFromAccountNotification(const QString &account, const QString &roomId,
                                           const QString &eventId, const QString &key)
 {
+    if (leaving("reaction"))
+        return;
     if (!fromNotifications("reaction"))
         return;
     if (calledFromDBus() && !m_posted.mayReact(account.toInt(), roomId, eventId, key)) {
@@ -531,6 +552,8 @@ bool Rustrx::activateWith(const QString &secret)
         return false;
     }
     qInfo() << "stand-in: the app is starting, leaving";
+    // what is opened until this process is gone goes to that app
+    m_handover.setAppComing();
     QTimer::singleShot(0, qApp, &QCoreApplication::quit);
     return true;
 }
@@ -848,6 +871,8 @@ QString Rustrx::dev(const QString &json)
             + QLatin1Char('/') + QLatin1String(Keys::kDevCommandsFlag);
     if (!QFile::exists(flag))
         return QStringLiteral("{\"error\":\"dev commands are off\"}");
+    if (leaving("a dev command"))
+        return QStringLiteral("{\"error\":\"leaving\"}");
     const QVariantMap req = QJsonDocument::fromJson(json.toUtf8()).object().toVariantMap();
     qInfo().noquote() << "dev" << req.value("cmd", req.value("ui", req.keys().value(0))).toString();
     QJsonObject out;
@@ -1233,6 +1258,9 @@ static bool isLoginCommand(const QString &cmd)
 void Rustrx::handleEvent(const QVariantMap &ev)
 {
     const QString type = ev.value("ev").toString();
+    // queued before the core stopped (BusLeave): only its log still counts
+    if (m_leaving && type != QLatin1String("log"))
+        return;
     if (type == QLatin1String("log")) {
         // the core's own log, routed here because the sandbox drops its stderr
         // the core's own level is in the line (WARN/INFO/...); warn only on its warnings

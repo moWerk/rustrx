@@ -11,6 +11,9 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QDir>
+#include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QtTest>
 #include "Handover.h"
 
@@ -19,6 +22,12 @@ static const char kShared[] = "/home/u/.cache/net.mowerk/harbour-rustrx/shared";
 class TestHandover : public QObject
 {
     Q_OBJECT
+
+    static void touch(const QString &path)
+    {
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+    }
 
     // a file as Handover::handOver() writes it, with a ringing call as
     // Voip::ringing() makes it (Answer pressed in the notification)
@@ -167,6 +176,53 @@ private slots:
         QVERIFY(h.takePendingShare().isEmpty());
         QVERIFY(h.takePendingVoip().isEmpty());
         QVERIFY(h.takePendingUri().isEmpty());
+    }
+
+    // A second launch is coming (activateWith): what is opened while the
+    // stand-in leaves goes into the file that app reads, and no other app
+    // is started. The bus here leads nowhere, so a unit start fails.
+    // Planted-bug: handOver() starting the open unit regardless (it fails
+    // here, and the file goes with it).
+    void anOpenWhileTheAppComesGoesToIt()
+    {
+        qputenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent/rustrx-test-bus");
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("net.mowerk.test"));
+        QCoreApplication::setApplicationName(QStringLiteral("tst_handover"));
+        QDir().mkpath(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation));
+        Handover standIn;
+        standIn.setStandIn(true);
+        standIn.setAppComing();
+        standIn.setPendingUri(QStringLiteral("matrix:r/room:example.org"));
+        QVERIFY(standIn.handOver());
+        Handover app;
+        app.takeHandover();
+        QCOMPARE(app.takePendingUri(), QStringLiteral("matrix:r/room:example.org"));
+        // the app itself hands nothing over
+        Handover plain;
+        QVERIFY(!plain.handOver());
+    }
+
+    // The stand-in starts only with a login in the data folder.
+    // Planted-bug: relogin.json counted as a login; accounts/<n> not looked at.
+    void aLoginOnDisk()
+    {
+        QTemporaryDir dir;
+        const QString d = dir.path();
+        QVERIFY(!Handover::sessionOnDisk(d));
+        QVERIFY(QDir().mkpath(d + "/accounts/2"));
+        QVERIFY(QDir().mkpath(d + "/accounts/x"));
+        QVERIFY(QDir().mkpath(d + "/accounts/0"));
+        touch(d + "/relogin.json");
+        touch(d + "/accounts/2/relogin.json");
+        touch(d + "/accounts/x/session.json");
+        touch(d + "/accounts/0/session.json");
+        QVERIFY(!Handover::sessionOnDisk(d));
+        touch(d + "/accounts/2/session.json");
+        QVERIFY(Handover::sessionOnDisk(d));
+        QTemporaryDir first;
+        touch(first.path() + "/session.json");
+        QVERIFY(Handover::sessionOnDisk(first.path()));
     }
 
     // Planted-bug: the size not checked before parsing.

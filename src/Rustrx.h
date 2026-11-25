@@ -344,6 +344,12 @@ public:
     static bool startUnit(const QString &unit) { return Handover::startUnit(unit); }
     // what the stand-in passed on: the room, link or share to show
     void takeHandover() { m_handover.takeHandover(); }
+    // a window-less process on its way out, its core stopped: the calls
+    // still queued (BusLeave) only hand over to the app; the core's events
+    // other than its log, and the actions that need the core, are dropped
+    void setLeaving() { m_leaving = true; }
+    // the objects that take D-Bus calls on the bus name (BusLeave)
+    QList<QObject *> busObjects() const;
     // called by the share adaptor
     void receiveShare(const QStringList &files, const QString &text);
     // a file:// URL as a local path; a path stays as it is
@@ -667,6 +673,10 @@ private:
     void declineIn(int key, const QString &roomId, const QString &eventId);
     // the notifications up, for their actions (in the data folder)
     NotifyGate::Posted m_posted;
+    bool m_leaving = false;
+    // a call's action, or a dev command, that came while leaving: logged, not done
+    bool leaving(const char *what) const;
+    QObject *m_share = nullptr;
     bool m_notesKnown = false;
     bool m_devMode = false;
     void checkDevMode();
