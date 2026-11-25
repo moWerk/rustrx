@@ -163,16 +163,25 @@ Item {
 
     // the emoji used most (five; the defaults fill up until five have been
     // used), for the picker and the notifications' buttons
+    // what may stand in the quick reactions (the author's rule): an emoji,
+    // or text of at most 4 characters, never a Matrix address (a room id
+    // landed there on dodoradio's phone and ran over its neighbours)
+    function quickReaction(key) {
+        if (!key || /:\/\//.test(key) || /^[!@#$+][^\s:]*:\S/.test(key)) return false
+        return rustrx.emojiUrl(key).length > 0 || key.length <= 4
+    }
     function favouriteEmoji() {
         var counts = {}
         try { counts = JSON.parse(cfg.emojiCounts || "{}") } catch (e) {}
-        var used = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a] }).slice(0, Tunables.recentEmojiCount)
+        var used = Object.keys(counts).filter(quickReaction)
+                .sort(function (a, b) { return counts[b] - counts[a] }).slice(0, Tunables.recentEmojiCount)
         var defaults = ["👍", "❤️", "😂", "😮", "😢"]
         for (var i = 0; used.length < Tunables.recentEmojiCount && i < defaults.length; i++)
             if (used.indexOf(defaults[i]) < 0) used.push(defaults[i])
         return used
     }
     function countEmoji(emoji) {
+        if (!quickReaction(emoji)) return
         var counts = {}
         try { counts = JSON.parse(cfg.emojiCounts || "{}") } catch (e) {}
         counts[emoji] = (counts[emoji] || 0) + 1

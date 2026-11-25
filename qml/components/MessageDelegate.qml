@@ -1116,7 +1116,16 @@ ListItem {
                             sourceSize.width: width
                             source: rustrx.emojiUrl(modelData)
                         }
-                        Label { anchors.centerIn: parent; visible: !rustrx.emojiUrl(modelData); text: modelData; font.pixelSize: Theme.fontSizeLarge }
+                        // text that does not fit its square ends in "…" (the author's rule)
+                        Label {
+                            anchors.centerIn: parent
+                            width: parent.width - 2 * Theme.paddingSmall
+                            horizontalAlignment: Text.AlignHCenter
+                            truncationMode: TruncationMode.Elide
+                            visible: !rustrx.emojiUrl(modelData)
+                            text: modelData
+                            font.pixelSize: Theme.fontSizeLarge
+                        }
                     }
                 }
                 IconButton {
