@@ -142,8 +142,9 @@ the caller gave up, another device of ours declined) leaves a missed
 call, as the phone app's: the caller's name, "Missed call", the category
 `x-harbour-rustrx.missed` with the phone app's values (its missed-call
 icon, `call_exists`, no ringtone), a tap that opens the room, one per
-call, closed when the room is opened; while chat names stay inside
-Rustrx it says only "Missed call". An Element Call ring leaves none (an
+call, closed when the room is opened, and the only notification for
+that call (the room's message line held during the ring is dropped);
+while chat names stay inside Rustrx it says only "Missed call". An Element Call ring leaves none (an
 answer on another device is not seen here). The cover shows the call: who (or only "Call" when
 chat names stay inside Rustrx), its state or length, and Answer, Hang up
 or Unmute.

@@ -394,8 +394,10 @@ Item {
     function stopRinging(roomId, unanswered) {
         var n = ringing[roomId]
         if (!n) return
-        // a classic call's (no event id) that nobody took: a missed call
-        if (unanswered === true && n.ring && n.eventId === "") notifyMissed(n.account, roomId, n.senderName)
+        // a classic call's (no event id) that nobody took: a missed call,
+        // which is then the only notification for it (the author's wish)
+        var missed = unanswered === true && n.ring && n.eventId === ""
+        if (missed) notifyMissed(n.account, roomId, n.senderName)
         rustrx.noteRingEnded(n.account, roomId)
         n.close()
         if (n.adopted) n.adopted.close()
@@ -403,8 +405,8 @@ Item {
         var r = ringing
         delete r[roomId]
         ringing = r
-        if (unanswered === true) releaseHeld(n.account, roomId)
-        else if (unanswered === false) delete heldLines[noteKey(n.account, roomId)]
+        if (unanswered === true && !missed) releaseHeld(n.account, roomId)
+        else if (unanswered !== undefined) delete heldLines[noteKey(n.account, roomId)]
     }
     // a missed classic call, as the phone app has it: who called, "Missed
     // call", the missed-call icon of its category, quiet; a tap opens the
@@ -468,6 +470,7 @@ Item {
     // a room's message line waits while the room rings (the author's wish):
     // the last one asked for, posted when the ring ends unanswered and the
     // room is still unread, dropped when it was answered or declined here
+    // or a missed call stands for it
     property var heldLines: ({})
     function holdsLine(account, roomId) {
         var n = ringing[roomId]
