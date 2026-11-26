@@ -211,6 +211,34 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("idle"), 3000);
     }
 
+    // The caller waits a little past its invite's lifetime: an answer sent
+    // in time that comes late (7-10 s between matrix.org and tchncs.de, the
+    // caller had ended the call 134 ms before it came) still connects; with
+    // no answer at all the call ends after the grace, as invite_timeout.
+    // Planted-bug: the invite timer is the bare lifetime (ends at 2 s).
+    void anAnswerJustInTimeStillConnects()
+    {
+        Wire w;
+        w.a.setInviteLifetime(2000);
+        w.answerDelayMs = 5000;
+        w.a.place(QStringLiteral("!dm:example.org"), QStringLiteral("@b:example.org"), QStringLiteral("B"));
+        QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("incoming"), 5000);
+        w.b.answer();
+        QTRY_COMPARE_WITH_TIMEOUT(w.a.state(), QStringLiteral("connected"), 20000);
+        QVERIFY(w.a.endReason().isEmpty());
+        w.a.hangup();
+        QTRY_COMPARE_WITH_TIMEOUT(w.b.state(), QStringLiteral("idle"), 3000);
+
+        Wire n;
+        n.a.setInviteLifetime(1000);
+        QElapsedTimer t;
+        t.start();
+        n.a.place(QStringLiteral("!dm:example.org"), QStringLiteral("@b:example.org"), QStringLiteral("B"));
+        QTRY_COMPARE_WITH_TIMEOUT(n.a.state(), QStringLiteral("idle"), 1000 + Keys::kVoipAnswerGraceMs + 5000);
+        QCOMPARE(n.a.endReason(), QStringLiteral("invite_timeout"));
+        QVERIFY(t.elapsed() >= 1000 + Keys::kVoipAnswerGraceMs - 500);
+    }
+
     // The microphone's frames keep their capture time through the echo
     // canceller: with its thread held up now and then, every Opus packet
     // still follows the one before by exactly 20 ms of RTP time (960 at
@@ -332,6 +360,29 @@ private slots:
                         { "content", QVariantMap{ { "call_id", "c1" }, { "party_id", "other-device" }, { "version", "1" } } } });
         QCOMPARE(b.state(), QStringLiteral("idle"));
         QCOMPARE(b.endReason(), QStringLiteral("answered_elsewhere"));
+        QVERIFY(!b.declinedElsewhere());
+
+        // declined on another device: the same end on the call page, but a
+        // missed call for the notifications (Service.qml)
+        // Planted-bug: an own reject is not told from an own answer
+        const QVariantMap again{ { "type", "m.call.invite" }, { "room_id", "!dm" }, { "sender", "@a:example.org" }, { "own", false },
+                                 { "age_ms", 0 }, { "is_dm", true },
+                                 { "content", QVariantMap{ { "call_id", "c2" }, { "party_id", "pa" }, { "version", "1" }, { "lifetime", 60000 },
+                                                           { "offer", QVariantMap{ { "type", "offer" }, { "sdp", "v=0" } } } } } };
+        b.handleEvent(again);
+        QCOMPARE(b.state(), QStringLiteral("incoming"));
+        QVERIFY(!b.declinedElsewhere());
+        b.handleEvent({ { "type", "m.call.reject" }, { "room_id", "!dm" }, { "sender", "@b:example.org" }, { "own", true },
+                        { "content", QVariantMap{ { "call_id", "c2" }, { "party_id", "other-device" }, { "version", "1" } } } });
+        QCOMPARE(b.endReason(), QStringLiteral("answered_elsewhere"));
+        QVERIFY(b.declinedElsewhere());
+        // and a new call starts without it
+        QVariantMap third = again;
+        QVariantMap c3 = third.value("content").toMap();
+        c3.insert("call_id", "c3");
+        third.insert("content", c3);
+        b.handleEvent(third);
+        QVERIFY(!b.declinedElsewhere());
     }
 
     // Planted-bug: no age check (the initial sync's old invites ring).
@@ -408,6 +459,18 @@ private slots:
         d.setOwnUserId(QStringLiteral("@b:example.org"));
         d.handleEvent(invite("c3", 9000000000000LL, true));
         QCOMPARE(d.state(), QStringLiteral("incoming"));
+        // the ring is what is left of the invite's lifetime (the C2 rang a
+        // flat minute for an invite that came 28 s old, and its answer at
+        // 46 s came after the caller had given up)
+        // Planted-bug: incoming carries the whole lifetime, not lifetime - age
+        Voip e;
+        e.setOwnUserId(QStringLiteral("@b:example.org"));
+        QSignalSpy rings(&e, &Voip::incoming);
+        QVariantMap old = invite("c4", 60000, true);
+        old.insert("age_ms", 28000);
+        e.handleEvent(old);
+        QCOMPARE(rings.count(), 1);
+        QCOMPARE(rings.at(0).at(3).toInt(), 32000);
         // the cap is 2 min; Qt's coarse timers may report up to 5 % more
         // (an exact <= 120000 failed now and then); uncapped it is years
         QVERIFY(d.ringing().value("expires_at").toLongLong() < QDateTime::currentMSecsSinceEpoch() + 130000);
@@ -764,6 +827,22 @@ private slots:
         QVERIFY(out.contains(QStringLiteral("typ relay")));
         QVERIFY(out.contains(QStringLiteral("a=mid:audio0\r\n")));
         QCOMPARE(Voip::mids(out), QStringList{ QStringLiteral("audio0") });
+    }
+
+    // The log names candidate types, never addresses.
+    // Planted-bug: candidateType takes the token after the address.
+    void candidateTypes()
+    {
+        QCOMPARE(Voip::candidateType(QStringLiteral("candidate:1 1 UDP 5 203.0.113.7 50000 typ relay raddr 0.0.0.0 rport 0")),
+                 QStringLiteral("relay"));
+        QCOMPARE(Voip::candidateType(QStringLiteral("a=candidate:2 1 UDP 2015 192.168.1.20 40000 typ host")), QStringLiteral("host"));
+        QCOMPARE(Voip::candidateType(QStringLiteral("candidate:3 1 UDP 1677 198.51.100.4 40000 typ srflx raddr 192.168.1.20 rport 40000")),
+                 QStringLiteral("srflx"));
+        QCOMPARE(Voip::candidateType(QStringLiteral("candidate:4 1 TCP 1 2001:db8::1 9 typ prflx tcptype active")), QStringLiteral("prflx"));
+        QCOMPARE(Voip::candidateType(QStringLiteral("candidate:5 1 UDP 1 192.0.2.1 9")), QString());
+        QCOMPARE(Voip::candidateType(QStringLiteral("candidate:6 1 UDP 1 192.0.2.1 9 typ")), QString());
+        // the far end's own word is not logged
+        QCOMPARE(Voip::candidateType(QStringLiteral("candidate:7 1 UDP 1 192.0.2.1 9 typ 198.51.100.9")), QString());
     }
 
     void turnAddresses()

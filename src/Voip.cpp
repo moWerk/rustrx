@@ -25,6 +25,7 @@
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QHash>
 #include <QDebug>
 #include <QRegularExpression>
 #include <QUrl>
@@ -230,6 +231,7 @@ void Voip::place(const QString &roomId, const QString &invitee, const QString &p
     m_partyId = newId();
     m_offerer = true;
     m_endReason.clear();
+    m_declinedElsewhere = false;
     setState(QStringLiteral("outgoing"));
     m_waitingForTurn = true;
     emit command({ { "cmd", "turn_server" } });
@@ -298,6 +300,31 @@ bool Voip::relayMissing()
 bool Voip::isRelayCandidate(const QString &candidate)
 {
     return candidate.contains(QLatin1String(" typ relay"));
+}
+
+QString Voip::candidateType(const QString &candidate)
+{
+    const QStringList parts = candidate.split(QLatin1Char(' '), QString::SkipEmptyParts);
+    const int at = parts.indexOf(QStringLiteral("typ"));
+    const QString type = at >= 0 && at + 1 < parts.size() ? parts.at(at + 1) : QString();
+    // the far end's text goes into the log: only the known words
+    static const QStringList known{ QStringLiteral("host"), QStringLiteral("srflx"), QStringLiteral("prflx"),
+                                    QStringLiteral("relay") };
+    return known.contains(type) ? type : QString();
+}
+
+// how many candidates of each type, no address: "host 2 srflx 1"
+static QString typeCounts(const QMap<QString, int> &types)
+{
+    QStringList out;
+    for (auto it = types.constBegin(); it != types.constEnd(); ++it)
+        out << QStringLiteral("%1 %2").arg(it.key().isEmpty() ? QStringLiteral("other") : it.key()).arg(it.value());
+    return out.isEmpty() ? QStringLiteral("none") : out.join(QLatin1Char(' '));
+}
+
+void Voip::logCandidates(const char *when) const
+{
+    qInfo().noquote() << "voip: ICE" << when << "- local" << typeCounts(m_localTypes) << "- remote" << typeCounts(m_remoteTypes);
 }
 
 QString Voip::relayOnlySdp(const QString &sdp)
@@ -378,6 +405,10 @@ void Voip::reset()
     m_packetsIn = m_packetsOut = 0;
     m_candidatesAdded = 0;
     m_remoteMlines = 0;
+    m_localTypes.clear();
+    m_remoteTypes.clear();
+    m_pairTypes.clear();
+    m_pairLogged = false;
     if (m_muted || m_speaker) {
         m_muted = false;
         if (m_speaker) {
@@ -439,6 +470,7 @@ void Voip::takeRinging(const QVariantMap &invite)
     // bound to the caller as in the stand-in: others in the room cannot end it
     m_peerUser = invite.value("peer_user").toString();
     m_endReason.clear();
+    m_declinedElsewhere = false;
     m_inviteTimer.start(int(left));
     setState(QStringLiteral("incoming"));
     qInfo() << "voip: ringing call taken over from the stand-in, answer" << invite.value("answer").toBool();
@@ -498,9 +530,10 @@ void Voip::handleEvent(const QVariantMap &ev)
         m_remoteOffer = c.value("offer").toMap().value("sdp").toString();
         m_peerName = ev.value("sender_name").toString();
         m_endReason.clear();
+        m_declinedElsewhere = false;
         m_inviteTimer.start(int(lifetime - age));
         setState(QStringLiteral("incoming"));
-        emit incoming(m_roomId, ev.value("room_name").toString(), m_peerName);
+        emit incoming(m_roomId, ev.value("room_name").toString(), m_peerName, int(lifetime - age));
         return;
     }
 
@@ -541,14 +574,16 @@ void Voip::handleEvent(const QVariantMap &ev)
             return;
         addRemoteCandidates(c.value("candidates").toList());
     } else if (type == QLatin1String("m.call.hangup")) {
-        if (own && m_state == QLatin1String("incoming"))
+        if (own && m_state == QLatin1String("incoming")) {
+            m_declinedElsewhere = true;
             finish(QStringLiteral("answered_elsewhere"), false);
-        else if (!own && (m_peerParty.isEmpty() || party.isEmpty() || party == m_peerParty))
+        } else if (!own && (m_peerParty.isEmpty() || party.isEmpty() || party == m_peerParty))
             finish(QStringLiteral("hangup"), false);
     } else if (type == QLatin1String("m.call.reject")) {
-        if (own && m_state == QLatin1String("incoming"))
+        if (own && m_state == QLatin1String("incoming")) {
+            m_declinedElsewhere = true;
             finish(QStringLiteral("answered_elsewhere"), false);
-        else if (!own && m_offerer && m_state == QLatin1String("outgoing"))
+        } else if (!own && m_offerer && m_state == QLatin1String("outgoing"))
             finish(QStringLiteral("rejected"), false);
     }
 }
@@ -704,6 +739,11 @@ void Voip::applyRemote(const QString &type, const QString &sdp)
         return;
     }
     m_remoteMlines = int(gst_sdp_message_medias_len(msg));
+    // a far end that does not trickle has its candidates here
+    for (const QString &line : sdp.split(QStringLiteral("\r\n"))) {
+        if (line.startsWith(QLatin1String("a=candidate:")))
+            ++m_remoteTypes[candidateType(line)];
+    }
     const bool offer = type == QLatin1String("offer");
     GstWebRTCSessionDescription *desc = gst_webrtc_session_description_new(
             offer ? GST_WEBRTC_SDP_TYPE_OFFER : GST_WEBRTC_SDP_TYPE_ANSWER, msg);
@@ -747,6 +787,7 @@ void Voip::addRemoteCandidates(const QVariantList &candidates)
         }
         g_signal_emit_by_name(m_webrtc, "add-ice-candidate", guint(index), line.toUtf8().constData());
         ++m_candidatesAdded;
+        ++m_remoteTypes[candidateType(line)];
     }
 }
 
@@ -1022,6 +1063,9 @@ void Voip::onDownlinkOverrun(GstElement *, void *self)
 void Voip::onStatsReply(GstPromise *promise, void *self)
 {
     int in = 0, out = 0;
+    // the selected pair's types; ids only to match (they hold addresses)
+    QHash<QString, QString> types;
+    QString localId, remoteId;
     if (gst_promise_wait(promise) == GST_PROMISE_RESULT_REPLIED) {
         const GstStructure *reply = gst_promise_get_reply(promise);
         const int n = reply ? gst_structure_n_fields(reply) : 0;
@@ -1033,6 +1077,24 @@ void Voip::onStatsReply(GstPromise *promise, void *self)
             GstWebRTCStatsType type;
             if (!gst_structure_get(s, "type", GST_TYPE_WEBRTC_STATS_TYPE, &type, nullptr))
                 continue;
+            if (type == GST_WEBRTC_STATS_LOCAL_CANDIDATE || type == GST_WEBRTC_STATS_REMOTE_CANDIDATE) {
+                const gchar *id = gst_structure_get_string(s, "id");
+                const gchar *kind = gst_structure_get_string(s, "candidate-type");
+                if (id && kind)
+                    types.insert(QString::fromUtf8(id), QString::fromUtf8(kind));
+                continue;
+            }
+            if (type == GST_WEBRTC_STATS_CANDIDATE_PAIR || type == GST_WEBRTC_STATS_TRANSPORT) {
+                const gchar *l = gst_structure_get_string(s, "local-candidate-id");
+                const gchar *r = gst_structure_get_string(s, "remote-candidate-id");
+                if (!l) l = gst_structure_get_string(s, "selected-candidate-pair-local-id");
+                if (!r) r = gst_structure_get_string(s, "selected-candidate-pair-remote-id");
+                if (l && r) {
+                    localId = QString::fromUtf8(l);
+                    remoteId = QString::fromUtf8(r);
+                }
+                continue;
+            }
             guint64 packets = 0;
             if (type == GST_WEBRTC_STATS_INBOUND_RTP && gst_structure_get_uint64(s, "packets-received", &packets))
                 in += int(packets);
@@ -1042,7 +1104,10 @@ void Voip::onStatsReply(GstPromise *promise, void *self)
     }
     gst_promise_unref(promise);
     Voip *v = static_cast<Voip *>(self);
-    QMetaObject::invokeMethod(v, "onStats", Qt::QueuedConnection, Q_ARG(int, in), Q_ARG(int, out), Q_ARG(int, v->m_pipeGen.load()));
+    const QString pair = types.contains(localId) && types.contains(remoteId)
+            ? types.value(localId) + QLatin1Char('/') + types.value(remoteId) : QString();
+    QMetaObject::invokeMethod(v, "onStats", Qt::QueuedConnection, Q_ARG(int, in), Q_ARG(int, out), Q_ARG(QString, pair),
+                              Q_ARG(int, v->m_pipeGen.load()));
 }
 
 // the bus runs on the main loop (Qt's glib dispatcher)
@@ -1122,12 +1187,14 @@ void Voip::onOfferCreated(const QString &sdp, int gen)
     }
     // webrtcbin should gather only relays then; what it finds anyway stays here
     const QString out = m_relayOnly ? relayOnlySdp(sdp) : sdp;
-    QVariantMap content{ { "lifetime", Keys::kVoipInviteLifetimeMs },
+    QVariantMap content{ { "lifetime", m_inviteLifetime },
                          { "offer", QVariantMap{ { "type", "offer" }, { "sdp", out } } } };
     if (!m_invitee.isEmpty())
         content.insert("invitee", m_invitee);
     send(QStringLiteral("m.call.invite"), content);
-    m_inviteTimer.start(Keys::kVoipInviteLifetimeMs);
+    // the far end rings for the lifetime from the invite's server time; an
+    // answer sent in time may arrive a little later
+    m_inviteTimer.start(m_inviteLifetime + Keys::kVoipAnswerGraceMs);
 }
 
 // The core sends each command on its own, so a candidates event could
@@ -1168,6 +1235,8 @@ void Voip::onIceCandidate(int mline, const QString &candidate, int gen)
         return;
     if (m_state == QLatin1String("idle"))
         return;
+    if (!candidate.isEmpty())
+        ++m_localTypes[candidateType(candidate)];
     if (m_relayOnly && !isRelayCandidate(candidate))
         return;
     m_localCandidates << QVariantMap{ { "candidate", candidate }, { "sdpMLineIndex", mline } };
@@ -1183,6 +1252,7 @@ void Voip::onIceGatheringDone(int gen)
     // the end of our candidates, as an empty one (VoIP version 1)
     if (m_state == QLatin1String("idle"))
         return;
+    logCandidates("gathered");
     m_localCandidates << QVariantMap{ { "candidate", QString() } };
     if (m_descSent && !m_candidateTimer.isActive())
         m_candidateTimer.start();
@@ -1193,6 +1263,9 @@ void Voip::onIceState(int state, int gen)
     if (gen != m_pipeGen.load())
         return;
     qInfo() << "voip: ICE state" << state;
+    if (state == GST_WEBRTC_ICE_CONNECTION_STATE_CONNECTED || state == GST_WEBRTC_ICE_CONNECTION_STATE_COMPLETED
+        || state == GST_WEBRTC_ICE_CONNECTION_STATE_FAILED)
+        logCandidates(state == GST_WEBRTC_ICE_CONNECTION_STATE_FAILED ? "failed" : "connected");
     if (state == GST_WEBRTC_ICE_CONNECTION_STATE_CONNECTED || state == GST_WEBRTC_ICE_CONNECTION_STATE_COMPLETED) {
         m_iceFailTimer.stop();
         if (m_state == QLatin1String("connecting")) {
@@ -1218,10 +1291,15 @@ void Voip::onRemoteLevel(double rms)
     }
 }
 
-void Voip::onStats(int packetsIn, int packetsOut, int gen)
+void Voip::onStats(int packetsIn, int packetsOut, const QString &pair, int gen)
 {
     if (gen != m_pipeGen.load())
         return;
+    if (pair != m_pairTypes || !m_pairLogged) {
+        m_pairLogged = true;
+        m_pairTypes = pair;
+        qInfo().noquote() << "voip: ICE pair" << (pair.isEmpty() ? QStringLiteral("unknown") : pair);
+    }
     m_packetsIn = packetsIn;
     m_packetsOut = packetsOut;
     qInfo() << "voip: packets in" << packetsIn << "out" << packetsOut << "dropped up" << m_dropsUp.load()

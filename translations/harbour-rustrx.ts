@@ -3472,5 +3472,10 @@
         <source>Not sent: larger than your server takes.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-missed-call">
+        <source>Missed call</source>
+        <extracomment>notification body (or, while chat names stay inside Rustrx, its title) for a call nobody answered</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

@@ -15,7 +15,10 @@ the second.
 carries them (`voip_send`, the `voip` event, `turn_server`; docs/PROTOCOL.md);
 the state machine is `src/Voip.cpp`. In an encrypted room the events go
 encrypted like messages. A ring needs a direct chat or the invite naming
-us, and rings at most two minutes whatever its sender says; a call while
+us, and rings for what is left of its lifetime (the lifetime less the
+event's age), at most two minutes whatever its sender says: the engine,
+the notification and its Answer alike, in the app and the stand-in (an
+Element Call ring the same, from the core's `expires_ms`); a call while
 one runs is told `user_busy`; only the peer of the call can answer or end
 it; candidates wait until the invite or answer is out (the core sends
 each command on its own and a candidates event could overtake it).
@@ -33,6 +36,19 @@ more to reach the caller (tchncs.de to matrix.org, 23 s in the first
 test). The answerer's ICE fails after some 8 s without the caller's
 replies; Rustrx waits 30 s for it to come back (browsers wait about as
 long) and libnice does recover once the caller has the answer.
+Our invite says 60 s, but the caller waits 10 s more
+(`Keys::kVoipAnswerGraceMs`, the call page showing "Calling…" up to
+70 s) before it hangs up with `invite_timeout`: the far end rings for 60 s
+from the invite's server time, and an answer sent just in time still
+has its way to go (a C2 on tchncs.de answering a jp26 on matrix.org
+came 134 ms after the caller had given up).
+
+**ICE in the log.** The candidate types (host, srflx, prflx, relay), ours
+as gathered and the far end's (trickled or in its SDP), when our
+gathering ends and when ICE connects or fails; and the selected pair's
+types from webrtcbin's stats (`voip: ICE pair relay/srflx`) when it
+changes. Never an address: the stats' candidate ids hold them and are
+only matched, not logged.
 
 **Echo.** Speex's echo canceller (speexdsp) at 16 kHz, 10 ms frames, a
 300 ms tail. The microphone leaves the pipeline at an appsink, is paired
@@ -121,13 +137,22 @@ and declines with a swipe up, reverse-designed from the phone app's
 behaviour (our own code, `qml/components/IncomingCallSwipe.qml`). The
 ring is also a notification with the VoIP ringtone, Answer and Decline,
 with Rustrx closed too (background mode: the stand-in rings and hands
-the call to the app). The cover shows the call: who (or only "Call" when
+the call to the app). A classic call that rang unanswered (it expired,
+the caller gave up, another device of ours declined) leaves a missed
+call, as the phone app's: the caller's name, "Missed call", the category
+`x-harbour-rustrx.missed` with the phone app's values (its missed-call
+icon, `call_exists`, no ringtone), a tap that opens the room, one per
+call, closed when the room is opened; while chat names stay inside
+Rustrx it says only "Missed call". An Element Call ring leaves none (an
+answer on another device is not seen here). The cover shows the call: who (or only "Call" when
 chat names stay inside Rustrx), its state or length, and Answer, Hang up
 or Unmute.
 
 **Tests.** `tests/cpp/voip` runs two engines calling each other over a
 wire with real WebRTC, a different tone on each side and the far end's
-level measured, plus the ringing rules (direct chats, lifetime, busy,
+level measured, an answer that comes after the lifetime but within the
+grace, the candidate type parser, plus the ringing rules (direct chats,
+lifetime and what is left of it, busy,
 others in the room), a call that cannot be sent, TURN addresses and the
 relay-only filter; and that the outgoing RTP timestamps step by exactly
 one 20 ms frame while the microphone's thread is held up now and then,

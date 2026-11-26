@@ -92,7 +92,7 @@ dbusservice.path = /usr/share/dbus-1/services
 INSTALLS += dbusservice
 
 # notification categories: a message vibrates, a call rings
-categories.files = notificationcategories/x-harbour-rustrx.message.conf notificationcategories/x-harbour-rustrx.call.conf
+categories.files = notificationcategories/x-harbour-rustrx.message.conf notificationcategories/x-harbour-rustrx.call.conf notificationcategories/x-harbour-rustrx.missed.conf
 categories.path = /usr/share/lipstick/notificationcategories
 INSTALLS += categories
 

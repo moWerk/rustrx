@@ -17,8 +17,10 @@
 #pragma once
 
 #include "AecFrames.h"
+#include "Keys.h"
 
 #include <QByteArray>
+#include <QMap>
 #include <QAtomicInt>
 #include <QMutex>
 #include <QObject>
@@ -77,6 +79,9 @@ public:
     void setSpeaker(bool on);
     qint64 connectedAt() const { return m_connectedAt; }
     QString endReason() const { return m_endReason; }
+    // the last call ended as "answered_elsewhere" because another device of
+    // ours declined it (a reject or hangup), not answered it: a missed call
+    Q_INVOKABLE bool declinedElsewhere() const { return m_declinedElsewhere; }
 
     void setOwnUserId(const QString &id) { m_ownUserId = id; }
 
@@ -94,6 +99,8 @@ public:
     // only relay (TURN) candidates: the peer sees the server's address,
     // never this phone's; with no relay to be had the call ends
     void setRelayOnly(bool on) { m_relayOnly = on; }
+    // tests: the lifetime our next invites carry (Keys::kVoipInviteLifetimeMs)
+    void setInviteLifetime(int ms) { m_inviteLifetime = ms; }
     // held from ringing or calling until the call ends (not owned)
     void setKeepAlive(CallKeepAlive *k) { m_keepAlive = k; }
     QVariantMap status() const;
@@ -107,6 +114,9 @@ public:
     // a candidate through a relay; an SDP without the others' lines
     static bool isRelayCandidate(const QString &candidate);
     static QString relayOnlySdp(const QString &sdp);
+    // a candidate's type (host, srflx, prflx, relay), "" for none or another word;
+    // the log counts them, never their addresses
+    static QString candidateType(const QString &candidate);
     // the far end's limits: a bigger SDP is refused as one that does not
     // parse, candidates past the cap are dropped (a few dozen is a lot)
     static const int kMaxRemoteSdp = 64 * 1024;
@@ -133,7 +143,8 @@ signals:
     void changed();
     void command(const QVariantMap &cmd);
     // an invite arrived: ring (the UI shows the call and a notification)
-    void incoming(const QString &roomId, const QString &roomName, const QString &peerName);
+    // for ringMs: what is left of its lifetime
+    void incoming(const QString &roomId, const QString &roomName, const QString &peerName, int ringMs);
     // the call wants the phone's call audio (from placing to the end)
     void audioNeeded(bool on);
     void speakerChanged(bool on);
@@ -150,7 +161,7 @@ private slots:
     void onIceGatheringDone(int gen);
     void onIceState(int state, int gen);
     void onRemoteLevel(double rms);
-    void onStats(int packetsIn, int packetsOut, int gen);
+    void onStats(int packetsIn, int packetsOut, const QString &pair, int gen);
     void onMediaError(const QString &what, int gen);
 
 private:
@@ -166,6 +177,7 @@ private:
     void finish(const QString &reason, bool tellPeer, const QString &wireReason = QString());
     void reset();
     QVariant version() const;
+    void logCandidates(const char *when) const;
 
     static void onNegotiationNeeded(GstElement *webrtc, void * self);
     static void onIceCandidateCb(GstElement *webrtc, unsigned mline, char *candidate, void * self);
@@ -201,6 +213,7 @@ private:
     int m_toneHz = 440;
     qint64 m_connectedAt = 0;
     QString m_endReason;
+    bool m_declinedElsewhere = false;
     QVariantList m_localCandidates;   // waiting to go out in one event
     QVariantList m_remoteCandidates;  // waiting for the remote description
     QStringList m_turnUris;
@@ -234,6 +247,12 @@ private:
     double m_lastLevel = -100;
     int m_packetsIn = 0, m_packetsOut = 0;
     int m_candidatesAdded = 0;
+    int m_inviteLifetime = Keys::kVoipInviteLifetimeMs;
+    // candidate types seen this call, ours as gathered and the far end's
+    // (trickled or in its SDP), and the pair ICE took ("local/remote")
+    QMap<QString, int> m_localTypes, m_remoteTypes;
+    QString m_pairTypes;
+    bool m_pairLogged = false;   // once at the first stats, "unknown" where webrtcbin names none
     int m_remoteMlines = 0;     // the remote description's m-lines, 0 before it
     // the far end's audio has its player; another pad goes to a fakesink
     QAtomicInt m_farLinked;

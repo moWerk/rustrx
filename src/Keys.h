@@ -236,6 +236,10 @@ static const int kLogCheckEveryLines = 50;
 static const int kVoipInviteLifetimeMs = 60000;
 // an incoming invite rings at most this long, whatever its sender says
 static const int kVoipInviteLifetimeMaxMs = 120000;
+// the caller waits this much past its invite's lifetime before it gives up:
+// an answer sent just in time is still on its way (7 to 10 s across
+// federation were measured, and the timer starts before the invite is out)
+static const int kVoipAnswerGraceMs = 10000;
 // quitting during a call: its hangup has this long to leave
 static const int kVoipQuitHangupMs = 1500;
 static const int kVoipCandidateBatchMs = 300;

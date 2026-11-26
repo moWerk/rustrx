@@ -204,8 +204,6 @@ QtObject {
     readonly property int wakeHoldMs: 20000
     // shortest notification expiry (a ringing call)
     readonly property int ringMinMs: 5000
-    // a classic call rings this long (Keys::kVoipInviteLifetimeMs; the engine also stops it)
-    readonly property int voipRingMs: 60000
     // how long the call page shows why a call ended
     readonly property int voipEndShownMs: 2000
     // the app-wide error line stays this long (a tap closes it sooner);

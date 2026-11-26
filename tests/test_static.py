@@ -833,3 +833,37 @@ def test_private_settings_out_of_dconf():
     path = re.search(r'dconfPath = "([^"]+)"', read("qml/names.js")).group(1)
     assert f'"{path}/"' in read("src/DconfOld.h")
     assert "searchHistory" in code(ROOT / "qml/pages/SearchPage.qml")
+
+
+def test_every_ring_end_says_whether_it_was_answered():
+    """A ring that stops says how (Service.stopRinging's second argument):
+    unanswered posts the room line held while it rang, answered or
+    declined here drops it. Only ringCall, a new ring for the room, leaves
+    it out (the held line stays held). Planted-bug: the expiry's
+    stopRinging without it (the messages that came while it rang never
+    show)."""
+    calls = re.findall(r"\bstopRinging\(([^()]*(?:\([^()]*\)[^()]*)*)\)", code(ROOT / "qml/Service.qml"))
+    one = [c for c in calls if "," not in c]
+    # the definition and ringCall's replacement
+    assert one == ["roomId"], one
+    assert any(c.endswith(", true") for c in calls) and any(c.endswith(", false") for c in calls)
+
+
+def test_missed_calls_are_quiet_and_never_a_room_line():
+    """A missed call is the phone app's own notification
+    (x-nemo.call.missed.conf): its category's values, installed like the
+    other two; an earlier process's missed call is taken over as one,
+    before its tap (openAccountRoom, as a room line's) makes it a room
+    line. Planted-bug: the takeover's category check after the room
+    lines' (a missed call turned into the room's message line)."""
+    conf = read("notificationcategories/x-harbour-rustrx.missed.conf").split()
+    assert conf == ["app_icon=icon-lock-missed-call", "x-nemo-display-on=true", "x-nemo-priority=120",
+                    "x-nemo-feedback=call_exists"], conf
+    assert "notificationcategories/x-harbour-rustrx.missed.conf" in read("harbour-rustrx.pro")
+    assert "notificationcategories/x-harbour-rustrx.*.conf" in read("rpm/harbour-rustrx.spec")
+    s = code(ROOT / "qml/Service.qml")
+    take = s[s.index("function takeOverOld()"):]
+    take = take[:take.index("\n    }\n")]
+    assert '"x-harbour-rustrx.missed"' in take
+    assert take.index('"x-harbour-rustrx.missed"') < take.index("ringOf(") < take.index("roomNotifications[k] =")
+    assert 'category: "x-harbour-rustrx.missed"' in s

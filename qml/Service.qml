@@ -105,9 +105,9 @@ Item {
         onPushNotification: service.notifyPush(account, roomId, eventId, roomName, senderName, body, isDm)
         // each account's requests have their own line
         onAccountKnocksChanged: if (rustrx.knockCountIn(account) === 0) service.closeKnocks(account)
-        onCallAnswered: service.stopRinging(roomId)
+        onCallAnswered: service.stopRinging(roomId, false)
         onUnreadChanged: if (rustrx.standIn) console.log("stand-in: unread", rustrx.unreadTotal, "in", rustrx.unreadChats)
-        onOpenRoomChanged: if (rustrx.openRoomId.length) { service.closeNotification(rustrx.accountKey, rustrx.openRoomId); service.stopRinging(rustrx.openRoomId) }
+        onOpenRoomChanged: if (rustrx.openRoomId.length) { service.closeNotification(rustrx.accountKey, rustrx.openRoomId); service.stopRinging(rustrx.openRoomId, false); service.closeMissed(rustrx.accountKey, rustrx.openRoomId) }
         onQuitRequested: standInNote.close()
     }
     // the accounts whose presence was set since they logged in here
@@ -116,8 +116,8 @@ Item {
     // Decline reach it through the same notification actions
     Connections {
         target: rustrx.voip
-        onIncoming: service.ringCall(rustrx.voipAccount(), roomId, roomName, peerName, true, "", Tunables.voipRingMs)
-        onChanged: if (rustrx.voip.state !== "incoming") service.stopRinging(rustrx.voip.roomId)
+        onIncoming: service.ringCall(rustrx.voipAccount(), roomId, roomName, peerName, true, "", ringMs)
+        onChanged: if (rustrx.voip.state !== "incoming") service.stopRinging(rustrx.voip.roomId, service.voipUnanswered())
     }
 
     // a notification's action: a call to Rustrx's D-Bus interface; args and
@@ -278,6 +278,11 @@ Item {
     // count: the room's own notification count, as the server and the SDK
     // have it (a push before it, counted here, is replaced by it)
     function notify(account, roomId, roomName, count) {
+        if (holdsLine(account, roomId)) {
+            heldLines[noteKey(account, roomId)] = { roomName: roomName, count: count }
+            console.log("notify: held while the room rings, account", account)
+            return
+        }
         console.log("notify:", count, "account", account)
         var n = roomNote(account, roomId)
         var info = rustrx.roomInfoIn(account, roomId)
@@ -352,7 +357,8 @@ Item {
     function ringCall(account, roomId, roomName, senderName, ring, eventId, expiresMs) {
         takeOverOld()
         stopRinging(roomId)
-        var n = ringComponent.createObject(service, { roomId: roomId, eventId: eventId, ring: ring, account: account })
+        var n = ringComponent.createObject(service, { roomId: roomId, eventId: eventId, ring: ring, account: account,
+                                                      senderName: senderName })
         // who calls and from where stays inside Rustrx when chat names do (Privacy)
         n.summary = !chatDetails
                 //: notification title when chat names stay inside Rustrx
@@ -382,9 +388,14 @@ Item {
         ringing = r
         console.log("call: incoming", ring ? "ring" : "notification", "for", expiresMs, "ms")
     }
-    function stopRinging(roomId) {
+    // unanswered: it expired, the caller gave up or another device of ours
+    // declined; false: answered or declined here, or the room opened;
+    // undefined: a new ring takes its place
+    function stopRinging(roomId, unanswered) {
         var n = ringing[roomId]
         if (!n) return
+        // a classic call's (no event id) that nobody took: a missed call
+        if (unanswered === true && n.ring && n.eventId === "") notifyMissed(n.account, roomId, n.senderName)
         rustrx.noteRingEnded(n.account, roomId)
         n.close()
         if (n.adopted) n.adopted.close()
@@ -392,6 +403,91 @@ Item {
         var r = ringing
         delete r[roomId]
         ringing = r
+        if (unanswered === true) releaseHeld(n.account, roomId)
+        else if (unanswered === false) delete heldLines[noteKey(n.account, roomId)]
+    }
+    // a missed classic call, as the phone app has it: who called, "Missed
+    // call", the missed-call icon of its category, quiet; a tap opens the
+    // room. One per call, all of a room's closed when the room is opened.
+    property var missedNotes: ({})
+    function notifyMissed(account, roomId, senderName) {
+        takeOverOld()
+        // an adopted ring knows no name: the call engine still has it
+        if (!senderName && rustrx.voip.roomId === roomId) senderName = rustrx.voip.peerName
+        var n = missedComponent.createObject(service, { account: account, roomId: roomId })
+        var missed =
+                //: notification body (or, while chat names stay inside Rustrx, its title) for a call nobody answered
+                //% "Missed call"
+                qsTrId("rustrx-la-missed-call")
+        // who called stays inside Rustrx when chat names do (Privacy)
+        n.summary = chatDetails && senderName ? senderName : missed
+        n.previewSummary = n.summary
+        n.body = chatDetails && senderName ? missed : "Rustrx"
+        n.previewBody = n.body
+        n.publish()
+        keepMissed(noteKey(account, roomId), n)
+        console.log("call: missed, account", account)
+    }
+    function keepMissed(k, n) {
+        var all = missedNotes
+        all[k] = (all[k] || []).concat([n])
+        missedNotes = all
+    }
+    function closeMissed(account, roomId) {
+        var k = noteKey(account, roomId)
+        var notes = missedNotes[k]
+        if (!notes) return
+        for (var i = 0; i < notes.length; i++) {
+            notes[i].close()
+            // ours are made here; one adopted from an earlier process is not
+            if (notes[i].missedHere) notes[i].destroy()
+        }
+        var all = missedNotes
+        delete all[k]
+        missedNotes = all
+    }
+    Component {
+        id: missedComponent
+        Notification {
+            property string roomId
+            property int account
+            property bool missedHere: true
+            appName: "Rustrx"
+            // its icon from the category (app_icon), as the phone app's
+            category: "x-harbour-rustrx.missed"
+            isTransient: false
+            remoteActions: [ service.action("default", "openAccountRoom", [ String(account), roomId ]) ]
+        }
+    }
+    // how the classic call that stopped ringing ended
+    function voipUnanswered() {
+        var why = rustrx.voip.endReason
+        return rustrx.voip.state === "idle" && (why === "invite_timeout" || why === "hangup"
+                || (why === "answered_elsewhere" && rustrx.voip.declinedElsewhere()))
+    }
+    // a room's message line waits while the room rings (the author's wish):
+    // the last one asked for, posted when the ring ends unanswered and the
+    // room is still unread, dropped when it was answered or declined here
+    property var heldLines: ({})
+    function holdsLine(account, roomId) {
+        var n = ringing[roomId]
+        return !!n && n.account === account
+    }
+    function releaseHeld(account, roomId) {
+        var k = noteKey(account, roomId)
+        var held = heldLines[k]
+        if (!held) return
+        delete heldLines[k]
+        var info = rustrx.roomInfoIn(account, roomId)
+        // a push-woken process may not know the room yet: posted as it came
+        var known = info.unread !== undefined
+        if (known && !(info.unread > 0) && !(info.notifications > 0)) return
+        console.log("notify: line after a ring, account", account)
+        if (held.push) {
+            // the pushes that came while it rang count, as without the ring
+            roomPending[k] = (roomPending[k] || 0) + held.pushes - 1
+            notifyPush(account, roomId, held.eventId, held.roomName, held.senderName, held.body, held.isDm)
+        } else notify(account, roomId, held.roomName, known && info.notifications > 0 ? info.notifications : held.count)
     }
     // the call ended before anyone answered (the room's state says nobody is in it)
     Connections {
@@ -399,7 +495,7 @@ Item {
         onDataChanged: {
             for (var id in service.ringing) {
                 var info = rustrx.roomInfoIn(service.ringing[id].account, id)
-                if (!info.in_call && service.ringing[id].seenCall) service.stopRinging(id)
+                if (!info.in_call && service.ringing[id].seenCall) service.stopRinging(id, true)
                 else if (info.in_call) service.ringing[id].seenCall = true
             }
         }
@@ -413,12 +509,14 @@ Item {
             property string eventId
             property bool ring
             property int account
+            // who calls, for a missed call ("" for one adopted from an earlier process)
+            property string senderName
             // the room's state showed the call running once; its end then ends the ring
             property bool seenCall
             // an earlier process's ring this one stands for (adoptRing): it
             // is closed in its place, this one is never posted
             property var adopted
-            property Timer expiry: Timer { onTriggered: service.stopRinging(ringNote.roomId) }
+            property Timer expiry: Timer { onTriggered: service.stopRinging(ringNote.roomId, true) }
             appName: "Rustrx"
             appIcon: "harbour-rustrx"
             // a ringing call: the VoIP ringtone, the display on
@@ -440,6 +538,13 @@ Item {
     // message seen by the sync would make it; text as Settings has it
     function notifyPush(account, roomId, eventId, roomName, senderName, body, isDm) {
         takeOverOld()
+        if (holdsLine(account, roomId)) {
+            var before = heldLines[noteKey(account, roomId)]
+            heldLines[noteKey(account, roomId)] = { push: true, eventId: eventId, roomName: roomName, senderName: senderName,
+                                                    body: body, isDm: isDm, pushes: (before && before.push ? before.pushes : 0) + 1 }
+            console.log("notify: push held while the room rings, account", account)
+            return
+        }
         console.log("notify: push, account", account)
         var n = roomNote(account, roomId)
         var pending = (roomPending[noteKey(account, roomId)] || 0) + 1
@@ -588,6 +693,8 @@ Item {
         takeOverOld()
         var k = noteKey(account, roomId)
         delete roomPending[k]
+        // read meanwhile: nothing left to post after a ring
+        delete heldLines[k]
         // also a line an earlier process posted that is gone from the list
         rustrx.noteClosed(account, roomId)
         var n = roomNotifications[k]
@@ -659,6 +766,12 @@ Item {
         rustrx.perf("notes_taken")
         var old = standInNote.notifications()
         for (var i = 0; i < old.length; i++) {
+            // a missed call's tap opens its room too: kept as one, never a room line
+            if (old[i].category === "x-harbour-rustrx.missed") {
+                var mk = noteKeyOf(old[i].remoteActions.length ? old[i].remoteActions[0] : {})
+                if (mk.length) keepMissed(mk, old[i])
+                continue
+            }
             // a ring's tap opens its room too: it is a ring first
             var ring = ringOf(old[i].remoteActions)
             if (ring) {
