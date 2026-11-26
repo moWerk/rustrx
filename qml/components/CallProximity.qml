@@ -19,11 +19,21 @@ import QtSensors 5.2
 
 // The proximity sensor during a call on the earpiece, loaded only then
 // (harbour-rustrx.qml): made at start, it connected to sensorfw while the
-// window loaded, for every start (0.8.2 audit, ST7).
+// window loaded, for every start (0.8.2 audit, ST7). "Near" counts only
+// after the sensor has once said "far" in this call: the C2's reports
+// "near" at once with nothing over it, which kept the call page dark.
 Item {
+    property bool seenFar: false
     ProximitySensor {
         active: true
         alwaysOn: true
-        onReadingChanged: rustrx.setCallNear(reading !== null && reading.near)
+        onReadingChanged: {
+            var near = reading !== null && reading.near
+            if (reading !== null && !near && !seenFar) {
+                seenFar = true
+                console.log("call screen: proximity sensor said far")
+            }
+            rustrx.setCallNear(near && seenFar)
+        }
     }
 }
