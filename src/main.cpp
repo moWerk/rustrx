@@ -251,7 +251,10 @@ int main(int argc, char *argv[])
     rustrx.setPushWake(pushWake);
     // the connector (pushes reach whichever Rustrx process runs)
     rustrx.firstPush()->exportConnector();
-    if (!standIn)
+    // the app's alone: a process woken for a push in the moment between a
+    // handover and the app's start would take the file and lose it (an
+    // answered call among it)
+    if (!windowless)
         rustrx.takeHandover();
     Perf::mark("connector");
     // before the window, so it outlives the QML that uses it
@@ -275,21 +278,48 @@ int main(int argc, char *argv[])
         QMetaObject::invokeMethod(service.data(), "takeOverOld");
 
     if (pushWake) {
-        // gone 30 s after the last push, after 2 minutes at the most
+        // gone 30 s after the last push, after 2 minutes at the most; a
+        // call ringing here (a pushed invite) holds both until its ring
+        // ends, then the 30 s for its missed call, Decline or Answer
         QTimer idle;
         idle.setSingleShot(true);
         idle.setInterval(Keys::kPushIdleMs);
         QObject::connect(&idle, &QTimer::timeout, app.data(), &QCoreApplication::quit);
-        QObject::connect(&rustrx, &Rustrx::pushed, &idle, [&idle]() { idle.start(); });
+        Voip *voip = rustrx.voip();
+        const auto ringing = [voip]() { return voip->state() == QLatin1String("incoming"); };
+        const auto kick = [&idle, ringing]() { if (!ringing()) idle.start(); };
+        QObject::connect(&rustrx, &Rustrx::pushed, &idle, kick);
         // woken by a notification's button instead: as long again for it
-        QObject::connect(&rustrx, &Rustrx::markReadRequested, &idle, [&idle]() { idle.start(); });
-        QObject::connect(&rustrx, &Rustrx::replyRequested, &idle, [&idle]() { idle.start(); });
-        QObject::connect(&rustrx, &Rustrx::reactRequested, &idle, [&idle]() { idle.start(); });
+        QObject::connect(&rustrx, &Rustrx::markReadRequested, &idle, kick);
+        QObject::connect(&rustrx, &Rustrx::replyRequested, &idle, kick);
+        QObject::connect(&rustrx, &Rustrx::reactRequested, &idle, kick);
         // a reply's outcome, so its "not sent" notification is still posted
-        QObject::connect(&rustrx, &Rustrx::replySent, &idle, [&idle]() { idle.start(); });
-        QObject::connect(&rustrx, &Rustrx::replyFailed, &idle, [&idle]() { idle.start(); });
+        QObject::connect(&rustrx, &Rustrx::replySent, &idle, kick);
+        QObject::connect(&rustrx, &Rustrx::replyFailed, &idle, kick);
         idle.start();
-        QTimer::singleShot(Keys::kPushMaxLifeMs, app.data(), &QCoreApplication::quit);
+        QTimer maxLife;
+        maxLife.setSingleShot(true);
+        bool overdue = false;
+        QObject::connect(&maxLife, &QTimer::timeout, app.data(), [&overdue, ringing]() {
+            if (ringing())
+                overdue = true;
+            else
+                QCoreApplication::quit();
+        });
+        bool rang = false;
+        QObject::connect(voip, &Voip::changed, &idle, [&]() {
+            if (ringing() == rang)
+                return;
+            rang = ringing();
+            if (rang) {
+                idle.stop();
+                return;
+            }
+            idle.start();
+            if (overdue)
+                maxLife.start(Keys::kPushIdleMs);
+        });
+        maxLife.start(Keys::kPushMaxLifeMs);
         return app->exec();
     }
     if (standIn)

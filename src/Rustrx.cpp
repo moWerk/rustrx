@@ -105,7 +105,7 @@ bool Rustrx::callDark() const
 
 void Rustrx::setCallNear(bool near)
 {
-    if (!m_handover.standIn())
+    if (!m_handover.standIn() && !m_handover.pushWake())
         m_callState->setNear(near);
 }
 
@@ -191,20 +191,22 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
             QTimer::singleShot(ms, m_callRoute, &CallRoute::follow);
     });
     // the screen goes dark at the ear, as in the phone app; the app's call
-    // only (the stand-in rings through its notification)
+    // only (the stand-in and a push-woken process ring through their
+    // notification)
     m_callState = new CallState(this);
-    // the CPU stays up from ringing or calling to the end, the stand-in's ring too
+    // the CPU stays up from ringing or calling to the end, the window-less ring too
     m_voip->setKeepAlive(m_callState);
     connect(m_voip, &Voip::changed, m_callState, [this]() {
-        if (!m_handover.standIn())
+        if (!m_handover.standIn() && !m_handover.pushWake())
             m_callState->follow(m_voip->state());
     });
     connect(m_voip, &Voip::speakerChanged, m_callState, &CallState::setSpeaker);
     connect(m_callState, &CallState::blankedChanged, this, &Rustrx::callDarkChanged);
-    // the stand-in rings but never runs a call: whatever hands over to the
-    // app (a tap, Answer) takes the ringing call along
+    // the stand-in and a push-woken process ring but never run a call:
+    // whatever hands over to the app (a tap, Answer, a launcher tap) takes
+    // the ringing call along
     connect(m_voip, &Voip::changed, this, [this]() {
-        if (m_handover.standIn()) {
+        if (m_handover.standIn() || m_handover.pushWake()) {
             m_handover.setPendingVoip(m_voip->ringing());
             m_handover.setPendingAccount(m_voipKey);
         }
@@ -564,6 +566,9 @@ bool Rustrx::activateWith(const QString &secret)
     qInfo() << "stand-in: the app is starting, leaving";
     // what is opened until this process is gone goes to that app
     m_handover.setAppComing();
+    // and a call ringing here rings on there
+    if (!m_voip->ringing().isEmpty())
+        m_handover.handOver();
     QTimer::singleShot(0, qApp, &QCoreApplication::quit);
     return true;
 }

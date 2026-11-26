@@ -99,7 +99,8 @@ pub(crate) enum Command {
     /// Whether the homeserver still has our pusher: "pusher_checked".
     PushCheck { endpoint: String },
     /// A pushed message (room and event id): fetched and shown. Answered by
-    /// "push_notification" (or nothing, when the account's rules keep it quiet).
+    /// "push_notification" (or nothing, when the account's rules keep it quiet);
+    /// in a push-woken process a classic call's event also by "voip".
     PushHandle { room_id: String, event_id: String },
     /// A file; pictures carry their size and a thumbnail from the UI, voice
     /// messages their duration.

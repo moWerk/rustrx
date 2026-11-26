@@ -208,6 +208,8 @@ pub(crate) struct Core {
     /// encryption sync over the one crypto store, and their mutexes are
     /// their own, so two at once would not exclude each other
     push_lock: Mutex<()>,
+    /// the call events passed on, and a call ringing from a push (call.rs)
+    voip_seen: std::sync::Mutex<call::VoipSeen>,
     /// bumped when a thread was read here: open timelines and the thread
     /// list check their threads' unread state again
     threads_read: tokio::sync::watch::Sender<u64>,
@@ -249,9 +251,10 @@ impl Core {
     /// A core on `rt`; `owned` is the runtime behind it when the core is
     /// to stop it itself (tests), none for the shared one.
     pub(crate) fn new(rt: tokio::runtime::Handle, owned: Option<Runtime>, data_dir: PathBuf, emitter: Emitter) -> Self {
+        let voip_seen = std::sync::Mutex::new(call::VoipSeen::load(&data_dir.join(call::VOIP_SEEN_FILE)));
         Core { rt, runtime: std::sync::Mutex::new(owned), commands: std::sync::Mutex::new(Vec::new()),
                stopped: std::sync::atomic::AtomicBool::new(false), login_busy: std::sync::atomic::AtomicBool::new(false),
-               data_dir, emitter, state: Mutex::new(State::default()), sso_cancel: tokio::sync::Notify::new(), push_lock: Mutex::new(()), qr_check: Mutex::new(None),
+               data_dir, emitter, state: Mutex::new(State::default()), sso_cancel: tokio::sync::Notify::new(), push_lock: Mutex::new(()), voip_seen, qr_check: Mutex::new(None),
                threads_read: tokio::sync::watch::channel(0).0, timeline_work: std::sync::Mutex::new(Vec::new()),
                timeline_rooms: std::sync::Mutex::new(std::collections::VecDeque::new()), cache_pins: std::sync::Mutex::new(Vec::new()) }
     }

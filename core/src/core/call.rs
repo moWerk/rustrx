@@ -180,7 +180,7 @@ const DECLINE_TYPE: &str = "org.matrix.msc4310.rtc.decline";
 /// How old an event is, in ms: the server's age where it gives one, as
 /// the phone's clock can be off (a mainline phone boots with a wrong date
 /// until NTP); else from its timestamp.
-fn event_age_ms(raw: &Raw<AnySyncMessageLikeEvent>) -> u64 {
+fn event_age_ms<T>(raw: &Raw<T>) -> u64 {
     let sent = raw.get_field::<u64>("origin_server_ts").ok().flatten().unwrap_or(0);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -191,6 +191,117 @@ fn event_age_ms(raw: &Raw<AnySyncMessageLikeEvent>) -> u64 {
         .flatten()
         .and_then(|u| u.get("age").and_then(Value::as_u64))
         .unwrap_or_else(|| now.saturating_sub(sent))
+}
+
+/// A 1:1 call's event (m.call.*) as it came, decrypted: what the "voip"
+/// event carries besides the room's and the sender's names.
+pub(crate) struct VoipEvent {
+    pub(crate) kind: String,
+    pub(crate) sender: String,
+    pub(crate) content: Value,
+    pub(crate) event_id: String,
+    pub(crate) age: u64,
+}
+
+impl VoipEvent {
+    /// None for any other type.
+    pub(crate) fn of<T>(raw: &Raw<T>) -> Option<Self> {
+        let kind = raw.get_field::<String>("type").ok().flatten()?;
+        if !crate::protocol::voip_type_allowed(&kind) {
+            return None;
+        }
+        Some(VoipEvent {
+            kind,
+            sender: raw.get_field::<String>("sender").ok().flatten().unwrap_or_default(),
+            content: raw.get_field::<Value>("content").ok().flatten().unwrap_or(Value::Null),
+            event_id: raw.get_field::<String>("event_id").ok().flatten().unwrap_or_default(),
+            age: event_age_ms(raw),
+        })
+    }
+
+    pub(crate) fn call_id(&self) -> &str {
+        self.content.get("call_id").and_then(Value::as_str).unwrap_or("")
+    }
+
+    pub(crate) fn is_invite(&self) -> bool {
+        self.kind == "m.call.invite"
+    }
+
+    fn json(&self, room_id: &str, room_name: &str, sender_name: &str, own: bool, is_dm: bool) -> Value {
+        json!({
+            "ev": "voip", "room_id": room_id, "room_name": room_name,
+            "type": self.kind, "sender": self.sender, "sender_name": sender_name, "own": own,
+            "content": self.content, "event_id": self.event_id, "age_ms": self.age, "is_dm": is_dm,
+        })
+    }
+}
+
+/// The call events this process passed on, so that one seen by the sync
+/// and by a push (the classic sync of a push-woken process sees both) goes
+/// to the UI once; and the call that rings from a push, whose end comes
+/// by push only as an event the push rules filter out (push.rs). A
+/// push-woken process keeps its ids in VOIP_SEEN_FILE: the app's first
+/// sync after it brings the same invite and hangup again, which rang a
+/// second time and left a second missed call.
+#[derive(Default)]
+pub(crate) struct VoipSeen {
+    ids: std::collections::VecDeque<String>,
+    ring: Option<(String, String, std::time::Instant)>,
+}
+
+const VOIP_SEEN_KEPT: usize = 64;
+pub(crate) const VOIP_SEEN_FILE: &str = "voip-seen.json";
+
+impl VoipSeen {
+    /// What a push-woken process left; nothing on anything unexpected.
+    pub(crate) fn load(path: &std::path::Path) -> Self {
+        let ids: Vec<String> = std::fs::read(path)
+            .ok()
+            .filter(|b| b.len() <= 64 * 1024)
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
+        let skip = ids.len().saturating_sub(VOIP_SEEN_KEPT);
+        VoipSeen { ids: ids.into_iter().skip(skip).filter(|i| i.len() <= 255).collect(), ring: None }
+    }
+
+    fn save(&self, path: &std::path::Path) {
+        let tmp = path.with_extension("tmp");
+        let ok = serde_json::to_vec(&self.ids).ok().is_some_and(|b| std::fs::write(&tmp, b).is_ok())
+            && std::fs::rename(&tmp, path).is_ok();
+        if !ok {
+            tracing::info!("voip: the seen call events not saved");
+        }
+    }
+
+    /// false: passed on already
+    fn first(&mut self, ev: &VoipEvent, room_id: &str, own: bool) -> bool {
+        if !ev.event_id.is_empty() {
+            if self.ids.contains(&ev.event_id) {
+                return false;
+            }
+            if self.ids.len() >= VOIP_SEEN_KEPT {
+                self.ids.pop_front();
+            }
+            self.ids.push_back(ev.event_id.clone());
+        }
+        // the lifetime as Voip takes it (none: too old already)
+        let lifetime = ev.content.get("lifetime").and_then(Value::as_u64).unwrap_or(0).min(RING_LIFETIME_MAX_MS);
+        if ev.is_invite() && !own && ev.age < lifetime {
+            let until = std::time::Instant::now() + Duration::from_millis(lifetime - ev.age);
+            self.ring = Some((room_id.to_owned(), ev.call_id().to_owned(), until));
+        } else if !ev.is_invite() && ev.kind != "m.call.candidates" && self.ringing(room_id) == Some(ev.call_id()) {
+            self.ring = None;
+        }
+        true
+    }
+
+    /// The call id of the call that may still ring in the room.
+    fn ringing(&self, room_id: &str) -> Option<&str> {
+        self.ring
+            .as_ref()
+            .filter(|(r, _, until)| r == room_id && *until > std::time::Instant::now())
+            .map(|(_, c, _)| c.as_str())
+    }
 }
 
 impl Core {
@@ -239,31 +350,45 @@ impl Core {
         // another device of ours answering) to tell its party from ours.
         // Handlers get the decrypted event in an encrypted room.
         client.add_event_handler(move |raw: Raw<AnySyncMessageLikeEvent>, room: Room| async move {
-            let Ok(Some(kind)) = raw.get_field::<String>("type") else { return };
-            if !crate::protocol::voip_type_allowed(&kind) {
+            self.voip_in_room(&raw, &room).await;
+        });
+    }
+
+    /// An m.call.* event of the room to the UI as "voip"; None for any
+    /// other type. The sync handler's and a push-woken process's.
+    pub(crate) async fn voip_in_room<T>(&'static self, raw: &Raw<T>, room: &Room) -> Option<VoipEvent> {
+        let ev = VoipEvent::of(raw)?;
+        let sender_name = match UserId::parse(ev.sender.as_str()) {
+            Ok(u) => member_name(room, &u).await,
+            Err(_) => ev.sender.clone(),
+        };
+        let own = ev.sender == room.own_user_id().as_str();
+        // whether the room is a direct chat: an invite for nobody in
+        // particular rings only there (anyone in a big room could ring
+        // every member's phone otherwise)
+        let is_dm = room.is_direct().await.unwrap_or(false);
+        self.emit_voip(&ev, room.room_id().as_str(), &room_name(room), &sender_name, own, is_dm);
+        Some(ev)
+    }
+
+    /// "voip", once per event.
+    pub(crate) fn emit_voip(&self, ev: &VoipEvent, room_id: &str, room_name: &str, sender_name: &str, own: bool, is_dm: bool) {
+        {
+            let mut seen = self.voip_seen.lock().unwrap_or_else(|e| e.into_inner());
+            if !seen.first(ev, room_id, own) {
                 return;
             }
-            let sender = raw.get_field::<String>("sender").ok().flatten().unwrap_or_default();
-            let own = sender == room.own_user_id().as_str();
-            let content = raw.get_field::<Value>("content").ok().flatten().unwrap_or(Value::Null);
-            let event_id = raw.get_field::<String>("event_id").ok().flatten().unwrap_or_default();
-            let age = event_age_ms(&raw);
-            let sender_name = match UserId::parse(sender.as_str()) {
-                Ok(u) => member_name(&room, &u).await,
-                Err(_) => sender.clone(),
-            };
-            let call_id = content.get("call_id").and_then(Value::as_str).unwrap_or("").to_owned();
-            // whether the room is a direct chat: an invite for nobody in
-            // particular rings only there (anyone in a big room could ring
-            // every member's phone otherwise)
-            let is_dm = room.is_direct().await.unwrap_or(false);
-            tracing::info!(room = %room.room_id(), %kind, %call_id, own, age, is_dm, "voip: event");
-            self.emit(json!({
-                "ev": "voip", "room_id": room.room_id().as_str(), "room_name": room_name(&room),
-                "type": kind, "sender": sender, "sender_name": sender_name, "own": own,
-                "content": content, "event_id": event_id, "age_ms": age, "is_dm": is_dm,
-            }));
-        });
+            if super::push::push_wake() {
+                seen.save(&self.data_dir.join(VOIP_SEEN_FILE));
+            }
+        }
+        tracing::info!(room = %room_id, kind = %ev.kind, call_id = %ev.call_id(), own, age = ev.age, is_dm, "voip: event");
+        self.emit(ev.json(room_id, room_name, sender_name, own, is_dm));
+    }
+
+    /// The call id of a call that a push made ring in the room, while it may.
+    pub(crate) fn push_ringing(&self, room_id: &str) -> Option<String> {
+        self.voip_seen.lock().unwrap_or_else(|e| e.into_inner()).ringing(room_id).map(str::to_owned)
     }
 
     /// One m.call.* event from the UI's call, sent like any event (so
@@ -586,5 +711,104 @@ mod tests {
         assert!(got.iter().all(|n| n.contains("#@me:example.org") || n.contains("#_@me:example.org_DEV")), "{got:?}");
         // a flag not asked for is not given
         assert!(!provider.grant(caps(&[])).0.requires_client);
+    }
+
+    fn voip(v: Value) -> Option<VoipEvent> {
+        let raw: Raw<matrix_sdk::ruma::events::AnySyncTimelineEvent> = serde_json::from_value(v).unwrap();
+        VoipEvent::of(&raw)
+    }
+
+    fn invite(id: &str, call: &str, lifetime: u64, age: u64) -> VoipEvent {
+        voip(json!({"type": "m.call.invite", "event_id": id, "sender": "@them:example.org", "origin_server_ts": 1,
+                    "unsigned": {"age": age}, "content": {"call_id": call, "lifetime": lifetime, "version": "1"}})).unwrap()
+    }
+
+    /// A pushed event and the sync handler's make one "voip" event: only the
+    /// seven m.call.* types, the server's age before the clock, the fields
+    /// the UI reads.
+    /// Planted-bug: drop the voip_type_allowed check in `VoipEvent::of`.
+    #[test]
+    fn voip_event_is_the_call_types_only() {
+        assert!(voip(json!({"type": "m.room.message", "event_id": "$m", "sender": "@a:b", "content": {"body": "x"}})).is_none());
+        assert!(voip(json!({"type": "m.call.member", "event_id": "$m", "sender": "@a:b", "content": {}})).is_none());
+        let ev = invite("$i", "c1", 60000, 1234);
+        assert_eq!(ev.age, 1234);
+        assert_eq!(ev.call_id(), "c1");
+        assert!(ev.is_invite());
+        let j = ev.json("!r:b", "Room", "Them", false, true);
+        for k in ["ev", "room_id", "room_name", "type", "sender", "sender_name", "own", "content", "event_id", "age_ms", "is_dm"] {
+            assert!(j.get(k).is_some(), "{k}");
+        }
+        assert_eq!(j["ev"], "voip");
+        assert_eq!(j["age_ms"], 1234);
+        // no server age: from its timestamp, which is long ago here
+        let old = voip(json!({"type": "m.call.hangup", "event_id": "$h", "sender": "@a:b", "origin_server_ts": 1,
+                              "content": {"call_id": "c1"}})).unwrap();
+        assert!(old.age > 1_000_000);
+    }
+
+    /// Each event once (the classic sync of a woken process and its push
+    /// fetch both see it); a fresh invite from someone else is the ringing
+    /// call until its lifetime is over or its hangup, reject or answer
+    /// came; candidates and other calls leave it ringing.
+    /// Planted-bug: clear `ring` on m.call.candidates too.
+    #[test]
+    fn voip_seen_passes_each_event_once_and_tracks_the_ring() {
+        let mut seen = VoipSeen::default();
+        let inv = invite("$i", "c1", 60000, 100);
+        assert!(seen.first(&inv, "!r:b", false));
+        assert!(!seen.first(&inv, "!r:b", false));
+        assert_eq!(seen.ringing("!r:b"), Some("c1"));
+        assert_eq!(seen.ringing("!other:b"), None);
+        let cand = voip(json!({"type": "m.call.candidates", "event_id": "$c", "sender": "@them:example.org",
+                               "content": {"call_id": "c1", "candidates": []}})).unwrap();
+        assert!(seen.first(&cand, "!r:b", false));
+        assert_eq!(seen.ringing("!r:b"), Some("c1"));
+        let other = voip(json!({"type": "m.call.hangup", "event_id": "$o", "sender": "@them:example.org",
+                                "content": {"call_id": "c2"}})).unwrap();
+        assert!(seen.first(&other, "!r:b", false));
+        assert_eq!(seen.ringing("!r:b"), Some("c1"));
+        let hangup = voip(json!({"type": "m.call.hangup", "event_id": "$h", "sender": "@them:example.org",
+                                 "content": {"call_id": "c1"}})).unwrap();
+        assert!(seen.first(&hangup, "!r:b", false));
+        assert_eq!(seen.ringing("!r:b"), None);
+
+        // too old, our own, or without a lifetime: no ring
+        let mut seen = VoipSeen::default();
+        seen.first(&invite("$a", "c1", 60000, 60000), "!r:b", false);
+        seen.first(&invite("$b", "c2", 60000, 0), "!r:b", true);
+        let none = voip(json!({"type": "m.call.invite", "event_id": "$n", "sender": "@them:example.org",
+                               "unsigned": {"age": 0}, "content": {"call_id": "c3"}})).unwrap();
+        seen.first(&none, "!r:b", false);
+        assert_eq!(seen.ringing("!r:b"), None);
+
+        // only the last VOIP_SEEN_KEPT ids are kept
+        let mut seen = VoipSeen::default();
+        for n in 0..=VOIP_SEEN_KEPT {
+            assert!(seen.first(&invite(&format!("${n}"), "c", 0, 0), "!r:b", false));
+        }
+        assert!(seen.first(&invite("$0", "c", 0, 0), "!r:b", false));
+        assert!(!seen.first(&invite(&format!("${VOIP_SEEN_KEPT}"), "c", 0, 0), "!r:b", false));
+    }
+
+    /// What a push-woken process passed on is not passed on again by the
+    /// app's sync (the same invite rang twice, the same hangup left a
+    /// second missed call); a damaged file is nothing.
+    /// Planted-bug: `load` returns the default.
+    #[test]
+    fn voip_seen_outlives_the_woken_process() {
+        let dir = std::env::temp_dir().join(format!("rustrx-voip-seen-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(VOIP_SEEN_FILE);
+        let mut woken = VoipSeen::default();
+        woken.first(&invite("$i", "c1", 60000, 0), "!r:b", false);
+        woken.save(&path);
+        let mut app = VoipSeen::load(&path);
+        assert!(!app.first(&invite("$i", "c1", 60000, 0), "!r:b", false));
+        assert!(app.first(&invite("$j", "c2", 60000, 0), "!r:b", false));
+        std::fs::write(&path, b"{not json").unwrap();
+        assert!(VoipSeen::load(&path).ids.is_empty());
+        assert!(VoipSeen::load(&dir.join("none")).ids.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

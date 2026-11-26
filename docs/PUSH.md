@@ -52,6 +52,17 @@ offered when a distributor is installed).
 5. **Notify.** The woken core fetches and decrypts the event and shows
    the notification as now, following the privacy settings (text or "New
    message") and the account's push rules (muted stays quiet).
+   A classic call's invite (`m.call.invite`) rings in the woken process
+   as it does in the stand-in: `push_handle` sends it to the UI as the
+   sync handler would ("voip"), the room's line is held while it rings,
+   and an unanswered ring leaves the missed call. The process stays while
+   it rings (main.cpp: the 30 s and the 2 min wait for the ring's end) and
+   hands the ringing call to the app on Answer or a tap. While it rings,
+   each pushed event of that room is fetched first: the caller's hangup
+   and candidates, encrypted, are pushed, but the push rules filter them
+   out once decrypted. In a room without encryption the server does not
+   push them at all, and our own devices' answers and declines are never
+   pushed: the ring then lasts its lifetime and ends as a missed call.
 6. **Off / logout.** Remove this installation's pusher, unregister from
    the distributor, forget the endpoint.
 

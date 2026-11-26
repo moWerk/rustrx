@@ -449,10 +449,25 @@ QVariantMap Voip::ringing() const
 {
     if (m_state != QLatin1String("incoming"))
         return QVariantMap();
-    return { { "room_id", m_roomId }, { "call_id", m_callId }, { "party_id", m_peerParty },
-             { "version", version() }, { "offer", m_remoteOffer }, { "peer_name", m_peerName },
-             { "peer_user", m_peerUser },
-             { "expires_at", nowMs() + m_inviteTimer.remainingTime() } };
+    QVariantMap out{ { "room_id", m_roomId }, { "call_id", m_callId }, { "party_id", m_peerParty },
+                     { "version", version() }, { "offer", m_remoteOffer }, { "peer_name", m_peerName },
+                     { "peer_user", m_peerUser },
+                     { "expires_at", nowMs() + m_inviteTimer.remainingTime() } };
+    // the caller's candidates that came while it rang: the app's sync
+    // starts after them (or, after a push, may leave them in a gap)
+    QVariantList candidates;
+    for (const QVariant &v : m_remoteCandidates) {
+        const QVariantMap c = v.toMap();
+        QVariantMap kept{ { "candidate", c.value("candidate").toString() } };
+        if (c.contains("sdpMid"))
+            kept.insert("sdpMid", c.value("sdpMid").toString());
+        if (c.contains("sdpMLineIndex"))
+            kept.insert("sdpMLineIndex", c.value("sdpMLineIndex").toInt());
+        candidates << kept;
+    }
+    if (!candidates.isEmpty())
+        out.insert("candidates", candidates);
+    return out;
 }
 
 void Voip::takeRinging(const QVariantMap &invite)
@@ -472,8 +487,10 @@ void Voip::takeRinging(const QVariantMap &invite)
     m_endReason.clear();
     m_declinedElsewhere = false;
     m_inviteTimer.start(int(left));
+    addRemoteCandidates(invite.value("candidates").toList());
     setState(QStringLiteral("incoming"));
-    qInfo() << "voip: ringing call taken over from the stand-in, answer" << invite.value("answer").toBool();
+    qInfo() << "voip: ringing call taken over from the stand-in, answer" << invite.value("answer").toBool()
+            << "candidates" << m_remoteCandidates.size();
     if (invite.value("answer").toBool())
         answer();
 }

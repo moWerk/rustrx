@@ -247,6 +247,26 @@ bool isShare(const QJsonValue &v, const QString &sharedDir)
     return true;
 }
 
+// the caller's ICE candidates as Voip::ringing() keeps them
+bool isCandidates(const QJsonValue &v)
+{
+    if (!v.isArray() || v.toArray().size() > Keys::kHandoverMaxCandidates)
+        return false;
+    for (const QJsonValue &c : v.toArray()) {
+        if (!c.isObject())
+            return false;
+        const QJsonObject o = c.toObject();
+        const QJsonValue index = o.value("sdpMLineIndex");
+        if (!onlyKeys(o, { "candidate", "sdpMid", "sdpMLineIndex" })
+                || !isText(o.value("candidate"), Keys::kHandoverMaxNameBytes)
+                || (o.contains("sdpMid") && !isText(o.value("sdpMid"), Keys::kHandoverMaxIdBytes))
+                || (o.contains("sdpMLineIndex") && (!index.isDouble() || index.toDouble() < 0
+                                                    || index.toDouble() > 255 || index.toDouble() != int(index.toDouble()))))
+            return false;
+    }
+    return true;
+}
+
 // a ringing call as Voip::ringing() makes it, with "answer" from the
 // notification's Answer
 bool isRinging(const QJsonValue &v)
@@ -256,7 +276,7 @@ bool isRinging(const QJsonValue &v)
     const QJsonObject o = v.toObject();
     if (o.isEmpty())
         return true;   // no call
-    if (!onlyKeys(o, { "room_id", "call_id", "party_id", "version", "offer", "peer_name", "peer_user", "expires_at", "answer" }))
+    if (!onlyKeys(o, { "room_id", "call_id", "party_id", "version", "offer", "peer_name", "peer_user", "expires_at", "answer", "candidates" }))
         return false;
     const QJsonValue party = o.value("party_id");
     const QJsonValue version = o.value("version");
@@ -272,7 +292,8 @@ bool isRinging(const QJsonValue &v)
             && (o.value("peer_user").isUndefined() || o.value("peer_user").toString() == QString()
                 || isOpaque(o.value("peer_user")))
             && expires.isDouble() && expires.toDouble() > 0 && expires.toDouble() <= double(latest)
-            && (o.value("answer").isUndefined() || o.value("answer").isBool());
+            && (o.value("answer").isUndefined() || o.value("answer").isBool())
+            && (o.value("candidates").isUndefined() || isCandidates(o.value("candidates")));
 }
 
 bool isUri(const QJsonValue &v)

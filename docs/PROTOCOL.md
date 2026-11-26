@@ -167,7 +167,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `push_set` | `endpoint`, `gateway`, `old?` (an endpoint to remove), `lang?` | `pusher_set` |
 | `push_remove` | `endpoint` | |
 | `push_check` | `endpoint` | `pusher_checked` |
-| `push_handle` | `room_id`, `event_id` (a pushed message) | `push_notification`, or nothing when the account's rules keep it quiet |
+| `push_handle` | `room_id`, `event_id` (a pushed message) | `push_notification`, or nothing when the account's rules keep it quiet; in a push-woken process a classic call's event also as `voip` (an invite then `push_notification` too, the other call events nothing else) |
 
 ### Calls (docs/CALLS.md)
 | cmd | fields | answered by |

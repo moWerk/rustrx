@@ -36,7 +36,10 @@ class TestHandover : public QObject
         const QJsonObject voip{ { "room_id", "!dm:example.org" }, { "call_id", "1700000000000abc" },
                                 { "party_id", "PARTY" }, { "version", "1" }, { "offer", "v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\n" },
                                 { "peer_name", "Alice" }, { "expires_at", double(QDateTime::currentMSecsSinceEpoch() + 50000) },
-                                { "answer", true } };
+                                { "answer", true },
+                                { "candidates", QJsonArray{ QJsonObject{ { "candidate", "candidate:1 1 udp 2122260223 192.0.2.1 50000 typ host" },
+                                                                         { "sdpMid", "0" }, { "sdpMLineIndex", 0 } },
+                                                            QJsonObject{ { "candidate", "" } } } } };
         const QJsonObject share{ { "files", QJsonArray{ QString::fromLatin1(kShared) + "/AbC123/photo.jpg", QString::fromLatin1(kShared) + "/old.jpg" } }, { "text", "look" } };
         return { { "room", "!room:example.org" }, { "call", "" }, { "knocks", false },
                  { "uri", "matrix:roomid/room:example.org?via=example.org" }, { "share", share }, { "voip", voip } };
@@ -75,6 +78,10 @@ private slots:
         const QVariantMap voip = h.takePendingVoip();
         QCOMPARE(voip.value("call_id").toString(), QStringLiteral("1700000000000abc"));
         QCOMPARE(voip.value("answer").toBool(), true);
+        // the caller's candidates that came while it rang
+        const QVariantList candidates = voip.value("candidates").toList();
+        QCOMPARE(candidates.size(), 2);
+        QCOMPARE(candidates.first().toMap().value("sdpMid").toString(), QStringLiteral("0"));
 
         // nothing asked for but a room; a version 0 call without a party;
         // a room id of room version 12 (no server part)
@@ -160,6 +167,16 @@ private slots:
         QTest::newRow("voip: no end") << withVoip("expires_at", "soon");
         QTest::newRow("voip: answer a string") << withVoip("answer", "yes");
         QTest::newRow("voip: other key") << withVoip("sdp_path", "/tmp/x");
+        QTest::newRow("voip: candidates an object") << withVoip("candidates", QJsonObject());
+        QTest::newRow("voip: candidate a string") << withVoip("candidates", QJsonArray{ "candidate:1" });
+        QTest::newRow("voip: candidate other key") << withVoip("candidates", QJsonArray{ QJsonObject{ { "candidate", "c" }, { "path", "/tmp" } } });
+        QTest::newRow("voip: candidate huge") << withVoip("candidates", QJsonArray{ QJsonObject{ { "candidate", QString(2000, 'c') } } });
+        QTest::newRow("voip: candidate index negative") << withVoip("candidates", QJsonArray{ QJsonObject{ { "candidate", "c" }, { "sdpMLineIndex", -1 } } });
+        QTest::newRow("voip: candidate index fraction") << withVoip("candidates", QJsonArray{ QJsonObject{ { "candidate", "c" }, { "sdpMLineIndex", 0.5 } } });
+        QJsonArray many;
+        for (int i = 0; i <= 200; ++i)
+            many.append(QJsonObject{ { "candidate", "c" } });
+        QTest::newRow("voip: too many candidates") << withVoip("candidates", many);
         QTest::newRow("voip: a list") << with(good(), "voip", QJsonArray());
         QTest::newRow("other key") << with(good(), "session", "x");
         QJsonObject missing = good();

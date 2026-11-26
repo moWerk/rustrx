@@ -124,6 +124,8 @@ static const int kHandoverMaxUriBytes = 4096;
 static const int kHandoverMaxTextBytes = 1 << 20;
 static const int kHandoverMaxFiles = 1000;
 static const qint64 kHandoverRingSlackMs = 10000;
+// a ringing call's candidates from the caller (Voip::kMaxRemoteCandidates)
+static const int kHandoverMaxCandidates = 200;
 static const char kBackgroundFlag[] = "background";
 // in the data folder: push state, the dev command flag, the debug logs
 static const char kPushStateFile[] = "push.json";
@@ -175,8 +177,8 @@ static const int kShutdownMs = 3000;
 // measured 55 arenas held 242 MB for 83 MB in use. Two keep it close.
 static const int kMallocArenas = 2;
 // a push-woken process quits this long after the last push, at the latest
-// after kPushMaxLifeMs (the same numbers as the ring lifetime in call.rs,
-// which is unrelated)
+// after kPushMaxLifeMs; a classic call ringing there holds both, and the
+// process quits kPushIdleMs after its ring ended (main.cpp)
 static const int kPushIdleMs = 30000;
 static const int kPushMaxLifeMs = 120000;
 static const int kStartUnitTimeoutMs = 5000;

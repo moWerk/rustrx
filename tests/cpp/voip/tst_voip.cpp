@@ -400,8 +400,11 @@ private slots:
         QCOMPARE(b.state(), QStringLiteral("idle"));
     }
 
-    // A ring in the stand-in goes to the app with the handover file.
+    // A ring in the stand-in goes to the app with the handover file, with
+    // the caller's candidates that came while it rang (the app's sync
+    // starts after them).
     // Planted-bug: the app takes an expired ring (it rings for nothing).
+    // Planted-bug: ringing() leaves the queued candidates out.
     void aRingingCallIsHandedOver()
     {
         Voip standIn;
@@ -411,8 +414,17 @@ private slots:
                               { "content", QVariantMap{ { "call_id", "c1" }, { "party_id", "pa" }, { "version", "1" },
                                                         { "lifetime", 60000 },
                                                         { "offer", QVariantMap{ { "type", "offer" }, { "sdp", "v=0" } } } } } });
+        standIn.handleEvent({ { "type", "m.call.candidates" }, { "room_id", "!dm" }, { "sender", "@a:example.org" }, { "own", false },
+                              { "content", QVariantMap{ { "call_id", "c1" }, { "party_id", "pa" },
+                                                        { "candidates", QVariantList{
+                                                              QVariantMap{ { "candidate", "candidate:1 1 UDP 2015 198.51.100.9 40000 typ host" },
+                                                                           { "sdpMid", "0" }, { "sdpMLineIndex", 0 }, { "usernameFragment", "u" } } } } } } });
         const QVariantMap invite = standIn.ringing();
         QCOMPARE(invite.value("call_id").toString(), QStringLiteral("c1"));
+        const QVariantList handed = invite.value("candidates").toList();
+        QCOMPARE(handed.size(), 1);
+        // only what the handover file may hold
+        QCOMPARE(handed.first().toMap().keys(), (QStringList{ "candidate", "sdpMLineIndex", "sdpMid" }));
         QVERIFY(invite.value("expires_at").toLongLong() > QDateTime::currentMSecsSinceEpoch() + 50000);
 
         Voip app;
@@ -420,6 +432,7 @@ private slots:
         QCOMPARE(app.state(), QStringLiteral("incoming"));
         QCOMPARE(app.peerName(), QStringLiteral("A"));
         QCOMPARE(app.roomId(), QStringLiteral("!dm"));
+        QCOMPARE(app.status().value("remote_queued").toInt(), 1);
         // still bound to the caller after the handover
         // Planted-bug: takeRinging leaves the peer unbound
         app.handleEvent({ { "type", "m.call.hangup" }, { "room_id", "!dm" }, { "sender", "@c:example.org" }, { "own", false },
