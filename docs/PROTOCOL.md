@@ -183,6 +183,11 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `voip_send` | `room_id`, `type` (`m.call.invite`, `answer`, `candidates`, `hangup`, `select_answer`, `reject`, `negotiate`; anything else is an error), `content` (an object, the event's content) | `voip_sent` |
 | `turn_server` | | `turn_server` |
 
+### Tests only
+| cmd | fields | answered by |
+|---|---|---|
+| `dev_ring` | `room_id` (a room with one other member) | `voip` (a made-up `m.call.invite` from that member, lifetime 60 s, age 0, its SDP a placeholder); refused unless the data folder has the `dev-commands` file |
+
 ## Events
 
 | ev | fields |

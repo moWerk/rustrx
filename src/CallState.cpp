@@ -107,6 +107,33 @@ void CallState::rethinkBlank()
     emit blankedChanged();
 }
 
+void CallState::watchLock()
+{
+    QDBusConnection bus = QDBusConnection::systemBus();
+    bus.connect(QStringLiteral("com.nokia.mce"), QStringLiteral("/com/nokia/mce/signal"), QStringLiteral("com.nokia.mce.signal"),
+                QStringLiteral("tklock_mode_ind"), this, SLOT(setLockMode(QString)));
+    QDBusMessage msg = QDBusMessage::createMethodCall(QStringLiteral("com.nokia.mce"), QStringLiteral("/com/nokia/mce/request"),
+                                                      QStringLiteral("com.nokia.mce.request"), QStringLiteral("get_tklock_mode"));
+    auto *watch = new QDBusPendingCallWatcher(bus.asyncCall(msg), this);
+    connect(watch, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        QDBusPendingReply<QString> reply = *w;
+        if (reply.isValid())
+            setLockMode(reply.value());
+        else
+            qWarning().noquote() << "call: the lock screen's state not known:" << w->error().message();
+    });
+}
+
+void CallState::setLockMode(const QString &mode)
+{
+    const bool locked = mode.contains(QLatin1String("locked")) && !mode.contains(QLatin1String("unlocked"));
+    if (locked == m_locked)
+        return;
+    m_locked = locked;
+    emit screenLockedChanged();
+}
+
 void CallState::follow(const QString &voipState)
 {
     // not while it rings: ngfd plays the VoIP ringtone only with no call

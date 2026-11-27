@@ -126,6 +126,28 @@ private slots:
         }
     }
 
+    // A call handed over at its ring, Answer or Decline on its notification
+    // before the app has taken it: marked on the call of that account and
+    // room only. Planted-bug: the room not compared (another room's Answer
+    // answers this call).
+    void anAnswerBeforeTheAppTookTheCall()
+    {
+        Handover h;
+        QJsonObject ringing = with(good(), "account", 2);
+        QJsonObject call = ringing.value("voip").toObject();
+        call.remove("answer");
+        ringing.insert("voip", call);
+        QVERIFY(accepts(h, ringing));
+        QVERIFY(!h.markPendingVoip(2, QStringLiteral("!other:example.org"), QStringLiteral("answer")));
+        QVERIFY(!h.markPendingVoip(0, QStringLiteral("!dm:example.org"), QStringLiteral("answer")));
+        QVERIFY(h.markPendingVoip(2, QStringLiteral("!dm:example.org"), QStringLiteral("decline")));
+        const QVariantMap taken = h.takePendingVoip();
+        QVERIFY(taken.value("decline").toBool());
+        QVERIFY(!taken.contains("answer"));
+        // taken: nothing left to mark
+        QVERIFY(!h.markPendingVoip(2, QStringLiteral("!dm:example.org"), QStringLiteral("answer")));
+    }
+
     // Planted-bug: share paths not checked (a planted file shares the
     // session). Planted-bug: ids not checked (a call answered in a room
     // id that is not one). Planted-bug: the link not checked. Planted-bug:

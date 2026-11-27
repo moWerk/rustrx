@@ -274,6 +274,7 @@ impl Core {
             CallDecline { room_id, event_id } => self.call_decline(&room_id, &event_id).await,
             VoipSend { room_id, r#type, content } => self.voip_send(&room_id, &r#type, content).await,
             TurnServer => self.turn_server().await,
+            DevRing { room_id } => self.dev_ring(&room_id).await,
         }
     }
 }

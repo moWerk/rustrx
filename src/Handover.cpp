@@ -83,6 +83,14 @@ QVariantMap Handover::takePendingVoip()
     return r;
 }
 
+bool Handover::markPendingVoip(int key, const QString &roomId, const QString &how)
+{
+    if (m_pendingVoip.isEmpty() || m_pendingAccount != key || m_pendingVoip.value("room_id").toString() != roomId)
+        return false;
+    m_pendingVoip.insert(how, true);
+    return true;
+}
+
 QVariantMap Handover::takePendingShare()
 {
     const QVariantMap r = m_pendingShare;

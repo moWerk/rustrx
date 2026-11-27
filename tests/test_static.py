@@ -71,6 +71,7 @@ def sent_commands():
 # accepted by the core but sent by nothing in the UI, each with its reason
 UNSENT_ALLOWED = {
     "refresh_rooms": "for tests through tools/test/dev.sh (kept by the 0.4.6 audit)",
+    "dev_ring": "TEST ONLY: a made-up ring through tools/test/dev.sh (DevHook.h)",
 }
 
 
@@ -463,7 +464,8 @@ def test_dev_hook_takes_only_the_test_commands():
     block = re.search(r"QMap<QString, QStringList> commands\{(.*?)\};", src, re.S)
     assert block
     allowed = set(re.findall(r'\{ "([a-z_]+)", \{', block.group(1)))
-    assert allowed == {"call_start", "refresh_rooms"}
+    # dev_ring: TEST ONLY, a made-up ring (the core refuses it without the flag too)
+    assert allowed == {"call_start", "refresh_rooms", "dev_ring"}
     assert allowed <= protocol_commands()
     never = {"export_keys", "import_keys", "logout", "delete_device", "login_password",
              "login_sso", "login_oauth", "login_qr", "qr_check_code", "recovery_recover",
@@ -659,8 +661,11 @@ def test_room_reads_only_what_was_shown():
     before the gate; check Qt.application in sendReceipt."""
     page = read("qml/pages/RoomPage.qml")
     gate = _qml_function(page, "readingNow")
-    for need in ("positioned", "!readHeld", "PageStatus.Active", "inTimeline", "Qt.application.active"):
+    # app.mainActive: Qt.application.active, but not while the call window
+    # over the lock screen is the active one (harbour-rustrx.qml)
+    for need in ("positioned", "!readHeld", "PageStatus.Active", "inTimeline", "app.mainActive"):
         assert need in gate, need
+    assert "Qt.application.active" in read("qml/harbour-rustrx.qml").split("property bool mainActive:")[1].split("\n\n")[0]
     scan = _qml_function(page, "scanRead")
     assert scan.index("if (!readingNow()) return") < scan.index("readTo(")
     send = _qml_function(page, "sendReceipt")

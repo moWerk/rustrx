@@ -7,6 +7,9 @@ isEmpty(VERSION): VERSION = 0.4.3
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 QT += dbus multimedia network
+# the call page over the lock screen: a window's CATEGORY for lipstick
+# (QPlatformNativeInterface::setWindowProperty, Rustrx::showOverLock)
+QT += gui-private
 # calls: GStreamer's webrtcbin (Voip.cpp)
 CONFIG += link_pkgconfig
 PKGCONFIG += gstreamer-1.0 gstreamer-sdp-1.0 gstreamer-webrtc-1.0 gstreamer-app-1.0 speexdsp

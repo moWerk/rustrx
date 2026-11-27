@@ -21,17 +21,31 @@ import "../components"
 
 // A classic one-to-one call (rustrx.voip): who, how far it got, and the
 // buttons for it. It follows the call's state and goes when the call ends.
+// Or an Element Call ring (`ring`): only its ringing, Answer and Decline,
+// as the classic call's; Answer opens the room and its call.
 Page {
     id: page
     objectName: "voipPage"
 
     readonly property var call: rustrx.voip
+    // an Element Call ring: { account, roomId, eventId, name }; null for the classic call
+    property var ring: null
+    // in the call window over the lock screen (CallWindow.qml): it closes
+    // the window instead of leaving the page
+    property bool inCallWindow
+    signal closeRequested()
+    readonly property string callState: ring ? "incoming" : call.state
+    readonly property string peerName: ring ? ring.name : call.peerName
+    function leave() {
+        if (inCallWindow) closeRequested()
+        else if (pageStack.currentPage === page) pageStack.pop()
+    }
     allowedOrientations: Orientation.Portrait
     // back leads to the chat and the call goes on: the page only shows the
     // call, which lives in rustrx.voip, and app.showVoip() brings it back
     // (0.8 audit: the chat could not be reached during a call). Not while
     // it rings, where the swipe answers, nor dark at the ear.
-    backNavigation: call.state !== "incoming" && !rustrx.callDark
+    backNavigation: page.callState !== "incoming" && !rustrx.callDark
 
     // the call's length, while it runs
     property int seconds
@@ -50,18 +64,18 @@ Page {
     Connections {
         target: page.call
         // a new call that rings within the moment keeps the page
-        onChanged: if (page.call.state === "idle") closer.restart(); else closer.stop()
+        onChanged: if (page.ring) return; else if (page.call.state === "idle") closer.restart(); else closer.stop()
     }
     // the reason shows a moment, then the page goes (only if no new call
     // started meanwhile; one under another page goes when it comes back)
     Timer {
         id: closer
         interval: Tunables.voipEndShownMs
-        onTriggered: if (page.call.state === "idle" && page.status === PageStatus.Active && !page.failed) pageStack.pop()
+        onTriggered: if (page.callState === "idle" && (page.inCallWindow || page.status === PageStatus.Active) && !page.failed) page.leave()
     }
     // a call that did not get through stays with "Call again" and "Close"
     // (0.8 audit: the page went and the call had to be found again)
-    readonly property bool failed: call.state === "idle"
+    readonly property bool failed: callState === "idle"
         && ["invite_timeout", "ice_failed", "send_failed", "user_media_failed"].indexOf(call.endReason) >= 0
     // whom to call again: the direct chat's other person
     property string lastRoomId
@@ -70,26 +84,40 @@ Page {
         target: page.call
         onChanged: if (page.call.roomId.length) { page.lastRoomId = page.call.roomId; page.lastPeerName = page.call.peerName }
     }
-    onStatusChanged: if (status === PageStatus.Active && call.state === "idle" && !closer.running) closer.restart()
+    onStatusChanged: if (status === PageStatus.Active && callState === "idle" && !closer.running) closer.restart()
+    // the Element Call ring is over (declined, expired, answered elsewhere):
+    // the page goes; Answer has opened the room already
+    Connections {
+        target: page.ring ? service : null
+        onRingingChanged: if (page.ring && !service.ringing[page.ring.roomId]) page.leave()
+    }
 
     // ringing: the lower half answers or declines by a swipe, as in the phone app
     IncomingCallSwipe {
         id: swipe
-        visible: page.call.state === "incoming"
+        visible: page.callState === "incoming"
         // each ring starts with the handset in the middle
         onVisibleChanged: if (visible) reset()
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: parent.height * 0.55
-        onAnswered: page.call.answer()
-        onDeclined: page.call.reject()
+        onAnswered: {
+            if (!page.ring) { page.call.answer(); return }
+            // the room's call page takes its place (over the lock screen
+            // the window goes: the call runs in the app, unlocked)
+            var r = page.ring
+            if (page.inCallWindow) page.closeRequested()
+            else pageStack.pop(undefined, PageStackAction.Immediate)
+            rustrx.answerRing(r.account, r.roomId)
+        }
+        onDeclined: page.ring ? rustrx.declineRing(page.ring.account, page.ring.roomId, page.ring.eventId) : page.call.reject()
     }
 
-    readonly property bool running: call.state === "outgoing" || call.state === "connecting" || call.state === "connected"
+    readonly property bool running: callState === "outgoing" || callState === "connecting" || callState === "connected"
 
     // who and how far, in the room above the swipe or the buttons
     Column {
         anchors.centerIn: parent
-        anchors.verticalCenterOffset: page.call.state === "incoming" ? -parent.height * 0.28
+        anchors.verticalCenterOffset: page.callState === "incoming" ? -parent.height * 0.28
                                       : page.running ? -(controls.height + controls.anchors.bottomMargin) / 2 : 0
         width: parent.width - 2 * Theme.horizontalPageMargin
         spacing: Theme.paddingLarge
@@ -98,7 +126,7 @@ Page {
         // line, the room list; the swipe's large one)
         Icon {
             anchors.horizontalCenter: parent.horizontalCenter
-            visible: page.call.state !== "incoming"
+            visible: page.callState !== "incoming"
             source: "image://theme/icon-l-dialer"
         }
         Label {
@@ -107,7 +135,7 @@ Page {
             wrapMode: Text.Wrap
             font.pixelSize: Theme.fontSizeExtraLarge
             color: Theme.highlightColor
-            text: page.call.peerName
+            text: page.peerName
         }
         Label {
             width: parent.width
@@ -115,7 +143,7 @@ Page {
             wrapMode: Text.Wrap
             color: Theme.secondaryHighlightColor
             text: {
-                switch (page.call.state) {
+                switch (page.callState) {
                 //% "Calling…"
                 case "outgoing": return qsTrId("rustrx-la-voip-calling")
                 //% "Is calling you"
@@ -147,7 +175,7 @@ Page {
         // only where it is true: in an unencrypted room the call's keys
         // (the DTLS fingerprints in the SDP) pass the server in the clear
         Label {
-            visible: page.call.state === "connected" && rustrx.roomInfo(page.call.roomId).encrypted === true
+            visible: page.callState === "connected" && rustrx.roomInfo(page.call.roomId).encrypted === true
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
             font.pixelSize: Theme.fontSizeExtraSmall
@@ -227,7 +255,7 @@ Page {
         PageButton {
             //% "Close"
             text: qsTrId("rustrx-bt-voip-close")
-            onClicked: pageStack.pop()
+            onClicked: page.leave()
         }
     }
 

@@ -51,11 +51,15 @@ public:
     // tests: the screen is dark at the ear now
     bool blanked() const { return m_blanked; }
     bool cpuHeld() const { return m_cpuHeld; }
+    // the lock screen is up (MCE's tklock mode); watchLock() follows it
+    bool screenLocked() const { return m_locked; }
+    void watchLock();
 
     void holdCpu(bool on) override;
 
 signals:
     void blankedChanged();
+    void screenLockedChanged();
 
 public slots:
     // the call's state from Voip: idle, incoming, outgoing, connecting, connected
@@ -63,6 +67,8 @@ public slots:
     void setSpeaker(bool on);
     // the proximity sensor (QML) is covered
     void setNear(bool near);
+    // MCE's tklock mode ("locked", "silent-locked-dim", "unlocked", ...)
+    void setLockMode(const QString &mode);
 
 private:
     void request(const QString &state);
@@ -73,6 +79,7 @@ private:
     bool m_near = false;
     bool m_blanked = false;
     bool m_cpuHeld = false;
+    bool m_locked = false;
     QTimer m_renew;
 };
 

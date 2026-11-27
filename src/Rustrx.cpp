@@ -51,6 +51,8 @@
 #include <QQuickItemGrabResult>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QWindow>
+#include <qpa/qplatformnativeinterface.h>
 
 #include <limits>
 
@@ -101,6 +103,34 @@ bool Rustrx::handStoreKeyOn()
 bool Rustrx::callDark() const
 {
     return m_callState->blanked();
+}
+
+bool Rustrx::screenLocked() const
+{
+    return m_callState->screenLocked();
+}
+
+// lipstick reads a window's CATEGORY once, when its surface is first
+// mapped: set between create() and the show (lipstick's compositor.qml:
+// "call" and "alarm" go to the alarm layer, which lies over the lock screen
+// and takes touch while the device is locked; the phone app's call window,
+// Sailfish.Lipstick's SystemDialogWindow, does the same, and lipstick
+// checks no privilege for it: tested from the sandbox on the C2, 5.2.0.22)
+void Rustrx::showOverLock(QObject *window)
+{
+    QWindow *w = qobject_cast<QWindow *>(window);
+    if (!w)
+        return;
+    if (!w->handle())
+        w->create();
+    QPlatformNativeInterface *native = QGuiApplication::platformNativeInterface();
+    if (native && w->handle())
+        native->setWindowProperty(w->handle(), QStringLiteral("CATEGORY"), QStringLiteral("call"));
+    else
+        qWarning() << "call: no native window, the call page will not show over the lock screen";
+    qInfo() << "call: page over the lock screen";
+    w->showFullScreen();
+    w->raise();
 }
 
 void Rustrx::setCallNear(bool near)
@@ -202,6 +232,8 @@ Rustrx::Rustrx(const QString &dataDir, QObject *parent)
     });
     connect(m_voip, &Voip::speakerChanged, m_callState, &CallState::setSpeaker);
     connect(m_callState, &CallState::blankedChanged, this, &Rustrx::callDarkChanged);
+    connect(m_callState, &CallState::screenLockedChanged, this, &Rustrx::screenLockedChanged);
+    m_callState->watchLock();
     // the stand-in and a push-woken process ring but never run a call:
     // whatever hands over to the app (a tap, Answer, a launcher tap) takes
     // the ringing call along
@@ -385,6 +417,12 @@ void Rustrx::answerIn(int key, const QString &roomId)
         qInfo() << "call: answer for a ring that is over, ignored; account" << key;
         return;
     }
+    // a ringing call handed over at its ring, the app still starting
+    if (markHandedRing(key, roomId, QStringLiteral("answer"))) {
+        qInfo() << "call: answered before the app had it, answered when it comes";
+        emit callAnswered(roomId);
+        return;
+    }
     m_handover.setPendingAccount(key);
     requestShow(key);
     // a classic call ringing in that room: answered here, its page follows
@@ -420,6 +458,11 @@ void Rustrx::declineIn(int key, const QString &roomId, const QString &eventId)
     // only the ring that is up, by its own event (a classic call's is "")
     if (calledFromDBus() && !m_posted.mayDecline(key, roomId, eventId)) {
         qInfo() << "call: decline for a ring that is not up, ignored; account" << key;
+        return;
+    }
+    if (markHandedRing(key, roomId, QStringLiteral("decline"))) {
+        qInfo() << "call: declined before the app had it, declined when it comes";
+        emit callAnswered(roomId);
         return;
     }
     emit callAnswered(roomId);
@@ -1193,6 +1236,46 @@ void Rustrx::noteRingEnded(int account, const QString &roomId)
 int Rustrx::ringLeftMs(int account, const QString &roomId) const
 {
     return int(qMin(m_posted.ringLeft(account, roomId), qint64(std::numeric_limits<int>::max())));
+}
+
+// A call rings in a window-less process (the stand-in, a push-woken one):
+// with its notification up, the app is started at once with the ringing
+// call (Voip::ringing, set on each change), not answered, and shows its
+// call page (the author's spec, 2026-11-27); an Element Call ring the app
+// takes over from the notification (adoptRing). This process leaves.
+void Rustrx::ringPosted(bool ring)
+{
+    if (!ring || (!m_handover.standIn() && !m_handover.pushWake()) || m_leaving)
+        return;
+    qInfo() << "stand-in: a call rings, starting the app with it";
+    Perf::mark("ring_handover");
+    m_handover.handOver();
+}
+
+void Rustrx::answerRing(int account, const QString &roomId)
+{
+    if (m_posted.rings(account, roomId))
+        answerIn(account, roomId);
+}
+
+void Rustrx::declineRing(int account, const QString &roomId, const QString &eventId)
+{
+    if (m_posted.mayDecline(account, roomId, eventId))
+        declineIn(account, roomId, eventId);
+}
+
+bool Rustrx::markHandedRing(int key, const QString &roomId, const QString &how)
+{
+    if (m_handover.standIn() || m_handover.pushWake())
+        return false;
+    // taken from the file at the first login, its account not logged in yet
+    if (!m_pendingVoip.isEmpty()) {
+        if (m_pendingVoip.value("account").toInt() != key || m_pendingVoip.value("room_id").toString() != roomId)
+            return false;
+        m_pendingVoip.insert(how, true);
+        return true;
+    }
+    return m_handover.markPendingVoip(key, roomId, how);
 }
 
 void Rustrx::setRoomAvatar(const QString &roomId, const QString &path)

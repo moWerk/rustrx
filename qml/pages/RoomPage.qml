@@ -140,7 +140,7 @@ Page {
 
     function readingNow() {
         return positioned && !readHeld && status === PageStatus.Active && inTimeline
-                && Qt.application.active && rustrx.timeline.count > 0
+                && app.mainActive && rustrx.timeline.count > 0
     }
     // the last read message's row: this visit's receipt, else the unread
     // line's; -1 when neither is known
@@ -253,7 +253,7 @@ Page {
         target: Qt.application
         onActiveChanged: {
             if (page.status !== PageStatus.Active) return
-            if (Qt.application.active) page.readOnArrival()
+            if (app.mainActive) page.readOnArrival()
             else page.moveLine()
         }
     }

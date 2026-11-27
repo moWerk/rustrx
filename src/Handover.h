@@ -45,6 +45,9 @@ public:
     // a classic call ringing in the stand-in (Voip::ringing()), for the app
     void setPendingVoip(const QVariantMap &invite) { m_pendingVoip = invite; }
     QVariantMap takePendingVoip();
+    // Answer ("answer") or Decline ("decline") on the ringing call read
+    // from the file, not taken yet: true when it is that account's and room's
+    bool markPendingVoip(int key, const QString &roomId, const QString &how);
     QString takePendingRoom();
     QString takePendingCall();
     bool takePendingKnocks();

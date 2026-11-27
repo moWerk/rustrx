@@ -54,7 +54,7 @@ Item {
         // every account's rooms notify (account: whose); not the shown
         // account's room in front of you
         onNewMessages: {
-            if (!rustrx.standIn && Qt.application.state === Qt.ApplicationActive
+            if (!rustrx.standIn && Qt.application.state === Qt.ApplicationActive && !rustrx.screenLocked
                     && account === rustrx.accountKey && roomId === rustrx.openRoomId) return
             service.notify(account, roomId, roomName, count)
         }
@@ -387,6 +387,8 @@ Item {
         r[roomId] = n
         ringing = r
         console.log("call: incoming", ring ? "ring" : "notification", "for", expiresMs, "ms")
+        // with Rustrx closed: the app starts with the call, its notification up
+        rustrx.ringPosted(ring)
     }
     // unanswered: it expired, the caller gave up or another device of ours
     // declined; false: answered or declined here, or the room opened;

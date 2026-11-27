@@ -486,6 +486,16 @@ void Voip::takeRinging(const QVariantMap &invite)
     m_peerUser = invite.value("peer_user").toString();
     m_endReason.clear();
     m_declinedElsewhere = false;
+    // declined on the notification while the app was starting: no ring
+    // here, the caller told at once
+    if (invite.value("decline").toBool()) {
+        m_partyId = newId();
+        send(version().toString() == QLatin1String("1") ? QStringLiteral("m.call.reject") : QStringLiteral("m.call.hangup"), {});
+        qInfo() << "voip: ringing call taken over from the stand-in, declined there";
+        m_endReason = QStringLiteral("rejected");
+        reset();
+        return;
+    }
     m_inviteTimer.start(int(left));
     addRemoteCandidates(invite.value("candidates").toList());
     setState(QStringLiteral("incoming"));

@@ -135,6 +135,9 @@ class Rustrx : public QObject, protected QDBusContext
     Q_PROPERTY(bool restoring READ restoring NOTIFY stateChanged)
     // the call page is dark at the ear (see CallState)
     Q_PROPERTY(bool callDark READ callDark NOTIFY callDarkChanged)
+    // the lock screen is up (MCE's tklock mode): a ringing call's page then
+    // goes over it in a window of its own (showOverLock)
+    Q_PROPERTY(bool screenLocked READ screenLocked NOTIFY screenLockedChanged)
     Q_PROPERTY(QString syncState READ syncState NOTIFY syncStateChanged)
     Q_PROPERTY(QString verificationState READ verificationState NOTIFY encryptionChanged)
     Q_PROPERTY(QString recoveryState READ recoveryState NOTIFY encryptionChanged)
@@ -270,6 +273,15 @@ public:
     // from its first event on
     Q_INVOKABLE void placeCall(const QString &roomId, const QString &invitee, const QString &name);
     bool callDark() const;
+    bool screenLocked() const;
+    // a window (the call window, qml/pages/CallWindow.qml) shown full
+    // screen over the lock screen and the device lock, as the phone app's
+    // call: lipstick puts a window of category "call" in its alarm layer
+    Q_INVOKABLE void showOverLock(QObject *window);
+    // Answer and Decline on the call page of an Element Call ring (the
+    // classic call's go to rustrx.voip), as the notification's buttons
+    Q_INVOKABLE void answerRing(int account, const QString &roomId);
+    Q_INVOKABLE void declineRing(int account, const QString &roomId, const QString &eventId);
     Q_INVOKABLE void retryRestore();
     // the proximity sensor during a call (see CallState)
     Q_INVOKABLE void setCallNear(bool near);
@@ -396,6 +408,9 @@ public:
     Q_INVOKABLE void noteRingEnded(int account, const QString &roomId);
     // ms the room's ring has left (notified.json), 0 when it is over
     Q_INVOKABLE int ringLeftMs(int account, const QString &roomId) const;
+    // Service.qml posted a call's notification; a ring (not a group call's
+    // start) in a window-less process starts the app with the call
+    Q_INVOKABLE void ringPosted(bool ring);
     // that list was there when the process started (not the first 0.8.4
     // run, when lines posted before the update are taken into it)
     Q_INVOKABLE bool notesKnown() const { return m_notesKnown; }
@@ -447,6 +462,7 @@ public:
 signals:
     void devModeChanged();
     void callDarkChanged();
+    void screenLockedChanged();
     void shrinkingVideosChanged();
     // a dev command for the UI (see dev())
     void devUi(const QVariantMap &request);
@@ -674,6 +690,9 @@ private:
     bool fromNotifications(const char *what) const;
     void answerIn(int key, const QString &roomId);
     void declineIn(int key, const QString &roomId, const QString &eventId);
+    // Answer or Decline on a call handed over that the app has not taken
+    // yet (before its account's login): it is taken answered or declined
+    bool markHandedRing(int key, const QString &roomId, const QString &how);
     // the notifications up, for their actions (in the data folder)
     NotifyGate::Posted m_posted;
     bool m_leaving = false;

@@ -332,15 +332,109 @@ ApplicationWindow {
     Timer { id: voipRetry; interval: Tunables.retryIntervalMs; onTriggered: if (rustrx.voip.state !== "idle") app.showVoip() }
     Connections {
         target: rustrx.voip
-        // ringing while Rustrx is in front (also a ring handed over by the
-        // stand-in), or answered from the notification: the page follows
-        // only when the state changes: mute and the speaker change it too,
-        // and pulled a user who went back to the chat onto the call again
+        // ringing (also a ring handed over by the stand-in), or answered
+        // from the notification: the page follows only when the state
+        // changes: mute and the speaker change it too, and pulled a user
+        // who went back to the chat onto the call again
         onChanged: {
             var s = rustrx.voip.state
             if (s === app.lastVoipState) return
             app.lastVoipState = s
-            if (s === "connecting" || s === "connected" || (s === "incoming" && Qt.application.active)) app.showVoip()
+            if (s === "incoming") app.ringUp(null)
+            else if (s === "connecting" || s === "connected") app.showVoip()
+        }
+    }
+
+    // A call rings (a classic one, or an Element Call ring): its page full
+    // screen with Answer and Decline, as the phone app's (the author's
+    // spec, 2026-11-27): Rustrx comes to the front for it, and with the
+    // phone locked the page goes over the lock screen in a window of its
+    // own (CallWindow, Rustrx::showOverLock). A ring that came while Rustrx
+    // was closed started the app with it (Rustrx::ringPosted).
+    function ringUp(ring) {
+        rustrx.perf("ring_page")
+        if (rustrx.screenLocked) { showCallWindow(ring); return }
+        if (!Qt.application.active) app.activate()
+        if (ring) showRing(ring)
+        else showVoip()
+    }
+    // the Element Call ring that rings now ({ account, roomId, eventId,
+    // name }), from Service's rings (a classic call's has no event), or null
+    function elementRing() {
+        for (var id in service.ringing) {
+            var n = service.ringing[id]
+            if (!n.ring || n.eventId === "") continue
+            return { account: n.account, roomId: id, eventId: n.eventId,
+                     name: n.senderName || rustrx.roomInfoIn(n.account, id).name || "" }
+        }
+        return null
+    }
+    // the room whose Element Call ring has its page up already
+    property string ringShown
+    Connections {
+        target: service
+        onRingingChanged: {
+            var r = app.elementRing()
+            if (!r) { app.ringShown = ""; return }
+            if (r.roomId === app.ringShown || rustrx.voip.state !== "idle") return
+            app.ringShown = r.roomId
+            app.ringUp(r)
+        }
+    }
+    function showRing(ring) {
+        if (!pageStack.find(function (p) { return p.objectName === "main" }) || pageStack.busy) {
+            pendingRing = ring
+            ringRetry.restart()
+            return
+        }
+        pendingRing = null
+        var page = pageStack.find(function (p) { return p.objectName === "voipPage" && p.ring && p.ring.roomId === ring.roomId })
+        if (page) {
+            if (pageStack.currentPage !== page) pageStack.pop(page)
+            return
+        }
+        pageStack.push(Qt.resolvedUrl("pages/VoipPage.qml"), { ring: ring })
+    }
+    property var pendingRing: null
+    Timer {
+        id: ringRetry
+        interval: Tunables.retryIntervalMs
+        // only while it still rings
+        onTriggered: {
+            var r = app.elementRing()
+            if (app.pendingRing && r && r.roomId === app.pendingRing.roomId) app.showRing(r)
+        }
+    }
+    // the call window over the lock screen, while a call rings or runs (a
+    // var: the only reference to a window made without a parent)
+    property var callWindow: null
+    // the user sees this window: Qt counts the call window as the app's
+    // too, and the chat behind the lock screen is not being read
+    readonly property bool mainActive: Qt.application.active && !rustrx.screenLocked
+                                       && !(callWindow && callWindow.active)
+    Component { id: callWindowComponent; CallWindow { onDone: app.closeCallWindow() } }
+    function showCallWindow(ring) {
+        if (callWindow) return
+        // no parent: a window with one would be its transient, and lipstick
+        // would keep it with the app's window behind the lock screen
+        callWindow = callWindowComponent.createObject(null, { ring: ring })
+        rustrx.showOverLock(callWindow)
+    }
+    function closeCallWindow() {
+        if (!callWindow) return
+        var w = callWindow
+        callWindow = null
+        w.hide()
+        w.destroy()
+    }
+    // locked while a call rings (the screen went off, the power key): its
+    // page goes over the lock screen
+    Connections {
+        target: rustrx
+        onScreenLockedChanged: {
+            if (!rustrx.screenLocked || app.callWindow) return
+            if (rustrx.voip.state === "incoming") app.showCallWindow(null)
+            else if (rustrx.voip.state === "idle" && app.elementRing()) app.showCallWindow(app.elementRing())
         }
     }
     // back in front (from the cover, a notification, the lock screen) while
@@ -962,6 +1056,8 @@ ApplicationWindow {
         // the old "Round avatars" switch, off: square corners, once
         if (!cfg.roundAvatars) { cfg.avatarCorners = 0; cfg.roundAvatars = true }
         applyClosedMode(); route()
+        // a call that rang before the window was there (handed over)
+        if (rustrx.voip.state === "incoming") { lastVoipState = "incoming"; ringUp(null) }
     }
 
     // custom emoji in messages: a little taller than the text, like an emoji

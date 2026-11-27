@@ -20,6 +20,8 @@
 //   {"login": "password", "user", "password", "homeserver"}   a login on the shown account (tests with a local server)
 //   {"voip": place|answer|hangup|status, "room_id", "invitee", "tone", "aec", "speaker"}
 //   {"cmd": call_start, "room_id", "voice", "skip_lobby"}, {"cmd": refresh_rooms}
+//   {"cmd": dev_ring, "room_id"}         TEST ONLY: a made-up classic call rings
+//                                        (the core's dev_ring), in every process
 namespace DevHook {
 
 // why the request is refused, or "" when it is one of those
@@ -38,6 +40,8 @@ inline QString refusal(const QVariantMap &req)
     static const QMap<QString, QStringList> commands{
         { "call_start", { "room_id", "voice", "skip_lobby" } },
         { "refresh_rooms", {} },
+        // TEST ONLY: a ring with nobody to call (core/src/core/call.rs, dev_ring)
+        { "dev_ring", { "room_id" } },
     };
     QStringList found;
     for (const QString &k : req.keys()) {

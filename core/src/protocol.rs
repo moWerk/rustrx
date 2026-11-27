@@ -320,6 +320,12 @@ pub(crate) enum Command {
     VoipSend { room_id: String, r#type: String, content: serde_json::Map<String, serde_json::Value> },
     /// The homeserver's TURN credentials: "turn_server".
     TurnServer,
+    // --- tests only ---
+    /// TEST ONLY: a made-up m.call.invite from the room's other member, fed
+    /// to the UI as the sync handler feeds a real one ("voip"), so that a
+    /// ring can be tested with nobody to call. Refused unless the data
+    /// folder has the dev-commands file (call.rs, dev_ring).
+    DevRing { room_id: String },
 }
 
 /// The legacy 1:1 call events (m.call.*) the UI may send and is given.
@@ -390,12 +396,12 @@ mod tests {
         "devices", "delete_device", "profile", "set_display_name", "ignore_user",
         "unignore_user", "storage_info", "clear_media",
         "call_start", "call_message", "call_end", "knock_answer", "knock_seen", "call_decline",
-        "voip_send", "turn_server",
+        "voip_send", "turn_server", "dev_ring",
     ];
 
     /// How many fields the commands require, all together. Like COMMANDS, a
     /// change here is a change of the contract.
-    const REQUIRED_FIELDS: usize = 163;
+    const REQUIRED_FIELDS: usize = 164;
 
 
     /// The names serde knows, from its own error for an unknown tag

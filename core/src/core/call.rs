@@ -177,6 +177,26 @@ pub(crate) const CALL_MEMBER_TYPES: [&str; 2] = ["org.matrix.msc3401.call.member
 /// MSC4310, answering a ring with no.
 const DECLINE_TYPE: &str = "org.matrix.msc4310.rtc.decline";
 
+/// TEST ONLY (dev_ring): the file in the data folder that allows it, as
+/// for the UI's dev commands (src/Keys.h, kDevCommandsFlag).
+const DEV_COMMANDS_FILE: &str = "dev-commands";
+
+/// TEST ONLY: dev_ring's invite, for `own` from `sender`, sent `now` (ms):
+/// 60 s to ring, age 0, a fixed placeholder offer, ids that say what it is.
+fn dev_invite(sender: &str, own: &str, now: u64) -> Value {
+    const SDP: &str = "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=rustrx-dev-ring\r\nt=0 0\r\n\
+        m=audio 9 UDP/TLS/RTP/SAVPF 111\r\nc=IN IP4 0.0.0.0\r\na=mid:0\r\na=sendrecv\r\n\
+        a=rtpmap:111 opus/48000/2\r\na=setup:actpass\r\n";
+    json!({
+        "type": "m.call.invite", "sender": sender, "event_id": format!("$rustrx-dev-ring-{now}"),
+        "origin_server_ts": now, "unsigned": {"age": 0},
+        "content": {
+            "call_id": format!("rustrx-dev-ring-{now}"), "party_id": "rustrx-dev-ring", "version": "1",
+            "lifetime": 60000, "invitee": own, "offer": {"type": "offer", "sdp": SDP},
+        },
+    })
+}
+
 /// How old an event is, in ms: the server's age where it gives one, as
 /// the phone's clock can be off (a mainline phone boots with a wrong date
 /// until NTP); else from its timestamp.
@@ -427,6 +447,38 @@ impl Core {
                 self.emit(json!({"ev": "turn_server", "username": "", "password": "", "uris": [], "ttl": 0}));
             }
         }
+        Ok(())
+    }
+
+    /// TEST ONLY: a ring with nobody to call (the phones under test reach no
+    /// one overnight). A made-up m.call.invite from the room's other member
+    /// goes the sync handler's way (voip_in_room: the names, VoipSeen,
+    /// "voip"), in the app, the stand-in and a push-woken process alike.
+    /// Its SDP is a placeholder: Answer may fail to connect. Refused
+    /// without the dev-commands file in the data folder (the first
+    /// account's; another account's folder is two below it).
+    pub(crate) async fn dev_ring(&'static self, room_id: &str) -> Result<()> {
+        let flag = |d: &std::path::Path| d.join(DEV_COMMANDS_FILE).exists();
+        let root = self.data_dir.parent().and_then(std::path::Path::parent);
+        if !flag(&self.data_dir) && !root.is_some_and(flag) {
+            bail!("dev_ring: dev commands are off");
+        }
+        let room = self.room(room_id).await?;
+        let own = room.own_user_id().to_owned();
+        let sender = room
+            .members(RoomMemberships::JOIN)
+            .await?
+            .into_iter()
+            .map(|m| m.user_id().to_owned())
+            .find(|u| *u != own)
+            .ok_or_else(|| anyhow!("dev_ring: no other member in the room"))?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        let raw: Raw<AnySyncMessageLikeEvent> = Raw::new(&dev_invite(sender.as_str(), own.as_str(), now))?.cast_unchecked();
+        tracing::info!(room = %room.room_id(), "voip: TEST ONLY made-up invite (dev_ring)");
+        self.voip_in_room(&raw, &room).await;
         Ok(())
     }
 
@@ -745,6 +797,21 @@ mod tests {
         let old = voip(json!({"type": "m.call.hangup", "event_id": "$h", "sender": "@a:b", "origin_server_ts": 1,
                               "content": {"call_id": "c1"}})).unwrap();
         assert!(old.age > 1_000_000);
+    }
+
+    /// TEST ONLY dev_ring's invite rings as a real one would: an invite, age
+    /// 0, the full lifetime, for us, with an offer.
+    /// Planted-bug: put "age": 60000 in dev_invite's unsigned.
+    #[test]
+    fn dev_invite_is_a_fresh_invite_for_us() {
+        let ev = voip(dev_invite("@them:example.org", "@me:example.org", 5)).unwrap();
+        assert!(ev.is_invite());
+        assert_eq!(ev.age, 0);
+        assert_eq!(ev.sender, "@them:example.org");
+        assert_eq!(ev.call_id(), "rustrx-dev-ring-5");
+        assert_eq!(ev.content["lifetime"], 60000);
+        assert_eq!(ev.content["invitee"], "@me:example.org");
+        assert!(ev.content["offer"]["sdp"].as_str().unwrap().starts_with("v=0\r\n"));
     }
 
     /// Each event once (the classic sync of a woken process and its push

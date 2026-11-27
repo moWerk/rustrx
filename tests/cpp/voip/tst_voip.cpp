@@ -439,6 +439,19 @@ private slots:
                           { "content", QVariantMap{ { "call_id", "c1" }, { "version", "1" } } } });
         QCOMPARE(app.state(), QStringLiteral("incoming"));
 
+        // declined on the notification while the app was starting: the
+        // caller gets the reject, nothing rings here
+        // Planted-bug: takeRinging ignores "decline" (it rings after the No)
+        Voip declined;
+        QSignalSpy sent(&declined, &Voip::command);
+        QVariantMap no = invite;
+        no.insert("decline", true);
+        declined.takeRinging(no);
+        QCOMPARE(declined.state(), QStringLiteral("idle"));
+        QCOMPARE(sent.count(), 1);
+        QCOMPARE(sent.first().first().toMap().value("type").toString(), QStringLiteral("m.call.reject"));
+        QCOMPARE(sent.first().first().toMap().value("content").toMap().value("call_id").toString(), QStringLiteral("c1"));
+
         Voip late;
         QVariantMap old = invite;
         old.insert("expires_at", QDateTime::currentMSecsSinceEpoch() - 1);

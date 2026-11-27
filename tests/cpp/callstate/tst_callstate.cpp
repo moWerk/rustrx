@@ -5,6 +5,7 @@
 #include "CallState.h"
 
 #include <QtTest>
+#include <QSignalSpy>
 
 class TestCallState : public QObject
 {
@@ -46,6 +47,26 @@ private slots:
         QVERIFY(s.blanked());
         s.follow(QStringLiteral("idle"));
         QVERIFY(!s.blanked());
+    }
+    // MCE's tklock modes: every locked one counts, the unlocked ones not
+    // (a ringing call's page goes over the lock screen only when it is up).
+    // Planted-bug: count only "locked" (a dimmed lock screen let the ring
+    // go to the window behind it)
+    void lockScreenModes()
+    {
+        CallState s;
+        QSignalSpy changed(&s, &CallState::screenLockedChanged);
+        for (const char *m : { "locked", "silent-locked", "locked-dim", "locked-delay", "silent-locked-dim" }) {
+            s.setLockMode(QStringLiteral("unlocked"));
+            QVERIFY(!s.screenLocked());
+            s.setLockMode(QString::fromLatin1(m));
+            QVERIFY2(s.screenLocked(), m);
+        }
+        s.setLockMode(QStringLiteral("silent-unlocked"));
+        QVERIFY(!s.screenLocked());
+        const int n = changed.count();
+        s.setLockMode(QStringLiteral("unlocked"));
+        QCOMPARE(changed.count(), n);
     }
 };
 
