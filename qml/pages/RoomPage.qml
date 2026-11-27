@@ -315,11 +315,11 @@ Page {
         pageSoon.start()
     }
     // asked for one turn later, never inside the list's own layout that
-    // called maybePaginate (atYEnd, contentY): paginating sets the footer's
-    // height, which changes the content height that the PushUpMenu's
-    // _contentDeficit and the bottom margin it sets are made of, so the
-    // footer's height and _contentDeficit were written again while being
-    // written (the two binding loops in the log)
+    // called maybePaginate (atYBeginning, contentY): paginating sets the
+    // footer's height, which changes the content height that the
+    // PushUpMenu's _contentDeficit and the bottom margin it sets are made
+    // of, so the footer's height and _contentDeficit were written again
+    // while being written (the two binding loops in the log)
     Timer {
         id: pageSoon
         interval: 0
@@ -332,7 +332,7 @@ Page {
     Timer {
         id: moreLater
         interval: 0
-        onTriggered: if (list.atYEnd) page.maybePaginate(true)
+        onTriggered: if (list.atYBeginning) page.maybePaginate(true)
     }
 
     Connections {
@@ -344,7 +344,7 @@ Page {
             // events, hidden ones), so the top never left and loading
             // stopped there until a scroll down and up again; the next
             // page comes by itself
-            if (!atStart && list.atYEnd && page.inTimeline) moreLater.restart()
+            if (!atStart && list.atYBeginning && page.inTimeline) moreLater.restart()
             // the older page is in the model once the timeline came
             if (page.jumpTarget.length) jumpRetry.restart()
             if (!page.positioned) seekRetry.restart()
@@ -582,8 +582,12 @@ Page {
             page.readSoon()
         }
 
-        // the oldest end is at the top in this layout
-        onAtYEndChanged: if (atYEnd) page.maybePaginate(true)
+        // the oldest end is at the top in this layout: atYBeginning (the
+        // ends are where they lie on screen; atYEnd, the newest end, paged
+        // at the bottom and with the push-up menu open: a page landing as it
+        // closed moved originY before contentHeight, the menu's place jumped
+        // and the list flew after it and back, issue #3)
+        onAtYBeginningChanged: if (atYBeginning) page.maybePaginate(true)
 
         // with an empty message an entry sends on its own; with a message
         // drafted it attaches: the text goes along as the caption
@@ -634,15 +638,16 @@ Page {
         }
 
         // in a bottom-to-top list the footer is drawn at the top: a line while
-        // older messages load, nothing once the beginning is reached
+        // older messages load (also while the room looks for its unread
+        // line), nothing once the beginning is reached
         footer: Item {
             width: list.width
-            height: paginating ? Theme.itemSizeSmall : Theme.paddingLarge
+            height: paginating || page.seeking ? Theme.itemSizeSmall : Theme.paddingLarge
             BusyIndicator {
                 visible: running
                 anchors.centerIn: parent
                 size: BusyIndicatorSize.Small
-                running: paginating
+                running: paginating || page.seeking
             }
         }
 
@@ -769,12 +774,13 @@ Page {
                   : qsTrId("rustrx-la-cover-offline")
         }
 
+        // an empty room's first messages on their way (the unread seek
+        // shows at the top, in the footer)
         BusyIndicator {
             visible: running
             anchors.centerIn: parent
             size: BusyIndicatorSize.Large
-            // also while the room looks for its unread line
-            running: (list.count === 0 && openGrace.running) || page.seeking
+            running: list.count === 0 && openGrace.running
         }
 
         VerticalScrollDecorator { }
