@@ -363,6 +363,8 @@ SilicaFlickable {
             //: settings switch; off: an incoming call rings as its notification only
             //% "Force Call UI in front on incoming calls"
             text: qsTrId("rustrx-la-force-call-ui")
+            //% "When off, an incoming call shows only its notification. When on, the Call UI is forced in front of other running apps when a call comes in."
+            description: qsTrId("rustrx-la-force-call-ui-hint")
             checked: app.settings.forceCallUi
             automaticCheck: false
             onClicked: app.settings.forceCallUi = !app.settings.forceCallUi

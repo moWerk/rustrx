@@ -3274,6 +3274,10 @@
         <extracomment>settings switch; off: an incoming call rings as its notification only</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-force-call-ui-hint">
+        <source>When off, an incoming call shows only its notification. When on, the Call UI is forced in front of other running apps when a call comes in.</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-la-link-show-scan">
         <source>On the new device, choose Scan a QR code (in Element: Sign in with QR code) and scan this one.</source>
         <translation type="unfinished"></translation>
