@@ -80,10 +80,17 @@ static const char kInterface[] = "net.mowerk.harbour_rustrx";
 // file's X-Share-Methods; /share stays for direct callers
 static const char kSharePath[] = "/share";
 static const char kShareRoomPath[] = "/share/room";
+// a Rustrx proves it holds its names (NameProof.h, audit 0.8.4 IPC2 and
+// IPC6); the interface again in NameProof.h's Q_CLASSINFO
+static const char kProofPath[] = "/net/mowerk/harbour_rustrx/proof";
+static const char kProofInterface[] = "net.mowerk.harbour_rustrx.Proof";
 
 // UnifiedPush (the connector's own name is UnifiedPush::kConnectorName)
 static const char kConnectorPath[] = "/org/unifiedpush/Connector";
 static const char kDistributorPrefix[] = "org.unifiedpush.Distributor.";
+// the distributor taken first when there are several, by its exact name
+// (a name ending in "Foghorn" won by its suffix until 0.8.4, IPC3)
+static const char kDistributorFoghorn[] = "org.unifiedpush.Distributor.Foghorn";
 static const char kDistributorPath[] = "/org/unifiedpush/Distributor";
 static const char kDistributorInterface[] = "org.unifiedpush.Distributor2";
 // where the distributors' activation files are
@@ -170,6 +177,16 @@ static const int kActivateTimeoutMs = 3000;
 // a running Rustrx still starting has the bus name but not yet its object:
 // asked again for this long before it counts as leaving
 static const int kActivateRetryMs = 10000;
+// whoever holds one of Rustrx's names has this long to prove it is a
+// Rustrx (a starting one answers once its event loop runs) before it
+// counts as another app (NameProof.h)
+static const int kProofWaitMs = 10000;
+static const int kProofPollMs = 250;
+// the data folder's note of the boot in which "Rustrx could not start"
+// was shown (IPC6: once per boot)
+static const char kNameTakenFile[] = "name-taken-boot";
+// and how long that process waits for the notification to be posted
+static const int kNameTakenNoteMs = 1000;
 // at exit, the core gets this long to stop before the bus name goes
 static const int kShutdownMs = 3000;
 // glibc's malloc arenas: by default up to 8 per core, one per new thread
@@ -238,6 +255,9 @@ static const int kLogCheckEveryLines = 50;
 static const int kVoipInviteLifetimeMs = 60000;
 // an incoming invite rings at most this long, whatever its sender says
 static const int kVoipInviteLifetimeMaxMs = 120000;
+// a call rings the phone only in a room of at most this many joined
+// members (audit 0.8.4 NET-4; the core's RING_MAX_MEMBERS, call.rs)
+static const int kRingMaxMembers = 2;
 // the caller waits this much past its invite's lifetime before it gives up:
 // an answer sent just in time is still on its way (7 to 10 s across
 // federation were measured, and the timer starts before the invite is out)
@@ -268,9 +288,12 @@ static const int kVoipAecQueueMs = 120;
 // a call's CPU keepalive is renewed this often until MCE names its period
 static const int kCallKeepAliveRenewMs = 60000;
 // calls only through the homeserver's relay (TURN): the peer never sees
-// this phone's addresses; off by default, as in Element
+// this phone's addresses, and in an unencrypted room they never enter the
+// room's history. On by default (the author, audit 0.8.4 NET-8; Element
+// has it off); only a switch the user flipped is stored, so everyone who
+// never touched it gets this default
 static const char kVoipRelayOnly[] = "callsRelayOnly";
-static const bool kVoipRelayOnlyDefault = false;
+static const bool kVoipRelayOnlyDefault = true;
 // the call's route (CallRoute): a step PulseAudio has not finished in this
 // long is given up; quitting gives a pending restore this long
 static const int kCallRouteTimeoutMs = 3000;

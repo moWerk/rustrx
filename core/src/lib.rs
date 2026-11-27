@@ -471,7 +471,7 @@ mod tests {
     /// A custom emoji in the cache is answered from it by its name (no
     /// folder listing, no network: this core is not logged in), whatever
     /// type it was saved as.
-    /// Planted-bug: leave "gif" out of MEDIA_EXTENSIONS: the cached gif is
+    /// Planted-bug: leave "gif" out of PICTURE_EXTENSIONS: the cached gif is
     /// not found and the fetch fails with "not logged in".
     #[test]
     fn a_cached_emote_is_found_by_name() {

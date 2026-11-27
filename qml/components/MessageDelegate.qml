@@ -57,7 +57,12 @@ ListItem {
 
     readonly property bool isEvent: model.kind === "event"
     readonly property bool own: model.is_own === true
-    readonly property string msgType: model.type || "text"
+    // a picture whose bytes are none Rustrx draws (JPEG, PNG, GIF, WebP)
+    // is a file row (audit UC2)
+    readonly property string shownPicture: model.thumb_path || model.media_path || ""
+    readonly property bool notPicture: (model.type === "image" || model.type === "sticker")
+                                       && shownPicture.length > 0 && !rustrx.isPicture(shownPicture)
+    readonly property string msgType: notPicture ? "file" : (model.type || "text")
     // state changes and membership: one quiet line, no bubble
     readonly property bool plainLine: msgType === "membership" || msgType === "state"
     readonly property bool isMedia: msgType === "image" || msgType === "video" || msgType === "sticker"
@@ -73,6 +78,8 @@ ListItem {
     readonly property var reactionList: model.reactions ? model.reactions : []
     // read once here: each read of a role asks the model again
     readonly property string htmlText: model.html || ""
+    // too long to draw safely (audit UC1): the model's mark (TimelineModel::kTooLong)
+    readonly property bool tooLongToShow: htmlText === "<rustrx-too-long>"
     // the message with its spoilers shown, once the reader tapped one
     property string spoilersShown
     // opened once, they stay open when the row scrolls back into view (audit D2)
@@ -84,7 +91,8 @@ ListItem {
     // a tap on a link in the text: a covered spoiler shows, the rest opens
     function linkTapped(link) {
         if (link === "rustrx:spoiler") spoilersShown = msg.ListView.view.model.spoilersShown(index)
-        else app.openLink(link)
+        // a text that names another address than the link: asked first (audit UC8)
+        else app.openLinkAsked(link, msg.ListView.view ? msg.ListView.view.model.linkHosts(index, link) : ({}))
     }
     readonly property var replyTo: model.reply_to ? model.reply_to : null
     // the custom emoji in the message and its reactions ({ url, shortcode });
@@ -99,7 +107,7 @@ ListItem {
             // what Forward's confirm view shows: a file by its name, a
             // picture by its thumbnail
             msgType: msgType, filename: model.filename || "",
-            thumb: model.thumb_path || (msgType === "image" ? (model.media_path || "") : ""),
+            thumb: notPicture ? "" : model.thumb_path || (msgType === "image" ? (model.media_path || "") : ""),
             // a picture's or file's caption or name: its menu has Save instead
             copyText: (isMedia || isFile) && body.length > 0,
             selectText: !inThread,
@@ -181,7 +189,7 @@ ListItem {
     onGifWantedChanged: { updateGifRun(); fetchGif() }
     property bool gifAsked
     function fetchGif() {
-        if (gifAsked || !gifWanted || !eventId.length || model.media_path && model.media_path.length) return
+        if (gifAsked || !gifWanted || !eventId.length || model.media_path && model.media_path.length || largeWaits) return
         gifAsked = true
         rustrx.getMedia(roomId, eventId, false)
     }
@@ -265,14 +273,20 @@ ListItem {
         } else if (msgType === "video") {
             pageStack.push(Qt.resolvedUrl("../pages/VideoPage.qml"), { roomId: roomId, eventId: eventId,
                            source: model.media_path || "" })
+        } else if (largeWaits && !(model.thumb_path && model.thumb_path.length)) {
+            // nothing to show yet: the tap loads it here
+            loadLarge()
         } else if (isGif && !gifAnimating) {
             // a GIF standing still plays at a tap; a tap on a moving one opens it
             gifDone = false
             gifTapped = true
+            largeAsked = true
             fetchGif()
         } else if (msgType === "image" || msgType === "sticker") {
+            // (a full file that is no picture drawn here leaves the thumbnail, UC2)
+            var full = model.media_path && model.media_path.length && rustrx.isPicture(model.media_path) ? model.media_path : ""
             pageStack.push(Qt.resolvedUrl("../pages/ImagePage.qml"), { roomId: roomId, eventId: eventId, mime: model.mime || "",
-                           source: model.media_path || model.thumb_path || "", fullLoaded: !!(model.media_path && model.media_path.length) })
+                           source: full || model.thumb_path || "", fullLoaded: !!(model.media_path && model.media_path.length) })
         } else if (isMedia || isFile) {
             openMedia()
         }
@@ -280,13 +294,12 @@ ListItem {
 
     // A received file opens in the app its type belongs to; its name came
     // from the sender, so the path is encoded piece by piece (a "#" or "?"
-    // in it opened another file), and installers and scripts are not
-    // started from a message: those stay in Downloads
+    // in it opened another file). Only the kinds whose name and bytes agree
+    // are opened (rustrx.mayOpen, audit UC5); any other stays in Downloads
     function openFile(path) {
-        var ext = (/\.([a-z0-9]+)$/i.exec(path) || ["", ""])[1].toLowerCase()
-        if (["rpm", "apk", "deb", "sh", "desktop", "run", "bin", "appimage"].indexOf(ext) >= 0) {
+        if (!rustrx.mayOpen(path)) {
             //: %1 where the file was saved
-            //% "Saved to %1. Install it from there yourself if you trust it."
+            //% "Saved to %1. Open it from there yourself if you trust it."
             Notices.show(qsTrId("rustrx-no-saved-not-opened").arg(path))
             return
         }
@@ -313,7 +326,17 @@ ListItem {
         if (!isMedia || !eventId.length) return
         if (model.thumb_path && model.thumb_path.length || model.media_path && model.media_path.length) return
         if (model.has_thumb) rustrx.getMedia(roomId, eventId, true)
-        else if (msgType !== "video") rustrx.getMedia(roomId, eventId, false)
+        else if (msgType !== "video" && !largeWaits) rustrx.getMedia(roomId, eventId, false)
+    }
+    // a file larger than Tunables.mediaAutoLoadMaxBytes by its event is
+    // fetched whole only at a tap (audit FFI-3); a thumbnail still comes
+    readonly property bool largeFile: isMedia && msgType !== "video" && !!model.size && model.size > Tunables.mediaAutoLoadMaxBytes
+    property bool largeAsked
+    readonly property bool largeWaits: largeFile && !largeAsked && !(model.media_path && model.media_path.length)
+    function loadLarge() {
+        largeAsked = true
+        rustrx.getMedia(roomId, eventId, false)
+        fetchGif()
     }
     Component.onCompleted: {
         requestPicture()
@@ -452,7 +475,12 @@ ListItem {
                     Label {
                         visible: !own
                         width: Math.min(implicitWidth, innerMax)
-                        text: model.sender_name || model.sender || ""
+                        // a name another member has too: the user ID after it (audit UC7)
+                        textFormat: model.sender_ambiguous ? Text.StyledText : Text.PlainText
+                        text: model.sender_ambiguous
+                              ? Markup.escaped(model.sender_name || "") + " <font color=\"" + Theme.secondaryColor + "\">"
+                                + Markup.escaped(model.sender || "") + "</font>"
+                              : model.sender_name || model.sender || ""
                         truncationMode: TruncationMode.Fade
                         font.pixelSize: Theme.fontSizeExtraSmall
                         color: Theme.secondaryHighlightColor
@@ -501,7 +529,8 @@ ListItem {
                                         if (!r) return ""
                                         var quoted
                                         // a leading paragraph or break would leave an empty line under the name
-                                        if (r.html && r.html.length) quoted = r.html.replace(/^(\s|<p[^>]*>|<br\s*\/?>)+/i, "")
+                                        if (r.html === "<rustrx-too-long>") quoted = "<i>" + qsTrId("rustrx-la-too-long") + "</i>"
+                                        else if (r.html && r.html.length) quoted = r.html.replace(/^(\s|<p[^>]*>|<br\s*\/?>)+/i, "")
                                         else if (r.body !== undefined) quoted = rustrx.emojify(Markup.escaped(r.body).replace(/\n/g, "<br>"),
                                                                                                Math.round(Theme.fontSizeExtraSmall * Tunables.emojiScale))
                                         //: the quoted message of a reply while it is fetched
@@ -511,7 +540,9 @@ ListItem {
                                         //% "Original message not available"
                                         else quoted = "<i>" + qsTrId("rustrx-la-reply-missing") + "</i>"
                                         var who = Markup.escaped(r.sender_name || r.sender)
-                                        return (who.length ? "<font color=\"" + Theme.secondaryHighlightColor + "\">" + who + "</font><br>" : "") + quoted
+                                        var id = r.sender_ambiguous && r.sender ? " <font color=\"" + Theme.secondaryColor + "\">"
+                                                                                  + Markup.escaped(r.sender) + "</font>" : ""
+                                        return (who.length ? "<font color=\"" + Theme.secondaryHighlightColor + "\">" + who + "</font>" + id + "<br>" : "") + quoted
                                     }
                                 }
                             }
@@ -563,8 +594,8 @@ ListItem {
                             width: parent.width - bodyRow.lead
                             wrapMode: Text.Wrap
                             textFormat: msgType === "text" || msgType === "notice" || msgType === "emote" || htmlText.length > 0 ? Text.StyledText : Text.PlainText
-                            color: msgType === "utd" || msgType === "redacted" ? dimColor : (mention ? Theme.highlightColor : mainColor)
-                            font.italic: msgType === "emote" || msgType === "utd" || msgType === "redacted"
+                            color: msgType === "utd" || msgType === "redacted" || tooLongToShow ? dimColor : (mention ? Theme.highlightColor : mainColor)
+                            font.italic: msgType === "emote" || msgType === "utd" || msgType === "redacted" || tooLongToShow
                             linkColor: Theme.secondaryHighlightColor
                             onLinkActivated: linkTapped(link)
                             text: {
@@ -589,6 +620,9 @@ ListItem {
                                 //% "Verification request"
                                 if (msgType === "verification") return qsTrId("rustrx-la-verification-request")
                                 // the model renders plain bodies (body_html) once
+                                //: in place of a message (or its quote) whose formatting is too long to draw
+                                //% "Message too long to show"
+                                if (tooLongToShow) return qsTrId("rustrx-la-too-long")
                                 if (msgType === "emote") return model.body_html
                                 if (htmlText.length) return spoilersShown.length ? spoilersShown : htmlText
                                 if (msgType === "text" || msgType === "notice") return model.body_html
@@ -645,7 +679,7 @@ ListItem {
                                         if (status !== Image.Error || thumbFailed || msgType === "video") return
                                         if (!(model.thumb_path && model.thumb_path.length)) return
                                         thumbFailed = true
-                                        if (!(model.media_path && model.media_path.length)) rustrx.getMedia(roomId, eventId, false)
+                                        if (!(model.media_path && model.media_path.length) && !msg.largeWaits) rustrx.getMedia(roomId, eventId, false)
                                     }
                                     // what the bubble's width comes to in portrait: decoded once
                                     sourceSize.width: Math.round(Screen.width * Tunables.mediaMaxWidth)
@@ -717,7 +751,9 @@ ListItem {
                                     anchors.centerIn: parent
                                     visible: picture.status === Image.Error
                                              || !(model.thumb_path && model.thumb_path.length) && !(model.media_path && model.media_path.length)
-                                    text: model.body || ""
+                                    //: in place of a picture above the size fetched by itself; a tap fetches it
+                                    //% "Large file, tap to load"
+                                    text: msg.largeWaits ? qsTrId("rustrx-la-large-file") : (model.body || "")
                                     color: dimColor
                                     font.pixelSize: Theme.fontSizeSmall
                                 }

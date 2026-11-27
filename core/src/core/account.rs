@@ -151,7 +151,9 @@ impl Core {
         let file = self.data_dir.join(AVATAR_DIR).join(OWN_AVATAR_FILE);
         let format = MediaFormat::Thumbnail(MediaThumbnailSettings::new(OWN_AVATAR_PX.into(), OWN_AVATAR_PX.into()));
         let avatar = match client.account().get_avatar(format).await {
-            Ok(Some(bytes)) if std::fs::write(&file, &bytes).is_ok() => Some(file.to_string_lossy().into_owned()),
+            // only a picture Rustrx draws is kept (audit UC2)
+            Ok(Some(bytes)) if crate::core::timeline::picture_extension(&bytes).is_some() && std::fs::write(&file, &bytes).is_ok() =>
+                Some(file.to_string_lossy().into_owned()),
             Ok(None) => {
                 std::fs::remove_file(&file).ok();
                 None

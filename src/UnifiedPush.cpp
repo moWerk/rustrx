@@ -16,6 +16,7 @@
  */
 #include "UnifiedPush.h"
 #include "Keys.h"
+#include "NameProof.h"
 #include "Perf.h"
 
 #include <QDBusConnection>
@@ -26,6 +27,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocale>
@@ -54,6 +56,15 @@ static QString statePath(const QString &dataDir)
 // every instance, for the connector to find the one a call is for
 static QList<UnifiedPush *> s_instances;
 
+// the connector's name in this process (IPC2): not looked at yet, ours,
+// its holder being asked, held by another Rustrx (one on its way out), or
+// by another app that could not prove it is a Rustrx
+enum { ConnectorUnknown, ConnectorOurs, ConnectorChecking, ConnectorRustrx, ConnectorBlocked };
+static int s_connector = ConnectorUnknown;
+// the distributor waiting for the user's yes (IPC3), once per process
+static QString s_offered;
+static bool s_offerMade = false;
+
 QStringList UnifiedPush::accountDirs(const QString &dataDir)
 {
     QStringList dirs{ dataDir };
@@ -69,8 +80,16 @@ bool UnifiedPush::enabledOnDisk(const QString &dataDir)
     return readState(statePath(dataDir)).value("enabled", true).toBool();
 }
 
+bool UnifiedPush::blockedOnDisk(const QString &dataDir)
+{
+    return readState(statePath(dataDir)).value("blocked").toBool();
+}
+
 bool UnifiedPush::activeOnDisk(const QString &dataDir)
 {
+    // another app holds the connector's name: no push reaches Rustrx
+    if (blockedOnDisk(dataDir))
+        return false;
     for (const QString &dir : accountDirs(dataDir)) {
         const QVariantMap s = readState(statePath(dir));
         if (!s.value("enabled", true).toBool() || !s.value("pusherSet").toBool()
@@ -92,6 +111,27 @@ UnifiedPush::UnifiedPush(const QString &dataDir, QObject *parent)
 UnifiedPush::~UnifiedPush()
 {
     s_instances.removeAll(this);
+}
+
+UnifiedPush *UnifiedPush::home()
+{
+    return s_instances.isEmpty() ? nullptr : s_instances.first();
+}
+
+bool UnifiedPush::blocked() const
+{
+    return s_connector == ConnectorBlocked;
+}
+
+QString UnifiedPush::offered() const
+{
+    return s_offered;
+}
+
+QString UnifiedPush::pinned() const
+{
+    const UnifiedPush *h = home();
+    return h ? h->m_state.value("distributor").toString() : QString();
 }
 
 UnifiedPush *UnifiedPush::instanceFor(const QVariantMap &args)
@@ -151,7 +191,7 @@ void UnifiedPush::setStatus(const QString &s)
 
 bool UnifiedPush::active() const
 {
-    return enabled() && m_state.value("pusherSet").toBool() && !m_state.value("endpoint").toString().isEmpty();
+    return enabled() && !blocked() && m_state.value("pusherSet").toBool() && !m_state.value("endpoint").toString().isEmpty();
 }
 
 QString UnifiedPush::gatewayHost() const
@@ -159,8 +199,7 @@ QString UnifiedPush::gatewayHost() const
     return QUrl(m_state.value("gateway").toString()).host();
 }
 
-// a distributor running or startable (Foghorn's when there are several),
-// asked without waiting: two blocking bus calls held up the window at
+// a distributor running or startable (chooseDistributor), asked without waiting: two blocking bus calls held up the window at
 // every start, once per account (0.8.2 audit, ST14). A login waits for
 // the answer before it registers.
 void UnifiedPush::findDistributor()
@@ -196,12 +235,22 @@ void UnifiedPush::distributorFound(QStringList names)
             .entryList({ QString::fromLatin1(Keys::kDistributorPrefix) + QStringLiteral("*.service") }, QDir::Files);
     for (const QString &f : files)
         names << f.left(f.size() - 8);
-    QString found;
-    for (const QString &n : names) {
-        if (!n.startsWith(QLatin1String(Keys::kDistributorPrefix)))
-            continue;
-        if (found.isEmpty() || n.endsWith(QLatin1String("Foghorn")))
-            found = n;
+    QString offer;
+    const QString was = pinned();
+    const QString found = chooseDistributor(names, was, &offer);
+    // the first distributor ever is taken without asking, and kept
+    UnifiedPush *h = home();
+    if (was.isEmpty() && !found.isEmpty() && h) {
+        h->m_state.insert("distributor", found);
+        h->save();
+    }
+    if (!offer.isEmpty() && !s_offerMade) {
+        s_offerMade = true;
+        s_offered = offer;
+        qInfo().noquote() << "push: distributor" << was << "is gone and" << offer << "is there: asking first";
+        for (UnifiedPush *p : s_instances)
+            if (p != this)
+                emit p->changed();
     }
     const bool first = !m_lookedUp;
     m_lookedUp = true;
@@ -211,16 +260,148 @@ void UnifiedPush::distributorFound(QStringList names)
         m_distributor = found;
         qInfo().noquote() << "push: distributor" << (found.isEmpty() ? QStringLiteral("none") : found);
         emit changed();
-    } else if (first) {
+    } else if (first || !offer.isEmpty()) {
         emit changed();
     }
     if (m_registerWanted) {
         m_registerWanted = false;
-        if (m_loggedIn && enabled() && !m_distributor.isEmpty()) {
-            registerApp();
-            setPusherIfNeeded();
+        registerIfFree();
+    }
+}
+
+QString UnifiedPush::chooseDistributor(const QStringList &names, const QString &pinned, QString *offer)
+{
+    const QString prefix = QString::fromLatin1(Keys::kDistributorPrefix);
+    QStringList there;
+    for (const QString &n : names)
+        if (n.startsWith(prefix) && n.size() > prefix.size() && !there.contains(n))
+            there << n;
+    there.sort();
+    if (offer)
+        offer->clear();
+    if (!pinned.isEmpty() && there.contains(pinned))
+        return pinned;
+    const QString foghorn = QString::fromLatin1(Keys::kDistributorFoghorn);
+    const QString found = there.contains(foghorn) ? foghorn : there.value(0);
+    if (pinned.isEmpty())
+        return found;
+    if (offer)
+        *offer = found;
+    return QString();
+}
+
+void UnifiedPush::useDistributor(const QString &name)
+{
+    UnifiedPush *h = home();
+    if (name.isEmpty() || name != s_offered || !h)
+        return;
+    s_offered.clear();
+    h->m_state.insert("distributor", name);
+    h->save();
+    qInfo().noquote() << "push: distributor" << name << "taken with the user's yes";
+    for (UnifiedPush *p : s_instances) {
+        p->m_distributor = name;
+        emit p->changed();
+        p->registerIfFree();
+    }
+}
+
+void UnifiedPush::declineDistributor()
+{
+    if (s_offered.isEmpty())
+        return;
+    qInfo() << "push: the new distributor not taken, asked again at the next start";
+    s_offered.clear();
+    for (UnifiedPush *p : s_instances)
+        emit p->changed();
+}
+
+void UnifiedPush::registerIfFree()
+{
+    if (!m_loggedIn || !enabled() || m_distributor.isEmpty())
+        return;
+    if (s_connector == ConnectorChecking) {
+        m_waitingForConnector = true;
+        return;
+    }
+    if (s_connector == ConnectorBlocked) {
+        dropPusher();
+        return;
+    }
+    registerApp();
+    setPusherIfNeeded();
+}
+
+void UnifiedPush::dropPusher()
+{
+    const QString endpoint = m_state.value("endpoint").toString();
+    if (!m_loggedIn || !m_state.value("pusherSet").toBool() || endpoint.isEmpty())
+        return;
+    emit command({ { "cmd", "push_remove" }, { "endpoint", endpoint } });
+    m_state.remove("pusherSet");
+    save();
+}
+
+void UnifiedPush::setConnector(int state)
+{
+    s_connector = state;
+    if (UnifiedPush *h = home()) {
+        const bool on = state == ConnectorBlocked;
+        if (h->m_state.value("blocked").toBool() != on) {
+            if (on)
+                h->m_state.insert("blocked", true);
+            else
+                h->m_state.remove("blocked");
+            h->save();
         }
     }
+    for (UnifiedPush *p : s_instances) {
+        if (state == ConnectorBlocked) {
+            p->m_waitingForConnector = false;
+            p->dropPusher();
+            p->setStatus(QStringLiteral("connector name held by another app"));
+        } else if (state != ConnectorChecking && p->m_waitingForConnector) {
+            p->m_waitingForConnector = false;
+            p->registerIfFree();
+        }
+        emit p->changed();
+    }
+}
+
+// The connector's name is held by someone else: a Rustrx on its way out
+// (waited for, then the name is taken), or an app that would get the
+// pushes, the endpoint and the token (IPC2): then push pauses and the
+// stand-in stands in, until a start finds the name free again.
+void UnifiedPush::checkConnector(int tries)
+{
+    s_connector = ConnectorChecking;
+    const QString secret = NotifyGate::secret(QFileInfo(m_path).absolutePath() + QLatin1Char('/')
+                                              + QLatin1String(NotifyGate::kSecretFile));
+    auto *check = new NameProof::Check(QDBusConnection::sessionBus(), QString::fromLatin1(kConnectorName), secret,
+                                       Keys::kProofWaitMs, true, this);
+    connect(check, &NameProof::Check::done, this, [this, check, tries](NameProof::Holder holder) {
+        check->deleteLater();
+        if (holder == NameProof::Holder::Free) {
+            if (QDBusConnection::sessionBus().registerService(QString::fromLatin1(kConnectorName))) {
+                qInfo() << "push: connector name taken once the other Rustrx let go";
+                setConnector(ConnectorOurs);
+            } else if (tries > 0) {
+                checkConnector(tries - 1);
+            } else {
+                qWarning() << "push: the connector name is taken again each time it is free; push paused";
+                setConnector(ConnectorBlocked);
+            }
+            return;
+        }
+        if (holder == NameProof::Holder::Rustrx) {
+            qInfo() << "push: connector name still held by another Rustrx";
+            setConnector(ConnectorRustrx);
+            return;
+        }
+        qWarning() << "push: connector name held by another app; push paused, the stand-in stands in";
+        setConnector(ConnectorBlocked);
+    });
+    check->start();
 }
 
 bool UnifiedPush::exportConnector()
@@ -233,9 +414,11 @@ bool UnifiedPush::exportConnector()
         return false;
     }
     if (!bus.registerService(QString::fromLatin1(kConnectorName))) {
-        qInfo() << "push: connector name not taken" << bus.lastError().message();
+        qInfo() << "push: connector name not taken" << bus.lastError().message() << "- asking its holder";
+        checkConnector(1);
         return false;
     }
+    setConnector(ConnectorOurs);
     return true;
 }
 
@@ -286,9 +469,16 @@ void UnifiedPush::loggedOut()
         call << QVariantMap{ { "token", m_state.value("token") } };
         QDBusConnection::sessionBus().asyncCall(call);
     }
+    // the distributor chosen (IPC3) and the connector's state outlive the login
     const bool on = enabled();
+    const QVariant pin = m_state.value("distributor");
+    const bool wasBlocked = m_state.value("blocked").toBool();
     m_state.clear();
     m_state.insert("enabled", on);
+    if (!pin.toString().isEmpty())
+        m_state.insert("distributor", pin);
+    if (wasBlocked)
+        m_state.insert("blocked", true);
     save();
 }
 
@@ -325,7 +515,7 @@ void UnifiedPush::setPusherIfNeeded()
 {
     const QString endpoint = m_state.value("endpoint").toString();
     const QString gateway = m_state.value("gateway").toString();
-    if (!m_loggedIn || !enabled() || endpoint.isEmpty() || m_state.value("pusherSet").toBool())
+    if (!m_loggedIn || !enabled() || blocked() || endpoint.isEmpty() || m_state.value("pusherSet").toBool())
         return;
     if (gateway.isEmpty()) {
         discoverGateway();

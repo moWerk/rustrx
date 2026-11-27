@@ -129,7 +129,7 @@ impl Core {
                                 let sender_name = item.sender_display_name.clone().unwrap_or_else(|| ev.sender.clone());
                                 let own = client.user_id().is_some_and(|u| u.as_str() == ev.sender);
                                 self.emit_voip(&ev, room_id.as_str(), &item.room_computed_display_name, &sender_name, own,
-                                               item.is_direct_message_room);
+                                               item.is_direct_message_room, item.joined_members_count);
                             }
                             if !ev.is_invite() {
                                 return Ok(());
@@ -142,7 +142,12 @@ impl Core {
                     };
                     (
                         item.room_computed_display_name.clone(),
-                        item.sender_display_name.clone().unwrap_or_default(),
+                        // another member has this name: with the id (audit UC7)
+                        match (&item.sender_display_name, &item.event) {
+                            (Some(n), NotificationEvent::Timeline(ev)) =>
+                                crate::serialize::shown_name(n, ev.sender(), item.is_sender_name_ambiguous),
+                            (n, _) => n.clone().unwrap_or_default(),
+                        },
                         body,
                         item.is_direct_message_room,
                         item.is_noisy.unwrap_or(true),
@@ -175,7 +180,10 @@ impl Core {
             let parsed: Option<AnySyncTimelineEvent> = event.raw().deserialize().ok();
             let sender = parsed.as_ref().map(|e| e.sender().to_owned());
             let sender_name = match &sender {
-                Some(u) => member_name(&room, u).await,
+                Some(u) => match room.get_member_no_sync(u).await {
+                    Ok(Some(m)) => crate::serialize::shown_name(m.name(), u, m.name_ambiguous()),
+                    _ => member_name(&room, u).await,
+                },
                 None => String::new(),
             };
             let name = room_name(&room);

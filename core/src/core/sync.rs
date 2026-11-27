@@ -536,6 +536,12 @@ impl Core {
                         format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(ROOM_AVATAR_PX.into(), ROOM_AVATAR_PX.into())),
                     };
                     match client.media().get_media_content(&request, true).await {
+                        // only a JPEG, PNG, GIF or WebP is kept (audit UC2: Qt
+                        // would pick any decoder for an .img by its content)
+                        Ok(bytes) if crate::core::timeline::picture_extension(&bytes).is_none() => {
+                            tracing::info!(room = %ids[0], "avatar: not a picture");
+                            Vec::new()
+                        }
                         Ok(bytes) => {
                             // whole or not at all: a row made meanwhile names the file once it exists
                             let part = file.with_extension("part");

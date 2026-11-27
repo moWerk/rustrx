@@ -872,3 +872,93 @@ def test_missed_calls_are_quiet_and_never_a_room_line():
     assert '"x-harbour-rustrx.missed"' in take
     assert take.index('"x-harbour-rustrx.missed"') < take.index("ringOf(") < take.index("roomNotifications[k] =")
     assert 'category: "x-harbour-rustrx.missed"' in s
+
+
+def test_calls_go_through_the_relay_by_default():
+    """Relay-only calls are on by default (the author, audit 0.8.4 NET-8),
+    and only a switch the user flipped is stored, so everyone who never
+    touched it gets the new default. Planted-bug: the default left false,
+    or the setting written at start."""
+    keys = read("src/Keys.h")
+    assert re.search(r"kVoipRelayOnlyDefault\s*=\s*true;", keys)
+    rx = read("src/Rustrx.cpp")
+    assert "m_settings.value(QLatin1String(Keys::kVoipRelayOnly), Keys::kVoipRelayOnlyDefault)" in rx
+    # written in its setter alone
+    assert rx.count("setValue(QLatin1String(Keys::kVoipRelayOnly)") == 1
+    setter = rx[rx.index("void Rustrx::setCallsRelayOnly"):]
+    assert "setValue(QLatin1String(Keys::kVoipRelayOnly)" in setter[:setter.index("\n}\n")]
+
+
+def test_a_notification_reply_goes_to_the_app():
+    """The text typed into a notification's Reply goes to the app's own bus
+    name, never the push connector's, which another app may hold (audit
+    0.8.4 IPC2); Mark as read and the emoji not while it does.
+    Planted-bug: viaPush back on the reply action."""
+    s = code(ROOT / "qml/Service.qml")
+    reply = re.findall(r'action\("reply",[^\n]*', s)
+    assert reply and all("viaPush" not in r for r in reply), reply
+    via = re.search(r"var viaPush = ([^\n]*)", s).group(1)
+    assert "!rustrx.push.blocked" in via, via
+
+
+def test_rings_only_in_a_room_of_two():
+    """An Element Call ring rings only where the room has at most two
+    joined members (audit 0.8.4 NET-4): the handler applies rings_in to
+    the room's count, and a classic invite carries the count to Voip.
+    Planted-bug: `let ring = asked_ring;` in the handler."""
+    call = read("core/src/core/call.rs")
+    assert "let ring = asked_ring && rings_in(room.joined_members_count());" in call
+    assert '"joined_members": joined' in call
+    assert "item.joined_members_count" in read("core/src/core/push.rs")
+    assert 'ev.value("joined_members").toLongLong() > Keys::kRingMaxMembers' in read("src/Voip.cpp")
+    assert re.search(r"RING_MAX_MEMBERS: u64 = 2;", call) and re.search(r"kRingMaxMembers = 2;", read("src/Keys.h"))
+
+
+def test_too_long_mark_agrees():
+    """The html role's mark for a message too long to draw (audit UC1) is
+    the same string in TimelineModel.h and both places of the delegate
+    that show the text in its place. Planted-bug: a typo in one of them
+    (the bare mark is drawn as nothing: an empty bubble)."""
+    mark = re.search(r'kTooLong = "([^"]+)"', read("src/TimelineModel.h")).group(1)
+    s = code(ROOT / "qml/components/MessageDelegate.qml")
+    assert s.count('"' + mark + '"') == 2, mark
+    assert 'qsTrId("rustrx-la-too-long")' in s
+
+
+def test_links_from_other_apps_look_up_only_at_the_button():
+    """A matrix: or matrix.to link from another app (the pending link at
+    start, a link over D-Bus) opens the join page without a lookup until
+    Look up (audit IPC7); links tapped in the app look up at once.
+    Planted-bug: one of the two entries without `true`, or the join page
+    looking up in Component.onCompleted whatever lookFirst says."""
+    s = code(ROOT / "qml/harbour-rustrx.qml")
+    calls = re.findall(r"openMatrixUri\(([^()]*)\)", s)
+    assert calls.count("uri, true") == 2, calls
+    assert "lookFirst: outside === true" in s
+    j = code(ROOT / "qml/pages/JoinPage.qml")
+    done = j[j.index("Component.onCompleted:"):].split("\n")[0]
+    assert "if (!lookFirst) look()" in done, done
+    assert 'qsTrId("rustrx-bt-look-up")' in j and "onClicked: page.look()" in j
+
+
+def test_large_files_load_only_at_a_tap():
+    """A picture, sticker or GIF above Tunables.mediaAutoLoadMaxBytes by
+    its event is not fetched whole by itself (audit FFI-3): each of the
+    three automatic full fetches waits for the tap. Planted-bug: one of
+    requestPicture, the failed thumbnail's fallback or fetchGif without
+    the largeWaits guard."""
+    s = code(ROOT / "qml/components/MessageDelegate.qml")
+    request = s[s.index("function requestPicture()"):]
+    request = request[:request.index("\n    }\n")]
+    assert 'else if (msgType !== "video" && !largeWaits) rustrx.getMedia(roomId, eventId, false)' in request
+    gif = s[s.index("function fetchGif()"):]
+    gif = gif[:gif.index("\n    }\n")]
+    assert "|| largeWaits) return" in gif
+    fallback = s[s.index("thumbFailed = true"):]
+    assert fallback.split("\n")[1].strip().startswith("if (!(model.media_path && model.media_path.length) && !msg.largeWaits)")
+    full = re.findall(r"getMedia\(roomId, eventId, false\)", s)
+    # the three guarded ones, the tap's loadLarge, audio's tap
+    assert len(full) == 5, full
+    assert "mediaAutoLoadMaxBytes: 20 * 1024 * 1024" in read("qml/singletons/Tunables.qml")
+    ts = read("translations/harbour-rustrx.ts")
+    assert '<message id="rustrx-la-large-file">\n        <source>Large file, tap to load</source>' in ts

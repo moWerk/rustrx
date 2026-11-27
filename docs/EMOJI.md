@@ -32,7 +32,10 @@ HTML had an `<img>` with an `mxc://` address that Qt cannot load.
   phone load from an address (the spec allows only `mxc://`). The quoted
   reply fallback (`<mx-reply>`) goes.
 - The core's `fetch_emote` caches each picture once, as a 96 px
-  thumbnail, in `media/emotes/` (emptied with the media cache).
+  thumbnail, in `media/emotes/` (emptied with the media cache, and swept
+  with it by size). Only a JPEG, PNG, GIF or WebP of at most 256 KiB is
+  kept, four downloads run at a time, and a message asks for its first 64
+  distinct emoji only; any other stays its name (audit 0.8.4 FFI-2).
 - A reaction with a custom emoji (its key an `mxc://` address, MSC4027)
   shows the picture; long text reactions are cut at 24 characters.
 - Text reactions: "React with text" at the top of the picker when

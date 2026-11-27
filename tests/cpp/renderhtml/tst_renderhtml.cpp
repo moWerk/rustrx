@@ -15,6 +15,7 @@
 #include <QImage>
 #include <QRegularExpression>
 #include <QTemporaryDir>
+#include <QSignalSpy>
 #include <QtTest>
 
 namespace {
@@ -466,8 +467,11 @@ private slots:
         timer.start();
         // 1 MB of text; a Matrix event is at most 64 KiB, so this is far
         // past anything a server delivers
+        // (drawn, that much is too long: auditUC1)
         const QString words = QStringLiteral("word ").repeated(200000);
-        QCOMPARE(t.html(words), words);
+        QCOMPARE(t.html(words), QLatin1String(TimelineModel::kTooLong));
+        const QString event = QStringLiteral("word ").repeated(13000);
+        QCOMPARE(t.html(event), event);
         const int n = 100000;
         const QString nested = t.html(QStringLiteral("<b>").repeated(n) + QStringLiteral("x"));
         QCOMPARE(nested, QStringLiteral("<b>").repeated(n) + QStringLiteral("x") + QStringLiteral("</b>").repeated(n));
@@ -523,6 +527,159 @@ private slots:
         // a close still finds its opener under others, and closes them
         QCOMPARE(t.html(QStringLiteral("<i>").repeated(3) + QStringLiteral("<b>x") + QStringLiteral("</i>")),
                  QStringLiteral("<i><i><i><b>x</b></i></i></i>"));
+    }
+
+    // Planted-bug: a list item's indent is not counted (drawn += 6 * lists
+    // dropped), so nested lists pass whole and Qt 5.6 draws 6 characters
+    // per open list for each item: 2.4 KB drew 540 000, 12.8 KB 15 million
+    // (585 MB on the host, audit UC1). Checked by what StyledText would
+    // draw from the output, not by the renderer's own time.
+    void auditUC1DrawnLengthCap()
+    {
+        const QString tooLong = QLatin1String(TimelineModel::kTooLong);
+        // Qt 5.6 qquickstyledtext.cpp: each <li> adds tabsize (6) no-break
+        // spaces per open list, plus the text between the tags
+        auto drawn = [](const QString &out) {
+            static const QRegularExpression tag(QStringLiteral("<(/?)([a-z0-9]+)[^>]*>"));
+            qint64 n = 0;
+            int lists = 0, at = 0;
+            QRegularExpressionMatchIterator it = tag.globalMatch(out);
+            while (it.hasNext()) {
+                const QRegularExpressionMatch m = it.next();
+                n += m.capturedStart() - at;
+                at = m.capturedEnd();
+                const QString name = m.captured(2);
+                if (name == QLatin1String("ul") || name == QLatin1String("ol"))
+                    lists += m.capturedLength(1) ? -1 : 1;
+                else if (name == QLatin1String("li") && !m.capturedLength(1))
+                    n += 6 * lists;
+            }
+            return n + out.size() - at;
+        };
+        const int size = 65536;
+        QString deep4;
+        for (int i = 0; i < 4; ++i) deep4 += QStringLiteral("<ul>");
+        // hostile: deep and short, deep and the whole event, deep under a
+        // spoiler's cover, deep inside a quote's markup
+        const QStringList hostile = {
+            QStringLiteral("<ul>").repeated(300) + QStringLiteral("<li>").repeated(300),
+            QStringLiteral("<ol>").repeated(size / 8) + QStringLiteral("<li>").repeated(size / 8),
+            QStringLiteral("<ul><li>").repeated(size / 8),
+            QStringLiteral("<blockquote><ul>").repeated(400) + QStringLiteral("<li>x</li>").repeated(400),
+        };
+        for (const QString &in : hostile) {
+            const QString out = t.html(in);
+            QVERIFY2(out == tooLong || drawn(out) <= TimelineModel::kMaxDrawn,
+                     qPrintable(QStringLiteral("%1 bytes draw %2").arg(in.size()).arg(drawn(out))));
+            QCOMPARE(t.replyHtml(in), tooLong);
+        }
+        // the spoilers shown at a tap go through the same cap
+        t.html(QStringLiteral("<span data-mx-spoiler>") + hostile.first() + QStringLiteral("</span>"));
+        QCOMPARE(t.model.spoilersShown(0), tooLong);
+        // the longest ordinary messages a 64 KiB event holds still show
+        QString prose, flat = QStringLiteral("<ul>"), lists = deep4;
+        while (prose.size() < size - 100) prose += QStringLiteral("Lorem ipsum dolor sit amet. ");
+        while (flat.size() < size - 100) flat += QStringLiteral("<li>an item</li>");
+        while (lists.size() < size - 100) lists += QStringLiteral("<li>x</li>");
+        for (const QString &in : { prose, flat, lists }) {
+            const QString out = t.html(in);
+            QVERIFY2(out != tooLong, qPrintable(in.left(40)));
+            QVERIFY(drawn(out) <= TimelineModel::kMaxDrawn);
+        }
+        // a short list two levels deep is not affected at all
+        QCOMPARE(t.html(QStringLiteral("<ul><li>a<ul><li>b</li></ul></li></ul>")),
+                 QStringLiteral("<ul><li>a<ul><li>b</li></ul></li></ul>"));
+    }
+
+    // Planted-bug: askEmotes without the cap (every distinct address of a
+    // message asked: FFI-2, some 2000 downloads from one message), or the
+    // cap counted after the cached ones are left out (each new showing of
+    // the row asks the next 64).
+    void auditFFI2EmotesPerMessage()
+    {
+        Timeline fresh;
+        QSignalSpy asked(&fresh.model, &TimelineModel::emoteWanted);
+        QString html;
+        for (int i = 0; i < 2000; ++i)
+            html += QStringLiteral("<img src=\"mxc://example.org/e%1\" alt=\":e%1:\">").arg(i);
+        QVariantList reactions;
+        for (int i = 0; i < 10; ++i)
+            reactions << QVariantMap { { "key", QStringLiteral("mxc://example.org/r%1").arg(i) }, { "count", 1 } };
+        const QVariantMap item { { "id", "a" }, { "html", html }, { "reactions", reactions } };
+        fresh.model.setItems({ item });
+        QCOMPARE(asked.count(), TimelineModel::kMaxEmotesPerItem);
+        QCOMPARE(asked.first().first().toString(), QStringLiteral("mxc://example.org/e0"));
+        // the first ones arrive; the item comes again: nothing new is asked
+        for (int i = 0; i < TimelineModel::kMaxEmotesPerItem; ++i)
+            fresh.model.setEmotePath(QStringLiteral("mxc://example.org/e%1").arg(i), emotePath);
+        asked.clear();
+        QVariantMap again = item;
+        again.insert(QStringLiteral("id"), QStringLiteral("b"));
+        fresh.model.setItems({ again });
+        QCOMPARE(asked.count(), 0);
+        // past the cap an emoji stays its name
+        QVERIFY(fresh.model.data(fresh.model.index(0), fresh.role("html")).toString().contains(QStringLiteral(":e64:")));
+    }
+
+    // Planted-bug: linkHostsIn compares the whole text with the link (every
+    // linked word asks), or not at all (the look-alike opens), takes the
+    // text only up to a nested tag (a split "bank.<b>example</b>" passes),
+    // stops at the first link to the address (a decoy before it), or reads
+    // the sender's markup instead of what is drawn (entities, a picture's
+    // name, invisible characters).
+    void auditUC8LinkTextNamesAnotherHost_data()
+    {
+        QTest::addColumn<QString>("html");
+        QTest::addColumn<QString>("link");
+        QTest::addColumn<QString>("shown");
+        QTest::addColumn<QString>("goes");
+        QTest::newRow("look-alike") << "<a href=\"https://evil.example/x\">https://bank.example</a>"
+                                    << "https://evil.example/x" << "bank.example" << "evil.example";
+        QTest::newRow("bare domain") << "see <a href=\"https://evil.example\">bank.example</a>"
+                                     << "https://evil.example" << "bank.example" << "evil.example";
+        QTest::newRow("split by tags") << "<a href=\"https://evil.example\">bank.<b>exa</b>mple/login</a>"
+                                       << "https://evil.example" << "bank.example" << "evil.example";
+        QTest::newRow("user part") << "<a href=\"https://bank.example@evil.example/\">bank.example</a>"
+                                   << "https://bank.example@evil.example/" << "bank.example" << "evil.example";
+        QTest::newRow("same host") << "<a href=\"https://bank.example/a?b=1\">https://bank.example</a>"
+                                   << "https://bank.example/a?b=1" << "" << "";
+        QTest::newRow("www and case") << "<a href=\"https://www.Bank.example\">bank.example</a>"
+                                      << "https://www.Bank.example" << "" << "";
+        QTest::newRow("words") << "<a href=\"https://evil.example\">click here</a>"
+                               << "https://evil.example" << "" << "";
+        QTest::newRow("number") << "<a href=\"https://evil.example\">version 1.5</a>"
+                                << "https://evil.example" << "" << "";
+        QTest::newRow("other link") << "<a href=\"https://a.example\">b.example</a>"
+                                    << "https://c.example" << "" << "";
+        QTest::newRow("decoy first") << "<a href=\"https://evil.example\">x</a> and <a href=\"https://evil.example\">https://bank.example</a>"
+                                     << "https://evil.example" << "bank.example" << "evil.example";
+        QTest::newRow("decoy in reply fallback") << "<mx-reply><a href=\"https://evil.example\">x</a></mx-reply><a href=\"https://evil.example\">bank.example</a>"
+                                                 << "https://evil.example" << "bank.example" << "evil.example";
+        QTest::newRow("numeric entities") << "<a href=\"https://evil.example\">https&#58;//bank&#46;example</a>"
+                                          << "https://evil.example" << "bank.example" << "evil.example";
+        QTest::newRow("picture's name") << "<a href=\"https://evil.example\"><img alt=\"https://bank.example\"></a>"
+                                        << "https://evil.example" << "bank.example" << "evil.example";
+        QTest::newRow("zero-width inside") << QString::fromUtf8("<a href=\"https://evil.example\">bank\xE2\x80\x8B.example</a>")
+                                           << "https://evil.example" << "bank.example" << "evil.example";
+        QTest::newRow("under a spoiler") << "<a href=\"https://evil.example\"><span data-mx-spoiler>bank.example</span></a>"
+                                         << "https://evil.example" << "bank.example" << "evil.example";
+        QTest::newRow("mail") << "<a href=\"mailto:x@evil.example\">bank.example</a>"
+                              << "mailto:x@evil.example" << "" << "";
+    }
+    void auditUC8LinkTextNamesAnotherHost()
+    {
+        QFETCH(QString, html);
+        QFETCH(QString, link);
+        QFETCH(QString, shown);
+        QFETCH(QString, goes);
+        // through the model, as the delegate asks: the message, and a quote
+        Timeline m;
+        m.model.setItems({ QVariantMap { { "id", "m" }, { "html", html } } });
+        const QVariantMap got = m.model.linkHosts(0, link);
+        QCOMPARE(got.value(QStringLiteral("shown")).toString(), shown);
+        QCOMPARE(got.value(QStringLiteral("goes")).toString(), goes);
+        m.model.setItems({ QVariantMap { { "id", "q" }, { "reply_to", QVariantMap { { "html", html } } } } });
+        QCOMPARE(m.model.linkHosts(0, link).value(QStringLiteral("goes")).toString(), goes);
     }
 };
 

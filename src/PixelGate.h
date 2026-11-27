@@ -16,7 +16,10 @@
 // sourceSize asks, and Qt 5.6 has no allocation limit. So before a
 // received picture is decoded its header says how large it is, and one
 // past these bounds is not decoded at all: it shows as a picture that
-// failed to load. Photos up to 40 MP pass.
+// failed to load. Photos up to 40 MP pass. And only JPEG, PNG, GIF and
+// WebP are decoded, by their first bytes, with that decoder alone (audit
+// UC2: Qt 5.6 picked any plugin, SVG and TIFF among them, by the name the
+// sender's type gave the file, or by probing every plugin).
 namespace PixelGate {
 
 static const qint64 kMaxPixels = 40 * 1000 * 1000;
@@ -32,8 +35,33 @@ inline bool fits(const QSize &s)
             && qint64(s.width()) * s.height() <= kMaxPixels;
 }
 
-// the picture's size from its header, the decoder picked by content as
-// Qt Quick does for a file (not by the name's suffix)
+// Qt's format name for a picture's first bytes: one of the four drawn,
+// else empty
+inline QByteArray pictureFormat(const QByteArray &head)
+{
+    if (head.startsWith("\xFF\xD8\xFF"))
+        return QByteArrayLiteral("jpeg");
+    if (head.startsWith("\x89PNG"))
+        return QByteArrayLiteral("png");
+    if (head.startsWith("GIF8"))
+        return QByteArrayLiteral("gif");
+    if (head.size() >= 12 && head.startsWith("RIFF") && head.mid(8, 4) == "WEBP")
+        return QByteArrayLiteral("webp");
+    return QByteArray();
+}
+
+// a reader for an open picture file with only the decoder its bytes name
+// (none for any other file: it reads nothing)
+inline void onlyItsDecoder(QImageReader &reader, QIODevice *device)
+{
+    reader.setDecideFormatFromContent(false);
+    reader.setAutoDetectImageFormat(false);
+    const QByteArray format = pictureFormat(device->peek(12));
+    reader.setFormat(format.isEmpty() ? QByteArrayLiteral("none") : format);
+}
+
+// the picture's size from its header, by the decoder its bytes name (not
+// by the name's suffix); none for a file that is no picture drawn here
 inline QSize headerSize(const QString &path)
 {
     QFile f(path);
@@ -42,7 +70,11 @@ inline QSize headerSize(const QString &path)
     // a GIF decodes onto its logical screen, but Qt tells the first frame's
     // size (a 1x1 frame on a 65535x65535 screen said 1x1)
     const QByteArray head = f.peek(10);
-    QImageReader reader(&f);
+    if (pictureFormat(f.peek(12)).isEmpty())
+        return QSize();
+    QImageReader reader;
+    reader.setDevice(&f);
+    onlyItsDecoder(reader, &f);
     QSize s = reader.size();
     if (s.isValid() && head.size() == 10 && head.startsWith("GIF8")) {
         const int w = quint8(head.at(6)) | quint8(head.at(7)) << 8;

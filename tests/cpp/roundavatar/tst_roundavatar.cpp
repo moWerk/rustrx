@@ -104,6 +104,21 @@ private slots:
         QVERIFY(RoundAvatar::render(dir.filePath("none.png"), 50, 0.5).isNull());
     }
 
+    // Planted-bug: render with a reader that probes by content (no
+    // onlyItsDecoder): the BMP avatar is decoded (audit UC2); a PNG under
+    // the cache's .img name still is
+    void onlyPicturesDrawnHereAreDecoded()
+    {
+        QImage img(40, 40, QImage::Format_RGB32);
+        img.fill(Qt::red);
+        const QString bmp = dir.filePath("other.img");
+        QVERIFY(img.save(bmp, "BMP"));
+        QVERIFY(RoundAvatar::render(bmp, 20, 0).isNull());
+        const QString png = dir.filePath("room.img");
+        QVERIFY(img.save(png, "PNG"));
+        QCOMPARE(RoundAvatar::render(png, 20, 0).size(), QSize(20, 20));
+    }
+
     void cachedFileIsWrittenOnce()
     {
         QImage grey(40, 40, QImage::Format_RGB32);

@@ -87,8 +87,24 @@ public:
     // the reader opened this row's spoilers: they stay open when its
     // delegate comes back after scrolling (until another room opens)
     Q_INVOKABLE bool spoilersOpen(int row) const;
+    // a tapped link in a row's message or quote whose text looks like an
+    // address of another host than the link's own (audit UC8): { shown,
+    // goes } (the two hosts); empty when it opens as it is
+    Q_INVOKABLE QVariantMap linkHosts(int row, const QString &link) const;
+    static QVariantMap linkHostsIn(const QString &rendered, const QString &link);
     // the link a covered spoiler is
     static constexpr const char *kSpoilerLink = "rustrx:spoiler";
+    // what the html role holds for a message too long to draw (audit UC1):
+    // a tag renderHtml never makes, so no message text can come out as it;
+    // QML shows its own words in its place
+    static constexpr const char *kTooLong = "<rustrx-too-long>";
+    // the most characters a message may draw. Qt 5.6's StyledText indents
+    // each list item by 6 characters per open list, so nested lists draw
+    // far more than they weigh (300 of them in 2.4 KB drew 540 000); a
+    // 64 KiB event of ordinary text or lists stays well below
+    static const int kMaxDrawn = 200000;
+    // the custom emoji fetched per message (its text, quote and reactions)
+    static const int kMaxEmotesPerItem = 64;
     // the cached full file for an event, or an empty string
     Q_INVOKABLE QString mediaPath(const QString &eventId) const { return m_media.value(eventId); }
 

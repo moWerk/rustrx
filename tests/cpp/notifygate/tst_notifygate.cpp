@@ -26,6 +26,8 @@ class Target : public QObject, protected QDBusContext
 public:
     NotifyGate::Posted posted;
     int taken = 0;
+    // an Answer for a ring that is over: its room opened instead (IPC1c)
+    int opened = 0;
     // as Rustrx::quit: the stand-in's line, up or not
     bool standIn = true;
     bool lineUp = false;
@@ -37,8 +39,10 @@ public slots:
     {
         if (!NotifyGate::fromUser(*this, "test"))
             return false;
-        if (calledFromDBus() && !posted.rings(0, roomId))
+        if (NotifyGate::answerFor(calledFromDBus(), posted.rings(0, roomId)) == NotifyGate::Answer::OpenRoom) {
+            ++opened;
             return false;
+        }
         ++taken;
         return true;
     }
@@ -138,6 +142,9 @@ private slots:
         QCOMPARE(callFromChild(room), QByteArray("false"));
         QCOMPARE(callFrom(other, room), QVariant(false));
         QCOMPARE(t.taken, 0);
+        // an Answer with nothing ringing only opens the room (IPC1c)
+        // Planted-bug: answerFor answers whatever is asked
+        QCOMPARE(t.opened, 2);
         // the room rings: another process of this user is taken (lipstick's
         // mliteremoteaction), only for that room
         // Planted-bug: only the owner of org.freedesktop.Notifications taken
@@ -147,10 +154,12 @@ private slots:
         QCOMPARE(callFromChild(QStringLiteral("!other:x")), QByteArray("false"));
         QCOMPARE(callFrom(other, room), QVariant(true));
         QCOMPARE(t.taken, 2);
-        // the ring is over: refused again
+        QCOMPARE(t.opened, 3);
+        // the ring is over: not answered again, the room opened
         t.posted.ringEnded(0, room);
         QCOMPARE(callFromChild(room), QByteArray("false"));
         QCOMPARE(t.taken, 2);
+        QCOMPARE(t.opened, 4);
         // from inside the process (QML): not a D-Bus call, taken
         QVERIFY(t.direct(room));
         QCOMPARE(t.taken, 3);

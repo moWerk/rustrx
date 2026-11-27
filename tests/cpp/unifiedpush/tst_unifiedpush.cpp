@@ -1,0 +1,167 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// The push connector's choices (UnifiedPush.cpp, audit 0.8.4 IPC2 and
+// IPC3), on a private bus as the session bus: the distributor by its exact
+// name, kept once chosen (across a logout too), another one only offered;
+// and the connector's name held by an app that cannot prove it is a
+// Rustrx: push paused, on disk for the stand-in, until the name is free.
+#include "UnifiedPush.h"
+#include "Keys.h"
+#include "NameProof.h"
+
+#include <QDBusConnection>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTemporaryDir>
+#include <QtTest>
+
+// holds a name and answers every proof wrongly
+class WrongProof : public QObject
+{
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "net.mowerk.harbour_rustrx.Proof")
+public slots:
+    Q_SCRIPTABLE QString proveName(const QString &, const QString &) { return QString(64, QLatin1Char('a')); }
+};
+
+class TestUnifiedPush : public QObject
+{
+    Q_OBJECT
+    QProcess m_daemon;
+    QTemporaryDir m_dir;
+
+    QVariantMap state(const QString &dir) const
+    {
+        QFile f(dir + QLatin1Char('/') + QLatin1String(Keys::kPushStateFile));
+        return f.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(f.readAll()).object().toVariantMap() : QVariantMap();
+    }
+    QString dir(const char *name) const
+    {
+        const QString d = m_dir.path() + QLatin1Char('/') + QLatin1String(name);
+        QDir().mkpath(d);
+        return d;
+    }
+
+private slots:
+    void initTestCase()
+    {
+        m_daemon.start(QStringLiteral("dbus-daemon"), { QStringLiteral("--session"), QStringLiteral("--nofork"), QStringLiteral("--print-address") });
+        if (!m_daemon.waitForStarted(3000))
+            QSKIP("no dbus-daemon on this host");
+        QTRY_VERIFY_WITH_TIMEOUT(m_daemon.canReadLine(), 5000);
+        const QByteArray address = m_daemon.readLine().trimmed();
+        QVERIFY(!address.isEmpty());
+        // before the first sessionBus(): UnifiedPush's bus is this one
+        qputenv("DBUS_SESSION_BUS_ADDRESS", address);
+        QVERIFY(QDBusConnection::sessionBus().isConnected());
+    }
+    void cleanupTestCase()
+    {
+        m_daemon.terminate();
+        m_daemon.waitForFinished(3000);
+    }
+
+    // Planted-bug: the suffix match back (endsWith "Foghorn"), or the pin
+    // ignored, or a new distributor taken without asking
+    void choice()
+    {
+        const QString foghorn = QStringLiteral("org.unifiedpush.Distributor.Foghorn");
+        const QString fake = QStringLiteral("org.unifiedpush.Distributor.XFoghorn");
+        const QString other = QStringLiteral("org.unifiedpush.Distributor.Other");
+        QString offer;
+        QCOMPARE(UnifiedPush::chooseDistributor({ fake, foghorn }, QString(), &offer), foghorn);
+        QCOMPARE(UnifiedPush::chooseDistributor({ foghorn, fake }, QString(), &offer), foghorn);
+        QCOMPARE(offer, QString());
+        // no Foghorn: the first by name, never one by its suffix
+        QCOMPARE(UnifiedPush::chooseDistributor({ other, fake }, QString()), other);
+        QCOMPARE(UnifiedPush::chooseDistributor({ QStringLiteral("org.unifiedpush.Distributor."), QStringLiteral("org.example.Foghorn") }, QString()),
+                 QString());
+        // the one chosen before stays, Foghorn there or not
+        QCOMPARE(UnifiedPush::chooseDistributor({ foghorn, other }, other, &offer), other);
+        QCOMPARE(offer, QString());
+        // gone: none, and the new one offered
+        QCOMPARE(UnifiedPush::chooseDistributor({ fake, foghorn }, other, &offer), QString());
+        QCOMPARE(offer, foghorn);
+        QCOMPARE(UnifiedPush::chooseDistributor({}, other, &offer), QString());
+        QCOMPARE(offer, QString());
+    }
+
+    // Planted-bug: loggedOut() forgets the pin (a new distributor after a
+    // logout would be taken unasked)
+    void pinnedOnceAndKept()
+    {
+        QDBusConnection distributor = QDBusConnection::connectToBus(QString::fromLocal8Bit(qgetenv("DBUS_SESSION_BUS_ADDRESS")),
+                                                                    QStringLiteral("distributor"));
+        const QString other = QStringLiteral("org.unifiedpush.Distributor.Other");
+        QVERIFY(distributor.registerService(other));
+        const QString d = dir("pin");
+        {
+            UnifiedPush up(d);
+            QTRY_VERIFY_WITH_TIMEOUT(up.lookedUp(), 5000);
+            QCOMPARE(up.distributor(), other);
+            QCOMPARE(up.pinned(), other);
+            QCOMPARE(state(d).value("distributor").toString(), other);
+            up.loggedOut();
+            QCOMPARE(state(d).value("distributor").toString(), other);
+        }
+        // Other gone, Foghorn there: not taken, offered
+        QVERIFY(distributor.unregisterService(other));
+        QVERIFY(distributor.registerService(QStringLiteral("org.unifiedpush.Distributor.Foghorn")));
+        {
+            UnifiedPush up(d);
+            QTRY_VERIFY_WITH_TIMEOUT(up.lookedUp(), 5000);
+            QCOMPARE(up.distributor(), QString());
+            QVERIFY(!up.available());
+            QCOMPARE(up.offered(), QStringLiteral("org.unifiedpush.Distributor.Foghorn"));
+            // only the name offered is taken
+            up.useDistributor(QStringLiteral("org.unifiedpush.Distributor.Fake"));
+            QCOMPARE(up.distributor(), QString());
+            up.useDistributor(QStringLiteral("org.unifiedpush.Distributor.Foghorn"));
+            QCOMPARE(up.distributor(), QStringLiteral("org.unifiedpush.Distributor.Foghorn"));
+            QCOMPARE(up.offered(), QString());
+            QCOMPARE(state(d).value("distributor").toString(), QStringLiteral("org.unifiedpush.Distributor.Foghorn"));
+        }
+        QDBusConnection::disconnectFromBus(QStringLiteral("distributor"));
+    }
+
+    // Planted-bug: exportConnector only logs a taken name (the squatter
+    // gets the pushes and Rustrx still says active, IPC2)
+    void squattedConnectorPausesPush()
+    {
+        QDBusConnection squatter = QDBusConnection::connectToBus(QString::fromLocal8Bit(qgetenv("DBUS_SESSION_BUS_ADDRESS")),
+                                                                 QStringLiteral("squatter"));
+        WrongProof wrong;
+        QVERIFY(squatter.registerObject(QString::fromLatin1(Keys::kProofPath), &wrong, QDBusConnection::ExportScriptableSlots));
+        QVERIFY(squatter.registerService(QString::fromLatin1(UnifiedPush::kConnectorName)));
+        const QString d = dir("squat");
+        // as if push had been working
+        QFile f(d + QLatin1Char('/') + QLatin1String(Keys::kPushStateFile));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("{\"enabled\":true,\"pusherSet\":true,\"endpoint\":\"https://push.example.org/x\",\"token\":\"t\"}");
+        f.close();
+        QVERIFY(UnifiedPush::activeOnDisk(d));
+        {
+            UnifiedPush up(d);
+            QVERIFY(!up.exportConnector());
+            QTRY_VERIFY_WITH_TIMEOUT(up.blocked(), 5000);
+            QVERIFY(!up.active());
+            QVERIFY(UnifiedPush::blockedOnDisk(d));
+            QVERIFY(!UnifiedPush::activeOnDisk(d));
+            // the block outlives a logout, as the stand-in needs it
+            up.loggedOut();
+            QVERIFY(UnifiedPush::blockedOnDisk(d));
+        }
+        // the name free again: taken, the block gone
+        QVERIFY(squatter.unregisterService(QString::fromLatin1(UnifiedPush::kConnectorName)));
+        {
+            UnifiedPush up(d);
+            QVERIFY(up.exportConnector());
+            QVERIFY(!up.blocked());
+            QVERIFY(!UnifiedPush::blockedOnDisk(d));
+        }
+        QDBusConnection::disconnectFromBus(QStringLiteral("squatter"));
+    }
+};
+
+QTEST_GUILESS_MAIN(TestUnifiedPush)
+#include "tst_unifiedpush.moc"

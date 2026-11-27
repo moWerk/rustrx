@@ -15,7 +15,16 @@ the second.
 carries them (`voip_send`, the `voip` event, `turn_server`; docs/PROTOCOL.md);
 the state machine is `src/Voip.cpp`. In an encrypted room the events go
 encrypted like messages. A ring needs a direct chat or the invite naming
-us, and rings for what is left of its lifetime (the lifetime less the
+us, and it rings only in a room of at most two joined members (audit
+0.8.4 NET-4, the author's rule; the core's `rings_in` and the `voip`
+event's `joined_members`): in a bigger room anyone there could ring the
+phone, so a classic call there is quiet, its notification posted as a
+message's (no ringtone, normal urgency, no call page) with Answer and
+Decline, and an Element Call ring becomes the group call's quiet line
+("Call in %1"). A call that rings takes the line from a quiet one,
+which hears `user_busy` and leaves a missed call. A direct chat with a third member counts as a group here,
+unlike the rule for Rustrx's own calls (`call_start`). It rings for what
+is left of its lifetime (the lifetime less the
 event's age), at most two minutes whatever its sender says: the engine,
 the notification and its Answer alike, in the app and the stand-in (an
 Element Call ring the same, from the core's `expires_ms`); a call while
@@ -124,7 +133,8 @@ the ear, so a cheek cannot mute or hang up. MCE ties the state to the
 caller's bus connection and drops it when the process ends, a crash
 included. The stand-in never does this; its ring is a notification.
 
-**Relay only** (Settings > Privacy, off by default, as in Element). The
+**Relay only** (Settings > Privacy, on by default since 0.8.4, audit
+NET-8; Element has it off; a switch the user flipped keeps its value). The
 peer learns the phone's addresses from the ICE candidates. With the
 switch on, `webrtcbin` gets `ice-transport-policy=relay`, no STUN server
 is set, and any candidate that is not a relay one is left out of the

@@ -61,7 +61,11 @@ Page {
         onMediaChanged: {
             if (eventId !== page.eventId || page.fullLoaded) return
             var path = rustrx.timeline.mediaPath(eventId)
-            if (path.length) { page.source = path; page.fullLoaded = true; page.failure = "" }
+            if (!path.length) return
+            // a file that is no picture drawn here (audit UC2): the thumbnail stays
+            if (rustrx.isPicture(path)) page.source = path
+            page.fullLoaded = true
+            page.failure = ""
         }
     }
 

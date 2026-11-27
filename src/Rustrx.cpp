@@ -15,9 +15,11 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Rustrx.h"
+#include "NameProof.h"
 #include "DebugLog.h"
 #include "DevHook.h"
 #include "Media.h"
+#include "OpenCheck.h"
 #include "RoomLists.h"
 #include "RoomModel.h"
 #include "ShareAdaptor.h"
@@ -411,10 +413,12 @@ void Rustrx::answerAccountCall(const QString &account, const QString &roomId)
 
 void Rustrx::answerIn(int key, const QString &roomId)
 {
-    // a ring that ended (expired, answered, declined, the call over) answers
-    // nothing: an old notification's Answer, or a copy of one (IPC1c)
-    if (calledFromDBus() && !m_posted.rings(key, roomId)) {
-        qInfo() << "call: answer for a ring that is over, ignored; account" << key;
+    // a ring that ended (expired, answered, declined, the call over) is not
+    // answered: an old notification's Answer, or a copy of one, opens the
+    // room only (IPC1c), with no call started there
+    if (NotifyGate::answerFor(calledFromDBus(), m_posted.rings(key, roomId)) == NotifyGate::Answer::OpenRoom) {
+        qInfo() << "call: answer for a ring that is over, the room opened; account" << key;
+        openAccountRoom(QString::number(key), roomId);
         return;
     }
     // a ringing call handed over at its ring, the app still starting
@@ -596,7 +600,10 @@ bool Rustrx::activateWith(const QString &secret)
         emit activateRequested();
         return false;
     }
-    if (!NotifyGate::sameSecret(NotifyGate::secret(m_dataDir + QLatin1Char('/') + QLatin1String(NotifyGate::kSecretFile)), secret)) {
+    // proof of the secret bound to this process's unique name (NameProof::leaveToken)
+    const QString own = calledFromDBus() ? connection().baseService() : QString();
+    if (own.isEmpty() || !NotifyGate::sameSecret(NameProof::leaveToken(
+            NotifyGate::secret(m_dataDir + QLatin1Char('/') + QLatin1String(NotifyGate::kSecretFile)), own), secret)) {
         qWarning().noquote() << "stand-in: asked to leave without the secret, by"
                              << (calledFromDBus() ? message().service() : QStringLiteral("?")) << "; staying";
         return false;
@@ -1206,6 +1213,17 @@ QString Rustrx::picture(const QString &path) const
     if (local.isEmpty())
         return QString();
     return m_pictures.ok(local) ? QStringLiteral("file://") + local : QString::fromLatin1(PixelGate::kRefusedUrl);
+}
+
+bool Rustrx::isPicture(const QString &path) const
+{
+    QFile f(Media::localPath(path));
+    return f.open(QIODevice::ReadOnly) && !PixelGate::pictureFormat(f.peek(12)).isEmpty();
+}
+
+bool Rustrx::mayOpen(const QString &path) const
+{
+    return OpenCheck::mayOpen(Media::localPath(path));
 }
 
 void Rustrx::notePosted(int account, const QString &roomId, const QString &eventId, const QStringList &emoji)

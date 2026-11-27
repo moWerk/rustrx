@@ -2,7 +2,7 @@
 // No picture bomb (PixelGate.h, audit 0.8.4 UC3): the header's size decides
 // before anything is decoded. Pictures as phones send them pass, in every
 // format Rustrx shows inline; one past 40 MP or with an absurd side does not,
-// whatever its name says.
+// whatever its name says. Nor does any other format (audit UC2).
 #include "PixelGate.h"
 
 #include <QImage>
@@ -111,7 +111,6 @@ private slots:
         QTest::newRow("jpeg 12 MP") << "jpeg" << QSize(4000, 3000);
         QTest::newRow("png") << "png" << QSize(1920, 1080);
         QTest::newRow("webp") << "webp" << QSize(1600, 1200);
-        QTest::newRow("bmp") << "bmp" << QSize(640, 480);
     }
     void ordinaryPicturesPass()
     {
@@ -126,6 +125,32 @@ private slots:
         QVERIFY(!path.isEmpty());
         QCOMPARE(PixelGate::headerSize(path), size);
         QVERIFY(PixelGate::ok(path));
+    }
+    // Planted-bug: headerSize without the pictureFormat check (the reader
+    // probing every plugin by content, or picking one by the name): the
+    // BMP, TIFF and SVG pass and reach their decoders.
+    void onlyFourFormatsAreDecoded()
+    {
+        QImage img(64, 48, QImage::Format_RGB32);
+        img.fill(Qt::darkCyan);
+        const QByteArray svg("<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"48\"/>");
+        for (const char *name : { "a.svg", "a.png", "a.jpg", "a.bin", "a.img" })
+            QVERIFY2(!PixelGate::ok(write(QString::fromLatin1(name), svg)), name);
+        for (const char *format : { "bmp", "tiff", "ppm", "xpm", "ico" }) {
+            if (!QImageWriter::supportedImageFormats().contains(format))
+                continue;
+            const QString path = save(QStringLiteral("other-") + QLatin1String(format), img, format);
+            QVERIFY(!path.isEmpty());
+            QVERIFY2(!PixelGate::ok(path), format);
+        }
+        // the bytes decide, not the name: a PNG named .svg is read as a PNG
+        const QString png = save(QStringLiteral("p.png"), img, "png");
+        QFile::rename(png, m_dir.filePath(QStringLiteral("p.svg")));
+        QCOMPARE(PixelGate::headerSize(m_dir.filePath(QStringLiteral("p.svg"))), QSize(64, 48));
+        QCOMPARE(PixelGate::pictureFormat(QByteArray("\xFF\xD8\xFF\xE0", 4)), QByteArray("jpeg"));
+        QCOMPARE(PixelGate::pictureFormat(QByteArray("RIFF\0\0\0\0WEBP", 12)), QByteArray("webp"));
+        QCOMPARE(PixelGate::pictureFormat(QByteArray("RIFF\0\0\0\0WAVE", 12)), QByteArray());
+        QCOMPARE(PixelGate::pictureFormat(QByteArray("BM")), QByteArray());
     }
     void ordinaryHeadersPass()
     {

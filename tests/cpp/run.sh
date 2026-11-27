@@ -16,7 +16,7 @@ status=0
 run() {
     env QT_QPA_PLATFORM=offscreen "$@" || status=1
 }
-for t in twemoji renderhtml golden roommodel exif png mp4 readpoint voip devhook sharecopy handover callroute callstate mediapaths roundavatar timelineapply privatesettings storekeyguard notifygate debuglog gstguard busleave quitsignals; do
+for t in twemoji renderhtml golden roommodel exif png mp4 readpoint voip devhook sharecopy handover callroute callstate mediapaths roundavatar timelineapply privatesettings storekeyguard notifygate nameproof unifiedpush debuglog gstguard busleave quitsignals pixelgate opencheck; do
     run "$build/$t/tst_$t" "$@"
 done
 # the room order by name depends on the locale: once without collation

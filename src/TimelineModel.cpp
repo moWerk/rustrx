@@ -71,7 +71,8 @@ TimelineModel::TimelineModel(QObject *parent)
                             "reactions", "reply_to", "thread_root", "thread", "mime", "size", "w", "h", "has_thumb",
                             "filename", "duration", "geo_uri", "media_path", "thumb_path", "read_by",
                             "caption", "shield", "answers", "max_selections", "ended", "upload_done", "upload_total",
-                            "emotes", "body_html", "caption_html", "thread_html", "send_error", "own_read" };
+                            "emotes", "body_html", "caption_html", "thread_html", "send_error", "own_read",
+                            "sender_ambiguous" };
     int role = Qt::UserRole + 1;
     for (const char *n : names) {
         m_roles.insert(role, QByteArray(n));
@@ -296,7 +297,8 @@ QVariantMap TimelineModel::withMedia(QVariantMap item) const
 // with an mxc:// address) become the cached picture at a little more than
 // the text's height, their name until it is there; every other picture
 // becomes its name, so a message cannot make the phone fetch from any
-// address. A reply's quoted fallback (<mx-reply>) goes.
+// address. A reply's quoted fallback (<mx-reply>) goes. A message that
+// would draw more than kMaxDrawn characters is kTooLong instead.
 QString TimelineModel::renderHtml(const QString &html, int emojiHeight, bool spoilersShown) const
 {
     if (emojiHeight <= 0)
@@ -352,12 +354,17 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight, bool spo
         return res;
     };
 
-    struct Open { QString name; QString close; bool hides; };
+    struct Open { QString name; QString close; bool hides; bool list; };
     QVector<Open> stack;
     // how many of each name are open: a close with none open is dropped
     // without a walk down the stack (audit UC9)
     QHash<QString, int> openCount;
     int hidden = 0;        // inside a spoiler: its text is not shown
+    // what StyledText will draw, in characters (audit UC1): the text, one
+    // per picture or break, and for each list item the indent of 6 per
+    // open list (Qt's tabsize) and its bullet or number
+    qint64 drawn = 0;
+    int lists = 0;
     int covered = 0;       // the characters of its line so far, one block each
     bool coveredLine = false;   // a line of it has been covered already
     QString out;
@@ -365,19 +372,22 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight, bool spo
     // text between tags, its emoji as Twemoji pictures
     auto emitText = [&](const QString &s) {
         if (!hidden)
-            out += Twemoji::inHtml(s, emojiHeight);
+            drawn += s.size(), out += Twemoji::inHtml(s, emojiHeight);
         else
             covered += QString(s).replace(namedEntity, QStringLiteral("x")).toUcs4().size();
     };
     // the blocks for a spoiler's line so far
     auto cover = [&]() {
         out += QStringLiteral("<a href=\"%1\">%2</a>").arg(QLatin1String(kSpoilerLink), QString(covered, QChar(0x2588)));
+        drawn += covered;
         covered = 0;
         coveredLine = true;
     };
     auto closeTop = [&]() {
         const Open o = stack.takeLast();
         --openCount[o.name];
+        if (o.list)
+            --lists;
         if (o.hides && --hidden == 0) {
             // an empty spoiler still shows that there is one
             if (covered > 0 || !coveredLine)
@@ -390,6 +400,8 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight, bool spo
     int last = 0;
     QRegularExpressionMatchIterator it = tagRe.globalMatch(in);
     while (it.hasNext()) {
+        if (drawn > kMaxDrawn)
+            return QLatin1String(kTooLong);
         const QRegularExpressionMatch m = it.next();
         emitText(text(in.midRef(last, m.capturedStart() - last)));
         last = m.capturedEnd();
@@ -417,9 +429,14 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight, bool spo
             if (hidden && covered > 0)
                 cover();
             out += QStringLiteral("<br>");
+            ++drawn;
             continue;
         }
-        if (name == QLatin1String("hr")) { emit_(QStringLiteral("<br>―――――<br>")); continue; }
+        if (name == QLatin1String("hr")) {
+            if (!hidden) drawn += 7;
+            emit_(QStringLiteral("<br>―――――<br>"));
+            continue;
+        }
         if (name == QLatin1String("img")) {
             if (hidden) { ++covered; continue; }   // a picture: one block
             const QString src = attribute(tag, QStringLiteral("src"));
@@ -429,21 +446,31 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight, bool spo
                 const int w = e->size.height() > 0 ? qRound(h * qreal(e->size.width()) / e->size.height()) : h;
                 emit_(QStringLiteral("<img src=\"file://%1\" width=\"%2\" height=\"%3\" align=\"middle\">")
                           .arg(e->path.toHtmlEscaped()).arg(w).arg(h));
+                ++drawn;
             } else {
                 QString alt = attribute(tag, QStringLiteral("alt"));
                 if (alt.isEmpty())
                     alt = attribute(tag, QStringLiteral("title"));
+                drawn += alt.size();
                 emit_(alt.replace(QLatin1Char('<'), QLatin1String("&lt;")));
             }
             continue;
         }
 
-        Open o { name, QString(), false };
+        Open o { name, QString(), false, false };
         QString open;
         if (plain.contains(name)) {
             // the tags themselves, bare
             open = QLatin1Char('<') + name + QLatin1Char('>');
             o.close = QStringLiteral("</") + name + QLatin1Char('>');
+            if (!hidden) {
+                if (name == QLatin1String("ul") || name == QLatin1String("ol"))
+                    o.list = true, ++lists;
+                else if (name == QLatin1String("li"))
+                    drawn += 6 * lists + 4;
+                else if (name == QLatin1String("p") || name.startsWith(QLatin1Char('h')))
+                    ++drawn;   // a paragraph's or heading's line
+            }
         } else if (name == QLatin1String("em")) {
             open = QStringLiteral("<i>"); o.close = QStringLiteral("</i>");
         } else if (name == QLatin1String("blockquote")) {
@@ -483,7 +510,7 @@ QString TimelineModel::renderHtml(const QString &html, int emojiHeight, bool spo
     emitText(text(in.midRef(last)));
     while (!stack.isEmpty())
         closeTop();
-    return out;
+    return drawn > kMaxDrawn ? QLatin1String(kTooLong) : out;
 }
 
 // A reaction with a custom emoji has its mxc address as the key (MSC4027):
@@ -538,6 +565,13 @@ void TimelineModel::askEmotes(const QVariantMap &item)
         if (key.startsWith(QLatin1String("mxc://")))
             wanted << key;
     }
+    // the first kMaxEmotesPerItem distinct ones only (audit FFI-2: one
+    // message could ask some 2000); the rest stay their names. Counted
+    // before the cached ones are left out, so the same ones are asked
+    // whenever the item comes again
+    wanted.removeDuplicates();
+    if (wanted.size() > kMaxEmotesPerItem)
+        wanted.erase(wanted.begin() + kMaxEmotesPerItem, wanted.end());
     for (const QString &mxc : wanted) {
         if (m_emotes.contains(mxc) || m_emotesAsked.contains(mxc))
             continue;
@@ -689,6 +723,67 @@ QString TimelineModel::seenEventId(int row) const
             return eventId;
     }
     return QString();
+}
+
+QVariantMap TimelineModel::linkHosts(int row, const QString &link) const
+{
+    if (row < 0 || row >= m_items.size())
+        return QVariantMap();
+    const QVariantMap item = m_items.at(row).toMap();
+    // the text as it is drawn (entities decoded, pictures as their names,
+    // spoilers shown, the reply fallback gone), not the sender's markup
+    const QVariantMap found = linkHostsIn(renderHtml(item.value(QStringLiteral("html")).toString(), 0, true), link);
+    if (!found.isEmpty())
+        return found;
+    return linkHostsIn(renderHtml(item.value(QStringLiteral("reply_to")).toMap().value(QStringLiteral("html")).toString(), 0, true), link);
+}
+
+// In renderHtml's output: the text of every link to `link`, its tags taken
+// out; when one of them reads as an address, a bare domain or a URL, and
+// names another host than the link, the two hosts. A leading "www." does
+// not count; invisible characters in the text do not hide an address.
+QVariantMap TimelineModel::linkHostsIn(const QString &rendered, const QString &link)
+{
+    static const QRegularExpression aRe(QStringLiteral("<a href=\"([^\"]*)\">"));
+    static const QRegularExpression anyTag(QStringLiteral("<[^>]*>"));
+    static const QRegularExpression invisible(QStringLiteral("[\\x{200B}-\\x{200F}\\x{202A}-\\x{202E}\\x{2066}-\\x{2069}\\x{FEFF}\\x{00AD}]"));
+    // a URL's host: after the scheme's "//" and any user part
+    static const QRegularExpression urlHost(QStringLiteral("^[a-z][a-z0-9+.-]*://(?:[^/?#@]*@)?(\\[[^\\]]*\\]|[^/?#:]+)"),
+                                            QRegularExpression::CaseInsensitiveOption);
+    // text that reads as an address: a host with a dot and letters at the
+    // end, with or without a scheme and a path, and nothing else
+    static const QRegularExpression textHost(
+            QStringLiteral("^(?:[a-z][a-z0-9+.-]*://)?(?:[^\\s/?#@]*@)?((?:[\\w-]+\\.)+[^\\W\\d_]{2,})\\.?(?:[:/?#]\\S*)?$"),
+            QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
+    const QRegularExpressionMatch u = urlHost.match(link);
+    if (rendered.isEmpty() || !u.hasMatch())
+        return QVariantMap();
+    auto bare = [](QString h) {
+        h = h.toLower();
+        if (h.endsWith(QLatin1Char('.'))) h.chop(1);
+        return h.startsWith(QLatin1String("www.")) ? h.mid(4) : h;
+    };
+    const QString goesHost = bare(u.captured(1));
+    QRegularExpressionMatchIterator it = aRe.globalMatch(rendered);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch m = it.next();
+        const QString href = m.captured(1);
+        if (href != link && QString(href).replace(QLatin1String("&amp;"), QLatin1String("&")) != link)
+            continue;
+        const int close = rendered.indexOf(QLatin1String("</a>"), m.capturedEnd());
+        QString shown = rendered.mid(m.capturedEnd(), close < 0 ? -1 : close - m.capturedEnd());
+        shown.remove(anyTag);
+        shown.remove(invisible);
+        shown.replace(QLatin1String("&lt;"), QLatin1String("<")).replace(QLatin1String("&gt;"), QLatin1String(">"))
+             .replace(QLatin1String("&quot;"), QLatin1String("\"")).replace(QLatin1String("&amp;"), QLatin1String("&"));
+        const QRegularExpressionMatch t = textHost.match(shown.trimmed());
+        if (!t.hasMatch())
+            continue;
+        const QString shownHost = bare(t.captured(1));
+        if (shownHost != goesHost)
+            return QVariantMap { { QStringLiteral("shown"), shownHost }, { QStringLiteral("goes"), goesHost } };
+    }
+    return QVariantMap();
 }
 
 QString TimelineModel::spoilersShown(int row) const

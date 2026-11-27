@@ -73,7 +73,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `typing` | `room_id`, `typing?` | |
 | `set_presence` | `online` (offline is set at every login, before the first sync) | |
 | `get_media` | `room_id`, `event_id`, `thumb?`, `dest_dir?` (a copy for other apps) | `media` |
-| `fetch_emote` | `mxc` (a custom emoji's address) | `emote` |
+| `fetch_emote` | `mxc` (a custom emoji's address) | `emote`; none for one over 256 KiB or not a JPEG, PNG, GIF or WebP (it stays its name) |
 | `image_packs` | `room_id` | `image_packs`; a second one later when the kept packs, asked again in the background, changed |
 | `room_preview` | `room_or_alias`, `via?` | `room_preview` |
 | `knock` | `room_or_alias`, `reason?`, `via?` | `knocked` |
@@ -210,7 +210,7 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `reply_sent` | `room_id` (a `notification_reply` the server took) |
 | `reply_failed` | `room_id`, `kept` (its text was added to the room's draft), `message` |
 | `typing` | `room_id`, `names` (others typing) |
-| `media` | `room_id`, `event_id`, `thumb`, `exported`, `path` |
+| `media` | `room_id`, `event_id`, `thumb`, `exported`, `path` (a thumbnail, picture or sticker that is no JPEG, PNG, GIF or WebP by its bytes is named `.bin`; an export is named after the message's `filename`, cleaned) |
 | `emote` | `mxc`, `path` |
 | `image_packs` | `room_id`, `packs` (`id`, `name`, `source` user/global/room, `avatar_mxc`, `images`: `shortcode`, `mxc`, `body`, `info`, `emoticon`, `sticker`) |
 | `emote_added` | `shortcode` (as stored, a number added when taken), `mxc` |
@@ -257,9 +257,9 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `call_url` | `room_id`, `url` (Element Call, for the WebView) |
 | `call_message` | `data` (for the page) |
 | `call_ended` | `room_id` |
-| `call_ring` | `room_id`, `room_name`, `sender`, `sender_name`, `ring`, `event_id`, `expires_ms` |
+| `call_ring` | `room_id`, `room_name`, `sender`, `sender_name`, `ring` (asked for a ring and the room has at most two joined members, NET-4; else the quiet line of a group call), `event_id`, `expires_ms` |
 | `calls_allowed` | `room_id` |
-| `voip` | `room_id`, `room_name`, `type` (an m.call.* type), `sender`, `sender_name`, `own` (sent by this account, from any of its devices, this one too), `content` (the event's content as received, decrypted), `event_id`, `age_ms`, `is_dm` (the room is a direct chat) |
+| `voip` | `room_id`, `room_name`, `type` (an m.call.* type), `sender`, `sender_name`, `own` (sent by this account, from any of its devices, this one too), `content` (the event's content as received, decrypted), `event_id`, `age_ms`, `is_dm` (the room is a direct chat), `joined_members` (the room's joined members: more than two make an invite quiet, NET-4) |
 | `voip_sent` | `room_id`, `type`, `call_id` (from the content, "" without), `event_id` |
 | `turn_server` | `username`, `password`, `uris` (empty when the server has no TURN or the request failed), `ttl` (seconds) |
 | `log` | `line` (a log line; the sandbox drops stderr, the UI puts it in the journal) |
@@ -317,11 +317,12 @@ carries them. `own_read` is in the first already (the room opens there).
 ### Timeline item
 Every item: `id` (unique, stable), `kind` (`event`, `date`, `readmarker`, `start`).
 Date dividers carry `ts`. Events carry `event_id` (absent for a local echo),
-`txn_id`, `sender`, `sender_name`, `is_own`, `ts`, `read_by`, `own_read` (true on the
+`txn_id`, `sender`, `sender_name`, `sender_ambiguous` (only when true: another member
+has this display name, so the UI adds the user ID), `is_own`, `ts`, `read_by`, `own_read` (true on the
 message our own read receipt is on: the unread count runs from it), `editable`,
 `highlight` (mentions us), `send_state` (`sending`, `failed`, `sent`), `send_error` (with `failed`: `too_large`, the server takes no file or event this large),
 `shield` (`red:<code>`, `grey:<code>` for unverified or unverifiable senders),
-`reactions` (`{key, count, me}`), `reply_to` (`{event_id, sender, sender_name, body}`),
+`reactions` (`{key, count, me}`), `reply_to` (`{event_id, sender, sender_name, sender_ambiguous, body}`),
 `thread_root`, `edited`, and by `type`:
 `text`, `notice`, `emote` (`body`, `html`), `image`, `video`, `audio`, `file`
 (`caption`, `mime`, `size`, `w`, `h`, `has_thumb`, `filename`, `duration`),

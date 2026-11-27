@@ -40,6 +40,9 @@ Page {
     property string problem
     // the address leads nowhere: offer to search for its name (the author's wish, 0.8)
     property bool notFound
+    // opened by a link from another app: looked up only at Look up, since
+    // the lookup tells the room's server (audit IPC7)
+    property bool lookFirst
 
     // What only joining says: the user's own server named, the address
     // typed here, the search on this page; everything else in the app's
@@ -107,6 +110,7 @@ Page {
     function look() {
         var id = addressField.text.trim()
         if (id.length < Tunables.minJoinChars) return
+        lookFirst = false
         address = id
         preview = ({})
         asked = false
@@ -128,7 +132,7 @@ Page {
         rustrx.command({ cmd: "knock", room_or_alias: address, reason: reasonField.text.trim(), via: via })
     }
 
-    Component.onCompleted: if (address.length) { addressField.text = address; look() }
+    Component.onCompleted: if (address.length) { addressField.text = address; if (!lookFirst) look() }
 
     Connections {
         target: rustrx
@@ -342,13 +346,21 @@ Page {
             // side by side while they fit, stacked when a translation is
             // too long (a Row ran off the page; 0.8 audit, one button rule)
             Item {
-                visible: joinButton.visible || knockButton.visible
+                visible: joinButton.visible || knockButton.visible || lookButton.visible
                 width: parent.width
                 height: buttons.height + 2 * Theme.paddingMedium
                 ButtonLayout {
                     id: buttons
                     y: Theme.paddingMedium
                     width: parent.width
+                    Button {
+                        id: lookButton
+                        visible: page.lookFirst && page.address.length > 0
+                        //: join page opened by a link from another app: looks the room up at its server
+                        //% "Look up"
+                        text: qsTrId("rustrx-bt-look-up")
+                        onClicked: page.look()
+                    }
                     Button {
                         id: joinButton
                         visible: page.address.length > 0 && !page.loading && !page.asked && page.state_ !== "banned"

@@ -108,6 +108,11 @@ pub(crate) const OWN_AVATAR_PX: u32 = 256;
 pub(crate) const MEDIA_THUMB_PX: u32 = 640;
 /// Small: a custom emoji is drawn at the height of a line.
 pub(crate) const EMOTE_PX: u32 = 96;
+/// A custom emoji's file larger than this is not kept: it stays its name
+/// (audit FFI-2; the 96 px thumbnail asked for is a few KiB).
+pub(crate) const EMOTE_MAX_BYTES: usize = 256 * 1024;
+/// Custom emoji downloads at a time (FFI-2).
+pub(crate) const EMOTE_FETCHES_AT_ONCE: usize = 4;
 /// The height given to custom emoji in sent HTML, for other clients.
 pub(crate) const EMOTE_HTML_HEIGHT: u32 = 32;
 

@@ -79,6 +79,10 @@ SilicaFlickable {
                       //: %1 the push gateway's host
                       //% "Through Foghorn and %1: nothing of Rustrx keeps running. The gateway and the push server see when a message comes and for which room, never what it says."
                       ? qsTrId("rustrx-la-push-active").arg(rustrx.push.gatewayHost)
+                      : rustrx.push.blocked
+                      //: push hint, shown in red: another app owns the push connector's bus name
+                      //% "Another app holds Rustrx's push name, so push is paused. Until it lets go, Rustrx keeps running in the background."
+                      ? qsTrId("rustrx-la-push-blocked")
                       //: %1 what push is doing (registering, waiting for an address, an error)
                       //% "Setting up: %1"
                       : qsTrId("rustrx-la-push-setting-up").arg(rustrx.push.status || "…")
@@ -99,6 +103,11 @@ SilicaFlickable {
                 app.closedMode = value
                 app.applyClosedMode()
             }
+            // the warning that another app holds the push name in red (the
+            // author, audit 0.8.4 IPC2); else ValueButton's own colours
+            descriptionColor: rustrx.push.blocked && currentIndex >= 0 && currentIndex < choices.length
+                              && choices[currentIndex].value === "push"
+                              ? Theme.errorColor : (down ? palette.secondaryHighlightColor : palette.secondaryColor)
         }
 
         TextSwitch {

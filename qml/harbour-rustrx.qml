@@ -112,12 +112,40 @@ ApplicationWindow {
         var m = closedMode.length ? closedMode : (rustrx.push.available ? "push" : "background")
         if (m === "push" && !rustrx.push.available) m = "background"
         rustrx.setPushEnabled(m === "push")
-        rustrx.background = m === "background"
+        // push paused while another app holds its name (audit 0.8.4 IPC2):
+        // the stand-in meanwhile, push stays chosen
+        rustrx.background = m === "background" || (m === "push" && rustrx.push.blocked)
     }
     property bool closedModeApplied
     Connections {
         target: rustrx.push
         onChanged: if (!app.closedModeApplied && rustrx.push.lookedUp) app.applyClosedMode()
+    }
+    readonly property bool pushBlocked: rustrx.push.blocked
+    onPushBlockedChanged: if (closedModeApplied) applyClosedMode()
+
+    // a new distributor where the one push went through is gone (audit
+    // 0.8.4 IPC3): asked once per start, after the other notices, never
+    // over a call; "Not now" asks again at the next start
+    readonly property string distributorOffered: rustrx.push.offered
+    onDistributorOfferedChanged: if (distributorOffered.length) distributorAsk.restart()
+    Timer {
+        id: distributorAsk
+        interval: Tunables.verifyNoticeDelayMs
+        onTriggered: {
+            if (!rustrx.push.offered.length) return
+            if (pageStack.busy || app.prototypeNoticeUp || !cfg.prototypeNoticeSeen || app.secretsNoticeUp
+                    || rustrx.voip.state !== "idle"
+                    || (pageStack.currentPage && pageStack.currentPage.objectName === "verifyNotice")
+                    || !pageStack.find(function (p) { return p.objectName === "main" })) {
+                interval = Tunables.retryIntervalMs
+                restart()
+                return
+            }
+            interval = Tunables.verifyNoticeDelayMs
+            pageStack.push(Qt.resolvedUrl("pages/DistributorDialog.qml"),
+                           { offered: rustrx.push.offered, before: rustrx.push.pinned })
+        }
     }
     // favourites with new messages glow in the lists (highlightFavs).
     // The glow's one breath, shared by every glowing row so they breathe
@@ -251,7 +279,7 @@ ApplicationWindow {
             if (asked.length) showRoom(asked)
             // started by a matrix: link or the share sheet
             var uri = rustrx.takePendingUri()
-            if (uri.length) openMatrixUri(uri)
+            if (uri.length) openMatrixUri(uri, true)
             var knocks = rustrx.takePendingKnocks()
             var shared = rustrx.takePendingShare()
             if (shared.files || shared.text) showShare(shared.files || [], shared.text || "")
@@ -340,7 +368,8 @@ ApplicationWindow {
             var s = rustrx.voip.state
             if (s === app.lastVoipState) return
             app.lastVoipState = s
-            if (s === "incoming") app.ringUp(null)
+            // a call in a room of more than two rings as its notification only (NET-4)
+            if (s === "incoming") { if (!rustrx.voip.quiet) app.ringUp(null) }
             else if (s === "connecting" || s === "connected") app.showVoip()
         }
     }
@@ -440,7 +469,7 @@ ApplicationWindow {
         target: rustrx
         onScreenLockedChanged: {
             if (!rustrx.screenLocked || app.callWindow || !cfg.forceCallUi) return
-            if (rustrx.voip.state === "incoming") app.showCallWindow(null)
+            if (rustrx.voip.state === "incoming") { if (!rustrx.voip.quiet) app.showCallWindow(null) }
             else if (rustrx.voip.state === "idle" && app.elementRing()) app.showCallWindow(app.elementRing())
         }
     }
@@ -448,7 +477,9 @@ ApplicationWindow {
     // a call rings or runs: its page
     Connections {
         target: Qt.application
-        onActiveChanged: if (Qt.application.active && rustrx.voip.state !== "idle") app.showVoip()
+        // (a quiet one in a group room keeps to its notification, NET-4)
+        onActiveChanged: if (Qt.application.active && rustrx.voip.state !== "idle"
+                                 && !(rustrx.voip.state === "incoming" && rustrx.voip.quiet)) app.showVoip()
     }
 
     // a copied secret (the recovery key) out of the clipboard after a
@@ -613,7 +644,7 @@ ApplicationWindow {
         onCallsAllowed: Notices.show(qsTrId("rustrx-no-calls-allowed"), Notice.Long)
         // the requests' notification tapped
         onKnocksRequested: if (rustrx.takePendingKnocks()) { app.activate(); app.showKnocks() }
-        onMatrixUriRequested: if (rustrx.takePendingUri().length) { app.activate(); app.openMatrixUri(uri) }
+        onMatrixUriRequested: if (rustrx.takePendingUri().length) { app.activate(); app.openMatrixUri(uri, true) }
         onShareRequested: {
             var shared = rustrx.takePendingShare()
             if (shared.files || shared.text) { app.activate(); app.showShare(files, text) }
@@ -776,8 +807,10 @@ ApplicationWindow {
     }
 
     // matrix:r/alias:server, matrix:roomid/id:server, matrix:u/user:server
-    // (MSC2312) and https://matrix.to/#/<id or alias>; false when it is neither
-    function openMatrixUri(uri) {
+    // (MSC2312) and https://matrix.to/#/<id or alias>; false when it is neither.
+    // From another app (outside): a room not joined is looked up only at
+    // the join page's Look up, as the lookup tells the room's server (IPC7)
+    function openMatrixUri(uri, outside) {
         var id = ""
         var m = /^matrix:(r|roomid|u)\/([^?#]+)/.exec(uri)
         if (m) {
@@ -813,7 +846,7 @@ ApplicationWindow {
         } else {
             // an alias, or a room or space we are not in: what it is first,
             // then join or ask to join
-            pageStack.push(Qt.resolvedUrl("pages/JoinPage.qml"), { address: id, via: via })
+            pageStack.push(Qt.resolvedUrl("pages/JoinPage.qml"), { address: id, via: via, lookFirst: outside === true })
         }
         return true
     }
@@ -847,6 +880,20 @@ ApplicationWindow {
             if (!app.pendingShare || ++tries > Tunables.retryMaxTries) { stop(); tries = 0; return }
             app.showShare(app.pendingShare.files, app.pendingShare.text)
         }
+    }
+
+    // a message's link whose text reads as an address of another host
+    // (hosts: TimelineModel.linkHosts): the dialog names both, and the link
+    // opens once it has closed with Open (audit UC8)
+    function openLinkAsked(link, hosts) {
+        if (!hosts || !hosts.goes) { openLink(link); return }
+        var d = pageStack.push(Qt.resolvedUrl("pages/LinkCheckDialog.qml"), { shownHost: hosts.shown, goesHost: hosts.goes })
+        var opened = false
+        d.statusChanged.connect(function () {
+            if (opened || d.status !== PageStatus.Inactive || d.result !== DialogResult.Accepted) return
+            opened = true
+            openLink(link)
+        })
     }
 
     // a link tapped inside the app: Matrix links stay here, the rest goes out
@@ -1064,7 +1111,7 @@ ApplicationWindow {
         if (!cfg.roundAvatars) { cfg.avatarCorners = 0; cfg.roundAvatars = true }
         applyClosedMode(); route()
         // a call that rang before the window was there (handed over)
-        if (cfg.forceCallUi && rustrx.voip.state === "incoming") { lastVoipState = "incoming"; ringUp(null) }
+        if (cfg.forceCallUi && rustrx.voip.state === "incoming" && !rustrx.voip.quiet) { lastVoipState = "incoming"; ringUp(null) }
     }
 
     // custom emoji in messages: a little taller than the text, like an emoji

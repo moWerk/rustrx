@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The decrypted copies in media/: found again by name instead of being
 //! fetched and written anew, written through a temporary name so a broken
-//! write is never served, and kept under a size limit (oldest first).
-//! media/emotes has its own cache by address and is left alone here.
+//! write is never served, and kept under a size limit (oldest first),
+//! media/emotes included. The sweep runs before the first file of a run
+//! goes out, and again after every SWEEP_AGAIN_BYTES written (the app and
+//! the stand-in live for days); that one spares what this run may have
+//! given out.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -20,6 +23,8 @@ const PART_MAX_AGE: Duration = Duration::from_secs(60 * 60);
 /// by date: what is looked at stays).
 const TOUCH_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
 const PART_SUFFIX: &str = ".part";
+/// Written since the last sweep before the next one (audit FFI-3).
+pub(crate) const SWEEP_AGAIN_BYTES: u64 = 50 * 1024 * 1024;
 
 /// The cached file `<stem>.<ext>` for the first extension that has one:
 /// not empty, and of the size the event gives where it gives one (a file
@@ -60,14 +65,16 @@ pub(crate) fn touch(path: &Path) {
     }
 }
 
-/// media/ brought down to `cap` bytes, oldest files first, and temporary
-/// files of writes that never ended removed. Folders (emotes) are left.
+/// media/ brought down to `cap` bytes, oldest files first, its emotes/
+/// folder counted in, and temporary files of writes that never ended
+/// removed. A file dated `spare` or later stays whatever the size.
 /// Returns the files removed and their bytes.
-pub(crate) fn sweep(dir: &Path, cap: u64, now: SystemTime) -> (usize, u64) {
+pub(crate) fn sweep(dir: &Path, cap: u64, now: SystemTime, spare: Option<SystemTime>) -> (usize, u64) {
     let Ok(entries) = std::fs::read_dir(dir) else { return (0, 0) };
+    let emotes = std::fs::read_dir(dir.join(crate::consts::EMOTE_DIR)).into_iter().flatten();
     let mut files = Vec::new();
     let (mut removed, mut freed, mut total) = (0, 0, 0u64);
-    for e in entries.flatten() {
+    for e in entries.chain(emotes).flatten() {
         let Ok(meta) = e.metadata() else { continue };
         if !meta.is_file() {
             continue;
@@ -88,8 +95,8 @@ pub(crate) fn sweep(dir: &Path, cap: u64, now: SystemTime) -> (usize, u64) {
         return (removed, freed);
     }
     files.sort_by_key(|f| f.0);
-    for (_, len, path) in files {
-        if total <= cap {
+    for (modified, len, path) in files {
+        if total <= cap || spare.is_some_and(|s| modified >= s) {
             break;
         }
         if std::fs::remove_file(&path).is_ok() {
@@ -105,6 +112,7 @@ pub(crate) fn sweep(dir: &Path, cap: u64, now: SystemTime) -> (usize, u64) {
 /// path from that folder goes out: a file the UI was given is never swept
 /// under it in the same run.
 pub(crate) async fn swept(dir: &Path) {
+    run_start();
     static DONE: OnceLock<Mutex<HashMap<PathBuf, Arc<tokio::sync::OnceCell<()>>>>> = OnceLock::new();
     let cell = {
         let Ok(mut map) = DONE.get_or_init(Default::default).lock() else { return };
@@ -113,7 +121,7 @@ pub(crate) async fn swept(dir: &Path) {
     cell.get_or_init(|| async {
         let dir = dir.to_owned();
         let t = std::time::Instant::now();
-        let (n, bytes) = tokio::task::spawn_blocking(move || sweep(&dir, MEDIA_CACHE_MAX_BYTES, SystemTime::now()))
+        let (n, bytes) = tokio::task::spawn_blocking(move || sweep(&dir, MEDIA_CACHE_MAX_BYTES, SystemTime::now(), None))
             .await
             .unwrap_or((0, 0));
         if n > 0 {
@@ -121,6 +129,44 @@ pub(crate) async fn swept(dir: &Path) {
         }
     })
     .await;
+}
+
+/// When this run began to give out files: set by the first sweep, which
+/// comes before any path goes out.
+fn run_start() -> SystemTime {
+    static START: OnceLock<SystemTime> = OnceLock::new();
+    *START.get_or_init(SystemTime::now)
+}
+
+/// `bytes` were written into the media folder `dir`: past
+/// SWEEP_AGAIN_BYTES since the last time, it is swept again, sparing every
+/// file this run may have given out. Those are dated from this run's start
+/// less TOUCH_AFTER on: written in it, touched when served (`touch`), or
+/// younger than TOUCH_AFTER when served.
+pub(crate) fn written(dir: &Path, bytes: u64) {
+    static SINCE: OnceLock<Mutex<HashMap<PathBuf, u64>>> = OnceLock::new();
+    let start = run_start();
+    let due = {
+        let Ok(mut map) = SINCE.get_or_init(Default::default).lock() else { return };
+        let n = map.entry(dir.to_owned()).or_default();
+        *n += bytes;
+        let due = *n >= SWEEP_AGAIN_BYTES;
+        if due {
+            *n = 0;
+        }
+        due
+    };
+    if !due {
+        return;
+    }
+    let dir = dir.to_owned();
+    let spare = start.checked_sub(TOUCH_AFTER).unwrap_or(SystemTime::UNIX_EPOCH);
+    tokio::task::spawn_blocking(move || {
+        let (n, bytes) = sweep(&dir, MEDIA_CACHE_MAX_BYTES, SystemTime::now(), Some(spare));
+        if n > 0 {
+            tracing::info!(files = n, kb = bytes / 1024, "media: swept again");
+        }
+    });
 }
 
 #[cfg(test)]
@@ -169,7 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn sweep_goes_oldest_first_and_keeps_emotes_and_young_parts() {
+    fn sweep_goes_oldest_first_with_emotes_and_keeps_young_parts() {
         let d = dir("sweep");
         file(&d, "old.jpg", 100, 300);
         file(&d, "mid.jpg", 100, 200);
@@ -177,14 +223,29 @@ mod tests {
         file(&d, ".x.jpg.1-0.part", 50, 2 * 60 * 60);
         file(&d, ".y.jpg.1-1.part", 50, 10);
         std::fs::create_dir_all(d.join("emotes")).unwrap();
+        // Planted-bug: emotes/ left out of the sweep (FFI-2: it grew without end)
         file(&d.join("emotes"), "e.png", 500, 1000);
-        let (n, bytes) = sweep(&d, 150, SystemTime::now());
-        assert_eq!((n, bytes), (3, 250));
+        file(&d.join("emotes"), "f.png", 10, 50);
+        let (n, bytes) = sweep(&d, 150, SystemTime::now(), None);
+        assert_eq!((n, bytes), (4, 750));
         assert!(!d.join("old.jpg").exists() && !d.join("mid.jpg").exists() && d.join("new.jpg").exists());
         assert!(!d.join(".x.jpg.1-0.part").exists() && d.join(".y.jpg.1-1.part").exists());
-        assert!(d.join("emotes/e.png").exists());
+        assert!(!d.join("emotes/e.png").exists() && d.join("emotes/f.png").exists());
         // under the limit: nothing goes
-        assert_eq!(sweep(&d, 1000, SystemTime::now()), (0, 0));
+        assert_eq!(sweep(&d, 1000, SystemTime::now(), None), (0, 0));
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    // Planted-bug: the sweep after SWEEP_AGAIN_BYTES ignores `spare` and
+    // removes a file this run gave out (the UI would lose a shown picture).
+    #[test]
+    fn sweep_again_spares_this_runs_files() {
+        let d = dir("spare");
+        file(&d, "old.jpg", 100, 3000);
+        file(&d, "shown.jpg", 100, 100);
+        let spare = SystemTime::now() - Duration::from_secs(1000);
+        assert_eq!(sweep(&d, 0, SystemTime::now(), Some(spare)), (1, 100));
+        assert!(!d.join("old.jpg").exists() && d.join("shown.jpg").exists());
         std::fs::remove_dir_all(&d).ok();
     }
 

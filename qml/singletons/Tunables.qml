@@ -61,6 +61,9 @@ QtObject {
     readonly property real mediaMaxWidth: 0.6
     // height over width when an event carries no size
     readonly property real mediaFallbackAspect: 0.75
+    // a picture, sticker or GIF larger than this by the size its event
+    // states is not fetched whole by itself, only at a tap (audit FFI-3)
+    readonly property real mediaAutoLoadMaxBytes: 20 * 1024 * 1024
     // quote bar and mention bar, in pixels
     readonly property int barWidth: 2
     // quote background, black at this opacity

@@ -6,6 +6,9 @@ use super::*;
 use matrix_sdk::room::Receipts;
 use matrix_sdk::send_queue::LocalEchoContent;
 use crate::serialize::{has_other_readers, item_json, thread_latest, Extras, TimelineDiff};
+use matrix_sdk::attachment::BaseFileInfo;
+use matrix_sdk::ruma::events::sticker::{StickerEventContent, StickerMediaSource};
+use matrix_sdk_ui::timeline::AttachmentSource;
 
 impl Core {
     /// A send the server refuses for good stays in its room's send queue, and
@@ -772,8 +775,41 @@ impl Core {
             .await
             .context("the message is not in the loaded timeline")?;
         let kind = item.content().as_msglike().map(|m| &m.kind);
+        // into a room that is not (known to be) encrypted, a file from an
+        // encrypted one goes as a fresh unencrypted upload: the original's
+        // reference would put its key and address into that room's history
+        // (content audit). The upload shows as any other.
+        let plain_target = !target.encryption_state().is_encrypted();
         let content: AnyMessageLikeEventContent = match kind {
+            // a place's map picture is no file of its own: left out
+            Some(MsgLikeKind::Message(message)) if plain_target && carries_key(message.msgtype())
+                && matches!(message.msgtype(), MessageType::Location(_)) => {
+                let mut msgtype = message.msgtype().clone();
+                if let MessageType::Location(l) = &mut msgtype {
+                    if let Some(info) = l.info.as_mut() {
+                        info.thumbnail_source = None;
+                        info.thumbnail_info = None;
+                    }
+                }
+                RoomMessageEventContent::new(msgtype).into()
+            }
+            Some(MsgLikeKind::Message(message)) if plain_target && carries_key(message.msgtype()) => {
+                self.forward_copy(&target, message.msgtype()).await?;
+                self.emit(json!({"ev": "forwarded", "room_id": room_id, "event_id": event_id, "to_room": target.room_id().as_str()}));
+                return Ok(());
+            }
             Some(MsgLikeKind::Message(message)) => RoomMessageEventContent::new(message.msgtype().clone()).into(),
+            Some(MsgLikeKind::Sticker(sticker)) if plain_target && sticker_carries_key(sticker.content()) => {
+                let st = sticker.content();
+                let client = self.client().await?;
+                let bytes = Self::fetch_media(&client, st, false).await?.context("media not available")?;
+                let mime = st.info.mimetype.as_deref().and_then(|m| m.parse().ok()).unwrap_or(mime::IMAGE_PNG);
+                let url = client.media().upload(&mime, bytes, None).await?.content_uri;
+                let mut info = st.info.clone();
+                info.thumbnail_source = None;
+                info.thumbnail_info = None;
+                StickerEventContent::new(st.body.clone(), info, url).into()
+            }
             Some(MsgLikeKind::Sticker(sticker)) => {
                 let mut content = sticker.content().clone();
                 content.relates_to = None;
@@ -787,6 +823,88 @@ impl Core {
         };
         target.send_queue().send(content).await?;
         self.emit(json!({"ev": "forwarded", "room_id": room_id, "event_id": event_id, "to_room": target.room_id().as_str()}));
+        Ok(())
+    }
+
+    /// A forwarded file sent anew, unencrypted: its bytes (decrypted), its
+    /// name, caption, size and dimensions, and its thumbnail as data, all
+    /// through the send queue as send_file does. No reference of the
+    /// original goes out.
+    async fn forward_copy(&self, target: &Room, msgtype: &MessageType) -> Result<()> {
+        let client = self.client().await?;
+        let (bytes, name, mime, info, thumb, caption, formatted) = match msgtype {
+            MessageType::Image(c) => (
+                Self::fetch_media(&client, c, false).await?,
+                c.filename(),
+                c.info.as_ref().and_then(|i| i.mimetype.clone()),
+                c.info.as_ref().map(|i| AttachmentInfo::Image(BaseImageInfo {
+                    width: i.width, height: i.height, size: i.size, ..Default::default()
+                })),
+                c.info.as_ref().and_then(|i| i.thumbnail_source.clone().zip(i.thumbnail_info.clone())),
+                c.caption(),
+                c.formatted_caption(),
+            ),
+            MessageType::Video(c) => (
+                Self::fetch_media(&client, c, false).await?,
+                c.filename(),
+                c.info.as_ref().and_then(|i| i.mimetype.clone()),
+                c.info.as_ref().map(|i| AttachmentInfo::Video(BaseVideoInfo {
+                    width: i.width, height: i.height, size: i.size, duration: i.duration, ..Default::default()
+                })),
+                c.info.as_ref().and_then(|i| i.thumbnail_source.clone().zip(i.thumbnail_info.clone())),
+                c.caption(),
+                c.formatted_caption(),
+            ),
+            MessageType::Audio(c) => (
+                Self::fetch_media(&client, c, false).await?,
+                c.filename(),
+                c.info.as_ref().and_then(|i| i.mimetype.clone()),
+                c.info.as_ref().map(|i| {
+                    let base = BaseAudioInfo { duration: i.duration, size: i.size, ..Default::default() };
+                    if c.voice.is_some() { AttachmentInfo::Voice(base) } else { AttachmentInfo::Audio(base) }
+                }),
+                None,
+                c.caption(),
+                c.formatted_caption(),
+            ),
+            MessageType::File(c) => (
+                Self::fetch_media(&client, c, false).await?,
+                c.filename(),
+                c.info.as_ref().and_then(|i| i.mimetype.clone()),
+                c.info.as_ref().map(|i| AttachmentInfo::File(BaseFileInfo { size: i.size })),
+                c.info.as_ref().and_then(|i| i.thumbnail_source.clone().zip(i.thumbnail_info.clone())),
+                c.caption(),
+                c.formatted_caption(),
+            ),
+            _ => bail!("only files, pictures, videos and sounds are sent anew"),
+        };
+        let bytes = bytes.context("media not available")?;
+        let mime = mime
+            .and_then(|m| m.parse::<mime::Mime>().ok())
+            .unwrap_or_else(|| mime_guess::from_path(name).first_or_octet_stream());
+        let mut config = AttachmentConfig::default();
+        config.info = info;
+        // the thumbnail as data too, where it says its size (else none:
+        // the other side draws the file itself)
+        if let Some((source, ti)) = thumb {
+            if let (Some(w), Some(h)) = (ti.width, ti.height) {
+                let request = MediaRequestParameters { source, format: MediaFormat::File };
+                if let Ok(data) = client.media().get_media_content(&request, true).await {
+                    let content_type = ti.mimetype.as_deref().and_then(|m| m.parse().ok()).unwrap_or(mime::IMAGE_JPEG);
+                    let size = UInt::try_from(data.len() as u64).unwrap_or_default();
+                    config.thumbnail = Some(Thumbnail { data, content_type, width: w, height: h, size });
+                }
+            }
+        }
+        if let Some(caption) = caption {
+            config.caption = Some(match formatted {
+                Some(f) => TextMessageEventContent::html(caption, f.body.clone()),
+                None => TextMessageEventContent::plain(caption),
+            });
+        }
+        let tl = self.timeline_target(target, None).await?;
+        let source = AttachmentSource::Data { bytes, filename: name.to_owned() };
+        tl.send_attachment(source, mime, config).use_send_queue().await?;
         Ok(())
     }
 
@@ -1046,11 +1164,13 @@ impl Core {
         // the file from an earlier run, under any name this function gives
         // (below); not for an edited message, whose file may be another one
         media_cache::swept(&media_dir).await;
+        let drawn = thumb || matches!(msgtype, Some(MessageType::Image(_))) || item.content().as_sticker().is_some();
         let cached = if item.content().as_message().is_some_and(|m| m.is_edited()) {
             None
         } else {
             let mut exts: Vec<&str> = MEDIA_EXTENSIONS.to_vec();
-            exts.extend(mime_ext.into_iter().chain(Some("bin")).filter(|e| !MEDIA_EXTENSIONS.contains(e)));
+            // (a drawn one never has the sender's type as its name)
+            exts.extend(mime_ext.filter(|_| !drawn).into_iter().chain(Some("bin")).filter(|e| !MEDIA_EXTENSIONS.contains(e)));
             let (dir, stem) = (media_dir.clone(), stem.clone());
             tokio::task::spawn_blocking(move || media_cache::find_existing(&dir, &stem, &exts, size.map(u64::from)))
                 .await
@@ -1084,17 +1204,23 @@ impl Core {
         // the extension from what the file is: a thumbnail is a JPEG or PNG
         // whatever the original was, and Qt picks its image reader by the
         // extension (a JPEG named .webp or .mp4 showed nothing); else the
-        // message's type
-        let ext = sniff_extension(&bytes).or(mime_ext).unwrap_or("bin");
+        // message's type. What the chat draws as a picture (a thumbnail, a
+        // picture, a sticker) is named only by its bytes: anything but
+        // JPEG, PNG, GIF and WebP is .bin and shows as a file (audit UC2:
+        // the sender's type picked Qt's decoder, SVG and TIFF included)
+        let ext = if drawn && !exported {
+            picture_extension(&bytes).unwrap_or("bin")
+        } else {
+            sniff_extension(&bytes).or(mime_ext).unwrap_or("bin")
+        };
         // "dest_dir": a copy for other apps (the data dir is private to the sandbox),
         // named after the file where the message has a name
         let export = dest_dir.map(|dir| {
             let original = item
                 .content()
                 .as_message()
-                .map(|m| m.body().to_owned())
-                .filter(|b| !b.is_empty() && b.len() < MAX_FILENAME_FROM_BODY)
-                .map(|b| b.chars().map(|c| if c == '/' || c == '\\' || c.is_control() { '_' } else { c }).collect::<String>())
+                .and_then(|m| file_name_of(m.msgtype()))
+                .and_then(export_name)
                 .unwrap_or_else(|| format!("{safe}.{ext}"));
             let second = format!("{safe}-{original}");
             (PathBuf::from(dir), original, second)
@@ -1124,6 +1250,7 @@ impl Core {
                 tokio::fs::remove_file(&tmp).await.ok();
                 return Err(e.into());
             }
+            media_cache::written(&media_dir, len as u64);
         }
         tracing::debug!(target: "rustrx::perf", cached = cached.is_some(), bytes = len,
                         ms = t.elapsed().as_millis() as u64, "get_media");
@@ -1140,11 +1267,13 @@ impl Core {
     /// A cached one is answered without the network.
     pub(crate) async fn fetch_emote(&'static self, mxc: &str) -> Result<()> {
         let dir = self.data_dir.join(MEDIA_DIR).join(EMOTE_DIR);
+        // swept (with media/) before the first path of this run goes out
+        media_cache::swept(&self.data_dir.join(MEDIA_DIR)).await;
         let safe = emote_stem(mxc);
-        // the cached file has one of the extensions sniff_extension gives:
+        // the cached file has one of the extensions picture_extension gives:
         // looked up by name, without listing the folder per emoji
         let mut cached = None;
-        for ext in MEDIA_EXTENSIONS {
+        for ext in PICTURE_EXTENSIONS {
             let p = dir.join(format!("{safe}.{ext}"));
             if tokio::fs::try_exists(&p).await.unwrap_or(false) {
                 cached = Some(p);
@@ -1152,8 +1281,20 @@ impl Core {
             }
         }
         let path = match cached {
-            Some(p) => p,
+            Some(p) => {
+                // the sweep goes by date (media_cache): what is shown stays
+                let touched = p.clone();
+                tokio::task::spawn_blocking(move || media_cache::touch(&touched));
+                p
+            }
             None => {
+                // one refused (too large, no picture) is not fetched again in
+                // this run; at most EMOTE_FETCHES_AT_ONCE at a time (FFI-2: one
+                // message could start some 2000 requests at once)
+                if emotes_refused().lock().is_ok_and(|r| r.contains(mxc)) {
+                    return Ok(());
+                }
+                let _slot = emote_slots().acquire().await?;
                 let generation = self.generation().await;
                 let client = self.client().await?;
                 let url = OwnedMxcUri::from(mxc);
@@ -1175,11 +1316,32 @@ impl Core {
                         return Ok(());
                     }
                 };
-                let ext = sniff_extension(&bytes).unwrap_or("png");
+                // too large to keep, or no picture Rustrx draws (UC2): it
+                // stays its name
+                let ext = match picture_extension(&bytes) {
+                    Some(ext) if bytes.len() <= EMOTE_MAX_BYTES => ext,
+                    found => {
+                        tracing::info!(%mxc, bytes = bytes.len(), picture = found.is_some(), "emote: not kept");
+                        if let Ok(mut r) = emotes_refused().lock() {
+                            r.insert(mxc.to_owned());
+                        }
+                        return Ok(());
+                    }
+                };
                 self.same_login(generation).await?;
                 tokio::fs::create_dir_all(&dir).await?;
                 let path = dir.join(format!("{safe}.{ext}"));
-                tokio::fs::write(&path, &bytes).await?;
+                // whole or not at all, as get_media writes
+                let tmp = media_cache::temp_path(&path);
+                if let Err(e) = tokio::fs::write(&tmp, &bytes).await {
+                    tokio::fs::remove_file(&tmp).await.ok();
+                    return Err(e.into());
+                }
+                if let Err(e) = tokio::fs::rename(&tmp, &path).await {
+                    tokio::fs::remove_file(&tmp).await.ok();
+                    return Err(e.into());
+                }
+                media_cache::written(&self.data_dir.join(MEDIA_DIR), bytes.len() as u64);
                 // the file of 0.8.3 and before, named by the address with
                 // every other character `_` (two addresses could share it),
                 // goes once this one is here
@@ -1194,6 +1356,18 @@ impl Core {
         self.emit(json!({"ev": "emote", "mxc": mxc, "path": path.to_string_lossy()}));
         Ok(())
     }
+}
+
+/// The custom emoji not kept in this run (too large, or no picture).
+fn emotes_refused() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static REFUSED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+    REFUSED.get_or_init(Default::default)
+}
+
+/// The custom emoji downloads that may run at once, for every account.
+fn emote_slots() -> &'static tokio::sync::Semaphore {
+    static SLOTS: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
+    SLOTS.get_or_init(|| tokio::sync::Semaphore::new(EMOTE_FETCHES_AT_ONCE))
 }
 
 /// A custom emoji's file name without extension, by its whole address
@@ -1236,11 +1410,11 @@ fn export_new_file(dir: &std::path::Path, names: &[&str], bytes: &[u8]) -> Resul
     Err(std::io::Error::from(std::io::ErrorKind::AlreadyExists).into())
 }
 
-/// Every extension sniff_extension gives (a custom emoji without a known
-/// type is saved as png).
+/// Every extension sniff_extension gives.
 const MEDIA_EXTENSIONS: [&str; 7] = ["png", "jpg", "gif", "webp", "mp4", "webm", "ogg"];
+/// The ones picture_extension gives.
+const PICTURE_EXTENSIONS: [&str; 4] = ["png", "jpg", "gif", "webp"];
 
-/// The file type from its first bytes, for the types the UI shows or plays.
 /// The first page of a room opened: enough to reach the unread line
 /// (`unread` messages back, state rows and dates among them), within reason.
 fn first_page(unread: u64) -> u16 {
@@ -1251,6 +1425,7 @@ fn first_page(unread: u64) -> u16 {
 /// The largest first page (`first_page`).
 const FIRST_PAGE_MAX: u64 = 200;
 
+/// The file type from its first bytes, for the types the UI shows or plays.
 fn sniff_extension(bytes: &[u8]) -> Option<&'static str> {
     let b = bytes;
     if b.starts_with(&[0xFF, 0xD8, 0xFF]) {
@@ -1270,6 +1445,64 @@ fn sniff_extension(bytes: &[u8]) -> Option<&'static str> {
     } else {
         None
     }
+}
+
+/// Whether a message's file or thumbnail is an encrypted one, whose
+/// reference holds its key.
+fn carries_key(msgtype: &MessageType) -> bool {
+    let enc = |s: &MediaSource| matches!(s, MediaSource::Encrypted(_));
+    let thumb = |s: Option<&MediaSource>| s.is_some_and(enc);
+    match msgtype {
+        MessageType::Image(c) => enc(&c.source) || thumb(c.info.as_ref().and_then(|i| i.thumbnail_source.as_ref())),
+        MessageType::Video(c) => enc(&c.source) || thumb(c.info.as_ref().and_then(|i| i.thumbnail_source.as_ref())),
+        MessageType::File(c) => enc(&c.source) || thumb(c.info.as_ref().and_then(|i| i.thumbnail_source.as_ref())),
+        MessageType::Audio(c) => enc(&c.source),
+        MessageType::Location(l) => thumb(l.info.as_ref().and_then(|i| i.thumbnail_source.as_ref())),
+        _ => false,
+    }
+}
+
+/// The same for a sticker.
+fn sticker_carries_key(st: &StickerEventContent) -> bool {
+    !matches!(st.source, StickerMediaSource::Plain(_))
+        || st.info.thumbnail_source.as_ref().is_some_and(|s| matches!(s, MediaSource::Encrypted(_)))
+}
+
+/// The extension of a picture the chat may decode: JPEG, PNG, GIF or WebP
+/// by its first bytes, else none (audit UC2).
+pub(crate) fn picture_extension(bytes: &[u8]) -> Option<&'static str> {
+    sniff_extension(bytes).filter(|e| matches!(*e, "jpg" | "png" | "gif" | "webp"))
+}
+
+/// The file name a message gives its file (`filename`, else the body when
+/// that is no caption), not the caption a sender may put in the body.
+fn file_name_of(msgtype: &MessageType) -> Option<&str> {
+    match msgtype {
+        MessageType::Image(c) => Some(c.filename()),
+        MessageType::File(c) => Some(c.filename()),
+        MessageType::Audio(c) => Some(c.filename()),
+        MessageType::Video(c) => Some(c.filename()),
+        _ => None,
+    }
+}
+
+/// A sender's file name as a name in Downloads (audit UC5): no folder
+/// parts or control characters, no bidi or zero-width characters (they
+/// can turn "gpj.rpm" into what reads as "mpr.jpg"), and no trailing dots
+/// or spaces (which hid ".rpm" from the type by name). None when nothing
+/// is left, or it is too long.
+pub(crate) fn export_name(name: &str) -> Option<String> {
+    let invisible = |c: char| matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}');
+    let cleaned: String = name
+        .chars()
+        .filter(|&c| !invisible(c))
+        .map(|c| if c == '/' || c == '\\' || c.is_control() { '_' } else { c })
+        .collect();
+    let cleaned = cleaned.trim_end_matches(['.', ' ']).trim_start();
+    if cleaned.is_empty() || cleaned.len() >= MAX_FILENAME_FROM_BODY || cleaned.chars().all(|c| c == '.') {
+        return None;
+    }
+    Some(cleaned.to_owned())
 }
 
 /// A message as the composer's text makes it: markdown or not, an emote
@@ -1508,6 +1741,92 @@ fn read_receipts(event_id: OwnedEventId, private: bool, marker: bool) -> Receipt
 mod tests {
     use super::*;
     use crate::protocol::MentionArg;
+
+    /// Only JPEG, PNG, GIF and WebP by their bytes are drawn (audit UC2).
+    /// Planted-bug: picture_extension passes sniff_extension on whole (an
+    /// mp4 or ogg would be named a picture), or SVG gets through.
+    #[test]
+    fn only_four_picture_types_are_drawn() {
+        assert_eq!(picture_extension(&[0xFF, 0xD8, 0xFF, 0xE0]), Some("jpg"));
+        assert_eq!(picture_extension(b"\x89PNG\r\n\x1a\n"), Some("png"));
+        assert_eq!(picture_extension(b"GIF89a"), Some("gif"));
+        assert_eq!(picture_extension(b"RIFF\0\0\0\0WEBPVP8 "), Some("webp"));
+        assert_eq!(picture_extension(b"<?xml version=\"1.0\"?><svg"), None);
+        assert_eq!(picture_extension(b"<svg xmlns="), None);
+        assert_eq!(picture_extension(b"BM\0\0\0\0"), None);
+        assert_eq!(picture_extension(b"II*\0"), None);
+        assert_eq!(picture_extension(b"\0\0\0\x18ftypmp42"), None);
+        assert_eq!(picture_extension(b"OggS"), None);
+        assert_eq!(picture_extension(b""), None);
+    }
+
+    /// A sender's file name as saved (audit UC5).
+    /// Planted-bug: keep the bidi/zero-width characters, or the trailing
+    /// dots and spaces that hid ".rpm" from the type by name.
+    #[test]
+    fn export_names_are_cleaned() {
+        assert_eq!(export_name("photo.jpg").as_deref(), Some("photo.jpg"));
+        assert_eq!(export_name("setup.rpm ").as_deref(), Some("setup.rpm"));
+        assert_eq!(export_name("setup.rpm. . ").as_deref(), Some("setup.rpm"));
+        assert_eq!(export_name("setup.rpm\u{200B}").as_deref(), Some("setup.rpm"));
+        assert_eq!(export_name("photo\u{202E}gpj.rpm").as_deref(), Some("photogpj.rpm"));
+        assert_eq!(export_name("\u{FEFF}a\u{2066}b\u{200F}.pdf").as_deref(), Some("ab.pdf"));
+        assert_eq!(export_name("../../x/y.txt").as_deref(), Some(".._.._x_y.txt"));
+        assert_eq!(export_name("a\nb").as_deref(), Some("a_b"));
+        assert_eq!(export_name("..."), None);
+        assert_eq!(export_name("  "), None);
+        assert_eq!(export_name("\u{200B}"), None);
+        assert_eq!(export_name(&"x".repeat(MAX_FILENAME_FROM_BODY)), None);
+    }
+
+    /// The saved name is the file's, not the caption the body holds when
+    /// they differ (audit UC5: "setup.rpm" captioned "photo" was saved as
+    /// "photo" and opened). Planted-bug: name the export by m.body() again.
+    #[test]
+    fn export_is_named_after_the_file_not_the_caption() {
+        let file = msgtype(json!({"msgtype": "m.file", "body": "photo", "filename": "setup.rpm", "url": "mxc://s/f"}));
+        assert_eq!(file_name_of(&file), Some("setup.rpm"));
+        let plain = msgtype(json!({"msgtype": "m.image", "body": "cat.jpg", "url": "mxc://s/i"}));
+        assert_eq!(file_name_of(&plain), Some("cat.jpg"));
+        assert_eq!(file_name_of(&msgtype(json!({"msgtype": "m.text", "body": "x.rpm"}))), None);
+    }
+
+    fn msgtype(v: serde_json::Value) -> MessageType {
+        serde_json::from_value::<RoomMessageEventContent>(v).unwrap().msgtype
+    }
+
+    fn encrypted_file(url: &str) -> serde_json::Value {
+        json!({"url": url, "v": "v2", "iv": "AAAAAAAAAAAAAAAAAAAAAA",
+               "hashes": {"sha256": "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU"},
+               "key": {"kty": "oct", "key_ops": ["encrypt", "decrypt"], "alg": "A256CTR", "ext": true,
+                       "k": "qcHVMSgYg-71CauWBezXI5qkaRb0LuIy-Wx5kIaHMIA"}})
+    }
+
+    /// Forwarded into an unencrypted room, a file whose reference holds a
+    /// key (the file's or its thumbnail's) is uploaded anew instead of
+    /// being sent as it is (content audit). Planted-bug: carries_key looks
+    /// at the file only, not at the thumbnail (a picture's thumbnail key
+    /// went out), or at nothing for a video.
+    #[test]
+    fn forwarded_files_with_a_key_are_sent_anew() {
+        let enc = encrypted_file("mxc://s/enc");
+        assert!(carries_key(&msgtype(json!({"msgtype": "m.file", "body": "a.pdf", "file": enc}))));
+        assert!(carries_key(&msgtype(json!({"msgtype": "m.video", "body": "v.mp4", "file": enc}))));
+        assert!(carries_key(&msgtype(json!({"msgtype": "m.audio", "body": "a.ogg", "file": enc}))));
+        assert!(carries_key(&msgtype(json!({"msgtype": "m.image", "body": "p.jpg", "url": "mxc://s/plain",
+                                            "info": {"thumbnail_file": enc}}))));
+        assert!(!carries_key(&msgtype(json!({"msgtype": "m.image", "body": "p.jpg", "url": "mxc://s/plain",
+                                             "info": {"thumbnail_url": "mxc://s/t"}}))));
+        assert!(!carries_key(&msgtype(json!({"msgtype": "m.text", "body": "hi"}))));
+        assert!(carries_key(&msgtype(json!({"msgtype": "m.location", "body": "here", "geo_uri": "geo:1,2",
+                                            "info": {"thumbnail_file": enc}}))));
+        assert!(!carries_key(&msgtype(json!({"msgtype": "m.location", "body": "here", "geo_uri": "geo:1,2"}))));
+        let sticker: StickerEventContent = serde_json::from_value(json!({"body": "s", "info": {}, "url": "mxc://s/st"})).unwrap();
+        assert!(!sticker_carries_key(&sticker));
+        let sticker: StickerEventContent = serde_json::from_value(json!({"body": "s", "info": {"thumbnail_file": enc},
+                                                                          "url": "mxc://s/st"})).unwrap();
+        assert!(sticker_carries_key(&sticker));
+    }
 
     /// Addresses that differ only in a `.` and a `-` (or `-` and `_`) get
     /// two emote files; the name never leaves the folder.

@@ -287,6 +287,16 @@ private:
     QString m_path;
 };
 
+// What a notification's Answer does (IPC1c): a ring that is up is
+// answered; one that is over (an old notification's Answer, or a copy of
+// one) only opens its room, the author's choice for 0.8.4, and never
+// starts a call there. From inside the process (QML) it is always taken.
+enum class Answer { Call, OpenRoom };
+inline Answer answerFor(bool fromBus, bool ringing)
+{
+    return !fromBus || ringing ? Answer::Call : Answer::OpenRoom;
+}
+
 // A random secret in a 0600 file in the data folder, made once: only a
 // process in Rustrx's sandbox (or an unsandboxed one of the user, which
 // could do anything anyway) can read it. A second launch hands it to the

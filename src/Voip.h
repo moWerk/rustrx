@@ -63,8 +63,12 @@ class Voip : public QObject
     // when the media came up (ms since the epoch), 0 before
     Q_PROPERTY(qint64 connectedAt READ connectedAt NOTIFY changed)
     // why the last call ended: "", "hangup", "rejected", "answered_elsewhere",
-    // "invite_timeout", "ice_failed", "user_media_failed", "send_failed"
+    // "invite_timeout", "ice_failed", "user_media_failed", "send_failed",
+    // "replaced" (a quiet ring that gave way to one that rings)
     Q_PROPERTY(QString endReason READ endReason NOTIFY changed)
+    // the call that rings here came in a room of more than two (audit 0.8.4
+    // NET-4): its notification only, with no ringtone and no call page
+    Q_PROPERTY(bool quiet READ quiet NOTIFY changed)
 
 public:
     explicit Voip(QObject *parent = nullptr);
@@ -79,6 +83,7 @@ public:
     void setSpeaker(bool on);
     qint64 connectedAt() const { return m_connectedAt; }
     QString endReason() const { return m_endReason; }
+    bool quiet() const { return m_quiet; }
     // the last call ended as "answered_elsewhere" because another device of
     // ours declined it (a reject or hangup), not answered it: a missed call
     Q_INVOKABLE bool declinedElsewhere() const { return m_declinedElsewhere; }
@@ -214,6 +219,7 @@ private:
     qint64 m_connectedAt = 0;
     QString m_endReason;
     bool m_declinedElsewhere = false;
+    bool m_quiet = false;
     QVariantList m_localCandidates;   // waiting to go out in one event
     QVariantList m_remoteCandidates;  // waiting for the remote description
     QStringList m_turnUris;

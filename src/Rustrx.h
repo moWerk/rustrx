@@ -400,6 +400,12 @@ public:
     // one that fails to load when the picture is too large to decode
     // (PixelGate, audit UC3); "" for none
     Q_INVOKABLE QString picture(const QString &path) const;
+    // whether a received file's bytes are a picture the chat draws (JPEG,
+    // PNG, GIF, WebP; audit UC2): any other shows as a file
+    Q_INVOKABLE bool isPicture(const QString &path) const;
+    // whether a received file saved to Downloads may be opened in the app
+    // for its type (OpenCheck, audit UC5); else it is only saved
+    Q_INVOKABLE bool mayOpen(const QString &path) const;
     // Service.qml's notifications as they are posted and closed: their
     // actions are taken only while they are up (NotifyGate::Posted)
     Q_INVOKABLE void notePosted(int account, const QString &roomId, const QString &eventId, const QStringList &emoji);
@@ -623,7 +629,8 @@ public slots:
     Q_SCRIPTABLE void openAccountRoom(const QString &account, const QString &roomId);
     // a second launch: true when this is the stand-in or a push-woken
     // process, which leaves at once, and the caller waits for the name to go
-    // and becomes the app. Only with the data folder's secret (NotifyGate):
+    // and becomes the app. Only with proof of the data folder's secret
+    // (NotifyGate, NameProof::leaveToken):
     // anyone else could end the stand-in for good (exit 0 is not restarted)
     Q_SCRIPTABLE bool activateWith(const QString &secret);
     // the same without the secret, as before 0.8.4: shows the window, never quits

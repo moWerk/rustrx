@@ -284,7 +284,7 @@ bool isRinging(const QJsonValue &v)
     const QJsonObject o = v.toObject();
     if (o.isEmpty())
         return true;   // no call
-    if (!onlyKeys(o, { "room_id", "call_id", "party_id", "version", "offer", "peer_name", "peer_user", "expires_at", "answer", "candidates" }))
+    if (!onlyKeys(o, { "room_id", "call_id", "party_id", "version", "offer", "peer_name", "peer_user", "expires_at", "answer", "candidates", "quiet" }))
         return false;
     const QJsonValue party = o.value("party_id");
     const QJsonValue version = o.value("version");
@@ -301,6 +301,7 @@ bool isRinging(const QJsonValue &v)
                 || isOpaque(o.value("peer_user")))
             && expires.isDouble() && expires.toDouble() > 0 && expires.toDouble() <= double(latest)
             && (o.value("answer").isUndefined() || o.value("answer").isBool())
+            && (o.value("quiet").isUndefined() || o.value("quiet").isBool())
             && (o.value("candidates").isUndefined() || isCandidates(o.value("candidates")));
 }
 

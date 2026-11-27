@@ -116,7 +116,7 @@ Item {
     // Decline reach it through the same notification actions
     Connections {
         target: rustrx.voip
-        onIncoming: service.ringCall(rustrx.voipAccount(), roomId, roomName, peerName, true, "", ringMs)
+        onIncoming: service.ringCall(rustrx.voipAccount(), roomId, roomName, peerName, true, "", ringMs, rustrx.voip.quiet)
         onChanged: if (rustrx.voip.state !== "incoming") service.stopRinging(rustrx.voip.roomId, service.voipUnanswered())
     }
 
@@ -193,10 +193,13 @@ Item {
     // latest message; reply and emoji can be switched off in Settings.
     // lipstick puts the buttons in one row while they fit and stacks every
     // one of them otherwise: these fit a phone's row (Jolla Phone 2026: 871
-    // of 972 px). With push on and a distributor there they go to the push
-    // connector, so a closed Rustrx answers them without its window; without
-    // a distributor nobody may own that name and they would be lost, so they
-    // go to the app's own name (with Rustrx closed a tap then opens it).
+    // of 972 px). With push on and a distributor there, Mark as read and the
+    // emoji go to the push connector, so a closed Rustrx answers them
+    // without its window; without a distributor nobody may own that name and
+    // they would be lost, and while another app holds it (audit 0.8.4 IPC2)
+    // they would reach that app, so then they go to the app's own name (with
+    // Rustrx closed a tap then opens it). Reply always goes there: the text
+    // typed into it must reach no other app (IPC2).
     // the user's three from Settings; the default when none are left
     readonly property var notificationEmoji: {
         var picked = String(cfg.notifyEmoji || "").split(/\s+/).filter(function (e) { return e.length > 0 }).slice(0, 3)
@@ -214,12 +217,12 @@ Item {
     }
     // each names its account (as text: the arguments arrive as written)
     function roomActions(account, roomId, eventId) {
-        var viaPush = rustrx.push.enabled && rustrx.push.available
+        var viaPush = rustrx.push.enabled && rustrx.push.available && !rustrx.push.blocked
         var a = String(account)
         var actions = [ action("default", "openAccountRoom", [ a, roomId ]) ]
         if (cfg.notifyReply) {
             //% "Reply"
-            var reply = action("reply", "replyFromAccountNotification", [ a, roomId ], qsTrId("rustrx-me-notification-reply"), viaPush)
+            var reply = action("reply", "replyFromAccountNotification", [ a, roomId ], qsTrId("rustrx-me-notification-reply"))
             reply["type"] = "input"
             actions.push(reply)
         }
@@ -353,12 +356,14 @@ Item {
     // ringtone (lipstick plays its feedback while it is shown), Answer and
     // Decline; it goes when it expires, is answered or declined, the call
     // ends, or the room is opened. A group call's start only notifies.
+    // quiet: a classic call in a room of more than two (audit 0.8.4 NET-4),
+    // its line with Answer and Decline as a message's, no ringtone, no page
     property var ringing: ({})
-    function ringCall(account, roomId, roomName, senderName, ring, eventId, expiresMs) {
+    function ringCall(account, roomId, roomName, senderName, ring, eventId, expiresMs, quiet) {
         takeOverOld()
         stopRinging(roomId)
         var n = ringComponent.createObject(service, { roomId: roomId, eventId: eventId, ring: ring, account: account,
-                                                      senderName: senderName })
+                                                      senderName: senderName, quiet: quiet === true })
         // who calls and from where stays inside Rustrx when chat names do (Privacy)
         n.summary = !chatDetails
                 //: notification title when chat names stay inside Rustrx
@@ -389,7 +394,7 @@ Item {
         console.log("call: incoming", ring ? "ring" : "notification", "for", expiresMs, "ms")
         // with Rustrx closed: the app starts with the call, its notification
         // up; with "Force Call UI in front" off the ring is the notification only
-        rustrx.ringPosted(ring && cfg.forceCallUi)
+        rustrx.ringPosted(ring && !n.quiet && cfg.forceCallUi)
     }
     // unanswered: it expired, the caller gave up or another device of ours
     // declined; false: answered or declined here, or the room opened;
@@ -467,7 +472,7 @@ Item {
     // how the classic call that stopped ringing ended
     function voipUnanswered() {
         var why = rustrx.voip.endReason
-        return rustrx.voip.state === "idle" && (why === "invite_timeout" || why === "hangup"
+        return rustrx.voip.state === "idle" && (why === "invite_timeout" || why === "hangup" || why === "replaced"
                 || (why === "answered_elsewhere" && rustrx.voip.declinedElsewhere()))
     }
     // a room's message line waits while the room rings (the author's wish):
@@ -514,6 +519,8 @@ Item {
             property string roomId
             property string eventId
             property bool ring
+            // rings without the ringtone (ringCall's quiet)
+            property bool quiet
             property int account
             // who calls, for a missed call ("" for one adopted from an earlier process)
             property string senderName
@@ -527,8 +534,8 @@ Item {
             appIcon: "harbour-rustrx"
             // a ringing call: the VoIP ringtone, the display on
             // (notificationcategories/)
-            category: ring ? "x-harbour-rustrx.call" : "x-harbour-rustrx.message"
-            urgency: ring ? Notification.Critical : Notification.Normal
+            category: ring && !quiet ? "x-harbour-rustrx.call" : "x-harbour-rustrx.message"
+            urgency: ring && !quiet ? Notification.Critical : Notification.Normal
             isTransient: false
             remoteActions: [
                 service.action("default", "openAccountRoom", [ String(account), roomId ]),
@@ -824,8 +831,11 @@ Item {
             old.close()
             return
         }
+        // a classic call's (no event id) rang quietly when it came as a message's
+        var loud = old.category === "x-harbour-rustrx.call"
+        var classic = ring.eventId === ""
         var n = ringComponent.createObject(service, { roomId: ring.roomId, eventId: ring.eventId, account: ring.account,
-                                                      ring: old.category === "x-harbour-rustrx.call", adopted: old })
+                                                      ring: loud || classic, quiet: !loud && classic, adopted: old })
         n.expiry.interval = left
         n.expiry.start()
         var r = ringing

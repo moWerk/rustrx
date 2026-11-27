@@ -35,6 +35,13 @@ pub(crate) async fn member_name(room: &Room, user: &UserId) -> String {
     }
 }
 
+/// A sender's name in a one-line text (room list, notification): with
+/// the user id after it when another member has the same name, as
+/// "Anna (@anna:server)" (audit UC7: a copied name looked the same).
+pub(crate) fn shown_name(name: &str, user: &UserId, ambiguous: bool) -> String {
+    if ambiguous { format!("{name} ({user})") } else { name.to_owned() }
+}
+
 /// A timeline sender's display name, else the localpart of their id.
 pub(crate) fn profile_name(profile: &TimelineDetails<Profile>, user: &UserId) -> String {
     match profile {
@@ -145,7 +152,7 @@ pub(crate) async fn preview(room: &Room, is_dm: bool) -> (Option<String>, Option
     let (who, picture) = match sender {
         Some(user) if user == room.own_user_id() => (Some("You".to_owned()), None),
         Some(user) => match room.get_member_no_sync(&user).await {
-            Ok(Some(m)) => (Some(m.name().to_owned()), m.avatar_url().map(ToOwned::to_owned)),
+            Ok(Some(m)) => (Some(shown_name(m.name(), &user, m.name_ambiguous())), m.avatar_url().map(ToOwned::to_owned)),
             _ => (Some(user.localpart().to_owned()), None),
         },
         None => (None, None),
@@ -494,6 +501,8 @@ fn message_json(o: &mut Map<String, Value>, msg: &matrix_sdk_ui::timeline::Messa
             put(o, "type", "image");
             // the text sent with it, when the body is not just the file name
             put(o, "caption", c.caption());
+            // for the file row a picture Rustrx does not draw becomes (audit UC2)
+            put(o, "filename", c.filename());
             if let Some(i) = &c.info {
                 put(o, "mime", i.mimetype.clone());
                 put(o, "size", i.size.map(u64::from));
@@ -563,6 +572,10 @@ fn content_json(o: &mut Map<String, Value>, content: &TimelineItemContent, own: 
                         put(&mut r, "sender", ev.sender.as_str());
                         if let TimelineDetails::Ready(p) = &ev.sender_profile {
                             put(&mut r, "sender_name", p.display_name.clone());
+                            // another member has this name: the UI adds the id (audit UC7)
+                            if p.display_name_ambiguous {
+                                put(&mut r, "sender_ambiguous", true);
+                            }
                         }
                         if let Some(msg) = ev.content.as_message() {
                             put(&mut r, "body", msg.body());
@@ -692,6 +705,10 @@ pub(crate) fn item_json(item: &TimelineItem, own: &UserId, names: &HashMap<Owned
             put(&mut o, "sender", e.sender().as_str());
             if let TimelineDetails::Ready(p) = e.sender_profile() {
                 put(&mut o, "sender_name", p.display_name.clone());
+                // another member has this name: the UI adds the id (audit UC7)
+                if p.display_name_ambiguous {
+                    put(&mut o, "sender_ambiguous", true);
+                }
             }
             put(&mut o, "is_own", e.is_own());
             put(&mut o, "ts", ms(e.timestamp()));
@@ -1166,6 +1183,15 @@ mod tests {
     /// A sender's name: the display name when the profile is there, else
     /// the localpart (never the whole id, never empty).
     /// Planted-bug: fall back to `user.to_string()`.
+    /// Planted-bug: shown_name ignores `ambiguous` (a copied display name
+    /// reads as the original in the room list and the notification).
+    #[test]
+    fn shared_names_get_the_id() {
+        let user = matrix_sdk::ruma::user_id!("@anna:example.org");
+        assert_eq!(shown_name("Anna", user, true), "Anna (@anna:example.org)");
+        assert_eq!(shown_name("Anna", user, false), "Anna");
+    }
+
     #[test]
     fn profile_names() {
         let user = user_id!("@anna:example.org");

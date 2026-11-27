@@ -46,6 +46,15 @@ class UnifiedPush : public QObject
     // where the gateway is (its host only, for Settings)
     Q_PROPERTY(QString gatewayHost READ gatewayHost NOTIFY changed)
     Q_PROPERTY(QString status READ status NOTIFY changed)
+    // another app holds the connector's name and could not prove it is a
+    // Rustrx (audit 0.8.4 IPC2): no registration, no pusher, the stand-in
+    // meanwhile; asked again at every start. The same for every account
+    Q_PROPERTY(bool blocked READ blocked NOTIFY changed)
+    // a distributor other than the one push went through (gone now) is
+    // there and waits for the user's yes (IPC3): its name, else ""; and the
+    // one before it. Asked once per start, by the app only
+    Q_PROPERTY(QString offered READ offered NOTIFY changed)
+    Q_PROPERTY(QString pinned READ pinned NOTIFY changed)
 
 public:
     static const char *const kConnectorName;
@@ -70,6 +79,21 @@ public:
     QString distributor() const { return m_distributor; }
     QString gatewayHost() const;
     QString status() const { return m_status; }
+    bool blocked() const;
+    QString offered() const;
+    QString pinned() const;
+    // the user's yes to the offered distributor, or the "not now"
+    Q_INVOKABLE void useDistributor(const QString &name);
+    Q_INVOKABLE void declineDistributor();
+
+    // Which distributor of `names` push goes through: the one it went
+    // through before (`pinned`) while it is there; with none before,
+    // Foghorn by its exact name, else the first by name. With the pinned
+    // one gone, none: another (in `offer`) only with the user's yes.
+    static QString chooseDistributor(const QStringList &names, const QString &pinned, QString *offer = nullptr);
+    // the data folder's push.json says the connector's name was held by
+    // another app at the last look
+    static bool blockedOnDisk(const QString &dataDir);
 
     // the connector object on the bus and its name (app, stand-in, woken process)
     bool exportConnector();
@@ -109,6 +133,16 @@ private:
     void setStatus(const QString &s);
     bool fromDistributor(const QVariantMap &args) const;
     static UnifiedPush *instanceFor(const QVariantMap &args);
+    // the data folder's instance (the first made): the pin and the block live in its push.json
+    static UnifiedPush *home();
+    // the connector's name: whether its holder is a Rustrx (NameProof)
+    void checkConnector(int tries);
+    static void setConnector(int state);
+    // logged in, switched on, a distributor: registered, unless the
+    // connector's name is not ours
+    void registerIfFree();
+    // the homeserver stops pushing to an endpoint another app receives
+    void dropPusher();
 
     QString m_path;
     QVariantMap m_state;   // enabled, token, endpoint, oldEndpoint, gateway, pusherSet
@@ -120,6 +154,8 @@ private:
     bool m_registerWanted = false;
     // only the newest lookup's answer counts
     int m_lookup = 0;
+    // a registration waits for the connector's check
+    bool m_waitingForConnector = false;
     QNetworkAccessManager *m_net = nullptr;
 };
 

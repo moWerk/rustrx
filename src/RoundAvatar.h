@@ -48,10 +48,12 @@ inline QImage coverSquare(const QImage &img, int size)
 
 inline QImage render(const QString &path, int size, qreal radius)
 {
-    // the decoder by content, as Qt Quick picks it
+    // the decoder its bytes name, of the four drawn (audit UC2)
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) return QImage();
-    QImageReader reader(&file);
+    QImageReader reader;
+    reader.setDevice(&file);
+    PixelGate::onlyItsDecoder(reader, &file);
     const QSize full = reader.size();
     // too large to decode at all (audit UC3): as an unreadable file
     if (!PixelGate::fits(full)) return QImage();

@@ -56,7 +56,7 @@ Rustrx is reachable by other processes in these ways:
 - **The dev hook** `dev(json)` (`src/Rustrx.cpp:773`): answered only while a file `dev-commands` exists in the app's data folder (no package installs it), and then only the requests in the allowlist of `src/DevHook.h` (`refusal()`), tested in `tests/cpp/devhook` and `tests/test_static.py` (`test_dev_hook_takes_only_the_test_commands`). The allowlist includes a password login (`{"login": "password", ...}`) for tests against a local server, and, TEST ONLY, `{"cmd": "dev_ring", "room_id"}`: the core makes up an `m.call.invite` from the room's other member and passes it on as a real one (`dev_ring` in `core/src/core/call.rs`, which checks for the `dev-commands` file itself too), so that a ring can be tested in every process with nobody to call.
 - **The share target** (`X-Share-Methods` in `harbour-rustrx.desktop`; `src/ShareAdaptor.cpp`, `src/ShareCopy.h`): files and text from other apps' share sheets. A path is opened with `O_NOFOLLOW`, must be a regular file, must not resolve into Rustrx's own folders (`ShareAdaptor::mayShare`, line 48), and is copied into the cache at share time; the copy is sent. Descriptors are copied the same way. The share goes to `SharePage` (pick a room), then `ConfirmSendPage`, which sends from its button (`send()`, `rustrx.shareTo`).
 - **URL handlers**: `x-scheme-handler/matrix`, `x-url-handler/matrix.to` and `www.matrix.to` (`harbour-rustrx.desktop`), delivered over D-Bus to `openUrl` (`src/Rustrx.cpp:434`), parsed in `openMatrixUri` (`qml/harbour-rustrx.qml:630`). A user link shows a dialog before a chat starts; a room link shows the join page first (below).
-- **UnifiedPush**: the distributor (for example Foghorn) talks to the connector name `org.unifiedpush.Connector.rustrx` (`src/UnifiedPush.cpp`, `docs/PUSH.md`). Calls carry a token Rustrx made (`registerApp`, line 296, a random UUID) and are ignored without it (`fromDistributor`, line 395). An endpoint that is not `https://` is ignored. A push names only a room and an event; the content is fetched from the homeserver.
+- **UnifiedPush**: the distributor (for example Foghorn) talks to the connector name `org.unifiedpush.Connector.rustrx` (`src/UnifiedPush.cpp`, `docs/PUSH.md`). Calls carry a token Rustrx made (`registerApp`, line 486, a random UUID) and are ignored without it (`fromDistributor`, line 585). An endpoint that is not `https://` is ignored. A push names only a room and an event; the content is fetched from the homeserver.
 - **Push wake**: `dbus/org.unifiedpush.Connector.rustrx.service` starts the binary with `RUSTRX_PUSH_WAKE=1` inside sailjail when a push arrives and nothing holds the connector name.
 
 ### The local filesystem and backups
@@ -139,9 +139,9 @@ All in `core/src/core/session.rs`. No WebView is used for logins.
 
 ### Media on disk
 
-- Decrypted copies of received media are in `media/` per account, named after the event id with only ASCII letters and digits kept (`get_media`, `core/src/core/timeline.rs:987`), written through a temporary file and a rename. A sweep once per process keeps the folder under 300 MB, oldest first (`core/src/core/media_cache.rs`). Custom emoji are in `media/emotes/`, named after the mxc address (`fetch_emote`, `timeline.rs:1121`). The SDK keeps its own media cache in the store (encrypted when the store is).
+- Decrypted copies of received media are in `media/` per account, named after the event id with only ASCII letters and digits kept (`get_media`, `core/src/core/timeline.rs:987`), written through a temporary file and a rename. A sweep once per process keeps the folder under 300 MB, oldest first (`core/src/core/media_cache.rs`). Custom emoji are in `media/emotes/`, named after the mxc address (`fetch_emote`): at most 64 asked per message, four downloads at a time, none above 256 KiB kept, and swept with `media/`, which is swept again after every 50 MB written (audit 0.8.4 FFI-2, FFI-3). The SDK keeps its own media cache in the store (encrypted when the store is).
 - "Save" and opening a file export a copy into `Downloads/Rustrx/`, named after the message's body with `/`, `\` and control characters replaced, never over an existing file (`create_new`), and refused when the folder is a link (`timeline.rs`, in `get_media`).
-- Opening an exported file hands it to the system's handler, except for installer and script extensions (`openFile`, `qml/components/MessageDelegate.qml:280`).
+- Opening an exported file hands it to the system's handler only for an allowed kind whose name and bytes agree (`openFile` in `qml/components/MessageDelegate.qml`, `src/OpenCheck.h`, audit 0.8.4 UC5); anything else is only saved.
 
 ### Metadata on send
 
@@ -184,7 +184,7 @@ All in `core/src/core/session.rs`. No WebView is used for logins.
 ### Pictures and media
 
 - Received pictures are decoded by Qt 5.6's image plugins on the phone, and received audio and video by GStreamer through QtMultimedia. These are system libraries; Rustrx does not control their versions.
-- The file's extension on disk comes from sniffing its first bytes (`sniff_extension`, `timeline.rs:1187`: jpg, png, gif, webp, mp4, webm, ogg), else from the sender's MIME type, else `bin`. Qt picks its reader by that extension.
+- The file's extension on disk comes from sniffing its first bytes (`sniff_extension`: jpg, png, gif, webp, mp4, webm, ogg), else from the sender's MIME type, else `bin`. What the chat draws (thumbnails, pictures, stickers, avatars, custom emoji) is named by its bytes alone and only as jpg, png, gif or webp (`picture_extension`); the C++ side decodes only those four, each by its own decoder (`PixelGate::onlyItsDecoder`, audit 0.8.4 UC2).
 - Rustrx's own parsers read the user's own files before sending, not received ones: `src/Exif.h`, `src/Png.h`, `src/Mp4.h`, with bounds checks and tests. `Mp4::read` also reads a received or shared video's header before a re-encode.
 - The room's avatar provider (`src/AvatarProvider.h`, `src/RoundAvatar.h`) reads local files only, by the path in the image id that QML gives it.
 
@@ -202,7 +202,7 @@ All in `core/src/core/session.rs`. No WebView is used for logins.
 ### Calls
 
 - Classic 1:1 calls: `src/Voip.cpp` drives webrtcbin; the core only carries `m.call.*` events (`core/src/core/call.rs`) and the TURN credentials (`turn_server`, line 162), which go into webrtcbin's TURN URL percent-encoded (`Voip::turnUrl`, line 52). Remote SDP is parsed by GStreamer.
-- Answers, candidates and hangups are taken only from the party that the call is bound to, and a ring's lifetime is capped (audit findings S1, S5, S5b). A relay-only switch in Settings > Privacy keeps the phone's IP addresses from the peer (S6).
+- Answers, candidates and hangups are taken only from the party that the call is bound to, and a ring's lifetime is capped (audit findings S1, S5, S5b). A relay-only switch in Settings > Privacy keeps the phone's IP addresses from the peer (S6), on by default since 0.8.4 (NET-8).
 - Tests: `tests/cpp/voip` (two engines calling each other).
 
 ### Emoji packs and custom emoji
@@ -211,7 +211,7 @@ All in `core/src/core/session.rs`. No WebView is used for logins.
 
 ### Room links and matrix.to
 
-- `openMatrixUri` (`qml/harbour-rustrx.qml:630`) takes `matrix:r/`, `matrix:roomid/`, `matrix:u/` and `https://matrix.to/#/` links, with `via` parameters. A user link opens `StartChatDialog`; a room link opens `JoinPage`, which asks the homeserver for a preview at once (`room_preview`) and joins or knocks only from its buttons.
+- `openMatrixUri` (`qml/harbour-rustrx.qml:630`) takes `matrix:r/`, `matrix:roomid/`, `matrix:u/` and `https://matrix.to/#/` links, with `via` parameters. A user link opens `StartChatDialog`; a room link opens `JoinPage`, which asks the homeserver for a preview (`room_preview`) at once for a link tapped in the app, and only at its Look up button for a link from another app (`outside`, audit 0.8.4 IPC7), and joins or knocks only from its buttons.
 
 ### Slash commands
 
@@ -233,9 +233,9 @@ None of the method sections names the dependency tree, the SDK's use of the stor
 These are questions, not findings. Each one is a place where this guide could not settle the answer from the code.
 
 1. **D-Bus callers.** The methods on `net.mowerk.harbour_rustrx` (`src/Rustrx.h:565-613`) include notification actions that send a reply or a reaction as the user, and `quit`, `activate`, `openUrl`. No slot checks the caller. Which processes can reach this name under sailjail: only lipstick, every unsandboxed process of the user, other sandboxed apps? Is a caller check needed for the actions that send?
-2. **The bus name as lock.** Can another process take `net.mowerk.harbour-rustrx` or `org.unifiedpush.Connector.rustrx` first, and what follows (Rustrx not starting, pushes going elsewhere)?
+2. **The bus name as lock.** Can another process take `net.mowerk.harbour-rustrx` or `org.unifiedpush.Connector.rustrx` first, and what follows (Rustrx not starting, pushes going elsewhere)? Since 0.8.4 (IPC2, IPC6) the holder must prove it is a Rustrx (`src/NameProof.h`, an HMAC under the data folder's `bus-secret` over the name, the holder's unique name and a nonce): otherwise push pauses with a red warning in Settings, or a push-woken process says "Rustrx could not start" once per boot. The distributor is chosen by its exact name and kept; another one needs the user's yes (IPC3).
 3. **gst-launch-1.0 arguments.** `gst-launch-1.0` reads its arguments as a pipeline description (above); the paths are now made by Rustrx. Would building the pipeline through the GStreamer API be the better design?
-4. **openFile's denylist.** `MessageDelegate.qml:279` refuses installer and script extensions by the last extension of a name the sender chose. Is an allowlist by sniffed type safer? What does the system's handler do with a name such as `x.rpm ` or a type it sniffs from content?
+4. **openFile's allowlist.** Up to 0.8.3 a denylist of extensions; since the 0.8.4 audit (UC5) `OpenCheck::mayOpen` opens only allowed kinds whose name and bytes agree, by the phone's shared-mime-info. Does the phone's handler (libcontentaction) pick its app by the name or by the content, and can a file pass both checks and still reach an installer?
 5. **Store fingerprint.** Settled in 0.8.2: a stable fingerprint, and a store is removed only when the open proves the key wrong (above). Left: builds before 0.8.2 still decide by the old `DefaultHasher` fingerprint, which 0.8.2 leaves in place for them.
 6. **The KDF.** Since 0.8.2 the stores use the high-entropy path (above). Check the migration and that one key wrapping all four databases (and every account) is acceptable; `session.json` is sealed with an HKDF of the hex text, so its wrapping key differs from the stores'.
 7. **Plain http.** `build_client_with` accepts an `http://` homeserver as typed. Should a password login over plain HTTP be refused or warned about?

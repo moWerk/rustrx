@@ -405,6 +405,7 @@ void Voip::reset()
     m_peerUser.clear();
     m_remoteOffer.clear();
     m_version = QVariant();
+    m_quiet = false;
     m_connectedAt = 0;
     m_lastLevel = -100;
     m_packetsIn = m_packetsOut = 0;
@@ -456,7 +457,7 @@ QVariantMap Voip::ringing() const
         return QVariantMap();
     QVariantMap out{ { "room_id", m_roomId }, { "call_id", m_callId }, { "party_id", m_peerParty },
                      { "version", version() }, { "offer", m_remoteOffer }, { "peer_name", m_peerName },
-                     { "peer_user", m_peerUser },
+                     { "peer_user", m_peerUser }, { "quiet", m_quiet },
                      { "expires_at", nowMs() + m_inviteTimer.remainingTime() } };
     // the caller's candidates that came while it rang: the app's sync
     // starts after them (or, after a push, may leave them in a gap)
@@ -489,6 +490,8 @@ void Voip::takeRinging(const QVariantMap &invite)
     m_peerName = invite.value("peer_name").toString();
     // bound to the caller as in the stand-in: others in the room cannot end it
     m_peerUser = invite.value("peer_user").toString();
+    // quiet in the stand-in, quiet here (a room of more than two)
+    m_quiet = invite.value("quiet").toBool();
     m_endReason.clear();
     m_declinedElsewhere = false;
     // declined on the notification while the app was starting: no ring
@@ -543,6 +546,17 @@ void Voip::handleEvent(const QVariantMap &ev)
             qInfo() << "voip: invite too old" << age << lifetime;
             return;
         }
+        // rings only in a room of two (audit 0.8.4 NET-4, as the core's
+        // rings_in for Element Call): in a bigger one anyone could ring the
+        // phone, so there it is its notification only, still answerable
+        const bool quiet = ev.value("joined_members").toLongLong() > Keys::kRingMaxMembers;
+        // a quiet one gives way to one that rings: else anyone in a group
+        // could keep the line busy for a real caller, unseen
+        if (m_state == QLatin1String("incoming") && m_quiet && !quiet && callId != m_callId) {
+            qInfo() << "voip: a call that rings replaces the quiet one, which is answered busy";
+            m_partyId = newId();
+            finish(QStringLiteral("replaced"), true, QStringLiteral("user_busy"));
+        }
         if (m_state != QLatin1String("idle")) {
             // busy: the caller hears so instead of ringing for a minute
             if (callId != m_callId) {
@@ -563,6 +577,9 @@ void Voip::handleEvent(const QVariantMap &ev)
         m_peerName = ev.value("sender_name").toString();
         m_endReason.clear();
         m_declinedElsewhere = false;
+        m_quiet = quiet;
+        if (m_quiet)
+            qInfo() << "voip: invite in a room of more than" << Keys::kRingMaxMembers << "members, not ringing";
         m_inviteTimer.start(int(lifetime - age));
         setState(QStringLiteral("incoming"));
         emit incoming(m_roomId, ev.value("room_name").toString(), m_peerName, int(lifetime - age));

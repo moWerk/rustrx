@@ -30,6 +30,7 @@
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QThread>
 #include <QTimer>
 
@@ -39,6 +40,7 @@
 #include "GstGuard.h"
 #include "Handover.h"
 #include "LocalOnly.h"
+#include "NameProof.h"
 #include "NotifyGate.h"
 #include "QuitSignals.h"
 #include "Rustrx.h"
@@ -73,6 +75,28 @@ static bool waitForNameToGo(QDBusConnection &bus)
         QThread::msleep(Keys::kNameGonePollMs);
     }
     return true;
+}
+
+// Another program holds Rustrx's bus name (audit 0.8.4 IPC6): Rustrx
+// cannot start. A push-woken process says so in one notification per boot
+// (the author's choice), then leaves.
+static void nameTaken(const QString &dataDir)
+{
+    qWarning() << "startup: the bus name is held by a program that is not Rustrx";
+    if (!NameProof::firstThisBoot(dataDir + QLatin1Char('/') + QLatin1String(Keys::kNameTakenFile)))
+        return;
+    QQmlEngine engine;
+    QQmlComponent component(&engine, QUrl::fromLocalFile(SailfishApp::pathTo(QStringLiteral("qml/NameTakenNote.qml")).toLocalFile()));
+    QScopedPointer<QObject> note(component.create());
+    if (!note) {
+        qWarning() << "NameTakenNote.qml:" << component.errors();
+        return;
+    }
+    QMetaObject::invokeMethod(note.data(), "publish");
+    // the call on its way before the process ends
+    QEventLoop wait;
+    QTimer::singleShot(Keys::kNameTakenNoteMs, &wait, &QEventLoop::quit);
+    wait.exec();
 }
 
 int main(int argc, char *argv[])
@@ -158,16 +182,24 @@ int main(int argc, char *argv[])
     // window and leaves, unless that one is the stand-in, which leaves
     // instead; the stand-in itself waits for a closing app to be gone.
     QDBusConnection bus = QDBusConnection::sessionBus();
+    const QString secretPath = dataDir + QLatin1Char('/') + QLatin1String(NotifyGate::kSecretFile);
     if (!bus.registerService(kService)) {
-        // a woken process does not wait for anyone: the running one has the push
-        if (pushWake)
+        // a woken process does not wait for anyone: the running one has the
+        // push. Unless the name's holder cannot prove it is a Rustrx (IPC6):
+        // then nothing of Rustrx can start, and that is said once per boot
+        if (pushWake) {
+            if (NameProof::holderOf(bus, kService, NotifyGate::secret(secretPath), Keys::kProofWaitMs) == NameProof::Holder::Other)
+                nameTaken(dataDir);
             return 0;
+        }
         bool takeOver = standIn;
         if (!standIn) {
-            // the stand-in leaves only for the data folder's secret (IPC1 d)
+            // the stand-in leaves only for proof of the data folder's secret
+            // (IPC1 d), bound to its own unique name: the secret itself never
+            // goes to whoever holds the name
             QDBusMessage call = QDBusMessage::createMethodCall(kService, QString::fromLatin1(Keys::kObjectPath),
                     QString::fromLatin1(Keys::kInterface), QStringLiteral("activateWith"));
-            call << NotifyGate::secret(dataDir + QLatin1Char('/') + QLatin1String(NotifyGate::kSecretFile));
+            call << NameProof::leaveToken(NotifyGate::secret(secretPath), bus.interface()->serviceOwner(kService).value());
             QDBusMessage plain = QDBusMessage::createMethodCall(kService, QString::fromLatin1(Keys::kObjectPath),
                     QString::fromLatin1(Keys::kInterface), QStringLiteral("activate"));
             // gone in the meantime: the name is free for this one (a call
@@ -214,6 +246,10 @@ int main(int argc, char *argv[])
     }
 
     Perf::mark("bus");
+    // from the moment the name is held, the proof that it is ours (IPC2, IPC6)
+    NameProof::Responder proof(secretPath, { kService, QString::fromLatin1(UnifiedPush::kConnectorName) });
+    if (!bus.registerObject(QString::fromLatin1(Keys::kProofPath), &proof, QDBusConnection::ExportScriptableSlots))
+        qWarning() << "startup: the name proof could not be exported";
     // from here a SIGTERM (the unit stopped, the session's end), SIGINT or
     // SIGHUP waits for the event loop and its normal quit below
     QuitSignals::install();

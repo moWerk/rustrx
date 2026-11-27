@@ -74,6 +74,7 @@ HEADERS += src/Rustrx.h \
     src/PrivateSettings.h \
     src/DconfOld.h \
     src/StoreKeyGuard.h \
+    src/NameProof.h \
     src/rustrx_core.h
 
 # the prebuilt core: lib/librustrx.so at build time, next to the data at run time
@@ -107,6 +108,7 @@ INSTALLS += autostart
 # secrets/secrets.pro (built by the spec): the sailfish-secrets plugin
 DISTFILES += qml/harbour-rustrx.qml \
     qml/Service.qml \
+    qml/NameTakenNote.qml \
     qml/call-bridge.js \
     qml/pages/*.qml \
     qml/pages/settings/*.qml \

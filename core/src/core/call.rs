@@ -170,6 +170,16 @@ impl CapabilitiesProvider for CallCapabilities {
 
 /// The event types a starting call rings with: MSC4075 as Element Call
 /// sends it now, its stable name, and the older call.notify.
+/// A call rings the phone only in a room of at most two joined members
+/// (audit 0.8.4 NET-4, the author: "only in rooms of two"); in a bigger
+/// room it is a quiet notification. A direct chat with more members counts
+/// as a group here, unlike the rule for Rustrx's own calls (call_start).
+/// Voip.cpp applies the same number to classic calls (Keys::kRingMaxMembers).
+pub(crate) const RING_MAX_MEMBERS: u64 = 2;
+pub(crate) fn rings_in(joined_members: u64) -> bool {
+    joined_members <= RING_MAX_MEMBERS
+}
+
 const RING_TYPES: [&str; 3] = ["org.matrix.msc4075.rtc.notification", "m.rtc.notification", "org.matrix.msc4075.call.notify"];
 /// The state events a call participant announces itself with (Element
 /// Call's MatrixRTC membership, the unstable name and the stable one).
@@ -247,11 +257,12 @@ impl VoipEvent {
         self.kind == "m.call.invite"
     }
 
-    fn json(&self, room_id: &str, room_name: &str, sender_name: &str, own: bool, is_dm: bool) -> Value {
+    fn json(&self, room_id: &str, room_name: &str, sender_name: &str, own: bool, is_dm: bool, joined: u64) -> Value {
         json!({
             "ev": "voip", "room_id": room_id, "room_name": room_name,
             "type": self.kind, "sender": self.sender, "sender_name": sender_name, "own": own,
             "content": self.content, "event_id": self.event_id, "age_ms": self.age, "is_dm": is_dm,
+            "joined_members": joined,
         })
     }
 }
@@ -347,17 +358,21 @@ impl Core {
                 tracing::info!(room = %room.room_id(), age, lifetime, "call: ring too old");
                 return;
             }
-            let ring = content
+            let asked_ring = content
                 .get("notification_type")
                 .or_else(|| content.get("notify_type"))
                 .and_then(Value::as_str)
                 == Some("ring");
+            // rings only in a room of two (the author, audit 0.8.4 NET-4):
+            // anyone in a group, a public room too, could ring the phone;
+            // there it is the quiet line of a group call
+            let ring = asked_ring && rings_in(room.joined_members_count());
             let sender_name = match UserId::parse(sender.as_str()) {
                 Ok(u) => member_name(&room, &u).await,
                 Err(_) => sender.clone(),
             };
             let room_name = room_name(&room);
-            tracing::info!(room = %room.room_id(), ring, age, "call: incoming");
+            tracing::info!(room = %room.room_id(), ring, asked_ring, age, "call: incoming");
             self.emit(json!({
                 "ev": "call_ring", "room_id": room.room_id().as_str(), "room_name": room_name,
                 "sender": sender, "sender_name": sender_name, "ring": ring,
@@ -387,12 +402,14 @@ impl Core {
         // particular rings only there (anyone in a big room could ring
         // every member's phone otherwise)
         let is_dm = room.is_direct().await.unwrap_or(false);
-        self.emit_voip(&ev, room.room_id().as_str(), &room_name(room), &sender_name, own, is_dm);
+        self.emit_voip(&ev, room.room_id().as_str(), &room_name(room), &sender_name, own, is_dm, room.joined_members_count());
         Some(ev)
     }
 
     /// "voip", once per event.
-    pub(crate) fn emit_voip(&self, ev: &VoipEvent, room_id: &str, room_name: &str, sender_name: &str, own: bool, is_dm: bool) {
+    /// joined: the room's joined members, for the UI's room-of-two rule (rings_in)
+    pub(crate) fn emit_voip(&self, ev: &VoipEvent, room_id: &str, room_name: &str, sender_name: &str, own: bool, is_dm: bool,
+                            joined: u64) {
         {
             let mut seen = self.voip_seen.lock().unwrap_or_else(|e| e.into_inner());
             if !seen.first(ev, room_id, own) {
@@ -402,8 +419,8 @@ impl Core {
                 seen.save(&self.data_dir.join(VOIP_SEEN_FILE));
             }
         }
-        tracing::info!(room = %room_id, kind = %ev.kind, call_id = %ev.call_id(), own, age = ev.age, is_dm, "voip: event");
-        self.emit(ev.json(room_id, room_name, sender_name, own, is_dm));
+        tracing::info!(room = %room_id, kind = %ev.kind, call_id = %ev.call_id(), own, age = ev.age, is_dm, joined, "voip: event");
+        self.emit(ev.json(room_id, room_name, sender_name, own, is_dm, joined));
     }
 
     /// The call id of a call that a push made ring in the room, while it may.
@@ -787,16 +804,29 @@ mod tests {
         assert_eq!(ev.age, 1234);
         assert_eq!(ev.call_id(), "c1");
         assert!(ev.is_invite());
-        let j = ev.json("!r:b", "Room", "Them", false, true);
-        for k in ["ev", "room_id", "room_name", "type", "sender", "sender_name", "own", "content", "event_id", "age_ms", "is_dm"] {
+        let j = ev.json("!r:b", "Room", "Them", false, true, 2);
+        for k in ["ev", "room_id", "room_name", "type", "sender", "sender_name", "own", "content", "event_id", "age_ms", "is_dm",
+                  "joined_members"] {
             assert!(j.get(k).is_some(), "{k}");
         }
         assert_eq!(j["ev"], "voip");
         assert_eq!(j["age_ms"], 1234);
+        assert_eq!(j["joined_members"], 2);
         // no server age: from its timestamp, which is long ago here
         let old = voip(json!({"type": "m.call.hangup", "event_id": "$h", "sender": "@a:b", "origin_server_ts": 1,
                               "content": {"call_id": "c1"}})).unwrap();
         assert!(old.age > 1_000_000);
+    }
+
+    /// A ring rings only in a room of two; three or more joined members
+    /// make it the quiet group line (NET-4).
+    /// Planted-bug: RING_MAX_MEMBERS = 3, or rings_in returning true.
+    #[test]
+    fn rings_only_in_a_room_of_two() {
+        assert!(rings_in(1));
+        assert!(rings_in(2));
+        assert!(!rings_in(3));
+        assert!(!rings_in(500));
     }
 
     /// TEST ONLY dev_ring's invite rings as a real one would: an invite, age

@@ -88,3 +88,32 @@ so before it is switched on.
 - Two processes on one store: the woken one must hand over to the app
   the way the stand-in does (the session bus name as the lock).
 - Test with Foghorn from OpenRepos on a test phone, with ntfy.sh first.
+
+## Who holds the names (audit 0.8.4)
+
+- **The distributor (IPC3).** Foghorn by its exact name
+  (`org.unifiedpush.Distributor.Foghorn`), else the first by name; a
+  name that only ends in "Foghorn" no longer wins. The one chosen first is
+  kept in the data folder's push.json (`distributor`, across logouts too).
+  While it is installed push stays with it, another one besides it
+  included. When it is gone and another is there, push pauses and the app
+  asks once per start ("Use %1 for push?", `pages/DistributorDialog.qml`);
+  the window-less processes never switch and never ask.
+- **The connector's name (IPC2).** When another process holds
+  `org.unifiedpush.Connector.rustrx`, it is asked to prove that it is a
+  Rustrx (`src/NameProof.h`: an HMAC under the data folder's `bus-secret`,
+  bound to the name, its unique name and a nonce). A Rustrx on its way out
+  is waited for and the name taken after it. Anyone else: no registration
+  with the distributor, the pusher removed from the homeserver, `blocked`
+  in push.json (so `activeOnDisk` is false), the stand-in runs while push
+  stays chosen, and Settings > App says so in red under "When Rustrx is
+  closed". A start that finds the name free again clears it and sets the
+  pusher anew. Nothing notices a squat while no Rustrx process runs.
+- **Reply** in a notification always goes to the app's own name
+  (`net.mowerk.harbour-rustrx`, sailjail's own rule), so with Rustrx closed
+  it opens the app; Mark as read and the emoji go to the connector, as their
+  content is in the arguments anyway, but not while the name is held by
+  another app.
+- **The app's name (IPC6).** A push-woken process that finds
+  `net.mowerk.harbour-rustrx` held by a program that cannot prove it is a
+  Rustrx posts "Rustrx could not start" once per boot, then leaves.

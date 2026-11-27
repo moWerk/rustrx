@@ -36,7 +36,7 @@ class TestHandover : public QObject
         const QJsonObject voip{ { "room_id", "!dm:example.org" }, { "call_id", "1700000000000abc" },
                                 { "party_id", "PARTY" }, { "version", "1" }, { "offer", "v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\n" },
                                 { "peer_name", "Alice" }, { "expires_at", double(QDateTime::currentMSecsSinceEpoch() + 50000) },
-                                { "answer", true },
+                                { "answer", true }, { "quiet", true },
                                 { "candidates", QJsonArray{ QJsonObject{ { "candidate", "candidate:1 1 udp 2122260223 192.0.2.1 50000 typ host" },
                                                                          { "sdpMid", "0" }, { "sdpMLineIndex", 0 } },
                                                             QJsonObject{ { "candidate", "" } } } } };
@@ -78,6 +78,9 @@ private slots:
         const QVariantMap voip = h.takePendingVoip();
         QCOMPARE(voip.value("call_id").toString(), QStringLiteral("1700000000000abc"));
         QCOMPARE(voip.value("answer").toBool(), true);
+        // a call in a room of more than two stays quiet in the app (NET-4)
+        // Planted-bug: "quiet" left out of isRinging's keys (the handover refused)
+        QCOMPARE(voip.value("quiet").toBool(), true);
         // the caller's candidates that came while it rang
         const QVariantList candidates = voip.value("candidates").toList();
         QCOMPARE(candidates.size(), 2);
@@ -188,6 +191,7 @@ private slots:
         QTest::newRow("voip: rings for a year") << withVoip("expires_at", double(QDateTime::currentMSecsSinceEpoch()) + 365.0 * 86400000);
         QTest::newRow("voip: no end") << withVoip("expires_at", "soon");
         QTest::newRow("voip: answer a string") << withVoip("answer", "yes");
+        QTest::newRow("voip: quiet a string") << withVoip("quiet", "yes");
         QTest::newRow("voip: other key") << withVoip("sdp_path", "/tmp/x");
         QTest::newRow("voip: candidates an object") << withVoip("candidates", QJsonObject());
         QTest::newRow("voip: candidate a string") << withVoip("candidates", QJsonArray{ "candidate:1" });

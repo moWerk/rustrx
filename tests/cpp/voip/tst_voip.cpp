@@ -502,6 +502,78 @@ private slots:
         QVERIFY(d.ringing().value("expires_at").toLongLong() < QDateTime::currentMSecsSinceEpoch() + 130000);
     }
 
+    // A call rings only in a room of two (audit 0.8.4 NET-4): addressed to
+    // us in a room of three it is still answerable, but quiet (its
+    // notification only), and stays quiet across the handover to the app.
+    // Planted-bug: the joined_members check dropped (a group rings the phone).
+    // Planted-bug: ringing() or takeRinging() leaves "quiet" out.
+    void ringsOnlyInARoomOfTwo()
+    {
+        Voip two;
+        two.setOwnUserId(QStringLiteral("@b:example.org"));
+        QVariantMap inTwo = invite("c1", 60000, false, "@b:example.org");
+        inTwo.insert("joined_members", 2);
+        two.handleEvent(inTwo);
+        QCOMPARE(two.state(), QStringLiteral("incoming"));
+        QVERIFY(!two.quiet());
+        QVERIFY(!two.ringing().value("quiet").toBool());
+
+        Voip group;
+        group.setOwnUserId(QStringLiteral("@b:example.org"));
+        QSignalSpy rings(&group, &Voip::incoming);
+        QVariantMap inThree = invite("c2", 60000, false, "@b:example.org");
+        inThree.insert("joined_members", 3);
+        group.handleEvent(inThree);
+        QCOMPARE(group.state(), QStringLiteral("incoming"));
+        QCOMPARE(rings.count(), 1);
+        QVERIFY(group.quiet());
+        // a direct chat with a third member is a group here too
+        Voip dm;
+        dm.setOwnUserId(QStringLiteral("@b:example.org"));
+        QVariantMap dmOfThree = invite("c3", 60000, true);
+        dmOfThree.insert("joined_members", 3);
+        dm.handleEvent(dmOfThree);
+        QCOMPARE(dm.state(), QStringLiteral("incoming"));
+        QVERIFY(dm.quiet());
+
+        // a call that rings takes the line from a quiet one, which hears busy
+        // Planted-bug: a quiet ring keeps the line (a real caller gets user_busy)
+        Voip line;
+        line.setOwnUserId(QStringLiteral("@b:example.org"));
+        QSignalSpy sent(&line, &Voip::command);
+        QVariantMap quietOne = invite("q1", 60000, false, "@b:example.org");
+        quietOne.insert("joined_members", 5);
+        line.handleEvent(quietOne);
+        QVERIFY(line.quiet());
+        QVariantMap loud = invite("l1", 60000, true);
+        loud.insert("room_id", "!dm");
+        loud.insert("joined_members", 2);
+        line.handleEvent(loud);
+        QCOMPARE(line.state(), QStringLiteral("incoming"));
+        QCOMPARE(line.roomId(), QStringLiteral("!dm"));
+        QVERIFY(!line.quiet());
+        QCOMPARE(sent.count(), 1);
+        const QVariantMap busy = sent.first().first().toMap();
+        QCOMPARE(busy.value("room_id").toString(), QStringLiteral("!r"));
+        QCOMPARE(busy.value("content").toMap().value("call_id").toString(), QStringLiteral("q1"));
+        QCOMPARE(busy.value("content").toMap().value("reason").toString(), QStringLiteral("user_busy"));
+        // a quiet one while one rings: busy, as before
+        QVariantMap quietTwo = invite("q2", 60000, false, "@b:example.org");
+        quietTwo.insert("joined_members", 5);
+        line.handleEvent(quietTwo);
+        QCOMPARE(line.roomId(), QStringLiteral("!dm"));
+
+        const QVariantMap handed = group.ringing();
+        QVERIFY(handed.value("quiet").toBool());
+        Voip app;
+        app.takeRinging(handed);
+        QCOMPARE(app.state(), QStringLiteral("incoming"));
+        QVERIFY(app.quiet());
+        // the call ends: the next one starts loud again
+        app.reject();
+        QVERIFY(!app.quiet());
+    }
+
     // Planted-bug: an invite while busy is dropped silently (the caller
     // rings on).
     void busyAnswersBusy()

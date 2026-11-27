@@ -25,6 +25,11 @@
         <source>Message removed</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-too-long">
+        <source>Message too long to show</source>
+        <extracomment>in place of a message (or its quote) whose formatting is too long to draw</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-la-verification-request">
         <source>Verification request</source>
         <translation type="unfinished"></translation>
@@ -1045,6 +1050,11 @@
         <extracomment>a shared location, tap opens it in a maps app</extracomment>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-large-file">
+        <source>Large file, tap to load</source>
+        <extracomment>in place of a picture above the size fetched by itself; a tap fetches it</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-la-poll-ended">
         <source>The poll has ended</source>
         <translation type="unfinished"></translation>
@@ -1414,6 +1424,11 @@
     </message>
     <message id="rustrx-bt-knock">
         <source>Ask to join</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-bt-look-up">
+        <source>Look up</source>
+        <extracomment>join page opened by a link from another app: looks the room up at its server</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-preview-invite-only">
@@ -2040,6 +2055,15 @@
     <message id="rustrx-no-link-refused">
         <source>Not opened: %1 links are not handed on</source>
         <extracomment>%1 the part of a link before the colon, e.g. &quot;file&quot;</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-open-link">
+        <source>Open link?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-link-differs">
+        <source>The text shows %1, but the link goes to %2.</source>
+        <extracomment>%1 the host a link&apos;s text shows, %2 the host it opens, like bank.example</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-bt-sso-cancel">
@@ -2852,7 +2876,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-no-saved-not-opened">
-        <source>Saved to %1. Install it from there yourself if you trust it.</source>
+        <source>Saved to %1. Open it from there yourself if you trust it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-voip-send-failed">
@@ -3484,6 +3508,38 @@
     <message id="rustrx-la-missed-call">
         <source>Missed call</source>
         <extracomment>notification body (or, while chat names stay inside Rustrx, its title) for a call nobody answered</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-push-blocked">
+        <source>Another app holds Rustrx&apos;s push name, so push is paused. Until it lets go, Rustrx keeps running in the background.</source>
+        <extracomment>push hint, shown in red: another app owns the push connector&apos;s bus name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-distributor-use">
+        <source>Use it</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-distributor-not-now">
+        <source>Not now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-distributor-new">
+        <source>Use %1 for push?</source>
+        <extracomment>%1 the new UnifiedPush distributor&apos;s name (Foghorn, say)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-distributor-new">
+        <source>Push went through %2 until now. %1 is new on this phone.</source>
+        <extracomment>%1 the new distributor, %2 the one push went through before</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-name-taken">
+        <source>Rustrx could not start</source>
+        <extracomment>notification title: Rustrx&apos;s bus name is held by another program</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-name-taken-body">
+        <source>Another program on this phone holds Rustrx&apos;s name.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
