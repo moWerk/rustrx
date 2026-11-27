@@ -73,9 +73,16 @@ Page {
         interval: Tunables.voipEndShownMs
         onTriggered: if (page.callState === "idle" && (page.inCallWindow || page.status === PageStatus.Active) && !page.failed) page.leave()
     }
-    // a call that did not get through stays with "Call again" and "Close"
-    // (0.8 audit: the page went and the call had to be found again)
-    readonly property bool failed: callState === "idle"
+    // a call placed here that did not get through stays with "Call again"
+    // and "Close" (0.8 audit: the page went and the call had to be found
+    // again); a ring nobody took goes as any ended call (it left a missed
+    // call), and over the lock screen nothing may place a call
+    property bool placedHere: callState === "outgoing"
+    onCallStateChanged: {
+        if (callState === "outgoing") placedHere = true
+        else if (callState === "incoming") placedHere = false
+    }
+    readonly property bool failed: callState === "idle" && placedHere && !inCallWindow
         && ["invite_timeout", "ice_failed", "send_failed", "user_media_failed"].indexOf(call.endReason) >= 0
     // whom to call again: the direct chat's other person
     property string lastRoomId
@@ -157,8 +164,10 @@ Page {
                 case "rejected": return qsTrId("rustrx-la-voip-rejected")
                 //% "Answered on another device"
                 case "answered_elsewhere": return qsTrId("rustrx-la-voip-elsewhere")
-                //% "No answer"
-                case "invite_timeout": return qsTrId("rustrx-la-voip-no-answer")
+                case "invite_timeout": return page.placedHere
+                                              //% "No answer"
+                                              ? qsTrId("rustrx-la-voip-no-answer")
+                                              : qsTrId("rustrx-la-missed-call")
                 //% "The connection failed"
                 case "ice_failed": return qsTrId("rustrx-la-voip-ice-failed")
                 //% "The microphone or speaker could not be used"
