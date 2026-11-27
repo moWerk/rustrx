@@ -777,6 +777,9 @@ private slots:
     {
         Voip b;
         b.setOwnUserId(QStringLiteral("@b:example.org"));
+        // the tone, not the microphone: the pipeline must play for the
+        // SDP to be looked at, with or without a sound server (CI has none)
+        b.setTestTone(true);
         QVariantMap inv = invite("c1", 60000, true);
         QVariantMap content = inv.value("content").toMap();
         QString sdp = QStringLiteral("v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\n");
@@ -789,6 +792,22 @@ private slots:
         b.answer();
         QTRY_COMPARE_WITH_TIMEOUT(b.state(), QStringLiteral("idle"), 5000);
         QCOMPARE(b.endReason(), QStringLiteral("ice_failed"));
+    }
+
+    // Planted-bug: with no word about TURN in time, an answered call whose
+    // pipeline does not play stays "connecting" for good.
+    void aPipelineThatDoesNotPlayEndsTheCall()
+    {
+        // pulsesrc cannot reach a sound server here, on any host
+        qputenv("PULSE_SERVER", "unix:/nonexistent/rustrx-test");
+        struct Unset { ~Unset() { qunsetenv("PULSE_SERVER"); } } unset;
+        Voip b;
+        b.setOwnUserId(QStringLiteral("@b:example.org"));
+        b.handleEvent(invite("c1", 60000, true));
+        b.answer();
+        QCOMPARE(b.state(), QStringLiteral("connecting"));
+        QTRY_COMPARE_WITH_TIMEOUT(b.state(), QStringLiteral("idle"), Keys::kVoipTurnWaitMs + 5000);
+        QCOMPARE(b.endReason(), QStringLiteral("user_media_failed"));
     }
 
     // NET-9: only an RTP Opus audio pad gets the player.

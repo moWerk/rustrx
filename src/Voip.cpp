@@ -138,8 +138,13 @@ Voip::Voip(QObject *parent) : QObject(parent)
             return;
         if (m_offerer)
             negotiateAsOfferer();
-        else if (m_state == QLatin1String("connecting") && startPipeline())
-            applyRemote(QStringLiteral("offer"), m_remoteOffer);
+        else if (m_state == QLatin1String("connecting")) {
+            // as with an answer about TURN: no pipeline ends the call
+            if (startPipeline())
+                applyRemote(QStringLiteral("offer"), m_remoteOffer);
+            else
+                finish(QStringLiteral("user_media_failed"), true, QStringLiteral("user_media_failed"));
+        }
     });
 }
 
