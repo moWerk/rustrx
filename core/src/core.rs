@@ -226,6 +226,7 @@ pub(crate) struct Core {
 
 mod account;
 mod call;
+mod checks;
 mod commands;
 mod knock;
 mod media_cache;
@@ -324,6 +325,6 @@ impl Core {
 
     fn error(&self, cmd: &str, err: &anyhow::Error) {
         tracing::warn!(%cmd, "{err:#}");
-        self.emit(json!({"ev": "error", "cmd": cmd, "message": format!("{err:#}")}));
+        self.emit(checks::with_refusal(json!({"ev": "error", "cmd": cmd, "message": format!("{err:#}")}), err));
     }
 }

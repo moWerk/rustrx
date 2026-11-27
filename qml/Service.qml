@@ -673,6 +673,53 @@ Item {
         }
     }
 
+    // another person's verification request (audit NET-6): a line of its
+    // own, by its flow; a tap opens its page (openVerification), which
+    // only the app posts. Like a request to join: a quiet line
+    property var verifyNotes: ({})
+    function notifyVerification(data) {
+        takeOverOld()
+        var n = verifyNotes[data.flow_id]
+        if (!n) {
+            n = verifyComponent.createObject(service, { flowId: data.flow_id })
+            verifyNotes[data.flow_id] = n
+        }
+        n.summary = qsTrId("rustrx-la-verification-request")
+        n.previewSummary = n.summary
+        var user = data.other_user || ""
+        var name = data.other_user_name || ""
+        n.body = !chatDetails
+                //% "Someone wants to verify you"
+                ? qsTrId("rustrx-no-verify-hidden")
+                : name.length
+                //: %1 the person's name, %2 their user ID
+                //% "%1 (%2) wants to verify you"
+                ? qsTrId("rustrx-no-verify-from").arg(name).arg(user)
+                //: %1 the person's user ID (no name known)
+                //% "%1 wants to verify you"
+                : qsTrId("rustrx-no-verify-from-id").arg(user)
+        n.previewBody = n.body
+        n.itemCount = 1
+        n.publish()
+    }
+    function closeVerification(flowId) {
+        var n = verifyNotes[flowId]
+        if (!n) return
+        n.close()
+        n.destroy()
+        delete verifyNotes[flowId]
+    }
+    Component {
+        id: verifyComponent
+        Notification {
+            property string flowId
+            appName: "Rustrx"
+            appIcon: "harbour-rustrx"
+            category: "x-nemo.messaging.im"
+            remoteActions: [ service.action("default", "openVerification", [ flowId ]) ]
+        }
+    }
+
     // a reply from a notification that did not reach the server: said in
     // the room's line, a tap opens the room with the text as its draft
     // (kept: the core added it there)

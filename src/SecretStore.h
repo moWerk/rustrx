@@ -23,9 +23,21 @@
 // Empty when sailfish-secrets is missing or fails; the store then stays
 // unencrypted, as before (community ports without sailfish-secrets).
 namespace SecretStore {
-QByteArray storeKey();
+// what came of asking for the key, besides the key
+enum State {
+    KeyOk = 0,
+    NoKey = 1,      // none to be had (no Secrets, locked, not answered)
+    Refused = 2,    // the collection's name is another app's (audit SEC2)
+    Lost = 3,       // no key, but stores the old one encrypted: asks first (SEC3)
+};
+enum Flags {
+    StartOver = 1,  // the user said "Start over": a new key, the old stores aside
+    Redraw = 2,     // a login after a refusal: a fresh collection name first
+};
+QByteArray storeKey(int flags, State *state);
 }
 
 // the plugin's entry point (librustrx-secrets.so): the key into `out`,
-// returns its length, 0 when there is none
-extern "C" int rustrx_secrets_store_key(char *out, int size);
+// returns its length, 0 when there is none; `state` (may be null) gets a
+// SecretStore::State, `flags` are SecretStore::Flags
+extern "C" int rustrx_secrets_store_key2(char *out, int size, int flags, int *state);

@@ -84,7 +84,7 @@ ShortPage {
                 restartLater.start()
                 return
             }
-            page.error = message
+            page.error = app.loginErrorText(message, detail)
         }
         // logged in: the window's route() takes the stack over
     }

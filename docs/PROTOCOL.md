@@ -193,12 +193,12 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | ev | fields |
 |---|---|
 | `ready` | `logged_in`, `proto`, `kept_user?` (a store kept from an ended session), `restore_failed?` (a saved session could not be opened: no session, or restoring it failed) |
-| `logged_in` | `proto`, `user_id`, `device_id`, `homeserver`, `sliding_sync`, `store` (`encrypted`, `unencrypted`: made before sailfish-secrets, or `no_secrets`: no key on this phone) |
-| `logged_out` | `reason?` (`session_expired`), `soft_logout?` |
-| `login_error` | `message` |
+| `logged_in` | `proto`, `user_id`, `device_id`, `homeserver`, `sliding_sync`, `store` (`encrypted`, `unencrypted`: made before sailfish-secrets, or `no_secrets`: no key on this phone; the UI says `secrets_refused` for it when Secrets refused Rustrx's collection) |
+| `logged_out` | `reason?` (`session_expired`), `soft_logout?`, `user_id?` (whose store is kept for a login again), `wiped?` (a session the server ended for good: its store and media went, `gone_for_good` in `session.rs`) |
+| `login_error` | `message`; a refusal the UI words itself adds `reason` and its fields: `insecure_http` with `server` (a homeserver over plain http away from the phone and the home network; also as `error` of `probe_server`), `other_account` with `got` and `wanted` (a browser login ended in another account than the full Matrix ID typed; that session was logged out) |
 | `server_info` | `server`, `homeserver`, `password`, `sso`, `idps`, `sliding_sync`, `signup_url?`, `account_service`, `qr_login` |
 | `qr_login` | `state` (`qr`: `width`, `modules`; `scanned`; `waiting`: `user_code`; `syncing`; `done`) |
-| `qr_grant` | `state` (`qr`: `width`, `modules`; `scanned`; `connecting`; `check`: `check_code`; `consent`; `syncing`; `done`; `refused`: `reason`; `error`: `message`) |
+| `qr_grant` | `state` (`qr`: `width`, `modules`; `scanned`; `connecting`; `check`: `check_code`; `consent`; `syncing`; `done`; `refused`: `reason`; `error`: `message`, and `reason` `foreign_page` with `host` when the new device sent a consent page not on the account service's host: nothing was opened) |
 | `server_features` | `device_login` (the account service logs devices in by a code), `qr_rendezvous` (the server keeps the QR rendezvous); once after every `logged_in` |
 | `open_url` | `url` (SSO: to open in the browser) |
 | `sync_state` | `state` (`idle`, `running`, `offline`, `error`, `terminated`), `message?` |
@@ -227,20 +227,20 @@ Fields marked `?` may be absent or `null`; unknown extra fields are ignored.
 | `dm_ready` | `room_id`, `user_id` |
 | `room_search_results` | `term`, `server`, `rooms`: `{room_id, name, alias, topic, member_count, avatar_mxc, is_space, joined}` |
 | `search_results` | `term`, `users`: `{user_id, name}`, `rooms`: `{room_id, name, alias, topic, member_count, joined}` |
-| `verification` | `flow_id`, `state`, `other_user`, `we_started`, `self_verification` |
+| `verification` | `flow_id`, `state`, `other_user`, `we_started`, `self_verification`; `requested` and `ready` add `other_device`, `other_device_name`, and `requested` from another person `other_user_name` (their profile name, if it came within 5 s) |
 | `sas` | `flow_id`, `state`, `emojis?`, `decimals?`, `reason?` |
 | `verification_state` | `state` (`verified`, `unverified`, `unknown`) |
 | `recovery_state` | `state` (`enabled`, `disabled`, `incomplete`, `unknown`) |
 | `recovery_key` | `recovery_key` (shown once) |
 | `recovery_done` | |
-| `keys_exported` / `keys_imported` | `path` / `imported`, `total` |
+| `keys_exported` / `keys_imported` | `path` (where the file went: the name asked for, or `-2`, `-3`, ... before the extension when a file has it) / `imported`, `total` |
 | `devices` | `devices`: `{device_id, name, last_seen_ts, last_seen_ip, current, keys, verified, manage_url}` (`keys`: it has encryption keys; `verified`: cross-signed by us; `manage_url`: the account service's page that removes it, null without one), `account_url` (the account service's device list, or null): with an account service the server takes no password to remove a device |
 | `device_deleted` | `device_id` |
 | `ignored_users` | `users`: `{user_id, name}` (name where the server gives a profile) |
 | `user_info` | `user_id`, `name`, `has_identity`, `verified`, `ignored`, `is_self`; with a room: `room_id`, `membership`, `power`, `role`, `can_kick`, `can_ban`, `can_set_level`, `can_mute`, `own_level`, `events_default` |
 | `profile` | `display_name`, `user_id`, `avatar_path` (a cached file), `avatar_v` |
 | `storage` | `store`, `media_files` (bytes), `crypto?`, `state?`, `event_cache?`, `media_cache?` |
-| `error` | `cmd`, `message` |
+| `error` | `cmd`, `message`, `reason?` and its fields (as `login_error`) |
 | `thread_timeline` | `room_id`, `thread_root`, `stream`, `seq`, `full`, `order`, `items` (as `timeline`; a thread root carries `thread`: `count`, `latest_sender_name`, `latest_body`, `latest_id`, `latest_ts`, `latest_own`, `unread` (no read receipt of ours, threaded or not, reaches the latest reply)) |
 | `thread_list` | `room_id`, `threads` (`root`, `latest`: `event_id`, `sender`, `sender_name`, `is_own`, `ts`, `body`; `count`, `unread`), `loading` |
 | `space_rooms` | `space_id`, `loading`, `rooms` (`room_id`, `name`, `topic`, `alias`, `avatar_mxc`, `is_space`, `member_count`, `children`, `join_rule`, `state`, `suggested`, `via`) |

@@ -47,7 +47,8 @@ SilicaFlickable {
     }
 
     // whether what Rustrx stores on the phone is encrypted: "encrypted",
-    // "unencrypted", "no_secrets", or "" while not known
+    // "unencrypted", "no_secrets", "secrets_refused" (another app took
+    // Rustrx's place in Secrets), or "" while not known
     readonly property string storeState: rustrx.storeState !== undefined ? rustrx.storeState : ""
 
     // own devices besides this one that have keys and are not verified;
@@ -74,7 +75,8 @@ SilicaFlickable {
 
     // each safeguard: "ok", "risk", or "unknown" (never a risk)
     readonly property string storeSlice: storeState === "encrypted" ? "ok"
-                                       : storeState === "unencrypted" || storeState === "no_secrets" ? "risk" : "unknown"
+                                       : storeState === "unencrypted" || storeState === "no_secrets"
+                                         || storeState === "secrets_refused" ? "risk" : "unknown"
     readonly property string verifySlice: rustrx.verificationState === "verified" ? "ok"
                                         : rustrx.verificationState === "unverified" ? "risk" : "unknown"
     readonly property string recoverySlice: rustrx.recoveryState === "enabled" ? "ok"
@@ -104,6 +106,14 @@ SilicaFlickable {
             store.text = qsTrId("rustrx-la-risk-no-secrets")
             //% "Install Sailfish Secrets (sailfishsecretsdaemon with its default plugins), then log out and log in again."
             store.fix = qsTrId("rustrx-la-risk-no-secrets-fix2")
+        } else if (storeState === "secrets_refused") {
+            // its collection's name is another app's (audit SEC2); the next
+            // login draws a name of Rustrx's own
+            store.go = ""
+            //% "Another app has taken Rustrx's place in Sailfish Secrets, so Rustrx cannot keep its key there."
+            store.text = qsTrId("rustrx-la-risk-secrets-refused")
+            //% "Log out and log in again: Rustrx then makes a place of its own."
+            store.fix = qsTrId("rustrx-la-risk-secrets-refused-fix")
         }
         var verify = { status: verifySlice, weight: 1, go: "verify",
                        title: verifySlice === "risk"
@@ -419,7 +429,10 @@ SilicaFlickable {
         PageButton {
             //% "Share the debug log"
             text: qsTrId("rustrx-bt-share-log")
-            //% "A copy goes to Downloads, so you can also attach it to a mail or a forum post."
+            // the bundle stays in Rustrx's own folder and goes only to the
+            // app picked in the share sheet (audit SEC8; the text is a
+            // stand-in for the author's)
+            //% "It goes only to the app you pick, a mail for example. No copy stays in Downloads."
             hint: qsTrId("rustrx-la-share-log-hint")
             onClicked: {
                 var path = rustrx.shareableLog()

@@ -294,6 +294,7 @@ ApplicationWindow {
                 pageStack.replaceAbove(null, Qt.resolvedUrl("pages/StartPage.qml"), {},
                                        mainBeforeLogin ? PageStackAction.Immediate : PageStackAction.Animated)
             mainBeforeLogin = false
+            if (rustrx.storeKeyLost) storeKeyLostNotice.restart()
         } else if (current !== "login" && !pageStack.find(function (p) { return p.objectName === "login" })) {
             // a page above the login page is part of the login (the QR
             // scanner, the QR login, the browser's wait): left alone, or a
@@ -563,6 +564,24 @@ ApplicationWindow {
             pageStack.push(Qt.resolvedUrl("pages/VerifyNotice.qml"))
         }
     }
+    // the store's key gone from Secrets with encrypted stores here (SEC3):
+    // asked over the start page; "Not now" leaves it, the next start asks again
+    property bool storeKeyLostUp
+    Timer {
+        id: storeKeyLostNotice
+        interval: Tunables.noticeDelayMs
+        onTriggered: {
+            if (!rustrx.storeKeyLost || app.storeKeyLostUp) return
+            if (pageStack.busy || app.prototypeNoticeUp || !cfg.prototypeNoticeSeen) { restart(); return }
+            app.storeKeyLostUp = true
+            var d = pageStack.push(Qt.resolvedUrl("pages/StoreKeyLostDialog.qml"))
+            d.done.connect(function () { app.storeKeyLostUp = false })
+        }
+    }
+    Connections {
+        target: rustrx
+        onStoreKeyLostChanged: if (rustrx.storeKeyLost) storeKeyLostNotice.restart()
+    }
     Timer {
         id: pendingRoomRetry
         interval: Tunables.pendingRoomPollMs
@@ -591,6 +610,18 @@ ApplicationWindow {
         shownVerifications[data.flow_id] = true
         pageStack.push(Qt.resolvedUrl("pages/VerificationPage.qml"), { flowId: data.flow_id, info: data })
     }
+    // another person's requests that wait for a tap on their notification,
+    // by flow (audit NET-6)
+    property var pendingVerifications: ({})
+    function openPendingVerification(flowId) {
+        var data = pendingVerifications[flowId]
+        if (!data) return
+        // one verification page at a time: the notification stays for later
+        if (pageStack.find(function (p) { return p.objectName === "verification" })) return
+        delete pendingVerifications[flowId]
+        service.closeVerification(flowId)
+        showVerification(data)
+    }
 
     Connections {
         target: rustrx
@@ -602,9 +633,23 @@ ApplicationWindow {
         onEncryptionChanged: if (rustrx.newLogin && !app.verifyNoticeDone) verifyNotice.restart()
         onBrowserUrl: openExternal(url)
         onVerification: {
-            // an incoming request opens its page; one we started has its page already
-            if (data.state === "requested" && !data.we_started) showVerification(data)
+            // an incoming request from one's own devices opens its page; one
+            // we started has its page already. Another person's comes as a
+            // notification first, and its page only on a tap (NET-6)
+            if (data.state === "requested" && !data.we_started) {
+                if (data.self_verification) {
+                    showVerification(data)
+                } else {
+                    pendingVerifications[data.flow_id] = data
+                    service.notifyVerification(data)
+                }
+            }
+            if (data.state === "cancelled" || data.state === "done") {
+                delete pendingVerifications[data.flow_id]
+                service.closeVerification(data.flow_id)
+            }
         }
+        onVerificationRequested: openPendingVerification(flowId)
         onErrorOccurred: {
             // a chat asked for by a link that could not be made: no later
             // room may open in its place
@@ -730,6 +775,22 @@ ApplicationWindow {
         case "set_aliases": case "add_alias": case "remove_alias": return qsTrId("rustrx-la-act-settings")
         default: return ""
         }
+    }
+
+    // A login's error for its page: the refusals the core leaves to the UI
+    // to word (detail.reason, 0.8.4 audit), else the core's text as before
+    function loginErrorText(message, detail) {
+        var d = detail || {}
+        // a server reached over plain http away from the phone and the
+        // home network (NET-3)
+        //: %1 the server, like matrix.example.org
+        //% "%1 answers only over plain http, so your password would travel unprotected. Rustrx needs https for it."
+        if (d.reason === "insecure_http") return qsTrId("rustrx-la-login-insecure-http").arg(d.server || "")
+        // the browser came back logged in as someone else (NET-7)
+        //: %1 the account the browser logged in, %2 the Matrix ID typed
+        //% "The browser logged in %1, not %2. That login was undone, try again."
+        if (d.reason === "other_account") return qsTrId("rustrx-la-login-other-account").arg(d.got || "").arg(d.wanted || "")
+        return message
     }
 
     // A core error as one short, plain sentence: the one helper for every
@@ -1112,6 +1173,8 @@ ApplicationWindow {
         applyClosedMode(); route()
         // a call that rang before the window was there (handed over)
         if (cfg.forceCallUi && rustrx.voip.state === "incoming" && !rustrx.voip.quiet) { lastVoipState = "incoming"; ringUp(null) }
+        // the store key was asked for before the window existed (SEC3)
+        if (rustrx.storeKeyLost) storeKeyLostNotice.restart()
     }
 
     // custom emoji in messages: a little taller than the text, like an emoji

@@ -6,6 +6,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -65,6 +66,38 @@ private slots:
         QVERIFY(written.contains("GET https://example.org/x?[cut] Bearer [cut]"));
         QVERIFY(!written.contains("PLANTED"));
         f.remove();
+    }
+
+    // the bundle for the share sheet is made in the folder given (the
+    // app's cache, audit SEC8), and the copies are removed by name only:
+    // other files stay, a link is removed, not what it points at.
+    // Planted-bug: removeCopies follows a link (QFile::remove on its target).
+    void copiesGoByName()
+    {
+        QTemporaryDir tmp;
+        const QString shared = tmp.filePath(QStringLiteral("cache/shared-log"));
+        const QString first = DebugLog::collect(shared, QStringLiteral("header"));
+        QVERIFY(!first.isEmpty());
+        QCOMPARE(QFileInfo(first).path(), shared);
+        QVERIFY(QFileInfo(first).fileName().startsWith(QStringLiteral("rustrx-log-")));
+        const QString downloads = tmp.filePath(QStringLiteral("Downloads"));
+        QVERIFY(QDir().mkpath(downloads + QStringLiteral("/Rustrx")));
+        QFile keep(downloads + QStringLiteral("/holiday.jpg"));
+        QVERIFY(keep.open(QIODevice::WriteOnly));
+        keep.close();
+        QFile old(downloads + QStringLiteral("/Rustrx/rustrx-log-20261101-1200.txt"));
+        QVERIFY(old.open(QIODevice::WriteOnly));
+        old.close();
+        const QString target = tmp.filePath(QStringLiteral("private-file"));
+        QFile t(target);
+        QVERIFY(t.open(QIODevice::WriteOnly));
+        t.close();
+        QVERIFY(QFile::link(target, downloads + QStringLiteral("/rustrx-log-planted.txt")));
+        QCOMPARE(DebugLog::removeCopies(downloads), 2);
+        QVERIFY(QFile::exists(downloads + QStringLiteral("/holiday.jpg")));
+        QVERIFY(QFile::exists(target));
+        QCOMPARE(DebugLog::removeCopies(shared), 1);
+        QVERIFY(!QFile::exists(first));
     }
 };
 

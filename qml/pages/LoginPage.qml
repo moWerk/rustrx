@@ -448,7 +448,7 @@ Page {
         target: rustrx
         // the user's own Cancel (or a new QR code) is no error to show in
         // red (0.8 audit)
-        onLoginError: if (message !== "login cancelled") errorText = message
+        onLoginError: if (message !== "login cancelled") errorText = app.loginErrorText(message, detail)
         // the sign-on page's address (the window's openUrl handler opens it too)
         onBrowserUrl: if (rustrx.loggingIn) page.ssoUrl = url
         onServerInfo: {

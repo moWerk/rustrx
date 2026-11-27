@@ -73,6 +73,13 @@ impl Core {
         });
     }
 
+    /// A user's display name from their profile, if it comes quickly.
+    async fn profile_name(&self, user: &UserId) -> Option<String> {
+        let client = self.client().await.ok()?;
+        let profile = tokio::time::timeout(VERIFY_NAME_TIMEOUT, client.account().fetch_user_profile_of(user)).await.ok()?.ok()?;
+        profile.get("displayname").and_then(Value::as_str).map(str::trim).filter(|n| !n.is_empty()).map(str::to_owned)
+    }
+
     pub(crate) fn request_json(req: &VerificationRequest, state: &str, extra: Value) -> Value {
         let mut v = json!({
             "ev": "verification",
@@ -108,11 +115,16 @@ impl Core {
                     false
                 }
                 VerificationRequestState::Requested { other_device_data, .. } => {
+                    // another person's request names them by their profile
+                    // name beside their user ID (audit NET-6), not only by a
+                    // device name they chose
+                    let name = if req.is_self_verification() { None } else { self.profile_name(req.other_user_id()).await };
                     self.emit(Self::request_json(
                         &req,
                         "requested",
                         json!({"other_device": other_device_data.device_id().as_str(),
-                               "other_device_name": other_device_data.display_name()}),
+                               "other_device_name": other_device_data.display_name(),
+                               "other_user_name": name}),
                     ));
                     false
                 }

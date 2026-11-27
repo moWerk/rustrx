@@ -133,6 +133,9 @@ class Rustrx : public QObject, protected QDBusContext
     // (Secrets locked, its prompt not answered); retryRestore() asks again
     Q_PROPERTY(bool restoreFailed READ restoreFailed NOTIFY stateChanged)
     Q_PROPERTY(bool restoring READ restoring NOTIFY stateChanged)
+    // the store's key is gone from Secrets while stores it encrypted are
+    // here (audit SEC3): the app asks before starting over (startOverStore)
+    Q_PROPERTY(bool storeKeyLost READ storeKeyLost NOTIFY storeKeyLostChanged)
     // the call page is dark at the ear (see CallState)
     Q_PROPERTY(bool callDark READ callDark NOTIFY callDarkChanged)
     // the lock screen is up (MCE's tklock mode): a ringing call's page then
@@ -141,7 +144,9 @@ class Rustrx : public QObject, protected QDBusContext
     Q_PROPERTY(QString syncState READ syncState NOTIFY syncStateChanged)
     Q_PROPERTY(QString verificationState READ verificationState NOTIFY encryptionChanged)
     Q_PROPERTY(QString recoveryState READ recoveryState NOTIFY encryptionChanged)
-    // how the local store is kept: encrypted, unencrypted, no_secrets; "" before login
+    // how the local store is kept: encrypted, unencrypted, no_secrets,
+    // secrets_refused (another app holds Rustrx's place in Secrets, SEC2);
+    // "" before login
     Q_PROPERTY(QString storeState READ storeState NOTIFY encryptionChanged)
     Q_PROPERTY(QString openRoomId READ openRoomId NOTIFY openRoomChanged)
     Q_PROPERTY(int unreadTotal READ unreadTotal NOTIFY unreadChanged)
@@ -283,6 +288,11 @@ public:
     Q_INVOKABLE void answerRing(int account, const QString &roomId);
     Q_INVOKABLE void declineRing(int account, const QString &roomId, const QString &eventId);
     Q_INVOKABLE void retryRestore();
+    // "Start over" in the dialog for a lost store key: a new key, the old
+    // stores kept aside (StoreKeyGuard::moveAside), every account asked
+    // again; the sessions they had need a new login
+    Q_INVOKABLE void startOverStore();
+    bool storeKeyLost() const { return m_storeKeyLost; }
     // the proximity sensor during a call (see CallState)
     Q_INVOKABLE void setCallNear(bool near);
     QString verificationState() const { return m_cur->verificationState; }
@@ -475,6 +485,7 @@ signals:
     // a dev command for the UI (see dev())
     void devUi(const QVariantMap &request);
     void stateChanged();
+    void storeKeyLostChanged();
     // the image packs offered in a room (custom emoji and stickers)
     void imagePacks(const QString &roomId, const QVariantList &packs);
     void emoteReady(const QString &mxc, const QString &path);
@@ -511,6 +522,7 @@ signals:
                   const QString &name, const QString &reason, int account);
     // the requests' notification was tapped
     void knocksRequested();
+    void verificationRequested(const QString &flowId);
     void roomsLoadedChanged();
     void settingsChanged();
     void roomFilterChanged();
@@ -518,7 +530,9 @@ signals:
     void encryptionChanged();
     void openRoomChanged();
     void unreadChanged();
-    void loginError(const QString &message);
+    // `detail`: the core's event; a refusal the UI words itself carries
+    // `reason` and its fields (insecure_http, other_account)
+    void loginError(const QString &message, const QVariantMap &detail);
     void serverInfo(const QVariantMap &info);
     // a web page to show in the browser (the single sign-on page); not
     // "openUrl", which is the D-Bus method below and shadowed it in QML
@@ -646,6 +660,9 @@ public slots:
     Q_SCRIPTABLE void openKnocks();
     // the same for the requests of the account `account` (as text), shown first
     Q_SCRIPTABLE void openAccountKnocks(const QString &account);
+    // another person's verification request (audit NET-6): its page, on a
+    // tap of its notification, which only the app posts
+    Q_SCRIPTABLE void openVerification(const QString &flowId);
     // a room notification's "Mark as read" (Service.qml sends the receipt,
     // as the privacy setting has it, once logged in)
     Q_SCRIPTABLE void markRoomRead(const QString &roomId);
@@ -749,7 +766,14 @@ private:
     // handleEvent, looked up once for the queued calls from the core's threads
     QMetaMethod m_handleEvent;
 
-    bool handStoreKeyOn();
+    bool handStoreKeyOn(int flags = 0);
+    void retryRestoreWith(int flags);
+    // before a login: after a refusal (SEC2), a fresh place in Secrets
+    void keyBeforeLogin();
+    // what the last ask for the key gave (SecretStore::State)
+    int m_keyState = 1;
+    bool m_haveKey = false;
+    bool m_storeKeyLost = false;
     QString m_openRoomId;
     // before the lists and m_media, which use it
     QSettings m_settings;

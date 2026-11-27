@@ -18,6 +18,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QSaveFile>
 #include <QFileInfo>
 #include <QList>
 #include <QPair>
@@ -28,8 +29,10 @@
 // tests/cpp/storekeyguard can run it on the host.
 namespace StoreKeyGuard {
 
-// what sailfish-secrets answered when asked for the key
-enum Fetch { Found, NoCollection, NoSecret, Failed };
+// what sailfish-secrets answered when asked for the key: Refused is its
+// PermissionsError, a collection of that name that is not Rustrx's (audit
+// SEC2)
+enum Fetch { Found, NoCollection, NoSecret, Failed, Refused };
 // and when asked to make the collection
 enum Create { Created, Existed, CreateFailed };
 
@@ -66,6 +69,90 @@ inline QStringList accountDirs(const QString &dataDir)
             dirs << more.filePath(name);
     }
     return dirs;
+}
+
+// whether any account's store was encrypted with the key (core:
+// ENCRYPTED_MARKER in store/): a new key then needs the user's yes (audit
+// SEC3), and the collection's name stays
+inline bool encryptedStores(const QString &dataDir)
+{
+    for (const QString &dir : accountDirs(dataDir))
+        if (QFile::exists(dir + QLatin1String("/store/rustrx-encrypted")))
+            return true;
+    return false;
+}
+
+// The collection's name (audit SEC2: a fixed name can be taken first by
+// another app): drawn once at random, "rustrx" and 16 letters or digits
+// (the plugin takes alphanumerics, under 32), kept in the data folder in
+// kNameFile. An install from before keeps "rustrx", the name its key is
+// kept under: one with an encrypted store or a session file. Only `mayWrite`
+// (the app, never the stand-in or a push wake) writes the file; without it
+// and without a file, a new install has no key to look for (""). `random`
+// gives the 16 characters (tests pass their own).
+static const char kNameFile[] = "secrets-collection";
+static const char kOldName[] = "rustrx";
+
+inline bool validName(const QString &name)
+{
+    if (name.isEmpty() || name.size() >= 32)
+        return false;
+    for (const QChar c : name)
+        if (!(c.isDigit() || (c >= QLatin1Char('a') && c <= QLatin1Char('z')) || (c >= QLatin1Char('A') && c <= QLatin1Char('Z'))))
+            return false;
+    return true;
+}
+
+inline QString readName(const QString &dataDir)
+{
+    QFile f(dataDir + QLatin1Char('/') + QLatin1String(kNameFile));
+    if (!f.open(QIODevice::ReadOnly))
+        return QString();
+    const QString name = QString::fromLatin1(f.read(64)).trimmed();
+    return validName(name) ? name : QString();
+}
+
+inline bool writeName(const QString &dataDir, const QString &name)
+{
+    QSaveFile f(dataDir + QLatin1Char('/') + QLatin1String(kNameFile));
+    f.setDirectWriteFallback(false);
+    return f.open(QIODevice::WriteOnly) && f.write(name.toLatin1()) == name.size() && f.commit();
+}
+
+inline bool installedBefore(const QString &dataDir)
+{
+    if (encryptedStores(dataDir))
+        return true;
+    for (const QString &dir : accountDirs(dataDir))
+        if (QFile::exists(dir + QLatin1String("/session.json")))
+            return true;
+    return false;
+}
+
+inline QString collectionName(const QString &dataDir, bool mayWrite, const QString &random)
+{
+    const QString kept = readName(dataDir);
+    if (!kept.isEmpty())
+        return kept;
+    const bool before = installedBefore(dataDir);
+    const QString name = before ? QString::fromLatin1(kOldName) : QString::fromLatin1(kOldName) + random;
+    if (!mayWrite)
+        return before ? name : QString();
+    if (!validName(name) || !writeName(dataDir, name))
+        return QString();
+    return name;
+}
+
+// After a refusal (another app holds the name): a fresh name for the next
+// login, but never while a store needs the key under the old one
+inline QString redrawName(const QString &dataDir, const QString &random)
+{
+    if (encryptedStores(dataDir))
+        return QString();
+    const QString name = QString::fromLatin1(kOldName) + random;
+    if (!validName(name) || !writeName(dataDir, name))
+        return QString();
+    return name;
 }
 
 // what moveAside did: (from, to) for a folder moved, ("", copy) for a copy

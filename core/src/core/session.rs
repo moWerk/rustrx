@@ -314,6 +314,10 @@ impl Core {
             None => self.build_client(&saved.homeserver, true).await?,
         };
         tracing::info!(ms = t.elapsed().as_millis() as u64, "startup: client built");
+        // a session from before the http check goes on as it was (NET-3)
+        if let Some(host) = super::checks::insecure_http(&client.homeserver()) {
+            tracing::warn!(%host, "startup: this session's server is reached over plain http");
+        }
         match saved.client_id {
             Some(id) => {
                 use matrix_sdk::authentication::oauth::{ClientId, OAuthSession, UserSession};
@@ -643,11 +647,12 @@ impl Core {
                 },
                 // on a task of its own: the teardown aborts this one
                 Ok(SessionChange::UnknownToken(data)) => {
-                    if !Self::session_gone(&client).await {
+                    let Some(refused) = Self::session_gone(&client).await else {
                         tracing::warn!("token refresh failed without an answer from the server; the session stays");
                         continue;
-                    }
-                    self.rt.spawn(self.session_expired(data.soft_logout));
+                    };
+                    let hard = Self::gone_for_good(&client, data.soft_logout, refused).await;
+                    self.rt.spawn(self.session_expired(data.soft_logout, hard));
                     break;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
@@ -656,34 +661,51 @@ impl Core {
         }
     }
 
-    /// Whether the server really ended the session. The SDK reports an unknown
-    /// token whenever a refresh fails, also when the refresh never reached the
-    /// server (no network after a sleep, a proxy error): that logged people
-    /// out. Refreshing again tells: gone only if the server refuses the
-    /// refresh token, or there is none. Asked more than once, spread out: a
-    /// phone waking from sleep had its refresh cut by a connection reset,
-    /// and the one retry a second later was refused (tchncs.de, 2026-11-16),
+    /// Whether the server really ended the session, and how it refused the
+    /// refresh (None: it did not). The SDK reports an unknown token whenever
+    /// a refresh fails, also when the refresh never reached the server (no
+    /// network after a sleep, a proxy error): that logged people out.
+    /// Refreshing again tells: gone only if the server refuses the refresh
+    /// token, or there is none. Asked more than once, spread out: a phone
+    /// waking from sleep had its refresh cut by a connection reset, and the
+    /// one retry a second later was refused (tchncs.de, 2026-11-16),
     /// although the spec keeps an old refresh token valid for that retry.
-    async fn session_gone(client: &Client) -> bool {
+    /// The refusal is M_UNKNOWN_TOKEN (or no refresh token) only when every
+    /// try said so.
+    async fn session_gone(client: &Client) -> Option<super::checks::Refused> {
+        use super::checks::Refused;
+        let mut refused = Refused::UnknownToken;
         for (attempt, wait) in SESSION_GONE_WAITS.iter().enumerate() {
             tokio::time::sleep(*wait).await;
             match Self::refresh_refused(client).await {
-                Some(false) => return false,
-                Some(true) => tracing::warn!(attempt, "session: the refresh token was refused"),
+                Some(None) => return None,
+                Some(Some(how)) => {
+                    tracing::warn!(attempt, ?how, "session: the refresh token was refused");
+                    if how == Refused::Other || refused == Refused::UnknownToken {
+                        refused = how;
+                    }
+                }
                 // no answer from the server: not a verdict, the session stays
-                None => return false,
+                None => return None,
             }
         }
-        true
+        Some(refused)
     }
 
-    /// One refresh: Some(true) refused by the server, Some(false) refreshed,
-    /// None no answer (no network, a timeout).
-    async fn refresh_refused(client: &Client) -> Option<bool> {
+    /// One refresh: Some(Some(how)) refused by the server, Some(None)
+    /// refreshed, None no answer (no network, a timeout).
+    async fn refresh_refused(client: &Client) -> Option<Option<super::checks::Refused>> {
+        use super::checks::Refused;
         match client.refresh_access_token().await {
-            Ok(_) => Some(false),
-            Err(matrix_sdk::RefreshTokenError::MatrixAuth(e)) => e.client_api_error_kind().is_some().then_some(true),
-            Err(matrix_sdk::RefreshTokenError::RefreshTokenRequired) => Some(true),
+            Ok(_) => Some(None),
+            Err(matrix_sdk::RefreshTokenError::MatrixAuth(e)) => e.client_api_error_kind().map(|kind| {
+                Some(if matches!(kind, matrix_sdk::ruma::api::error::ErrorKind::UnknownToken { .. }) {
+                    Refused::UnknownToken
+                } else {
+                    Refused::Other
+                })
+            }),
+            Err(matrix_sdk::RefreshTokenError::RefreshTokenRequired) => Some(Some(Refused::NoRefreshToken)),
             // an OAuth refresh fails for no network too (the metadata fetch):
             // gone only when the account service refuses the refresh token
             Err(matrix_sdk::RefreshTokenError::OAuth(e)) => {
@@ -691,9 +713,27 @@ impl Core {
                 use matrix_sdk::authentication::oauth::OAuthError;
                 matches!(&*e, OAuthError::RefreshToken(RequestTokenError::ServerResponse(r))
                     if *r.error() == BasicErrorResponseType::InvalidGrant)
-                    .then_some(true)
+                    .then_some(Some(Refused::Other))
             }
         }
+    }
+
+    /// A session the server ended: gone for good (a hard logout, its store
+    /// and media go) or not (checks::hard_logout says which answers count).
+    async fn gone_for_good(client: &Client, soft_logout: bool, refused: super::checks::Refused) -> bool {
+        let oauth_session = matches!(client.session(), Some(matrix_sdk::AuthSession::OAuth(_)));
+        // whether the server has an account service; no answer is not "no"
+        let account_service = match client.oauth().server_metadata().await {
+            Ok(_) => Some(true),
+            Err(e) if e.is_not_supported() => Some(false),
+            Err(e) => {
+                tracing::info!("session: whether the server has an account service is not known ({e})");
+                None
+            }
+        };
+        let hard = super::checks::hard_logout(soft_logout, account_service, oauth_session, refused);
+        tracing::warn!(soft_logout, ?account_service, oauth_session, ?refused, hard, "session: ended by the server");
+        hard
     }
 
     /// What a session that ended on the server's side leaves for the next
@@ -728,8 +768,10 @@ impl Core {
     /// the saved session, tell the UI. The store, the media and the device
     /// stay: logging in again as the same user goes on where it was, keys
     /// and history included (a lost refresh answer ended sessions on
-    /// servers that rotate their tokens).
-    pub(crate) async fn session_expired(&'static self, soft_logout: bool) {
+    /// servers that rotate their tokens). A session gone for good (`hard`,
+    /// gone_for_good: ended on another device, say for a lost phone) takes
+    /// them along (audit SEC6), as a logout here does.
+    pub(crate) async fn session_expired(&'static self, soft_logout: bool, hard: bool) {
         let teardown = {
             let mut st = self.state.lock().await;
             if st.client.is_none() {
@@ -737,10 +779,16 @@ impl Core {
             }
             st.take_login()
         };
-        tracing::warn!(soft_logout, "the server no longer accepts this session");
+        tracing::warn!(soft_logout, hard, "the server no longer accepts this session");
         let client = teardown.stop().await;
         self.remove_session();
         let user = client.as_ref().and_then(|c| c.user_id()).map(|u| u.to_string());
+        if hard {
+            drop(client);
+            self.wipe_local_data();
+            self.emit(json!({"ev": "logged_out", "reason": "session_expired", "soft_logout": soft_logout, "wiped": true}));
+            return;
+        }
         if let (Some(user), Some(device)) = (user.as_deref(), client.as_ref().and_then(|c| c.device_id())) {
             let kept = json!({"user_id": user, "device_id": device.as_str()});
             std::fs::write(self.relogin_path(), kept.to_string()).ok();
@@ -776,6 +824,9 @@ impl Core {
     pub(crate) async fn probe_server(&'static self, user: Option<String>, homeserver: Option<String>) -> Result<()> {
         let server = Self::server_of(user.as_deref(), &homeserver)?;
         let client = self.build_client(&server, false).await.map_err(|e| anyhow!("{server}: {e}"))?;
+        // http only on the phone or the home network, wherever the
+        // address came from (typed, .well-known, a QR code; audit NET-3)
+        super::checks::refuse_insecure(&client.homeserver())?;
         // a server that delegates its logins to an account service (MAS, or
         // Synapse's delegated auth with another OpenID provider) may have no
         // /login at all: M_UNRECOGNIZED there means "the browser only", not
@@ -848,6 +899,9 @@ impl Core {
             let device = self.kept_device(Some(&user));
             tracing::info!(%server, "login: building the client");
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
+            // http only on the phone or the home network, wherever the
+            // address came from (typed, .well-known, a QR code; audit NET-3)
+            super::checks::refuse_insecure(&client.homeserver())?;
             tracing::info!("login: client built, sending the password");
             // the same device again, so the kept crypto store fits
             let mut login = client
@@ -867,7 +921,7 @@ impl Core {
         match result {
             Ok(client) => self.after_login(client).await,
             Err(e) => {
-                self.emit(json!({"ev": "login_error", "message": format!("{e:#}")}));
+                self.emit(super::checks::with_refusal(json!({"ev": "login_error", "message": format!("{e:#}")}), &e));
                 Ok(())
             }
         }
@@ -887,6 +941,9 @@ impl Core {
             let device = self.kept_device(user.as_deref());
             tracing::info!(%server, "sso: building the client");
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
+            // http only on the phone or the home network, wherever the
+            // address came from (typed, .well-known, a QR code; audit NET-3)
+            super::checks::refuse_insecure(&client.homeserver())?;
             tracing::info!("sso: client built, asking for the sign-on page");
             let mut builder = client
                 .matrix_auth()
@@ -914,6 +971,7 @@ impl Core {
                 },
                 _ = &mut cancelled => bail!("login cancelled"),
             }
+            let client = self.typed_account_or_undo(client, user.as_deref(), device.is_some()).await?;
             std::fs::remove_file(self.data_dir.join(DEVICE_ID_FILE)).ok();
             std::fs::remove_file(self.relogin_path()).ok();
             Ok(client)
@@ -922,10 +980,31 @@ impl Core {
         match result {
             Ok(client) => self.after_login(client).await,
             Err(e) => {
-                self.emit(json!({"ev": "login_error", "message": format!("{e:#}")}));
+                self.emit(super::checks::with_refusal(json!({"ev": "login_error", "message": format!("{e:#}")}), &e));
                 Ok(())
             }
         }
+    }
+
+    /// After a browser login (single sign-on, OAuth): the account it ended
+    /// in must be the one typed, when a full Matrix ID was typed (audit
+    /// NET-7: another app on the phone can answer the loopback with a login
+    /// token of its own account). Else that session is logged out at once
+    /// and its store goes, unless it was this user's kept one (a relogin).
+    async fn typed_account_or_undo(&self, client: Client, typed: Option<&str>, kept: bool) -> Result<Client> {
+        let got = client.user_id().map(|u| u.to_string()).unwrap_or_default();
+        let Some(refusal) = super::checks::other_account(typed, &got) else { return Ok(client) };
+        tracing::warn!("login: the browser logged in another account than typed; logging it out");
+        match tokio::time::timeout(LOGOUT_SERVER_TIMEOUT, client.logout()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => tracing::warn!("login: logging the other account out: {e}"),
+            Err(_) => tracing::warn!("login: the server did not answer the logout of the other account"),
+        }
+        drop(client);
+        if !kept {
+            self.wipe_local_data();
+        }
+        Err(refusal.into())
     }
 
     /// At the process's end: the login's tasks and the sync stop and the
@@ -1064,6 +1143,9 @@ impl Core {
             let server = Self::server_of(user.as_deref(), &homeserver)?;
             self.fresh_store_for_qr()?;
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
+            // http only on the phone or the home network, wherever the
+            // address came from (typed, .well-known, a QR code; audit NET-3)
+            super::checks::refuse_insecure(&client.homeserver())?;
             let registration = super::qrlink::device_code_registration()?;
             let oauth = client.oauth();
             let login = oauth.login_with_qr_code(Some(&registration)).generate();
@@ -1112,7 +1194,7 @@ impl Core {
         match result {
             Ok(client) => self.after_login(client).await,
             Err(e) => {
-                self.emit(json!({"ev": "login_error", "message": format!("{e:#}")}));
+                self.emit(super::checks::with_refusal(json!({"ev": "login_error", "message": format!("{e:#}")}), &e));
                 Ok(())
             }
         }
@@ -1149,7 +1231,11 @@ impl Core {
         let result: Result<Client> = async {
             let server = Self::server_of(user.as_deref(), &homeserver)?;
             let device = self.kept_device(user.as_deref());
+            let kept = device.is_some();
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
+            // http only on the phone or the home network, wherever the
+            // address came from (typed, .well-known, a QR code; audit NET-3)
+            super::checks::refuse_insecure(&client.homeserver())?;
             let (redirect, answer) = LocalServerBuilder::new()
                 .ip_address(LocalServerIpAddress::Localhostv4)
                 .spawn()
@@ -1189,6 +1275,7 @@ impl Core {
                 }
             };
             client.oauth().finish_login(query.into()).await.map_err(|e| anyhow!("{e}"))?;
+            let client = self.typed_account_or_undo(client, user.as_deref(), kept).await?;
             std::fs::remove_file(self.data_dir.join(DEVICE_ID_FILE)).ok();
             std::fs::remove_file(self.relogin_path()).ok();
             Ok(client)
@@ -1197,7 +1284,7 @@ impl Core {
         match result {
             Ok(client) => self.after_login(client).await,
             Err(e) => {
-                self.emit(json!({"ev": "login_error", "message": format!("{e:#}")}));
+                self.emit(super::checks::with_refusal(json!({"ev": "login_error", "message": format!("{e:#}")}), &e));
                 Ok(())
             }
         }

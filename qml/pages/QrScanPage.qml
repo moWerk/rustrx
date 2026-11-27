@@ -81,7 +81,7 @@ Page {
         onLoginError: {
             if (page.grant || !page.sent || page.handedOver) return
             page.handedOver = true
-            pageStack.replace(Qt.resolvedUrl("QrLoginPage.qml"), { scanned: true, error: message })
+            pageStack.replace(Qt.resolvedUrl("QrLoginPage.qml"), { scanned: true, error: app.loginErrorText(message, detail) })
         }
     }
 

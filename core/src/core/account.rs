@@ -56,11 +56,30 @@ impl Core {
         Ok(())
     }
 
+    /// The keys to `path`'s folder (Documents), under its name or, when a
+    /// file has it (an export earlier that day), `-2`, `-3`, ... before
+    /// the extension. The SDK writes with File::create, which follows a
+    /// link and truncates (audit FFI-4: a link planted in Documents led it
+    /// into the crypto store): it writes into the private data folder, and
+    /// the copy goes out new only and never through a link
+    /// (export_new_file).
     pub(crate) async fn export_keys(&self, path: String, passphrase: &str) -> Result<()> {
         let client = self.client().await?;
         let path = PathBuf::from(path);
-        client.encryption().export_room_keys(path.clone(), passphrase, |_| true).await?;
-        self.emit(json!({"ev": "keys_exported", "path": path.to_string_lossy()}));
+        let dir = path.parent().context("no folder to export to")?.to_owned();
+        let name = path.file_name().and_then(|n| n.to_str()).context("no file name to export to")?;
+        let private = super::media_cache::temp_path(&self.data_dir.join("keys-export.txt"));
+        let written = async {
+            client.encryption().export_room_keys(private.clone(), passphrase, |_| true).await?;
+            let bytes = zeroize::Zeroizing::new(tokio::fs::read(&private).await?);
+            let names = numbered_names(name, KEY_EXPORT_NAMES);
+            let names: Vec<&str> = names.iter().map(String::as_str).collect();
+            super::timeline::export_new_file(&dir, &names, &bytes)
+        }
+        .await;
+        tokio::fs::remove_file(&private).await.ok();
+        let out = written?;
+        self.emit(json!({"ev": "keys_exported", "path": out.to_string_lossy()}));
         Ok(())
     }
 
@@ -256,6 +275,18 @@ fn kept_retention_policy(p: matrix_sdk::media::MediaRetentionPolicy) -> matrix_s
     }
 }
 
+/// How many names a key export tries in one day (`name`, `name-2`, ...).
+const KEY_EXPORT_NAMES: usize = 99;
+
+/// `name`, then `stem-2.ext` up to `stem-<count>.ext`.
+fn numbered_names(name: &str, count: usize) -> Vec<String> {
+    let (stem, ext) = match name.rfind('.') {
+        Some(i) if i > 0 => (&name[..i], &name[i..]),
+        _ => (name, ""),
+    };
+    std::iter::once(name.to_owned()).chain((2..=count).map(|n| format!("{stem}-{n}{ext}"))).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,4 +308,18 @@ mod tests {
         assert_eq!(kept_retention_policy(default), default);
         assert!(sweep_policy(default).has_content_expired(now, now));
     }
+
+    /// A second export the same day gets `-2`, then `-3`; a name without
+    /// an extension too. Planted-bug: start the numbers at 1.
+    #[test]
+    fn key_exports_of_one_day_are_numbered() {
+        let names = numbered_names("rustrx-keys-2026-11-27.txt", KEY_EXPORT_NAMES);
+        assert_eq!(names[0], "rustrx-keys-2026-11-27.txt");
+        assert_eq!(names[1], "rustrx-keys-2026-11-27-2.txt");
+        assert_eq!(names[2], "rustrx-keys-2026-11-27-3.txt");
+        assert_eq!(names.len(), KEY_EXPORT_NAMES);
+        assert_eq!(numbered_names("keys", 3), vec!["keys", "keys-2", "keys-3"]);
+        assert_eq!(numbered_names(".keys", 2), vec![".keys", ".keys-2"]);
+    }
 }
+

@@ -147,6 +147,88 @@ private slots:
         QVERIFY(QFile::exists(data + QStringLiteral("/accounts/1/store/rustrx-encrypted")));
         QVERIFY(QFile::exists(data + QStringLiteral("/store-lost-s/1/store/keep")));
     }
+
+    // a "Refused" (another app's collection) is no "missing": no key is
+    // made from it, and nothing is moved (audit SEC2).
+    // Planted-bug: Refused taken as NoCollection.
+    void refusedIsNotMissing()
+    {
+        QVERIFY(!answersAgree(Refused, Refused, false));
+        QVERIFY(!answersAgree(Refused, NoCollection, false));
+        QVERIFY(!answersAgree(NoCollection, Refused, false));
+    }
+
+    // the key is gone while a store it encrypted is here: SecretStore asks
+    // before a new one (SEC3). Any account counts, a plain store does not.
+    // Planted-bug: only the first account's folder looked at.
+    void encryptedStoresAreSeen()
+    {
+        QTemporaryDir tmp;
+        const QString data = tmp.path();
+        QVERIFY(!encryptedStores(data));
+        account(data + QStringLiteral("/accounts/3"), false);
+        QVERIFY(!encryptedStores(data));
+        account(data + QStringLiteral("/accounts/2"));
+        QVERIFY(encryptedStores(data));
+    }
+
+    // A new install draws a name of its own, once; an install from before
+    // (an encrypted store, or a session file) keeps "rustrx", the name its
+    // key lies under; the stand-in and a push wake never write the file
+    // and look for no key on a new install. A bad file is not taken.
+    // Planted-bug: a new name drawn for an install with an encrypted store
+    // (its key would be looked for in an empty collection, and the next
+    // step makes a new one).
+    void collectionNames()
+    {
+        const QString random = QStringLiteral("AbCdEfGh01234567");
+        {
+            QTemporaryDir tmp;
+            QCOMPARE(collectionName(tmp.path(), false, random), QString());
+            QVERIFY(!QFile::exists(tmp.filePath(QLatin1String(kNameFile))));
+            QCOMPARE(collectionName(tmp.path(), true, random), QStringLiteral("rustrxAbCdEfGh01234567"));
+            QCOMPARE(collectionName(tmp.path(), true, QStringLiteral("zzzzzzzzzzzzzzzz")), QStringLiteral("rustrxAbCdEfGh01234567"));
+            QCOMPARE(collectionName(tmp.path(), false, QString()), QStringLiteral("rustrxAbCdEfGh01234567"));
+        }
+        {
+            QTemporaryDir tmp;
+            account(tmp.path());
+            QCOMPARE(collectionName(tmp.path(), false, random), QStringLiteral("rustrx"));
+            QVERIFY(!QFile::exists(tmp.filePath(QLatin1String(kNameFile))));
+            QCOMPARE(collectionName(tmp.path(), true, random), QStringLiteral("rustrx"));
+            QCOMPARE(readName(tmp.path()), QStringLiteral("rustrx"));
+        }
+        {
+            // a plain store with its session (no key ever): from before too
+            QTemporaryDir tmp;
+            account(tmp.path() + QStringLiteral("/accounts/1"), false);
+            QCOMPARE(collectionName(tmp.path(), true, random), QStringLiteral("rustrx"));
+        }
+        {
+            QTemporaryDir tmp;
+            write(tmp.filePath(QLatin1String(kNameFile)), "../../evil name");
+            QCOMPARE(collectionName(tmp.path(), true, random), QStringLiteral("rustrxAbCdEfGh01234567"));
+            // a name that cannot be kept is not used
+            QCOMPARE(collectionName(QStringLiteral("/nonexistent-rustrx-test"), true, random), QString());
+            // the plugin takes under 32
+            QVERIFY(!validName(QStringLiteral("rustrx") + QString(26, QLatin1Char('a'))));
+            QVERIFY(validName(QStringLiteral("rustrx") + QString(25, QLatin1Char('a'))));
+        }
+    }
+
+    // after a refusal the next login draws a fresh name, but never while a
+    // store needs the key under the old one.
+    // Planted-bug: redrawn with an encrypted store here.
+    void redrawOnlyWithoutEncryptedStores()
+    {
+        QTemporaryDir tmp;
+        QCOMPARE(collectionName(tmp.path(), true, QStringLiteral("aaaaaaaaaaaaaaaa")), QStringLiteral("rustrxaaaaaaaaaaaaaaaa"));
+        QCOMPARE(redrawName(tmp.path(), QStringLiteral("bbbbbbbbbbbbbbbb")), QStringLiteral("rustrxbbbbbbbbbbbbbbbb"));
+        QCOMPARE(collectionName(tmp.path(), false, QString()), QStringLiteral("rustrxbbbbbbbbbbbbbbbb"));
+        account(tmp.path());
+        QCOMPARE(redrawName(tmp.path(), QStringLiteral("cccccccccccccccc")), QString());
+        QCOMPARE(readName(tmp.path()), QStringLiteral("rustrxbbbbbbbbbbbbbbbb"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestStoreKeyGuard)

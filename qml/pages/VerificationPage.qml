@@ -22,6 +22,7 @@ import "../components"
 // emoji, then done. Going back cancels it.
 ShortPage {
     id: page
+    objectName: "verification"
 
     property string flowId
     property var info: ({})
@@ -30,6 +31,9 @@ ShortPage {
     property var emojis: []
     property var decimals: null
     property string reason
+    // another person's name, from their request (later events do not repeat it)
+    property string otherName
+    Component.onCompleted: otherName = info.other_user_name || ""
     property bool finished: phase === "done" || phase === "cancelled"
 
     onStatusChanged: {
@@ -44,17 +48,32 @@ ShortPage {
         case "created":
         //% "Request sent. Accept it on the other device."
         case "ready": return qsTrId("rustrx-la-ver-sent")
-        //: %1 the other device's name or id
-        //% "%1 wants to verify this phone. Accept to compare emoji."
-        case "requested": return qsTrId("rustrx-la-ver-requested").arg(info.other_device_name || info.other_device || info.other_user || "")
+        case "requested":
+            // another person: named by their name and always their user ID,
+            // not by a device name they chose (NET-6)
+            if (info.self_verification === false) {
+                //: %1 the person's name, %2 their user ID
+                //% "%1 (%2) wants to verify you. Accept to compare emoji."
+                if (otherName.length) return qsTrId("rustrx-la-ver-requested-other").arg(otherName).arg(info.other_user || "")
+                //: %1 the person's user ID (no name known)
+                //% "%1 wants to verify you. Accept to compare emoji."
+                return qsTrId("rustrx-la-ver-requested-other-id").arg(info.other_user || "")
+            }
+            //: %1 the other device's name or id
+            //% "%1 wants to verify this phone. Accept to compare emoji."
+            return qsTrId("rustrx-la-ver-requested").arg(info.other_device_name || info.other_device || info.other_user || "")
         //% "Starting the emoji comparison…"
         case "sas": return qsTrId("rustrx-la-ver-starting")
         //% "Compare the emoji with the other device. Same order, same symbols?"
         case "keys_exchanged": return qsTrId("rustrx-la-ver-compare")
         //% "Waiting for the other device to confirm…"
         case "confirmed": return qsTrId("rustrx-la-ver-confirming")
-        //% "Verified. Encrypted messages from your other devices will now reach this one."
-        case "done": return qsTrId("rustrx-la-ver-done")
+        case "done":
+            //: %1 the person's name or user ID
+            //% "Verified. %1 is now shown as verified here."
+            if (info.self_verification === false) return qsTrId("rustrx-la-ver-done-other").arg(otherName || info.other_user || "")
+            //% "Verified. Encrypted messages from your other devices will now reach this one."
+            return qsTrId("rustrx-la-ver-done")
         //: %1 the reason
         //% "Cancelled: %1"
         case "cancelled": return qsTrId("rustrx-la-ver-cancelled").arg(reason)
@@ -175,6 +194,7 @@ ShortPage {
             }
             if (data.flow_id !== flowId) return
             info = data
+            if (data.other_user_name) otherName = data.other_user_name
             phase = data.state
             if (data.state === "cancelled") reason = data.reason || ""
         }

@@ -62,7 +62,7 @@ Rustrx is reachable by other processes in these ways:
 ### The local filesystem and backups
 
 - Data lives in the app's `QStandardPaths` folders, organisation `net.mowerk`, application `harbour-rustrx` (`src/main.cpp:102-103`): the data folder (session, store, media, logs; extra accounts in `accounts/<n>/`), the config folder (QSettings, the `background` flag, which the stand-in's unit looks for at `%h/.config/net.mowerk/harbour-rustrx/background`), and the cache folder (prepared uploads, shared copies). Under sailjail the data folder should be `~/.local/share/net.mowerk/harbour-rustrx/`; the comment at `src/main.cpp:185` names an older path. Check on a phone.
-- Files written to Downloads (exported media, `Downloads/Rustrx/`; collected logs) are readable by every app with the Downloads permission.
+- Files written to Downloads (exported media, `Downloads/Rustrx/`) are readable by every app with the Downloads permission. Collected logs stay in the app's cache and go to the share sheet (0.8.4).
 - Backups: this guide has not checked what Sailfish's backup tool includes from these folders. The store's values are encrypted with a key that stays in Sailfish Secrets, but `session.json` is plain on phones without Secrets (below).
 
 ### The Sailfish sandbox
@@ -125,7 +125,7 @@ All in `core/src/core/session.rs`. No WebView is used for logins.
 
 ### What is logged
 
-- The debug log is on by default until 1.0 (`kDebugLogDefault`, `src/Keys.h:33`); the first start says so. `src/DebugLog.cpp` writes every Qt message (C++ `qInfo` and friends, QML `console.log`) to one file per process in the app's data folder, about 1 MB each plus one older file, and passes it on to the previous handler (the system journal). Settings can collect the logs into a file in Downloads (`DebugLog::collect`, line 125) and clear them.
+- The debug log is on by default until 1.0 (`kDebugLogDefault`, `src/Keys.h:33`); the first start says so. `src/DebugLog.cpp` writes every Qt message (C++ `qInfo` and friends, QML `console.log`) to one file per process in the app's data folder, about 1 MB each plus one older file, and passes it on to the previous handler (the system journal). Settings can collect the logs into a file in the app's cache for the share sheet (`DebugLog::collect`, `Rustrx::shareableLog`) and clear them.
 - The core's tracing goes into the same log as `log` events (`lib.rs`, `LogWriter`). Default filter `warn,rustrx=info,matrix_sdk_crypto::backups=error` (`lib.rs:175`); `RUSTRX_LOG` overrides it.
 - **Must never be logged:** access and refresh tokens, the store key, the recovery key, passwords, room key export passphrases, TURN credentials, the push endpoint and connector token, message bodies, file contents.
 - What this guide found, from the 144 `tracing::` calls in `core/src`, every `qInfo`, `qWarning`, `qDebug` in `src/` and every `console.log` in `qml/` (read by their arguments, not traced through every error type): commands are logged by name and room id only (`dispatch`, `core/src/core/commands.rs:13`); none of the items above is logged by these lines (the endpoint by its length, `UnifiedPush.cpp:420`; the gateway by its host). Room ids, user ids, event ids, call ids, mxc addresses and verification flow ids are logged.

@@ -1382,7 +1382,7 @@ pub(crate) fn emote_stem(mxc: &str) -> String {
 /// (O_EXCL) and never through a link: another app with Downloads cannot
 /// swap the folder for a link between a check and the write and so lead
 /// the copy into Rustrx's own files (the name is the sender's choice).
-fn export_new_file(dir: &std::path::Path, names: &[&str], bytes: &[u8]) -> Result<PathBuf> {
+pub(crate) fn export_new_file(dir: &std::path::Path, names: &[&str], bytes: &[u8]) -> Result<PathBuf> {
     use std::io::Write;
     use std::os::fd::{AsRawFd, FromRawFd};
     use std::os::unix::fs::OpenOptionsExt;

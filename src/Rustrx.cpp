@@ -32,6 +32,7 @@
 #include "Keys.h"
 #include "Perf.h"
 #include "RoundAvatar.h"
+#include "SecretStore.h"
 #include "Wipe.h"
 #include "rustrx_core.h"
 #include <sailfishapp.h>
@@ -78,28 +79,64 @@ QString Rustrx::connectorName() { return QString::fromLatin1(UnifiedPush::kConne
 // core. The key goes from the plugin's buffer straight to the core, which
 // keeps its own copy; this one is wiped (Wipe.h, audit B13). False when
 // there is none (no plugin, Secrets locked, its prompt not answered).
-bool Rustrx::handStoreKeyOn()
+// `flags`: SecretStore::Flags (Start over, a fresh name after a refusal).
+// What came of it besides the key is kept (m_keyState): a refusal shows
+// on the Account tab (SEC2), a lost key asks the user first (SEC3).
+bool Rustrx::handStoreKeyOn(int flags)
 {
     QElapsedTimer secretsTime;
     secretsTime.start();
     char key[128];
     bool haveKey = false;
+    int state = SecretStore::NoKey;
     QLibrary secrets(SailfishApp::pathTo(QString::fromLatin1(Keys::kSecretsPlugin)).toLocalFile());
-    typedef int (*StoreKeyFn)(char *, int);
+    typedef int (*StoreKeyFn)(char *, int, int, int *);
     if (StoreKeyFn fn = reinterpret_cast<StoreKeyFn>(secrets.resolve(Keys::kSecretsSymbol))) {
-        const int n = fn(key, sizeof key);
+        const int n = fn(key, sizeof key, flags, &state);
         haveKey = n > 0 && n < int(sizeof key);
     } else {
         qInfo().noquote() << "startup: no sailfish-secrets plugin:" << secrets.errorString();
     }
     qInfo().noquote() << "startup: store key" << (haveKey ? "from sailfish-secrets" : "none")
-                      << "after" << secretsTime.elapsed() << "ms";
+                      << "state" << state << "after" << secretsTime.elapsed() << "ms";
     if (haveKey) {
         key[sizeof key - 1] = 0;
         rustrx_set_store_key(key);
+        m_haveKey = true;
     }
     Wipe::bytes(key, sizeof key);
+    m_keyState = haveKey ? int(SecretStore::KeyOk) : state;
+    // only the app asks; the stand-in and a push wake wait for it
+    const bool lost = m_keyState == SecretStore::Lost && !m_handover.standIn() && !m_handover.pushWake();
+    if (lost != m_storeKeyLost) {
+        m_storeKeyLost = lost;
+        emit storeKeyLostChanged();
+    }
     return haveKey;
+}
+
+void Rustrx::keyBeforeLogin()
+{
+    if (m_haveKey || m_keyState != SecretStore::Refused)
+        return;
+    qInfo() << "secrets: refused before; a fresh place in Secrets for this login";
+    handStoreKeyOn(SecretStore::Redraw);
+}
+
+void Rustrx::startOverStore()
+{
+    if (!m_storeKeyLost)
+        return;
+    qWarning() << "secrets: the user chose to start over with a new store key";
+    m_storeKeyLost = false;
+    emit storeKeyLostChanged();
+    // whatever the shown account's state: a kept store of an ended session
+    // has no session to restore, and its login needs the key as well
+    if (m_cur->restoreFailed && !m_cur->restoring) {
+        retryRestoreWith(SecretStore::StartOver);
+        return;
+    }
+    handStoreKeyOn(SecretStore::StartOver);
 }
 
 bool Rustrx::callDark() const
@@ -143,6 +180,11 @@ void Rustrx::setCallNear(bool near)
 
 void Rustrx::retryRestore()
 {
+    retryRestoreWith(0);
+}
+
+void Rustrx::retryRestoreWith(int flags)
+{
     if (!m_cur->restoreFailed || m_cur->restoring)
         return;
     m_cur->restoring = true;
@@ -150,8 +192,8 @@ void Rustrx::retryRestore()
     // after the page has shown that it is asking: Secrets' prompt comes
     // over it, and this waits for the answer; every account waiting for
     // the key gets it
-    QTimer::singleShot(Keys::kRestoreRetryPaintMs, this, [this]() {
-        const bool key = handStoreKeyOn();
+    QTimer::singleShot(Keys::kRestoreRetryPaintMs, this, [this, flags]() {
+        const bool key = handStoreKeyOn(flags);
         for (Account *a : m_accounts) {
             if (!a->restoreFailed)
                 continue;
@@ -555,6 +597,20 @@ void Rustrx::openAccountKnocks(const QString &account)
     openKnocks();
 }
 
+void Rustrx::openVerification(const QString &flowId)
+{
+    if (leaving("verification"))
+        return;
+    if (!fromNotifications("verification"))
+        return;
+    // the window asks for its page only for a request it has posted
+    if (m_handover.standIn() || m_handover.pushWake())
+        return;
+    qInfo() << "notification: verification request opened";
+    emit activateRequested();
+    emit verificationRequested(flowId);
+}
+
 void Rustrx::declineCall(const QString &roomId, const QString &eventId)
 {
     if (fromNotifications("decline"))
@@ -694,9 +750,15 @@ void Rustrx::setCallsRelayOnly(bool on)
     emit settingsChanged();
 }
 
+// The bundle stays in the app's own cache and goes to the share sheet from
+// there (audit SEC8: in Downloads every app with that permission read who
+// the user talks to). sailfish-share runs outside the sandbox and reads
+// it; the mail and MMS plugins hand the receiving app a file descriptor
+// (replaceFileResourcesWithFileDescriptors), the Bluetooth and cloud ones
+// go through the transfer engine (seen on the C2, 5.2). An earlier
+// bundle there, and the copies earlier builds left in Downloads, go first.
 QString Rustrx::shareableLog()
 {
-    // other apps cannot read the data folder: the copy goes to Downloads
     QString device;
     QFile release(QStringLiteral("/etc/sailfish-release"));
     if (release.open(QIODevice::ReadOnly)) {
@@ -706,11 +768,19 @@ QString Rustrx::shareableLog()
     const QString header = QStringLiteral("Rustrx %1, core %2, Sailfish OS %3\nwritten %4")
             .arg(QStringLiteral(APP_VERSION), coreVersion(), device,
                  QDateTime::currentDateTime().toString(Qt::ISODate));
-    return DebugLog::collect(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation), header);
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+            + QLatin1Char('/') + QLatin1String(Keys::kSharedLogDir);
+    DebugLog::removeCopies(dir);
+    const int old = DebugLog::removeCopies(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
+    if (old)
+        qInfo() << "debug log:" << old << "copies of earlier builds removed from Downloads";
+    return DebugLog::collect(dir, header);
 }
 
 int Rustrx::clearLog()
 {
+    DebugLog::removeCopies(QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+                           + QLatin1Char('/') + QLatin1String(Keys::kSharedLogDir));
     const int copies = DebugLog::clear(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
     qInfo() << "debug log: cleared," << copies << "shared copies removed";
     return copies;
@@ -1051,6 +1121,7 @@ void Rustrx::loginPassword(const QString &user, const QString &password, const Q
     // one login at a time (the core refuses a second one too, audit K11)
     if (m_cur->loggingIn)
         return;
+    keyBeforeLogin();
     m_cur->loggingIn = true;
     emit stateChanged();
     command({{"cmd", "login_password"}, {"user", user}, {"password", password}, {"homeserver", homeserver}});
@@ -1060,6 +1131,7 @@ void Rustrx::loginSso(const QString &user, const QString &homeserver, const QStr
 {
     if (m_cur->loggingIn)
         return;
+    keyBeforeLogin();
     m_cur->loggingIn = true;
     emit stateChanged();
     QVariantMap cmd{{"cmd", "login_sso"}, {"user", user}, {"homeserver", homeserver}};
@@ -1072,6 +1144,7 @@ void Rustrx::loginOauth(const QString &user, const QString &homeserver, bool sig
 {
     if (m_cur->loggingIn)
         return;
+    keyBeforeLogin();
     m_cur->loggingIn = true;
     emit stateChanged();
     command({{"cmd", "login_oauth"}, {"user", user}, {"homeserver", homeserver}, {"signup", signup}});
@@ -1081,6 +1154,7 @@ void Rustrx::loginQr(const QString &user, const QString &homeserver)
 {
     if (m_cur->loggingIn)
         return;
+    keyBeforeLogin();
     m_cur->loggingIn = true;
     emit stateChanged();
     command({{"cmd", "login_qr"}, {"user", user}, {"homeserver", homeserver}});
@@ -1109,6 +1183,9 @@ bool Rustrx::readQr(QObject *grab)
     if (len <= 0)
         return false;
     data.truncate(len);
+    // logged out, the code is a login (login_scanned)
+    if (!m_cur->loggedIn)
+        keyBeforeLogin();
     command({{"cmd", "qr_scanned"}, {"data", QString::fromLatin1(data.toBase64())}});
     return true;
 }
@@ -1480,7 +1557,11 @@ void Rustrx::handleEvent(const QVariantMap &ev)
         emit identityResetApproval(ev.value("url").toString());
     } else if (type == QLatin1String("error")) {
         const QString cmd = ev.value("cmd").toString();
-        if (!isLoginCommand(cmd) && cmd != QLatin1String("voip_send"))
+        // the server check's refusal (an http server, NET-3) is the login
+        // page's to word, as a login's
+        if (cmd == QLatin1String("probe_server") && ev.contains(QStringLiteral("reason")))
+            emit loginError(ev.value("message").toString(), ev);
+        else if (!isLoginCommand(cmd) && cmd != QLatin1String("voip_send"))
             emit errorOccurred(cmd, ev.value("message").toString());
     } else if (type == QLatin1String("verification")) {
         emit verification(ev);
@@ -1613,6 +1694,10 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
         a->userId = ev.value("user_id").toString();
         a->homeserver = ev.value("homeserver").toString();
         a->storeState = ev.value("store").toString();
+        // no key because another app holds Rustrx's place in Secrets: said
+        // as such, not as a phone without Secrets (SEC2)
+        if (a->storeState == QLatin1String("no_secrets") && m_keyState == SecretStore::Refused)
+            a->storeState = QStringLiteral("secrets_refused");
         if (a->key == m_voipKey)
             m_voip->setOwnUserId(a->userId);
         // a call that rang in the stand-in, handed over with the app's start
@@ -1668,7 +1753,7 @@ void Rustrx::handleAccountEvent(Account *a, const QString &type, const QVariantM
         a->loggingIn = false;
         if (shown) {
             emit stateChanged();
-            emit loginError(ev.value("message").toString());
+            emit loginError(ev.value("message").toString(), ev);
         }
     } else if (type == QLatin1String("error")) {
         qWarning().noquote() << "core error: account" << a->key << ev.value("cmd").toString() << ev.value("message").toString();

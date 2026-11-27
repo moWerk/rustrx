@@ -57,6 +57,9 @@ pub(crate) const QR_CHANNEL_TIMEOUT: Duration = Duration::from_secs(60);
 /// before the session counts as ended (the first at once).
 pub(crate) const SESSION_GONE_WAITS: [Duration; 3] =
     [Duration::from_secs(0), Duration::from_secs(5), Duration::from_secs(30)];
+/// Another person's verification request waits this long for their
+/// profile name; past it the request goes out with the user ID only.
+pub(crate) const VERIFY_NAME_TIMEOUT: Duration = Duration::from_secs(5);
 /// A logout waits this long for the server; after it, the phone's side is
 /// done anyway (the SDK alone would retry for up to 15 minutes).
 pub(crate) const LOGOUT_SERVER_TIMEOUT: Duration = Duration::from_secs(15);

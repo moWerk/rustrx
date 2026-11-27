@@ -148,11 +148,16 @@ int DebugLog::clear(const QString &dir)
         QFile::resize(base + QStringLiteral(".log"), 0);
     }
     // the copies in Downloads (and in its Rustrx folder, where 0.4.7 put them)
+    return removeCopies(dir);
+}
+
+int DebugLog::removeCopies(const QString &dir)
+{
     int removed = 0;
     const QStringList pattern{ QStringLiteral("rustrx-log-*.txt") };
     for (const QString &d : { dir, dir + QLatin1Char('/') + QLatin1String(Keys::kDownloadDir) }) {
         QDir folder(d);
-        for (const QString &f : folder.entryList(pattern, QDir::Files))
+        for (const QString &f : folder.entryList(pattern, QDir::Files | QDir::System))
             if (folder.remove(f)) ++removed;
     }
     return removed;

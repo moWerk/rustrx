@@ -145,6 +145,9 @@ impl Core {
             self.qr_step(json!({"ev": "qr_login", "state": "connecting"}));
             self.fresh_store_for_qr()?;
             let client = self.build_client(&server, true).await.map_err(|e| anyhow!("{server}: {e}"))?;
+            // http only on the phone or the home network, wherever the
+            // address came from (typed, .well-known, a QR code; audit NET-3)
+            super::checks::refuse_insecure(&client.homeserver())?;
             let registration = device_code_registration()?;
             let oauth = client.oauth();
             let login = oauth.login_with_qr_code(Some(&registration)).scan(&code);
@@ -193,7 +196,7 @@ impl Core {
         match result {
             Ok(client) => self.after_login(client).await,
             Err(e) => {
-                self.emit(json!({"ev": "login_error", "message": format!("{e:#}")}));
+                self.emit(super::checks::with_refusal(json!({"ev": "login_error", "message": format!("{e:#}")}), &e));
                 Ok(())
             }
         }
@@ -245,6 +248,16 @@ impl Core {
         result
     }
 
+    /// The host of a consent page that is not the account service's (its
+    /// issuer's or device endpoint's host, https), or None when it is. No
+    /// metadata to compare with is an error: nothing is opened then either.
+    async fn foreign_consent_page(&self, page: &matrix_sdk::reqwest::Url) -> Result<Option<String>> {
+        let client = self.client().await?;
+        let m = client.oauth().cached_server_metadata().await
+            .map_err(|e| anyhow!("the account service could not be asked where its page is: {e}"))?;
+        Ok(super::checks::foreign_consent_page(page, &m.issuer, m.device_authorization_endpoint.as_ref()))
+    }
+
     fn grant_busy(&self) -> Result<()> {
         self.qr_step(json!({"ev": "qr_grant", "state": "error", "message": "another login is still running"}));
         Ok(())
@@ -282,6 +295,26 @@ impl Core {
                         channel(q).await
                     }
                     GrantLoginProgress::WaitingForAuth { verification_uri, continuation_sender } => {
+                        // the page comes from the new device: opened only
+                        // on the account service's own host (audit NET-2),
+                        // else the grant ends and nothing is opened
+                        let foreign = match self.foreign_consent_page(&verification_uri).await {
+                            Ok(f) => f,
+                            Err(e) => {
+                                continuation_sender.cancel().await.ok();
+                                break Err(e);
+                            }
+                        };
+                        if let Some(host) = foreign {
+                            tracing::warn!(%host, "qr: the new device sent a consent page not on the account service's host");
+                            continuation_sender.cancel().await.ok();
+                            break Err(super::checks::Refusal {
+                                reason: "foreign_page",
+                                fields: json!({"host": host}),
+                                message: format!("the new device sent a page on {host}, not the account service's; cancelled"),
+                            }
+                            .into());
+                        }
                         // the account service asks in the browser whether
                         // the new device may in; the grant goes on meanwhile
                         self.qr_step(json!({"ev": "qr_grant", "state": "consent"}));
@@ -308,7 +341,7 @@ impl Core {
             }
             Err(e) => {
                 tracing::info!("qr: letting a device in failed: {e:#}");
-                self.qr_step(json!({"ev": "qr_grant", "state": "error", "message": format!("{e:#}")}));
+                self.qr_step(super::checks::with_refusal(json!({"ev": "qr_grant", "state": "error", "message": format!("{e:#}")}), &e));
             }
         }
         Ok(())

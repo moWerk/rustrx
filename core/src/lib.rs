@@ -638,6 +638,35 @@ mod tests {
         assert!(core.begin_login().is_some(), "the guard was not let go");
     }
 
+    /// A homeserver over plain http away from the phone and the home
+    /// network is refused by the server check and by a login, with the
+    /// reason the UI words (audit NET-3); nothing is sent to it. 203.0.113.1
+    /// is a documentation address: nothing answers there.
+    /// Planted-bug: drop the `refuse_insecure` line after the build in
+    /// `probe_server` or `login_password`.
+    #[test]
+    fn plain_http_servers_are_refused() {
+        let (core, sink) = test_core();
+        let cases = [
+            (r#"{"cmd":"probe_server","homeserver":"http://203.0.113.1:9"}"#, "error"),
+            (r#"{"cmd":"login_password","user":"@a:example.invalid","password":"x","homeserver":"http://203.0.113.1:9"}"#, "login_error"),
+        ];
+        for (cmd, ev) in cases {
+            sink.lock().unwrap().clear();
+            assert_eq!(send(core, cmd), 0);
+            let deadline = Instant::now() + Duration::from_secs(60);
+            let got = loop {
+                if let Some(e) = events(sink).into_iter().find(|e| e["ev"] == ev) {
+                    break e;
+                }
+                assert!(Instant::now() < deadline, "no {ev}: {:?}", events(sink));
+                std::thread::sleep(Duration::from_millis(20));
+            };
+            assert_eq!(got["reason"], "insecure_http", "{cmd}: {got}");
+            assert_eq!(got["server"], "203.0.113.1", "{cmd}: {got}");
+        }
+    }
+
     /// Before rustrx_start every command, even a null pointer, is refused
     /// with 4 and nothing panics (no test here starts the global core).
     /// Planted-bug: check `json.is_null()` before `core_at`.

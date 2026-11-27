@@ -1831,7 +1831,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-la-share-log-hint">
-        <source>A copy goes to Downloads, so you can also attach it to a mail or a forum post.</source>
+        <source>It goes only to the app you pick, a mail for example. No copy stays in Downloads.</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="rustrx-he-share-log">
@@ -3540,6 +3540,74 @@
     </message>
     <message id="rustrx-no-name-taken-body">
         <source>Another program on this phone holds Rustrx&apos;s name.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-login-insecure-http">
+        <source>%1 answers only over plain http, so your password would travel unprotected. Rustrx needs https for it.</source>
+        <extracomment>%1 the server, like matrix.example.org</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-login-other-account">
+        <source>The browser logged in %1, not %2. That login was undone, try again.</source>
+        <extracomment>%1 the account the browser logged in, %2 the Matrix ID typed</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-link-foreign-page">
+        <source>The new device sent a page that is not your server&apos;s (%1). Nothing was linked.</source>
+        <extracomment>%1 the host of the page the new device sent</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-risk-secrets-refused">
+        <source>Another app has taken Rustrx&apos;s place in Sailfish Secrets, so Rustrx cannot keep its key there.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-risk-secrets-refused-fix">
+        <source>Log out and log in again: Rustrx then makes a place of its own.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-store-key-start-over">
+        <source>Start over</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-store-key-not-now">
+        <source>Not now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-he-store-key-missing">
+        <source>Store key missing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-store-key-missing">
+        <source>Sailfish Secrets no longer has the key to this phone&apos;s messages. Start over with a new store? The old one is kept aside, but cannot be read without its key.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-verify-hidden">
+        <source>Someone wants to verify you</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-verify-from">
+        <source>%1 (%2) wants to verify you</source>
+        <extracomment>%1 the person&apos;s name, %2 their user ID</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-no-verify-from-id">
+        <source>%1 wants to verify you</source>
+        <extracomment>%1 the person&apos;s user ID (no name known)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-ver-requested-other">
+        <source>%1 (%2) wants to verify you. Accept to compare emoji.</source>
+        <extracomment>%1 the person&apos;s name, %2 their user ID</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-ver-requested-other-id">
+        <source>%1 wants to verify you. Accept to compare emoji.</source>
+        <extracomment>%1 the person&apos;s user ID (no name known)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="rustrx-la-ver-done-other">
+        <source>Verified. %1 is now shown as verified here.</source>
+        <extracomment>%1 the person&apos;s name or user ID</extracomment>
         <translation type="unfinished"></translation>
     </message>
 </context>

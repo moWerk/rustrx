@@ -79,7 +79,12 @@ ShortPage {
             }
             if (progress.state === "qr") panel.show(progress.width, progress.modules)
             if (progress.state === "check") page.checkCode = progress.check_code || ""
-            if (progress.state === "error") page.error = progress.message || ""
+            if (progress.state === "error") page.error = progress.reason === "foreign_page"
+                    // its consent page not on the account service's host (NET-2)
+                    //: %1 the host of the page the new device sent
+                    //% "The new device sent a page that is not your server's (%1). Nothing was linked."
+                    ? qsTrId("rustrx-la-link-foreign-page").arg(progress.host || "")
+                    : progress.message || ""
             page.state_ = progress.state
         }
     }

@@ -143,6 +143,8 @@ static const char kEnvPerf[] = "RUSTRX_PERF";
 // the room list counts as settled once its length kept this long (perf: settled)
 static const int kPerfSettleMs = 500;
 static const char kLogDir[] = "logs";
+// in the cache folder: the debug log collected for the share sheet
+static const char kSharedLogDir[] = "shared-log";
 // in the cache folder: pictures prepared for sending, recordings, shares
 static const char kOutgoingDir[] = "outgoing";
 // prepared files are swept after this long: the core reads a file when the
@@ -160,7 +162,7 @@ static const char kSharedDir[] = "shared";
 static const char kDownloadDir[] = "Rustrx";
 // the sailfish-secrets plugin, loaded only where it can be
 static const char kSecretsPlugin[] = "lib/librustrx-secrets.so";
-static const char kSecretsSymbol[] = "rustrx_secrets_store_key";
+static const char kSecretsSymbol[] = "rustrx_secrets_store_key2";
 // asking Secrets again waits this long, so the page shows it is asking
 static const int kRestoreRetryPaintMs = 150;
 // the debug log's names (DebugLog::install, DebugLog::collect)
