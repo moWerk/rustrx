@@ -137,6 +137,8 @@ private:
     static UnifiedPush *home();
     // the connector's name: whether its holder is a Rustrx (NameProof)
     void checkConnector(int tries);
+    // the connector's name taken, or its holder asked (push on only)
+    bool takeConnector();
     static void setConnector(int state);
     // logged in, switched on, a distributor: registered, unless the
     // connector's name is not ours
@@ -156,6 +158,8 @@ private:
     int m_lookup = 0;
     // a registration waits for the connector's check
     bool m_waitingForConnector = false;
+    // the connector object is on the bus (exportConnector)
+    bool m_exported = false;
     QNetworkAccessManager *m_net = nullptr;
 };
 

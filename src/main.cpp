@@ -180,7 +180,8 @@ int main(int argc, char *argv[])
     // One process at a time, and the bus name is the lock (taken before
     // the store is opened): a second launch asks the running one to show its
     // window and leaves, unless that one is the stand-in, which leaves
-    // instead; the stand-in itself waits for a closing app to be gone.
+    // instead. The stand-in never pushes anyone out: whoever holds the name
+    // (the app, mostly) has the account already, so it leaves at once.
     QDBusConnection bus = QDBusConnection::sessionBus();
     const QString secretPath = dataDir + QLatin1Char('/') + QLatin1String(NotifyGate::kSecretFile);
     if (!bus.registerService(kService)) {
@@ -192,8 +193,16 @@ int main(int argc, char *argv[])
                 nameTaken(dataDir);
             return 0;
         }
-        bool takeOver = standIn;
-        if (!standIn) {
+        // a stand-in started while the app runs (the unit restarted, the
+        // session's start): not needed, which is no failure (exit 0; the
+        // unit restarts on failure only). A closing app lets go of the name
+        // before it starts the stand-in (aboutToQuit, then startUnit).
+        if (standIn) {
+            qInfo() << "stand-in: Rustrx is running already, not started";
+            return 0;
+        }
+        bool takeOver = false;
+        {
             // the stand-in leaves only for proof of the data folder's secret
             // (IPC1 d), bound to its own unique name: the secret itself never
             // goes to whoever holds the name
@@ -237,11 +246,7 @@ int main(int argc, char *argv[])
         if (!waitForNameToGo(bus) || !bus.registerService(kService)) {
             qWarning() << "startup: the running Rustrx did not make way within"
                        << Keys::kNameGoneTimeoutMs << "ms; not started";
-            // a stand-in that finds the app in front is not needed, which is
-            // no failure: its unit restarts on failure, and did so every
-            // minute for as long as the app ran (dodoradio's log, 98 times
-            // in two hours). The app starts the stand-in when it closes.
-            return standIn ? 0 : 1;
+            return 1;
         }
     }
 

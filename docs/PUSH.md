@@ -109,6 +109,11 @@ so before it is switched on.
   stays chosen, and Settings > App says so in red under "When Rustrx is
   closed". A start that finds the name free again clears it and sets the
   pusher anew. Nothing notices a squat while no Rustrx process runs.
+  Only a name that has an owner can be squatted: a free name that the
+  sandbox does not let Rustrx own (no distributor installed, so no
+  UnifiedPush permission; `registerService` fails with ServiceUnknown) blocks
+  nothing and clears an old block. With push off the name is not looked
+  into at all; switching push on looks again.
 - **Reply** in a notification always goes to the app's own name
   (`net.mowerk.harbour-rustrx`, sailjail's own rule), so with Rustrx closed
   it opens the app; Mark as read and the emoji go to the connector, as their

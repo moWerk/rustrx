@@ -962,3 +962,19 @@ def test_large_files_load_only_at_a_tap():
     assert "mediaAutoLoadMaxBytes: 20 * 1024 * 1024" in read("qml/singletons/Tunables.qml")
     ts = read("translations/harbour-rustrx.ts")
     assert '<message id="rustrx-la-large-file">\n        <source>Large file, tap to load</source>' in ts
+
+
+def test_the_stand_in_never_pushes_the_app_out():
+    """A stand-in that finds Rustrx's bus name held (the app runs: the unit
+    restarted, the session's start) leaves at once with exit 0, before any
+    wait for the name or any call to its holder; the unit restarts on
+    failure only, so this never loops (C2, 0.8.4-14: it waited 10 s, then
+    "did not make way"). Planted-bug: the stand-in waits for the name."""
+    s = code(ROOT / "src/main.cpp")
+    held = s[s.index("if (!bus.registerService(kService)) {"):]
+    stand = held.index("if (standIn) {")
+    assert stand < held.index("waitForNameToGo(bus)") and stand < held.index('"activateWith"')
+    branch = held[stand:held.index("}", stand)]
+    assert "return 0;" in branch, branch
+    unit = read("systemd/harbour-rustrx.service")
+    assert re.search(r"^Restart=on-failure$", unit, re.M), unit

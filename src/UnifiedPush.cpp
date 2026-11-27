@@ -386,10 +386,15 @@ void UnifiedPush::checkConnector(int tries)
                 qInfo() << "push: connector name taken once the other Rustrx let go";
                 setConnector(ConnectorOurs);
             } else if (tries > 0) {
+                // someone may have taken it in between: looked at again
                 checkConnector(tries - 1);
             } else {
-                qWarning() << "push: the connector name is taken again each time it is free; push paused";
-                setConnector(ConnectorBlocked);
+                // nobody holds it and still it cannot be had: the sandbox
+                // does not let Rustrx own it (no UnifiedPush permission
+                // without a distributor installed). No squat, nothing blocked;
+                // only a name with an owner that cannot prove itself is one
+                qInfo() << "push: the connector name is free but cannot be owned here (no distributor's permission?)";
+                setConnector(ConnectorUnknown);
             }
             return;
         }
@@ -413,13 +418,27 @@ bool UnifiedPush::exportConnector()
         qWarning() << "push: connector object not registered";
         return false;
     }
-    if (!bus.registerService(QString::fromLatin1(kConnectorName))) {
-        qInfo() << "push: connector name not taken" << bus.lastError().message() << "- asking its holder";
-        checkConnector(1);
+    m_exported = true;
+    return takeConnector();
+}
+
+bool UnifiedPush::takeConnector()
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (bus.registerService(QString::fromLatin1(kConnectorName))) {
+        setConnector(ConnectorOurs);
+        return true;
+    }
+    // push off: the name is not looked into (a block left from an earlier
+    // look goes); switching push on looks again
+    if (!enabled()) {
+        qInfo() << "push: connector name not taken, push is off";
+        setConnector(ConnectorUnknown);
         return false;
     }
-    setConnector(ConnectorOurs);
-    return true;
+    qInfo() << "push: connector name not taken" << bus.lastError().name() << "- asking its holder";
+    checkConnector(1);
+    return false;
 }
 
 void UnifiedPush::setEnabled(bool on)
@@ -428,6 +447,9 @@ void UnifiedPush::setEnabled(bool on)
         return;
     m_state.insert("enabled", on);
     save();
+    // the connector's name, not looked into while push was off
+    if (on && this == home() && s_connector != ConnectorOurs && s_connector != ConnectorChecking && m_exported)
+        takeConnector();
     if (on) {
         // an account not logged in registers at its login
         if (m_loggedIn)

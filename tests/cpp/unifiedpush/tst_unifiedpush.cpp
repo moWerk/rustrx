@@ -15,6 +15,8 @@
 #include <QTemporaryDir>
 #include <QtTest>
 
+#include <cstdio>
+
 // holds a name and answers every proof wrongly
 class WrongProof : public QObject
 {
@@ -161,7 +163,99 @@ private slots:
         }
         QDBusConnection::disconnectFromBus(QStringLiteral("squatter"));
     }
+
+    // Push off: the connector's name is not looked into, and a block left
+    // from an earlier look goes. Planted-bug: takeConnector checks with push off.
+    void pushOffChecksNothing()
+    {
+        QDBusConnection squatter = QDBusConnection::connectToBus(QString::fromLocal8Bit(qgetenv("DBUS_SESSION_BUS_ADDRESS")),
+                                                                 QStringLiteral("squatter2"));
+        // the test before left the name with this process
+        QDBusConnection::sessionBus().unregisterService(QString::fromLatin1(UnifiedPush::kConnectorName));
+        WrongProof wrong;
+        QVERIFY(squatter.registerObject(QString::fromLatin1(Keys::kProofPath), &wrong, QDBusConnection::ExportScriptableSlots));
+        QVERIFY(squatter.registerService(QString::fromLatin1(UnifiedPush::kConnectorName)));
+        const QString d = dir("off");
+        QFile f(d + QLatin1Char('/') + QLatin1String(Keys::kPushStateFile));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("{\"blocked\":true,\"enabled\":false}");
+        f.close();
+        {
+            UnifiedPush up(d);
+            QVERIFY(!up.exportConnector());
+            QTest::qWait(500);
+            QVERIFY(!up.blocked());
+            QVERIFY(!UnifiedPush::blockedOnDisk(d));
+            // switched on: now it is looked into
+            up.setEnabled(true);
+            QTRY_VERIFY_WITH_TIMEOUT(up.blocked(), 5000);
+        }
+        QDBusConnection::disconnectFromBus(QStringLiteral("squatter2"));
+    }
+
+    // A free name the bus does not let Rustrx own (the C2 without a
+    // distributor: no UnifiedPush permission, ServiceUnknown) is no squat,
+    // and an old block from that goes. On a bus of its own that refuses
+    // the name, in a child process (UnifiedPush's bus is the session bus).
+    // Planted-bug: a free name that cannot be had counts as squatted.
+    void aNameThatCannotBeOwnedIsNoSquat()
+    {
+        QTemporaryDir conf;
+        QFile c(conf.path() + QStringLiteral("/bus.conf"));
+        QVERIFY(c.open(QIODevice::WriteOnly));
+        c.write("<!DOCTYPE busconfig PUBLIC \"-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN\" "
+                "\"http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd\">\n<busconfig><type>session</type>"
+                "<listen>unix:tmpdir=/tmp</listen><auth>EXTERNAL</auth><policy context=\"default\">"
+                "<allow send_destination=\"*\" eavesdrop=\"true\"/><allow eavesdrop=\"true\"/><allow own=\"*\"/>"
+                "<deny own=\"org.unifiedpush.Connector.rustrx\"/></policy></busconfig>\n");
+        c.close();
+        QProcess daemon;
+        daemon.start(QStringLiteral("dbus-daemon"), { QStringLiteral("--config-file=") + c.fileName(), QStringLiteral("--nofork"),
+                                                     QStringLiteral("--print-address") });
+        QVERIFY(daemon.waitForStarted(3000));
+        QTRY_VERIFY_WITH_TIMEOUT(daemon.canReadLine(), 5000);
+        const QString address = QString::fromLatin1(daemon.readLine().trimmed());
+        const QString d = dir("unowned");
+        QFile f(d + QLatin1Char('/') + QLatin1String(Keys::kPushStateFile));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("{\"blocked\":true,\"enabled\":true}");
+        f.close();
+        QProcess child;
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        env.insert(QStringLiteral("DBUS_SESSION_BUS_ADDRESS"), address);
+        env.insert(QStringLiteral("UNIFIEDPUSH_CHILD"), d);
+        child.setProcessEnvironment(env);
+        child.start(QCoreApplication::applicationFilePath(), QStringList());
+        QVERIFY(child.waitForFinished(15000));
+        QCOMPARE(child.readAllStandardOutput().trimmed(), QByteArray("blocked 0"));
+        QVERIFY(!UnifiedPush::blockedOnDisk(d));
+        daemon.terminate();
+        daemon.waitForFinished(3000);
+    }
 };
 
-QTEST_GUILESS_MAIN(TestUnifiedPush)
+// aNameThatCannotBeOwnedIsNoSquat's child: the connector exported on a
+// bus that refuses its name, its verdict once the look is over
+static int child(const QString &dir)
+{
+    UnifiedPush up(dir);
+    up.exportConnector();
+    QElapsedTimer t;
+    t.start();
+    while (t.elapsed() < 3000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    std::printf("blocked %d\n", up.blocked() ? 1 : 0);
+    std::fflush(stdout);
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    QCoreApplication app(argc, argv);
+    const QByteArray dir = qgetenv("UNIFIEDPUSH_CHILD");
+    if (!dir.isEmpty())
+        return child(QString::fromLocal8Bit(dir));
+    TestUnifiedPush t;
+    return QTest::qExec(&t, argc, argv);
+}
 #include "tst_unifiedpush.moc"
