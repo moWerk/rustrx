@@ -41,6 +41,10 @@ QtObject {
     // and play once unless looping is on (App > Behaviour; the author, 0.8)
     property alias gifAutoplay: look.gifAutoplay
     property alias gifLoop: look.gifLoop
+    // a ring brings the call page to the front, starts Rustrx for it and
+    // goes over the lock screen; off: the ring is its notification only
+    // (App > Behaviour; the author's opt-out). Read by every process
+    property alias forceCallUi: look.forceCallUi
     // the kind of tab the main page was left on
     property alias lastTabKind: look.lastTabKind
 
@@ -109,6 +113,7 @@ QtObject {
         property bool separateSpaces: true
         property bool gifAutoplay: true
         property bool gifLoop: false
+        property bool forceCallUi: true
         property string lastTabKind: "rooms"
         property bool notifyReply: true
         property bool notifyReactions: true

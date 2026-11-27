@@ -404,6 +404,8 @@ public:
     // actions are taken only while they are up (NotifyGate::Posted)
     Q_INVOKABLE void notePosted(int account, const QString &roomId, const QString &eventId, const QStringList &emoji);
     Q_INVOKABLE void noteClosed(int account, const QString &roomId);
+    // the stand-in's line posted (true) or closed, by its Quit, a swipe or Rustrx
+    Q_INVOKABLE void noteStandInLine(bool up);
     Q_INVOKABLE void noteRinging(int account, const QString &roomId, const QString &eventId, int forMs);
     Q_INVOKABLE void noteRingEnded(int account, const QString &roomId);
     // ms the room's ring has left (notified.json), 0 when it is over
@@ -652,9 +654,10 @@ public slots:
     Q_SCRIPTABLE void declineCall(const QString &roomId, const QString &eventId);
     Q_SCRIPTABLE void declineAccountCall(const QString &account, const QString &roomId, const QString &eventId);
     // the stand-in's notification: Quit (after QML has closed that
-    // notification); from the notification server, or from a shell while
-    // the dev flag is there (tests). No secret: lipstick is the caller, and
-    // it shows any app a notification's arguments
+    // notification); from a process of this user while that line is up
+    // (NotifyGate::mayQuit), or from a shell while the dev flag is there
+    // (tests). No secret: lipstick is the caller, and it shows any app a
+    // notification's arguments
     Q_SCRIPTABLE void quit();
     // D-Bus net.mowerk.harbour_rustrx.openUrl, the desktop file's handler for
     // matrix: links; the launcher icon calls it too, without a link
@@ -695,6 +698,8 @@ private:
     bool markHandedRing(int key, const QString &roomId, const QString &how);
     // the notifications up, for their actions (in the data folder)
     NotifyGate::Posted m_posted;
+    // the stand-in's own line: only while it is up is its Quit taken over D-Bus
+    NotifyGate::StandInLine m_standInLine;
     bool m_leaving = false;
     // a call's action, or a dev command, that came while leaving: logged, not done
     bool leaving(const char *what) const;

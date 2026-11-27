@@ -573,16 +573,11 @@ void Rustrx::openUrl(const QStringList &urls)
 
 void Rustrx::quit()
 {
-    // over D-Bus: the dev flag, or the stand-in's line, which only the
-    // stand-in posts
-    if (calledFromDBus() && !QFile::exists(m_dataDir + QLatin1Char('/') + QLatin1String(Keys::kDevCommandsFlag))) {
-        if (!fromNotifications("quit"))
-            return;
-        if (!m_handover.standIn()) {
-            qInfo() << "notification: quit outside the stand-in, ignored";
-            return;
-        }
-    }
+    // over D-Bus: the dev flag, or the stand-in's line while it is up,
+    // which only the stand-in posts
+    if (calledFromDBus() && !QFile::exists(m_dataDir + QLatin1Char('/') + QLatin1String(Keys::kDevCommandsFlag))
+            && !NotifyGate::mayQuit(*this, m_handover.standIn(), m_standInLine.up(QDateTime::currentMSecsSinceEpoch())))
+        return;
     emit quitRequested();
     // time for the close to reach the notification server
     QTimer::singleShot(Keys::kQuitDelayMs, qApp, &QCoreApplication::quit);
@@ -1221,6 +1216,14 @@ void Rustrx::notePosted(int account, const QString &roomId, const QString &event
 void Rustrx::noteClosed(int account, const QString &roomId)
 {
     m_posted.roomClosed(account, roomId);
+}
+
+void Rustrx::noteStandInLine(bool up)
+{
+    if (up && m_handover.standIn())
+        m_standInLine.posted();
+    else
+        m_standInLine.closed(QDateTime::currentMSecsSinceEpoch());
 }
 
 void Rustrx::noteRinging(int account, const QString &roomId, const QString &eventId, int forMs)

@@ -357,6 +357,17 @@ SilicaFlickable {
             onClicked: app.settings.gifLoop = !app.settings.gifLoop
         }
 
+        // off: a ring is its notification only, Rustrx stays where it is
+        // (the author's opt-out of the full-screen ring)
+        TextSwitch {
+            //: settings switch; off: an incoming call rings as its notification only
+            //% "Force Call UI in front on incoming calls"
+            text: qsTrId("rustrx-la-force-call-ui")
+            checked: app.settings.forceCallUi
+            automaticCheck: false
+            onClicked: app.settings.forceCallUi = !app.settings.forceCallUi
+        }
+
         // what Rustrx keeps on this phone
         //% "Storage"
         SectionHeader { text: qsTrId("rustrx-se-storage") }

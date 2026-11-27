@@ -387,8 +387,9 @@ Item {
         r[roomId] = n
         ringing = r
         console.log("call: incoming", ring ? "ring" : "notification", "for", expiresMs, "ms")
-        // with Rustrx closed: the app starts with the call, its notification up
-        rustrx.ringPosted(ring)
+        // with Rustrx closed: the app starts with the call, its notification
+        // up; with "Force Call UI in front" off the ring is the notification only
+        rustrx.ringPosted(ring && cfg.forceCallUi)
     }
     // unanswered: it expired, the caller gave up or another device of ours
     // declined; false: answered or declined here, or the room opened;
@@ -755,6 +756,8 @@ Item {
             //% "Quit"
             service.action("quit", "quit", null, qsTrId("rustrx-me-quit"))
         ]
+        // its Quit is taken over D-Bus only while it is up (NotifyGate::mayQuit)
+        onClosed: rustrx.noteStandInLine(false)
     }
 
     // an earlier process's notifications (the stand-in's, or a killed
@@ -850,6 +853,9 @@ Item {
         // before its own line, which would be taken for an old one
         if (rustrx.standIn) takeOverOld()
         // the line can be switched off (Settings); the stand-in runs either way
-        if (rustrx.standIn && cfg.showBackgroundLine) standInNote.publish()
+        if (rustrx.standIn && cfg.showBackgroundLine) {
+            standInNote.publish()
+            rustrx.noteStandInLine(true)
+        }
     }
 }

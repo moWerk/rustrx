@@ -3269,6 +3269,11 @@
         <source>When off, a GIF plays once and stops.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message id="rustrx-la-force-call-ui">
+        <source>Force Call UI in front on incoming calls</source>
+        <extracomment>settings switch; off: an incoming call rings as its notification only</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
     <message id="rustrx-la-link-show-scan">
         <source>On the new device, choose Scan a QR code (in Element: Sign in with QR code) and scan this one.</source>
         <translation type="unfinished"></translation>

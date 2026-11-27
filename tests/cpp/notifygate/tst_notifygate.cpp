@@ -26,7 +26,12 @@ class Target : public QObject, protected QDBusContext
 public:
     NotifyGate::Posted posted;
     int taken = 0;
+    // as Rustrx::quit: the stand-in's line, up or not
+    bool standIn = true;
+    bool lineUp = false;
+    int quits = 0;
     bool direct(const QString &roomId) { return answer(roomId); }
+    bool directQuit() { return quit(); }
 public slots:
     Q_SCRIPTABLE bool answer(const QString &roomId)
     {
@@ -35,6 +40,13 @@ public slots:
         if (calledFromDBus() && !posted.rings(0, roomId))
             return false;
         ++taken;
+        return true;
+    }
+    Q_SCRIPTABLE bool quit()
+    {
+        if (!NotifyGate::mayQuit(*this, standIn, lineUp))
+            return false;
+        ++quits;
         return true;
     }
 };
@@ -50,9 +62,11 @@ class TestNotifyGate : public QObject
     // (the target answers on this thread)
     QVariant callFrom(QDBusConnection from, const QString &roomId)
     {
+        const bool quit = roomId.isEmpty();
         QDBusMessage m = QDBusMessage::createMethodCall(QStringLiteral("net.mowerk.test.target"), QStringLiteral("/t"),
-                                                        QStringLiteral("net.mowerk.test"), QStringLiteral("answer"));
-        m << roomId;
+                                                        QStringLiteral("net.mowerk.test"), quit ? QStringLiteral("quit") : QStringLiteral("answer"));
+        if (!quit)
+            m << roomId;
         QDBusPendingCall p = from.asyncCall(m, 5000);
         QElapsedTimer t;
         t.start();
@@ -84,13 +98,13 @@ private slots:
     }
 
     // a process of its own (this binary, NOTIFYGATE_CHILD), as lipstick's
-    // mliteremoteaction: calls the target once for the room; its answer,
-    // the call's result, is its one line
+    // mliteremoteaction: calls the target once for the room ("": Quit); its
+    // answer, the call's result, is its one line
     QByteArray callFromChild(const QString &roomId)
     {
         QProcess p;
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-        env.insert(QStringLiteral("NOTIFYGATE_CHILD"), roomId);
+        env.insert(QStringLiteral("NOTIFYGATE_CHILD"), roomId.isEmpty() ? QStringLiteral("quit") : roomId);
         env.insert(QStringLiteral("NOTIFYGATE_BUS"), m_address);
         p.setProcessEnvironment(env);
         p.start(QCoreApplication::applicationFilePath(), QStringList());
@@ -142,9 +156,70 @@ private slots:
         QCOMPARE(t.taken, 3);
     }
 
+    // Quit, the stand-in's line's button: only while that line is up
+    // ("Show the background line" off: no line, and no app ends the stand-in)
+    void quit()
+    {
+        QDBusConnection target = QDBusConnection::connectToBus(m_address, QStringLiteral("target"));
+        QDBusConnection other = QDBusConnection::connectToBus(m_address, QStringLiteral("other"));
+        QVERIFY(target.isConnected() && other.isConnected());
+        Target t;
+        QVERIFY(target.registerObject(QStringLiteral("/t"), &t, QDBusConnection::ExportScriptableSlots));
+        QVERIFY(target.registerService(QStringLiteral("net.mowerk.test.target")));
+
+        // the stand-in without its line: refused from another process and
+        // from another connection
+        // Planted-bug: the line's check dropped (Quit taken in the stand-in from any caller)
+        QCOMPARE(callFromChild(QString()), QByteArray("false"));
+        QCOMPARE(callFrom(other, QString()), QVariant(false));
+        QCOMPARE(t.quits, 0);
+        // the line up: taken (lipstick's mliteremoteaction)
+        t.lineUp = true;
+        QCOMPARE(callFromChild(QString()), QByteArray("true"));
+        QCOMPARE(callFrom(other, QString()), QVariant(true));
+        QCOMPARE(t.quits, 2);
+        // swiped away or closed: refused again
+        t.lineUp = false;
+        QCOMPARE(callFromChild(QString()), QByteArray("false"));
+        // not the stand-in, the flag set anyway: refused
+        // Planted-bug: the stand-in's check dropped
+        t.standIn = false;
+        t.lineUp = true;
+        QCOMPARE(callFrom(other, QString()), QVariant(false));
+        QCOMPARE(t.quits, 2);
+        // from inside the process (the app's Quit, the signals): taken
+        t.lineUp = false;
+        QVERIFY(t.directQuit());
+        QCOMPARE(t.quits, 3);
+    }
+
     // the uid the bus tells against this process's: another user, or no
     // answer from the bus, is refused
     // Planted-bug: the reply's validity ignored (an error's 0 is root's uid)
+    // the stand-in's line: up from its post, and a moment after it closed
+    // (lipstick closes it as Quit is tapped, before the tap's call comes)
+    void standInLine()
+    {
+        NotifyGate::StandInLine l;
+        QVERIFY(!l.up(1000));
+        // closed without being up (the setting off): never up
+        l.closed(1000);
+        QVERIFY(!l.up(1000));
+        l.posted();
+        QVERIFY(l.up(2000));
+        // Planted-bug: no grace after the close (the Quit button refused)
+        l.closed(2000);
+        QVERIFY(l.up(2000 + NotifyGate::kQuitGraceMs));
+        // Planted-bug: the grace without end (Quit taken after a swipe forever)
+        QVERIFY(!l.up(2001 + NotifyGate::kQuitGraceMs));
+        // a second close does not renew it
+        l.closed(2000 + NotifyGate::kQuitGraceMs);
+        QVERIFY(!l.up(2001 + NotifyGate::kQuitGraceMs));
+        // posted again: up
+        l.posted();
+        QVERIFY(l.up(100000));
+    }
+
     void sameUser()
     {
         QVERIFY(NotifyGate::sameUser(true, 1000, 1000));
@@ -252,9 +327,11 @@ static int child(const QString &roomId)
     QDBusConnection bus = QDBusConnection::connectToBus(QString::fromLocal8Bit(qgetenv("NOTIFYGATE_BUS")), QStringLiteral("child"));
     if (!bus.isConnected())
         return 1;
+    const bool quit = roomId == QLatin1String("quit");
     QDBusMessage m = QDBusMessage::createMethodCall(QStringLiteral("net.mowerk.test.target"), QStringLiteral("/t"),
-                                                    QStringLiteral("net.mowerk.test"), QStringLiteral("answer"));
-    m << roomId;
+                                                    QStringLiteral("net.mowerk.test"), quit ? QStringLiteral("quit") : QStringLiteral("answer"));
+    if (!quit)
+        m << roomId;
     const QDBusMessage r = bus.call(m, QDBus::Block, 5000);
     const bool ok = r.type() == QDBusMessage::ReplyMessage && !r.arguments().isEmpty();
     std::printf("%s\n", !ok ? "error" : r.arguments().first().toBool() ? "true" : "false");

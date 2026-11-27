@@ -44,6 +44,10 @@ static const char kPostedFile[] = "notified.json";
 static const char kSecretFile[] = "bus-secret";
 // room lines kept at the most; the oldest go first
 static const int kMaxRooms = 256;
+// the stand-in's line still counts as up this long after it closed:
+// lipstick closes a line as one of its buttons is tapped, before the
+// mliteremoteaction it starts for the tap has called Quit
+static const qint64 kQuitGraceMs = 5000;
 
 // whether this process sees the host's process ids (sailjail's firejail
 // gives it a PID namespace of its own: the bus's ids are not in its /proc)
@@ -110,6 +114,47 @@ inline bool fromUser(const QDBusContext &ctx, const char *what)
                          << (uid.isValid() ? QString::number(uid.value()) : QStringLiteral("? (") + uid.error().name() + QLatin1Char(')'))
                          << "not this user" << ::getuid();
     return false;
+}
+
+// The stand-in's own line, whose Quit ends it: up from its post until a
+// moment (kQuitGraceMs) after it closed (Service.qml tells both). Kept in
+// memory, not in Posted: only the process that posted the line is asked,
+// and a killed one's line is gone with it.
+class StandInLine
+{
+public:
+    void posted()
+    {
+        m_up = true;
+        m_closedAt = -1;
+    }
+    void closed(qint64 nowMs)
+    {
+        if (m_up)
+            m_closedAt = nowMs;
+        m_up = false;
+    }
+    bool up(qint64 nowMs) const { return m_up || (m_closedAt >= 0 && nowMs - m_closedAt <= kQuitGraceMs); }
+
+private:
+    bool m_up = false;
+    qint64 m_closedAt = -1;
+};
+
+// Quit, the stand-in's line's button: from this user, and only in the
+// stand-in while that line is up (StandInLine; with "Show the background
+// line" off there is none, and no other app can end the stand-in). Calls
+// from inside the process pass.
+inline bool mayQuit(const QDBusContext &ctx, bool standIn, bool lineUp)
+{
+    if (!fromUser(ctx, "quit"))
+        return false;
+    if (ctx.calledFromDBus() && !(standIn && lineUp)) {
+        qInfo() << (standIn ? "notification: quit with the background line not up, ignored"
+                            : "notification: quit outside the stand-in, ignored");
+        return false;
+    }
+    return true;
 }
 
 // The notifications Rustrx has up: room lines (their latest event and the

@@ -350,8 +350,15 @@ ApplicationWindow {
     // spec, 2026-11-27): Rustrx comes to the front for it, and with the
     // phone locked the page goes over the lock screen in a window of its
     // own (CallWindow, Rustrx::showOverLock). A ring that came while Rustrx
-    // was closed started the app with it (Rustrx::ringPosted).
+    // was closed started the app with it (Rustrx::ringPosted). With "Force
+    // Call UI in front" off (cfg.forceCallUi) the ring is its notification,
+    // as before the full-screen ring: a classic call's page only while
+    // Rustrx is in front.
     function ringUp(ring) {
+        if (!cfg.forceCallUi) {
+            if (!ring && Qt.application.active) showVoip()
+            return
+        }
         rustrx.perf("ring_page")
         if (rustrx.screenLocked) { showCallWindow(ring); return }
         if (!Qt.application.active) app.activate()
@@ -432,7 +439,7 @@ ApplicationWindow {
     Connections {
         target: rustrx
         onScreenLockedChanged: {
-            if (!rustrx.screenLocked || app.callWindow) return
+            if (!rustrx.screenLocked || app.callWindow || !cfg.forceCallUi) return
             if (rustrx.voip.state === "incoming") app.showCallWindow(null)
             else if (rustrx.voip.state === "idle" && app.elementRing()) app.showCallWindow(app.elementRing())
         }
@@ -1057,7 +1064,7 @@ ApplicationWindow {
         if (!cfg.roundAvatars) { cfg.avatarCorners = 0; cfg.roundAvatars = true }
         applyClosedMode(); route()
         // a call that rang before the window was there (handed over)
-        if (rustrx.voip.state === "incoming") { lastVoipState = "incoming"; ringUp(null) }
+        if (cfg.forceCallUi && rustrx.voip.state === "incoming") { lastVoipState = "incoming"; ringUp(null) }
     }
 
     // custom emoji in messages: a little taller than the text, like an emoji
