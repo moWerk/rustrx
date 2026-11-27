@@ -77,7 +77,10 @@ Page {
     // and "Close" (0.8 audit: the page went and the call had to be found
     // again); a ring nobody took goes as any ended call (it left a missed
     // call), and over the lock screen nothing may place a call
-    property bool placedHere: callState === "outgoing"
+    // (a plain value: set once at the start, then by the state's changes;
+    // a binding would turn false at "connecting")
+    property bool placedHere: false
+    Component.onCompleted: placedHere = callState === "outgoing"
     onCallStateChanged: {
         if (callState === "outgoing") placedHere = true
         else if (callState === "incoming") placedHere = false
