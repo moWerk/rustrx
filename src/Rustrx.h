@@ -103,7 +103,7 @@ class Rustrx : public QObject, protected QDBusContext
     Q_PROPERTY(bool ready READ ready NOTIFY stateChanged)
     // the dev-commands file is in the data folder (as for dev()): only then
     // do the debug dconf keys that act do anything (components/DebugValue);
-    // any sandboxed app can write dconf. Looked at again when the app
+    // dconf is not private to Rustrx. Looked at again when the app
     // comes to the front
     Q_PROPERTY(bool devMode READ devMode NOTIFY devModeChanged)
     // the shown account had a saved session when the app started: the main
@@ -680,8 +680,8 @@ public slots:
     // the stand-in's notification: Quit (after QML has closed that
     // notification); from a process of this user while that line is up
     // (NotifyGate::mayQuit), or from a shell while the dev flag is there
-    // (tests). No secret: lipstick is the caller, and it shows any app a
-    // notification's arguments
+    // (tests). No secret in the arguments: a notification's arguments are
+    // not private to Rustrx
     Q_SCRIPTABLE void quit();
     // D-Bus net.mowerk.harbour_rustrx.openUrl, the desktop file's handler for
     // matrix: links; the launcher icon calls it too, without a link

@@ -427,7 +427,8 @@ bool Rustrx::leaving(const char *what) const
     return m_leaving;
 }
 
-// IPC1: a process of this user (lipstick's mliteremoteaction); each
+// IPC1: a process of this user (the short-lived helper that runs a
+// notification's action); each
 // action then checks that its notification is up
 bool Rustrx::fromNotifications(const char *what) const
 {

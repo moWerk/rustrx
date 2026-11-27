@@ -23,20 +23,19 @@
 
 // Who may use a notification's actions over D-Bus (audit 0.8.4 IPC1).
 //
-// Lipstick does not call Rustrx itself: it runs a sandboxed app's actions
-// through /usr/libexec/mliteremoteaction, a short-lived process with a bus
-// connection of its own, which the sandbox cannot tell from any other
-// process of the user. So an action is taken (1) from a caller running as
+// The notification server does not call Rustrx itself: an action arrives
+// from a short-lived helper process of the user, with a bus connection of
+// its own, which the sandbox cannot tell from any other process of the
+// user. So an action is taken (1) from a caller running as
 // this process's Unix user, asked of the bus at every call (other users
 // are refused), and (2) only for a notification Rustrx posted and has not
 // closed, the action matching it: Posted, a small file in the data folder,
 // so the app, the stand-in and a push-woken process (started by the tap
 // itself, when lipstick may have dropped the notification already) agree.
 // (2) is the real barrier: any app of the user can still take an action of
-// a notification that is listed as up, e.g. answer a ringing call. A
-// secret in the actions' arguments would not help: lipstick hands them to
-// any app (IPC4). Calls from inside the process (QML) are not D-Bus calls
-// and pass.
+// a notification that is listed as up, e.g. answer a ringing call. The
+// actions' arguments are not secret, so a token in them would not help.
+// Calls from inside the process (QML) are not D-Bus calls and pass.
 namespace NotifyGate {
 
 // in the data folder
@@ -46,7 +45,7 @@ static const char kSecretFile[] = "bus-secret";
 static const int kMaxRooms = 256;
 // the stand-in's line still counts as up this long after it closed:
 // lipstick closes a line as one of its buttons is tapped, before the
-// mliteremoteaction it starts for the tap has called Quit
+// helper process it starts for the tap has called Quit
 static const qint64 kQuitGraceMs = 5000;
 
 // whether this process sees the host's process ids (sailjail's firejail

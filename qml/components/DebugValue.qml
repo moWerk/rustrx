@@ -5,7 +5,7 @@ import "../names.js" as Names
 
 // A debug switch for tests, off unless set by hand:
 // dconf write /apps/harbour-rustrx/<name> <value>
-// Every sandboxed app can write the user's dconf, so a switch that acts
+// dconf is not private to Rustrx, so a switch that acts
 // (opens, sends, records, closes) holds its value only while the
 // dev-commands file is in the data folder (rustrx.devMode, as the dev
 // hook); elsewhere it stays at its default. `acts: false` for one that

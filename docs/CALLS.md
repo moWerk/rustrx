@@ -210,8 +210,10 @@ the WebView route is the realistic one.
   the intent (start or join, DM or room, voice in a DM), per-participant
   encryption in encrypted rooms, `controlled_audio_devices` so the phone
   keeps the audio routing, no screen sharing; builds the URL for the hosted
-  Element Call (`https://call.element.io`), starts the driver (every
-  capability Element Call asks for is granted) and emits `call_url`.
+  Element Call (`https://call.element.io`), starts the driver (in the
+  spike every capability Element Call asked for was granted; since 0.8.4
+  only what a call needs, `CallCapabilities`, audit NET-1) and emits
+  `call_url`.
   `call_message {data}` passes a page message to the driver; the driver's
   messages come back as `call_message` events. `call_end` stops it; logout
   stops it too.

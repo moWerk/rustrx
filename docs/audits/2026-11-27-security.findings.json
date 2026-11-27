@@ -1,0 +1,788 @@
+{
+ "audit": "2026-11-27 security (0.8.4)",
+ "date": "2026-11-27",
+ "baseline": "3204fa2 (0.8.3); fixes on main up to b0d9102",
+ "method": "LLM agents under the author's direction, not independent review: five read-only agents (IPC, network, secrets, FFI, content) at 3204fa2, with the SDK, lipstick, sailjail, sailfish-secrets and Qt 5.6 sources and the Sailfish OS 5.1 SDK target and a 5.1 port image; host harnesses for the HTML path, Mp4 (ASan/UBSan) and the QR decoder; cargo audit and cargo deny. No device for the analysis. Invisible fixes 67019c7, the author's decisions a5266e1 and 5131d6c, corrections c8de0de, 4833d40, b0d9102. Report ids are kept (IPC, NET, SEC, FFI, UC); findings about the platform itself went to Jolla separately and are not listed; UC15 had no id in its report; the author's decisions are DEC1 to DEC25. See 2026-11-27-security.md.",
+ "findings": [
+  {
+   "id": "IPC1",
+   "severity": "medium",
+   "area": "notification actions (Rustrx.h, Rustrx.cpp, Service.qml, NotifyGate.h)",
+   "status": "FIXED 67019c7 (bound to a notification Rustrx has up, notified.json), c8de0de (the caller rule: any process of this Unix user, asked per call, since actions arrive from a short-lived helper process, not from the notification server), 4833d40 (Quit only in the stand-in while its line is up, and 5 s after); residual risk: an app of the user can take the action of a notification that is up, e.g. answer a ringing call",
+   "summary": "Any process of the user could reply, react, mark read, answer or decline a call and end the stand-in for good, with no caller check.",
+   "test": "tests/cpp/notifygate (private bus); on the phone: Answer refused from the helper process under the first rule (c8de0de)"
+  },
+  {
+   "id": "IPC1c",
+   "severity": "low",
+   "area": "notification actions (Rustrx.cpp, NotifyGate.h)",
+   "status": "FIXED 5131d6c (DEC6: a stale Answer opens the room; 67019c7 first made it do nothing)",
+   "summary": "An Answer after the ring ended started a call in the room (setPendingCall, call_start), which could also rewrite the call member power levels.",
+   "test": "tests/cpp/notifygate"
+  },
+  {
+   "id": "IPC2",
+   "severity": "medium",
+   "area": "push connector name (UnifiedPush.cpp, Service.qml, NameProof.h)",
+   "status": "FIXED 2c7c4a5 (buttons to the app's own name without a distributor), 5131d6c (DEC4: Reply always to the app's own name; the connector's holder must prove it is a Rustrx, else push pauses, the stand-in runs and Settings shows the warning in red), b0d9102 (a free name the sandbox may not own is no squat; push off checks nothing)",
+   "summary": "Another app owning org.unifiedpush.Connector.rustrx first would get the token, the endpoint, every push and the text typed into Reply, silently.",
+   "test": "tests/cpp/nameproof, tests/cpp/unifiedpush; b0d9102 from the C2 without a distributor"
+  },
+  {
+   "id": "IPC3",
+   "severity": "low",
+   "area": "distributor choice (UnifiedPush.cpp, DistributorDialog.qml)",
+   "status": "FIXED 5131d6c (DEC7: the exact name org.unifiedpush.Distributor.Foghorn, the first one kept in push.json, another one only with the user's yes)",
+   "summary": "The distributor was picked by a name ending in \"Foghorn\", so a fake one could win, receive the token and redirect the pusher to its own gateway.",
+   "test": "tests/cpp/unifiedpush"
+  },
+  {
+   "id": "IPC5",
+   "severity": "low",
+   "area": "share target (ShareAdaptor.cpp, ShareCopy.h)",
+   "status": "FIXED 67019c7 (each share in a folder of its own, written new with O_EXCL|O_NOFOLLOW, every branch under one size cap)",
+   "summary": "Inline share data had no size cap and was written over a pending copy of the same name (guide Q11).",
+   "test": "tests/cpp/sharecopy"
+  },
+  {
+   "id": "IPC6",
+   "severity": "low",
+   "area": "bus-name lock (main.cpp, NameProof.h, NameTakenNote.qml)",
+   "status": "FIXED 67019c7 (the stand-in leaves for a second launch only with proof of bus-secret), 5131d6c (DEC8: a push-woken process that finds the name held by a non-Rustrx posts \"Rustrx could not start\" once per boot), b0d9102 (a stand-in that finds Rustrx running leaves at once)",
+   "summary": "Whoever held net.mowerk.harbour-rustrx first made every launch leave silently and received links and notification actions.",
+   "test": "tests/cpp/nameproof, tests/cpp/handover"
+  },
+  {
+   "id": "IPC7",
+   "severity": "low",
+   "area": "links from other apps (JoinPage.qml, RoomPage.qml)",
+   "status": "PARTLY: a link from another app opens the join page with Look up (5131d6c, DEC9); a joined room opened from outside (a link, a notification action) still sends its read receipt without a touch",
+   "summary": "A matrix: or matrix.to link from another app made the homeserver look the room up at once; a joined room opened that way was marked read.",
+   "test": ""
+  },
+  {
+   "id": "IPC8",
+   "severity": "info",
+   "area": "dev hook (DevHook.h, Rustrx.cpp)",
+   "status": "OPEN: the dev-commands file alone still opens a password login and the add-account page (for local-server tests); no build flag or token yet. The I9 ledger entry of 2026-11-16 is older than that allowlist",
+   "summary": "With the flag file present, any unsandboxed caller can read the room list, log in a second account with a password, and place or answer calls.",
+   "test": "test_dev_hook_takes_only_the_test_commands (core commands only)"
+  },
+  {
+   "id": "IPC11",
+   "severity": "info",
+   "area": "share by path (ShareAdaptor.cpp)",
+   "status": "DECIDED: accepted design; the file goes only to a room the user picks, after ConfirmSendPage shows its name",
+   "summary": "A path is read with Rustrx's rights, so a sharing app can name a file it could not read itself.",
+   "test": ""
+  },
+  {
+   "id": "NET-1",
+   "severity": "medium",
+   "area": "Element Call (call.rs)",
+   "status": "FIXED 67019c7 (CallCapabilities: Element X's set, the own call membership only, never the room's messages or other state; refusals logged by type); the remote code is not pinned",
+   "summary": "Element Call, remote code from call.element.io, got every widget capability it asked for (guide Q16, ledger I17).",
+   "test": "call.rs element_call_gets_only_what_a_call_needs"
+  },
+  {
+   "id": "NET-2",
+   "severity": "medium",
+   "area": "Link a new device (qrlink.rs, checks.rs)",
+   "status": "FIXED a5266e1 (DEC3: the consent page opens only when https on the account service's host; else qr_grant error foreign_page)",
+   "summary": "The consent page URL came from the new device and was opened unchecked, so a QR code could open a look-alike login page.",
+   "test": "checks.rs consent_page_only_on_the_account_service"
+  },
+  {
+   "id": "NET-3",
+   "severity": "medium",
+   "area": "logins (session.rs, checks.rs)",
+   "status": "FIXED a5266e1 (DEC2: plain http only for localhost and IP literals in 127/8, ::1, 10/8, 172.16/12, 192.168/16, fc00::/7, typed, from .well-known or a QR code; a saved http session goes on with a log line)",
+   "summary": "Plain http homeservers were taken silently, so a password could travel in clear (guide Q7).",
+   "test": "checks.rs plain_http_only_at_home"
+  },
+  {
+   "id": "NET-4",
+   "severity": "low",
+   "area": "rings (Voip.cpp, call.rs)",
+   "status": "FIXED 5131d6c (DEC10: rings only in a room of at most two joined members; elsewhere a quiet notification with Answer and Decline)",
+   "summary": "Anyone who shares any room with the user could make the phone ring.",
+   "test": "tests/cpp/voip ringsOnlyInARoomOfTwo, call.rs rings_only_in_a_room_of_two"
+  },
+  {
+   "id": "NET-5",
+   "severity": "low",
+   "area": "outgoing call before the answer (Voip.cpp)",
+   "status": "FIXED 67019c7 (before the answer only the invitee's events count)",
+   "summary": "Before the answer any room member could end an outgoing 1:1 call or inject candidates.",
+   "test": "tests/cpp/voip othersCannotEndACallBeforeTheAnswer"
+  },
+  {
+   "id": "NET-6",
+   "severity": "low",
+   "area": "verification (verification.rs, VerificationPage.qml)",
+   "status": "FIXED a5266e1 (DEC11: another person's request is a notification first, its page on a tap, the user ID named)",
+   "summary": "A request from anyone opened a page by itself, naming the requester only by a device name they chose.",
+   "test": ""
+  },
+  {
+   "id": "NET-7",
+   "severity": "low",
+   "area": "browser logins (session.rs, checks.rs)",
+   "status": "FIXED a5266e1 (DEC12: a browser login that ends in another account than the full Matrix ID typed is logged out and refused); the SDK's loopback still takes the first answer",
+   "summary": "The classic SSO loopback has no state; a local process could log the phone into another account.",
+   "test": "checks.rs browser_login_must_be_the_typed_account"
+  },
+  {
+   "id": "NET-8",
+   "severity": "low",
+   "area": "call candidates (Keys.h, Voip.cpp)",
+   "status": "FIXED 5131d6c (DEC13: relay-only on by default)",
+   "summary": "The phone's IP addresses went to the peer in call candidates, and in unencrypted rooms into the room history.",
+   "test": "phone check with a server without TURN still to do"
+  },
+  {
+   "id": "NET-9",
+   "severity": "low",
+   "area": "peer SDP and streams (Voip.cpp)",
+   "status": "FIXED 67019c7 (SDP capped at 64 KB, 200 candidates a call and only to an existing m-line, only the first Opus audio stream played, any other into a fakesink)",
+   "summary": "Every incoming stream was linked into an Opus chain, with no shape checks on the peer's SDP.",
+   "test": "tests/cpp/voip remoteCandidatesAreCapped, aHugeRemoteSdpEndsTheCall, onlyOpusAudioIsPlayed, candidatesForMissingMlinesAreDropped"
+  },
+  {
+   "id": "NET-10",
+   "severity": "info",
+   "area": "OAuth loopback (session.rs)",
+   "status": "OPEN: no fix needed (state and PKCE are the SDK's, a code cannot be injected); a local process can still end the login and set the error text shown",
+   "summary": "A local process can answer the loopback first with an error of its choosing.",
+   "test": ""
+  },
+  {
+   "id": "NET-11",
+   "severity": "info",
+   "area": "push gateway (UnifiedPush.cpp)",
+   "status": "OPEN: any probe failure, a network error included, still falls back to the common gateway and stays",
+   "summary": "With event_id_only the gateway learns room and event ids and timing; the common gateway is a third party.",
+   "test": ""
+  },
+  {
+   "id": "NET-12",
+   "severity": "info",
+   "area": "TLS (SDK, reqwest)",
+   "status": "OPEN (info): what is in force is recorded in the guide; revocation, environment proxies, libnice's TURN-TLS check and the CA path under sailjail are unknown",
+   "summary": "rustls with aws-lc-rs and the platform verifier, TLS 1.2 at least, no options of Rustrx's own.",
+   "test": ""
+  },
+  {
+   "id": "NET-13",
+   "severity": "info",
+   "area": "login page (LoginPage.qml)",
+   "status": "FIXED 67019c7 (the field emptied after a login)",
+   "summary": "The password stayed in the login field after a successful login.",
+   "test": ""
+  },
+  {
+   "id": "SEC1",
+   "severity": "medium",
+   "area": "settings (Settings.qml, PrivateSettings.cpp, DconfOld.h, DebugValue.qml)",
+   "status": "FIXED 67019c7 (receipts, typing, presence, notification text and details, stranger invites, closed mode, the last room, search history and the ask-once notices moved once into Rustrx's own settings file; the debug switches in dconf act only while dev-commands exists)",
+   "summary": "The privacy settings lived in dconf, not in Rustrx's own settings file.",
+   "test": "tests/cpp/privatesettings"
+  },
+  {
+   "id": "SEC2",
+   "severity": "low",
+   "area": "Secrets collection (SecretStore.cpp, StoreKeyGuard.h)",
+   "status": "FIXED a5266e1 (DEC14: a random collection name for new installs, existing ones keep rustrx; secrets_refused as its own state on the Account tab, a fresh name at the next login)",
+   "summary": "Another app could create the collection rustrx first; Rustrx then had no key and showed \"no Secrets\".",
+   "test": "tests/cpp/storekeyguard"
+  },
+  {
+   "id": "SEC3",
+   "severity": "low",
+   "area": "store key (SecretStore.cpp, StoreKeyGuard.h, StoreKeyLostDialog.qml)",
+   "status": "FIXED 67019c7 (no new key when Secrets contradicts itself; old stores moved to store-lost-<time>/, never deleted), a5266e1 (DEC15: with an encrypted store and no key the app asks before starting over; the stand-in and push wake never make a key); store-lost-* is never cleaned",
+   "summary": "A key was made whenever Secrets said \"missing\", even with encrypted stores on disk, and those stores were deleted for good.",
+   "test": "tests/cpp/storekeyguard"
+  },
+  {
+   "id": "SEC4",
+   "severity": "low",
+   "area": "plaintext outside the store (VoiceRecorder.cpp, Media.cpp, media/)",
+   "status": "PARTLY: sent voice messages and outgoing copies swept (67019c7); decrypted media/, emotes, avatars and notification icons stay outside the store's encryption, by design since CB8",
+   "summary": "Received E2EE media, every sent voice message and the logs sat outside the store's encryption.",
+   "test": ""
+  },
+  {
+   "id": "SEC5",
+   "severity": "low",
+   "area": "logout leftovers (Service.qml, Rustrx.cpp)",
+   "status": "DECIDED (DEC16): notifications are not closed at logout; voice and outgoing are swept (SEC4); notification-icons/ and the invited room ids in QSettings stay",
+   "summary": "After a logout the notifications' text, the notification icons and other caches stayed.",
+   "test": ""
+  },
+  {
+   "id": "SEC6",
+   "severity": "low",
+   "area": "session ended by the server (session.rs, checks.rs)",
+   "status": "FIXED a5266e1 (DEC17: store, media and pictures go only on a hard logout as checks::hard_logout defines it: no refresh token, soft_logout false, a server without an account service, a classic session; every other refusal keeps them, as 3aab50e made it)",
+   "summary": "A sign-out from another device kept the store and the decrypted media on the phone.",
+   "test": "checks.rs only_a_session_gone_for_good_wipes"
+  },
+  {
+   "id": "SEC7",
+   "severity": "low",
+   "area": "log contents (DebugLog.cpp, redact.rs)",
+   "status": "FIXED 67019c7 (URL queries and fragments, user:password, token values, Bearer, UIAA session, server bodies past errcode and message, serde's echoed values and body fields cut from every line, core and app)",
+   "summary": "Log lines could carry server text, URLs with queries, serde's echo of values and fragments of event content (guide Q8).",
+   "test": "tests/cpp/debuglog, core tests in redact.rs"
+  },
+  {
+   "id": "SEC8",
+   "severity": "low",
+   "area": "collected logs (DebugLog.cpp, AccountTab.qml)",
+   "status": "FIXED a5266e1 (DEC18: collected into the app's cache and handed to the share sheet; nothing goes to Downloads, older copies there go at the next share)",
+   "summary": "The collected log stayed in Downloads, readable by every app with the Downloads permission.",
+   "test": "tests/cpp/debuglog"
+  },
+  {
+   "id": "SEC9",
+   "severity": "low",
+   "area": "session.json (session_file.rs)",
+   "status": "FIXED 67019c7 (dropped only when the key really cannot open it; a damaged file stays)",
+   "summary": "Any decode error deleted session.json, not only a wrong key.",
+   "test": "core tests in session_file.rs"
+  },
+  {
+   "id": "SEC11",
+   "severity": "info",
+   "area": "journal (DebugLog.cpp)",
+   "status": "OPEN: the switch still gates only the file",
+   "summary": "With the debug log off, the same lines still go to the system journal.",
+   "test": ""
+  },
+  {
+   "id": "SEC12",
+   "severity": "info",
+   "area": "store layout (SDK)",
+   "status": "DECIDED: not a problem for the threat model; the guide lists what stays plain",
+   "summary": "Inside the encrypted stores, table layout, sizes, some flags and timestamps stay plain: activity shape, not content.",
+   "test": ""
+  },
+  {
+   "id": "SEC13",
+   "severity": "info",
+   "area": "key copies (session.rs)",
+   "status": "FIXED 67019c7 (StoreSecret and store_passphrase as Zeroizing); the process-wide copy and QML strings stay",
+   "summary": "Store key copies in the core were dropped without zeroing.",
+   "test": ""
+  },
+  {
+   "id": "SEC14",
+   "severity": "info",
+   "area": "file modes",
+   "status": "OPEN: not a problem (all apps run as one user; sailjail's whitelists are the boundary); 0600 for logs and voice/ not done",
+   "summary": "Only session.json, push.json, share copies and stripped videos are 0600.",
+   "test": ""
+  },
+  {
+   "id": "FFI-1",
+   "severity": "medium",
+   "area": "QR decoder (lib.rs)",
+   "status": "FIXED 67019c7 (rqrr under catch_unwind; such a frame is no code)",
+   "summary": "rqrr 0.11 panicked on some noisy frames (3 in 280 000 synthetic ones) and the app aborted (guide Q13).",
+   "test": "core test with the frame that asserts (testdata/qr-assert-frame.bin)"
+  },
+  {
+   "id": "FFI-2",
+   "severity": "medium",
+   "area": "custom emoji (TimelineModel.cpp, commands.rs, media_cache.rs)",
+   "status": "FIXED 5131d6c (DEC19: at most 64 per message, four downloads at a time, none above 256 KiB kept, swept with media/)",
+   "summary": "Every mxc address in a message was fetched at once, without limit in number, size or disk.",
+   "test": ""
+  },
+  {
+   "id": "FFI-3",
+   "severity": "low",
+   "area": "media downloads (MessageDelegate.qml, media_cache.rs)",
+   "status": "PARTLY: a picture, sticker or GIF over 20 MB by its event loads at a tap, \"Large file, tap to load\", and media/ is swept again after every 50 MB written (5131d6c, DEC20); the size is the sender's claim (no hard byte limit), avatars/ is not swept by age",
+   "summary": "Media downloads had no size limit, the media/ sweep ran once per process and avatars/ never.",
+   "test": "core tests in media_cache.rs"
+  },
+  {
+   "id": "FFI-4",
+   "severity": "low",
+   "area": "key export (account.rs, timeline.rs)",
+   "status": "FIXED a5266e1 (DEC21: written privately, then copied new into Documents without following a link; a second export the same day gets -2, -3)",
+   "summary": "export_keys wrote through a link at a predictable name in Documents.",
+   "test": ""
+  },
+  {
+   "id": "FFI-5",
+   "severity": "low",
+   "area": "export into Downloads (timeline.rs)",
+   "status": "FIXED 67019c7 (the folder opened once without following a link, the file created in it with openat O_EXCL|O_NOFOLLOW)",
+   "summary": "The folder's link check and its use were two steps (a race).",
+   "test": ""
+  },
+  {
+   "id": "FFI-6",
+   "severity": "low",
+   "area": "cache names (serialize.rs, timeline.rs)",
+   "status": "FIXED 67019c7 (cache_name: SHA-256 of room and event id, of the whole mxc, of the room id for room avatars)",
+   "summary": "Emote names by mxc and media by event id could map two ids to one file (guide Q10).",
+   "test": "",
+   "merged": [
+    "UC6"
+   ]
+  },
+  {
+   "id": "FFI-7",
+   "severity": "low",
+   "area": "shared runtime (lib.rs)",
+   "status": "OPEN: reasoned, not measured",
+   "summary": "Two workers; the callback's JSON parse and toVariantMap run on them under a global lock, so a flood of remote data could starve other work.",
+   "test": ""
+  },
+  {
+   "id": "FFI-8",
+   "severity": "info",
+   "area": "panic hook (lib.rs)",
+   "status": "OPEN: the payload is still logged (the line passes redact.rs)",
+   "summary": "A panic message can quote values one day; the hook logs it whole.",
+   "test": ""
+  },
+  {
+   "id": "FFI-9",
+   "severity": "info",
+   "area": "commands that delete their input (timeline.rs, rooms.rs, account.rs)",
+   "status": "OPEN: the paths are made by C++ today",
+   "summary": "send_file deletes thumb_path and the avatar commands their path after upload; a future caller with a user's file would delete it.",
+   "test": ""
+  },
+  {
+   "id": "FFI-10",
+   "severity": "info",
+   "area": "event size (Rustrx.cpp)",
+   "status": "OPEN: eventCallback still returns without a word when fromJson fails",
+   "summary": "An event above Qt 5.6's JSON limit (128 MiB) vanishes silently.",
+   "test": ""
+  },
+  {
+   "id": "FFI-11",
+   "severity": "info",
+   "area": "dependencies (Cargo.lock)",
+   "status": "PARTLY: url 2.5.9 (67019c7); the SQLite advisory needs an SDK update (not reachable: Rustrx opens only its own stores); no deny.toml or CI step",
+   "summary": "cargo audit: an SQLite advisory and a url advisory, neither path reachable; four unmaintained crates.",
+   "test": ""
+  },
+  {
+   "id": "FFI-12",
+   "severity": "info",
+   "area": "callback contract (lib.rs, Rustrx.cpp)",
+   "status": "OPEN: no catch around the callback body; the guide names the synchronous case",
+   "summary": "Events also fire synchronously on the calling thread; a C++ exception in the callback would unwind through Rust frames.",
+   "test": ""
+  },
+  {
+   "id": "FFI-13",
+   "severity": "info",
+   "area": "docs",
+   "status": "FIXED 67019c7",
+   "summary": "The function count, line numbers and cache sizes in the guide and the hints had drifted from the code.",
+   "test": ""
+  },
+  {
+   "id": "UC1",
+   "severity": "medium",
+   "area": "message HTML (TimelineModel.cpp)",
+   "status": "FIXED 5131d6c (DEC1: what StyledText would draw is counted, above 200 000 characters \"Message too long to show\", kMaxDrawn)",
+   "summary": "Nested lists made Qt 5.6's StyledText draw quadratically: 12.8 KB cost 15 million characters and 585 MB; with reopen last room the app crashed at every start.",
+   "test": "tests/cpp/renderhtml"
+  },
+  {
+   "id": "UC2",
+   "severity": "medium",
+   "area": "picture decoders (PixelGate.h, timeline.rs)",
+   "status": "FIXED 5131d6c (DEC5: only JPEG, PNG, GIF and WebP by their first bytes, each by its own decoder; anything else is a file row)",
+   "summary": "The sender's MIME type picked the decoder for pictures shown without a tap, so every Qt image plugin was reachable.",
+   "test": "tests/cpp/pixelgate"
+  },
+  {
+   "id": "UC3",
+   "severity": "medium",
+   "area": "picture size (PixelGate.h, RoundAvatar.h)",
+   "status": "FIXED 67019c7 (the size read from the header first; past 40 MP or a side past 32767 not decoded, a GIF's canvas included)",
+   "summary": "No pixel limit before decoding: a 281 KB interlaced PNG cost 531 MB, in any room, without a tap.",
+   "test": "tests/cpp/pixelgate, tests/cpp/roundavatar",
+   "merged": [
+    "UC13 (the icon's full-size decode)"
+   ]
+  },
+  {
+   "id": "UC4",
+   "severity": "low",
+   "area": "media playback (GstGuard.h)",
+   "status": "FIXED 67019c7 (HLS, DASH and MSS demuxers at rank none)",
+   "summary": "Received audio or video that is a playlist made GStreamer fetch from any address.",
+   "test": "tests/cpp/gstguard"
+  },
+  {
+   "id": "UC5",
+   "severity": "low",
+   "area": "opening files (OpenCheck.h, MessageDelegate.qml, timeline.rs)",
+   "status": "FIXED 5131d6c (DEC22: opened only when name and bytes agree on an allowed kind; the rest only saved; the name from filename without bidi, zero-width or trailing characters)",
+   "summary": "openFile's denylist was bypassed by the exported name; RPM or APK by content could reach the installer (guide Q4).",
+   "test": "tests/cpp/opencheck"
+  },
+  {
+   "id": "UC6",
+   "severity": "low",
+   "area": "cache names",
+   "status": "FIXED 67019c7 (merged into FFI-6)",
+   "summary": "Room avatars, media and emotes could share a file name.",
+   "test": ""
+  },
+  {
+   "id": "UC7",
+   "severity": "low",
+   "area": "display names (serialize.rs, MessageDelegate.qml, Service.qml)",
+   "status": "FIXED 5131d6c (DEC23: a name another member shares gets the user ID beside it, in the bubble, the quote, the room list and notifications)",
+   "summary": "Display names were not disambiguated: impersonation in rooms and notifications.",
+   "test": ""
+  },
+  {
+   "id": "UC8",
+   "severity": "low",
+   "area": "links (TimelineModel.cpp, LinkCheckDialog.qml)",
+   "status": "FIXED 5131d6c (DEC24: a link whose text reads as an address of another host asks first)",
+   "summary": "A link's text could name another address than the one it opens.",
+   "test": "tests/cpp/renderhtml"
+  },
+  {
+   "id": "UC9",
+   "severity": "low",
+   "area": "renderHtml speed (TimelineModel.cpp)",
+   "status": "FIXED 67019c7 (closes counted, attribute expressions compiled once)",
+   "summary": "A quadratic close-tag search and a regular expression compiled per attribute on the GUI thread.",
+   "test": "tests/cpp/renderhtml"
+  },
+  {
+   "id": "UC10",
+   "severity": "info",
+   "area": "StyledText text (TimelineModel.cpp)",
+   "status": "OPEN: a bare & still passes; no injection (what an entity makes is always text)",
+   "summary": "A bare & passes into StyledText; Qt reads to the next ; or space, so a sender can garble their own message.",
+   "test": ""
+  },
+  {
+   "id": "UC11",
+   "severity": "info",
+   "area": "hrefs (Twemoji.cpp, TimelineModel.cpp)",
+   "status": "OPEN: &amp; is not decoded in hrefs (the link check compares both forms)",
+   "summary": "The opened URL keeps &amp;, so it differs from the one sent, and a matrix: link loses every via after the first.",
+   "test": ""
+  },
+  {
+   "id": "UC12",
+   "severity": "info",
+   "area": "HTML attributes (TimelineModel.cpp)",
+   "status": "OPEN: the first textual attribute match and the greedy <mx-reply> removal are as they were",
+   "summary": "A sender can show Rustrx users another link or text than other clients show.",
+   "test": ""
+  },
+  {
+   "id": "UC13",
+   "severity": "info",
+   "area": "notification icons (RoundAvatar.h)",
+   "status": "FIXED 67019c7 (rendered at 256 px at most); the folder outliving logout is part of SEC5",
+   "summary": "The icon was decoded at full size on the GUI thread; notification-icons/ outlives logout.",
+   "test": "tests/cpp/roundavatar"
+  },
+  {
+   "id": "UC14",
+   "severity": "info",
+   "area": "notification markup and Silica",
+   "status": "DECIDED: not a problem (the home screen shows summary and body as plain text on 5.1; Silica's notices and headers are Labels); the image plugins, GStreamer and libcontentaction left for a device",
+   "summary": "Settled offline.",
+   "test": ""
+  },
+  {
+   "id": "UC15",
+   "severity": "info",
+   "area": "forward (timeline.rs)",
+   "status": "FIXED 5131d6c (DEC25: a forward from an encrypted room into an unencrypted one uploads a fresh unencrypted copy, forward_copy)",
+   "summary": "Not rated in its report, info here. A forward resent the encrypted file's reference, so its key went into the unencrypted room.",
+   "test": ""
+  },
+  {
+   "id": "DEC1",
+   "severity": "medium",
+   "area": "decision: UC1",
+   "status": "DECIDED 5131d6c",
+   "summary": "Length cap: \"Message too long to show\" above 200 000 drawn characters, no list depth cap.",
+   "test": ""
+  },
+  {
+   "id": "DEC2",
+   "severity": "medium",
+   "area": "decision: NET-3",
+   "status": "DECIDED a5266e1",
+   "summary": "Plain http only for the phone and the home network.",
+   "test": ""
+  },
+  {
+   "id": "DEC3",
+   "severity": "medium",
+   "area": "decision: NET-2",
+   "status": "DECIDED a5266e1",
+   "summary": "The consent page only on the account service's host.",
+   "test": ""
+  },
+  {
+   "id": "DEC4",
+   "severity": "medium",
+   "area": "decision: IPC2",
+   "status": "DECIDED 5131d6c",
+   "summary": "Reply to the app's own name; a red warning in Settings when the push name is held by another app.",
+   "test": ""
+  },
+  {
+   "id": "DEC5",
+   "severity": "medium",
+   "area": "decision: UC2",
+   "status": "DECIDED 5131d6c",
+   "summary": "Inline only what the file really is.",
+   "test": ""
+  },
+  {
+   "id": "DEC6",
+   "severity": "low",
+   "area": "decision: IPC1c",
+   "status": "DECIDED 5131d6c",
+   "summary": "A stale Answer opens the room.",
+   "test": ""
+  },
+  {
+   "id": "DEC7",
+   "severity": "low",
+   "area": "decision: IPC3",
+   "status": "DECIDED 5131d6c",
+   "summary": "Exact name; a new distributor needs a yes (\"Use %1 for push?\").",
+   "test": ""
+  },
+  {
+   "id": "DEC8",
+   "severity": "low",
+   "area": "decision: IPC6",
+   "status": "DECIDED 5131d6c",
+   "summary": "The push-woken process posts \"Rustrx could not start\" once per boot.",
+   "test": ""
+  },
+  {
+   "id": "DEC9",
+   "severity": "low",
+   "area": "decision: IPC7",
+   "status": "DECIDED 5131d6c",
+   "summary": "A Look up button for links from other apps.",
+   "test": ""
+  },
+  {
+   "id": "DEC10",
+   "severity": "low",
+   "area": "decision: NET-4",
+   "status": "DECIDED 5131d6c",
+   "summary": "Rings only in rooms of two; in groups the notification only.",
+   "test": ""
+  },
+  {
+   "id": "DEC11",
+   "severity": "low",
+   "area": "decision: NET-6",
+   "status": "DECIDED a5266e1",
+   "summary": "Another person's verification asks first.",
+   "test": ""
+  },
+  {
+   "id": "DEC12",
+   "severity": "low",
+   "area": "decision: NET-7",
+   "status": "DECIDED a5266e1",
+   "summary": "A browser login into another account is refused.",
+   "test": ""
+  },
+  {
+   "id": "DEC13",
+   "severity": "low",
+   "area": "decision: NET-8",
+   "status": "DECIDED 5131d6c",
+   "summary": "Relay-only calls by default.",
+   "test": ""
+  },
+  {
+   "id": "DEC14",
+   "severity": "low",
+   "area": "decision: SEC2",
+   "status": "DECIDED a5266e1",
+   "summary": "The texts were ours to write.",
+   "test": ""
+  },
+  {
+   "id": "DEC15",
+   "severity": "low",
+   "area": "decision: SEC3",
+   "status": "DECIDED a5266e1",
+   "summary": "Ask before starting over when the old store may be recoverable.",
+   "test": ""
+  },
+  {
+   "id": "DEC16",
+   "severity": "low",
+   "area": "decision: SEC5",
+   "status": "DECIDED: no change",
+   "summary": "No change: the notification history is not touched at logout (a user may catch up on what came while Rustrx was closed).",
+   "test": ""
+  },
+  {
+   "id": "DEC17",
+   "severity": "low",
+   "area": "decision: SEC6",
+   "status": "DECIDED a5266e1",
+   "summary": "Wipe on a hard logout, keep on a soft one (checks::hard_logout).",
+   "test": ""
+  },
+  {
+   "id": "DEC18",
+   "severity": "low",
+   "area": "decision: SEC8",
+   "status": "DECIDED a5266e1",
+   "summary": "Logs to the share sheet, no copy in Downloads.",
+   "test": ""
+  },
+  {
+   "id": "DEC19",
+   "severity": "medium",
+   "area": "decision: FFI-2",
+   "status": "DECIDED 5131d6c",
+   "summary": "Emoji caps; over the cap an emoji shows as its name.",
+   "test": ""
+  },
+  {
+   "id": "DEC20",
+   "severity": "low",
+   "area": "decision: FFI-3",
+   "status": "DECIDED 5131d6c",
+   "summary": "\"Large file, tap to load\".",
+   "test": ""
+  },
+  {
+   "id": "DEC21",
+   "severity": "low",
+   "area": "decision: FFI-4",
+   "status": "DECIDED a5266e1",
+   "summary": "A second export the same day gets a new name.",
+   "test": ""
+  },
+  {
+   "id": "DEC22",
+   "severity": "low",
+   "area": "decision: UC5",
+   "status": "DECIDED 5131d6c",
+   "summary": "Open only the known safe kinds, save the rest.",
+   "test": ""
+  },
+  {
+   "id": "DEC23",
+   "severity": "low",
+   "area": "decision: UC7",
+   "status": "DECIDED 5131d6c",
+   "summary": "The user ID beside ambiguous names.",
+   "test": ""
+  },
+  {
+   "id": "DEC24",
+   "severity": "low",
+   "area": "decision: UC8",
+   "status": "DECIDED 5131d6c",
+   "summary": "Ask before opening a link whose text names another host.",
+   "test": ""
+  },
+  {
+   "id": "DEC25",
+   "severity": "info",
+   "area": "decision: UC15",
+   "status": "DECIDED 5131d6c",
+   "summary": "A fresh unencrypted copy.",
+   "test": ""
+  }
+ ],
+ "non_findings": [
+  {
+   "id": "NF1",
+   "what": "TLS: rustls with aws-lc-rs and the platform verifier on the system's CA bundle, TLS 1.2 at least, danger_accept_invalid_certs never set; Rustrx makes no HTTP requests outside the SDK."
+  },
+  {
+   "id": "NF2",
+   "what": "OAuth state and PKCE are made and checked by the SDK; both loopbacks bind 127.0.0.1, never 0.0.0.0."
+  },
+  {
+   "id": "NF3",
+   "what": "Key backup: the SDK enables a backup only when the recovery key's public key matches the server's backup version."
+  },
+  {
+   "id": "NF4",
+   "what": "Identity reset: the approval URL comes from the account service's metadata; a password (UIAA) reset is refused; both behind a RemorsePopup."
+  },
+  {
+   "id": "NF5",
+   "what": "The recovery key field sets ImhSensitiveData and ImhNoPredictiveText."
+  },
+  {
+   "id": "NF6",
+   "what": "The home screen shows notification summary and body as plain text (5.1 target); lipstick announces no body-markup."
+  },
+  {
+   "id": "NF7",
+   "what": "Silica's Notices, PageHeader, MenuItem, ValueButton, TextSwitch, SectionHeader and DialogHeader are Labels; DetailItem sets PlainText."
+  },
+  {
+   "id": "NF8",
+   "what": "Every StyledText site in qml/ takes escaped or rendered text (16 sites read)."
+  },
+  {
+   "id": "NF9",
+   "what": "hrefSafe percent-encodes both quotes, which StyledText's value parser needs and is enough; &#34; is not decoded in hrefs."
+  },
+  {
+   "id": "NF10",
+   "what": "Mp4::read and strip: 3 million mutated inputs under ASan and UBSan, no report."
+  },
+  {
+   "id": "NF11",
+   "what": "At 3204fa2 the eight unsafe blocks in core/ were all in lib.rs and sound as used (67019c7 added an openat in timeline.rs, export_new_file, not read by the audit)."
+  },
+  {
+   "id": "NF12",
+   "what": "rustrx_start, rustrx_command, rustrx_command_to and rustrx_set_store_key: no panic on input found; serde_json's recursion limit stops deep nesting."
+  },
+  {
+   "id": "NF13",
+   "what": "The callback's fromRawData text lives until it returns and fromJson copies it; the Account pointer is never freed."
+  },
+  {
+   "id": "NF14",
+   "what": "The KDF: the stores' high-entropy path wraps each database's cipher with HKDF-SHA256; one wrapping key for every store is fine (own data keys, random 192-bit nonces)."
+  },
+  {
+   "id": "NF15",
+   "what": "The journal on the 5.1 port image: volatile, about 1 MB, readable by root and the journal groups only."
+  },
+  {
+   "id": "NF16",
+   "what": "Backups on the 5.1 port image: no jolla-vault unit reads Rustrx's data, config or cache folders."
+  },
+  {
+   "id": "NF17",
+   "what": "The UnifiedPush token is a random UUID v4, checked by every connector method; the endpoint must be https."
+  }
+ ]
+}
